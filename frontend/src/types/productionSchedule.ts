@@ -9,6 +9,17 @@ export const scheduleStatusLabels = {
   not_assessed: '备料与转出',
 } as const
 export type ScheduleStatus = keyof typeof scheduleStatusLabels
+export interface ScheduleOverview {
+  as_of: string
+  date_from: string
+  date_to: string
+  period: { completed: number; completed_late: number; overdue: number }
+  assessed_count: number
+  on_time_rate: number | null
+  overdue_count: number
+  today_count: number
+  attention: ProductionSchedule[]
+}
 export const completionBasisLabels = {
   quantity: '按件数',
   weight: '按重量',

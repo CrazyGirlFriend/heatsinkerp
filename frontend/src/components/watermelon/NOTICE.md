@@ -41,8 +41,8 @@ official Watermelon Vue package. Warehouse filtering and saves use the existing 
   focus ring and inline error surface; Select 21's neutral popover, rounded options and
   selection check. Warehouse controls use a shared 40px height rather than the example's
   32px height. The Vue input and select engines retain their existing business bindings.
-- `ScheduleBatchSummary.vue`: Meeting Card's muted header, rounded inset body, aligned
-  metadata tags and footer actions. The body uses the same spring settings (300 stiffness /
+- `ScheduleBatchSummary.vue`: Meeting Card's muted header, grouped quantities and footer
+  actions, adapted with compact plain date rows. The body uses the same spring settings (300 stiffness /
   30 damping) for height and opacity, with reduced-motion support. Scheduling details open
   on click through the existing `AppPopover`; business quantities and dates remain local.
   https://ui.watermelon.sh/animated-components/meeting-card

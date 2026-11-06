@@ -39,6 +39,7 @@ export interface ProductionScope extends ProductionMetrics {
 }
 
 export interface PerformanceFilters {
+  include_activity?: boolean
   date_from: string
   date_to: string
   team_id?: number
@@ -49,6 +50,10 @@ export interface PerformanceFilters {
 }
 
 export interface FactoryPerformance {
+  activity?: {
+    totals: { completed_quantity: number; rework_quantity: number }
+    trend: { date: string; completed_quantity: number; rework_quantity: number }[]
+  }
   period: PerformancePeriod
   period_dates: string[]
   date_from: string

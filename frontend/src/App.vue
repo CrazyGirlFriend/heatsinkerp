@@ -35,12 +35,11 @@ const teamLabel = computed(() =>
 const route = useRoute()
 const router = useRouter()
 const isAuthenticationPage = computed(() => ['login', 'access'].includes(String(route.name)))
-// Only the signed-in business shell uses the shared theme; auth and overview keep their styles.
+// The signed-in business shell, including the overview, uses the shared theme.
 const appearance = computed(() =>
   !canEnterSite.value ||
   !isAuthenticated.value ||
-  isAuthenticationPage.value ||
-  route.name === 'factory-analysis'
+  isAuthenticationPage.value
     ? 'glass'
     : 'watermelon',
 )

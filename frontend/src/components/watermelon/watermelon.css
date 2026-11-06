@@ -191,8 +191,8 @@ html.wm-app,
   background: var(--wm-primary);
   border-color: var(--wm-primary);
 }
-.wm-dialog .el-checkbox__inner::after,
-.wm-scope .el-checkbox__inner::after {
+.wm-dialog .el-checkbox__input.is-checked .el-checkbox__inner::after,
+.wm-scope .el-checkbox__input.is-checked .el-checkbox__inner::after {
   border-color: var(--wm-primary-text);
 }
 .wm-dialog .batch-selection-bar,

@@ -14,6 +14,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .config import settings
 from .database import get_db
+from .inventory_age import stock_age_table
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .models import MaterialLoss, MaterialTransfer, utcnow
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
@@ -326,9 +327,12 @@ def serial_predicates(team_id, table, filters, now):
             conditions.append(
                 func.coalesce(stock.c.material_name, "未填写材质") == filters.material_name
             )
+        matching_stock = select(stock.c.serial_no)
         if filters.stock_age:
-            conditions.append(age_conditions(stock.c.received_at, now)[filters.stock_age])
-        result.append(table.c.serial_no.in_(select(stock.c.serial_no).where(*conditions)))
+            age = stock_age_table(team_id)
+            matching_stock = matching_stock.outerjoin(age, age.c.transfer_id == stock.c.transfer_id)
+            conditions.append(age_conditions(age.c.started_at, now)[filters.stock_age])
+        result.append(table.c.serial_no.in_(matching_stock.where(*conditions)))
     if filters.waiting_direction:
         conditions = [
             getattr(
@@ -542,8 +546,9 @@ def analytics(db, team_id, days=30, metric="weight"):
         .group_by(stock.c.material_name)
         .order_by(func.sum(stock.c[f"on_hand_{metric}"]).desc()),
     )
+    age = stock_age_table(team_id)
     age_bucket = case(
-        *[(condition, key) for key, condition in age_conditions(stock.c.received_at, now).items()],
+        *[(condition, key) for key, condition in age_conditions(age.c.started_at, now).items()],
         else_="unknown",
     )
     ages = {
@@ -555,6 +560,8 @@ def analytics(db, team_id, days=30, metric="weight"):
                 func.sum(stock.c.on_hand_quantity).label("quantity"),
                 func.sum(stock.c.on_hand_weight).label("weight"),
             )
+            .select_from(stock)
+            .outerjoin(age, age.c.transfer_id == stock.c.transfer_id)
             .where(remaining)
             .group_by(age_bucket),
         )

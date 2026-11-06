@@ -64,7 +64,7 @@ const originals = () => [
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
-    { id: 9, team_id: 2, name: '磨削', active: true, version: 1 },
+    { id: 9, team_id: 2, name: '磨削', active: true, version: 1, purpose_id: 3 },
   ])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
     { id: 3, team_id: 2, name: '研磨业务', active: true, version: 1 },
@@ -124,10 +124,19 @@ it('shows the published step, fixed task and complete instructions for a repeate
   await render({ ...context(), completed_task_ids: [9], allowed_task_ids: [] })
   const details = wrapper.get('[aria-label="本道加工工艺"]')
   expect(details.text()).toContain('2 · 粗磨')
-  expect(details.text()).toContain('具体任务 · 磨削')
+  expect(details.text()).toContain('加工任务 · 磨削')
   expect(details.get('p').text()).toBe('厚度 2.50 ±0.05 mm\n不得叠放')
   expect(select('加工任务').props()).toMatchObject({ modelValue: 9, disabled: true })
-  expect(select('加工对应业务').props()).toMatchObject({ modelValue: 3, disabled: true })
+  expect(select('加工对应业务')).toBeUndefined()
+  expect(wrapper.getComponent(ProcessingTaskFields).props('purposeId')).toBe(3)
+})
+
+it('uses the received task without asking for a second business choice', async () => {
+  await render({ ...context(), process_route: undefined, purpose_id: 3 })
+  expect(select('加工任务').props('modelValue')).toBe(9)
+  expect(select('加工对应业务')).toBeUndefined()
+  expect(wrapper.getComponent(ProcessingTaskFields).props('purposeId')).toBe(3)
+  expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
 })
 
 it.each([false, true])(
@@ -142,11 +151,12 @@ it.each([false, true])(
     }
     await render(snapshot, rework)
     expect(select('加工任务').props('disabled')).toBe(false)
-    expect(select('加工对应业务').props('disabled')).toBe(false)
+    expect(select('加工对应业务')).toBeUndefined()
     expect(wrapper.getComponent(ProcessingTaskFields).emitted('validity')?.at(-1)).toEqual([false])
     select('加工任务').vm.$emit('update:modelValue', 9)
-    select('加工对应业务').vm.$emit('update:modelValue', 3)
+
     await flushPromises()
+    expect(wrapper.getComponent(ProcessingTaskFields).props('purposeId')).toBe(3)
     expect(wrapper.getComponent(ProcessingTaskFields).emitted('validity')?.at(-1)).toEqual([true])
     expect(wrapper.get('[aria-label="本道加工工艺"]').text()).toContain('厚度 2.50 ±0.05 mm')
   },

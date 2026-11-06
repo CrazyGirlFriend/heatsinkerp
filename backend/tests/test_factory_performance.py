@@ -199,6 +199,22 @@ def test_weighted_rates_separate_scope_kind_and_reinspection(client, facts):
     ]
 
 
+def test_overview_activity_counts_all_tasks_as_piece_operations(client, facts):
+    processing(facts, processing_task_name="粗磨", completed_quantity=100)
+    processing(facts, processing_task_name="精磨", completed_quantity=80)
+    processing(facts, team_id=facts["grind"]["id"], completed_quantity=40)
+    processing(facts, work_kind="rework", completed_quantity=10)
+    processing(facts, processor_employee_id=None, completed_quantity=999)
+    processing(facts, processing_date=date(2026, 10, 18), completed_quantity=999)
+    data = report(client, include_activity=True, date_from="2026-10-19")
+    assert data["activity"]["totals"] == {"completed_quantity": 220, "rework_quantity": 10}
+    assert data["activity"]["trend"] == [
+        {"date": "2026-10-19", "completed_quantity": 0, "rework_quantity": 0},
+        {"date": "2026-10-20", "completed_quantity": 220, "rework_quantity": 10},
+    ]
+    assert "activity" not in report(client)
+
+
 def test_issue_totals_deduplicate_tags_and_team_associations(client, facts):
     members = [facts["other"]["id"], facts["grind"]["id"]]
     root = inspection(facts, members=members, problems=facts["problems"])

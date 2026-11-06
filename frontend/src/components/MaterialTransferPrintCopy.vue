@@ -74,7 +74,7 @@ const totals = computed(() => transferPrintTotals(props.group.items))
           <th>件数</th>
           <th>重量 (kg)</th>
           <th>
-            {{ group.items[0]!.entry_kind === 'processing_output' ? '本班组业务' : '接收业务' }}
+            {{ group.items[0]!.entry_kind === 'processing_output' ? '加工任务' : '接收任务' }}
           </th>
           <th>本次批次 / 条码</th>
         </tr>

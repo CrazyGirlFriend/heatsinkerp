@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import FactoryOverviewPage from './FactoryOverviewPage.vue'
+import FactoryOperationsOverview from '@/components/FactoryOperationsOverview.vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
 import FactoryPerformancePanel from '@/components/FactoryPerformancePanel.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
@@ -34,7 +35,11 @@ async function render(path = '/', inventory = true) {
   wrapper = mount(FactoryOverviewPage, {
     global: {
       plugins: [router],
-      stubs: { FactoryOverviewCharts: true, FactoryPerformancePanel: true },
+      stubs: {
+        FactoryOverviewCharts: true,
+        FactoryPerformancePanel: true,
+        FactoryOperationsOverview: true,
+      },
     },
   })
   await flushPromises()
@@ -48,9 +53,9 @@ async function click(label: string) {
   await flushPromises()
 }
 describe('factory dashboard', () => {
-  it('opens production first and loads inventory only when requested', async () => {
+  it('opens the operations overview and keeps detailed analysis tabs available', async () => {
     await render('/', false)
-    expect(wrapper.getComponent(FactoryPerformancePanel).props('scene')).toBe('production')
+    expect(wrapper.getComponent(FactoryOperationsOverview).props('days')).toBe(7)
     expect(factoryOverviewApi.get).not.toHaveBeenCalled()
     await click('检验与质量')
     expect(wrapper.getComponent(FactoryPerformancePanel).props('scene')).toBe('quality')

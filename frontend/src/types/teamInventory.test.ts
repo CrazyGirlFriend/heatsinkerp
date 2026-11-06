@@ -8,15 +8,15 @@ describe('classified stock presentation', () => {
     expect(warehouseSearchColumns.map((column) => column.key)).not.toContain('oldest_received_at')
     expect(warehouseSearchColumns.map((column) => column.key)).not.toContain('stock_balance')
     expect(warehouseSearchColumns.map((column) => column.key)).not.toContain('movement')
-    for (const key of ['owned_quantity', 'owned_weight'])
-      expect(warehouseSearchColumns.map((column) => column.key)).toContain(key)
     for (const key of [
-      'stock_status',
-      'dispatchable_quantity',
-      'dispatchable_weight',
+      'owned_quantity',
+      'owned_weight',
       'in_transit_quantity',
       'in_transit_weight',
+      'source_batch_no',
     ])
+      expect(warehouseSearchColumns.map((column) => column.key)).toContain(key)
+    for (const key of ['stock_status', 'dispatchable_quantity', 'dispatchable_weight'])
       expect(warehouseSearchColumns.map((column) => column.key)).not.toContain(key)
   })
   it('distinguishes available, partial, all pending, external confirmation, weight-only and unknown stock', () => {

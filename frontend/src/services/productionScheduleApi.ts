@@ -10,6 +10,7 @@ import type {
   InventorySchedules,
   ScheduleFilters,
   ScheduleSummary,
+  ScheduleOverview,
   ScheduleSourceOption,
   ScheduleTask,
   DispatchTaskWrite,
@@ -57,6 +58,7 @@ async function request<T>(path: string, options?: HttpRequestOptions): Promise<T
   }
 }
 export const productionScheduleApi = {
+  overview: (days = 7) => request<ScheduleOverview>(`/production-schedules/overview?days=${days}`),
   reworkOptions: (id: number) =>
     request<ScheduleReworkOption[]>(`/production-schedules/tasks/${id}/rework-options`),
   linkRework: (

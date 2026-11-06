@@ -105,7 +105,7 @@ const itemLabel = computed(() =>
       ? '任务'
       : editingEmployees.value
         ? '员工'
-        : '业务',
+        : '任务',
 )
 const purposes = ref<TeamPurpose[]>([]),
   newName = ref(''),
@@ -208,6 +208,7 @@ watch(
       props.businessOnly && props.initialTab === 'opening'
         ? 'purposes'
         : props.initialTab || 'purposes'
+    if (tab.value === 'purposes' && props.processingTasks && canManage.value) tab.value = 'tasks'
     if (tab.value === 'tasks' && props.processingTasks === false) tab.value = 'purposes'
     if (tab.value === 'problems' && !canManageProblems.value) tab.value = 'purposes'
     if (props.employeesOnly) tab.value = 'employees'
@@ -359,10 +360,15 @@ async function submitOpening() {
     @close="close"
   >
     <ElTabs v-model="tab">
-      <ElTabPane v-if="!employeesOnly" name="purposes" label="本组业务" :disabled="saving" />
+      <ElTabPane
+        v-if="!employeesOnly && !processingTasks"
+        name="purposes"
+        label="接收任务"
+        :disabled="saving"
+      />
       <ElTabPane name="employees" label="班组员工" :disabled="saving" />
       <ElTabPane
-        v-if="processingTasks && canManage"
+        v-if="processingTasks && canManage && !employeesOnly"
         name="tasks"
         label="加工任务"
         :disabled="saving"
@@ -382,11 +388,9 @@ async function submitOpening() {
           巡检、检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
         </p>
         <p v-else-if="editingTasks" class="settings-note">
-          维护本班组的具体任务，如粗磨、精磨。加工时选择实际完成的任务；任务独立于业务，不要求每批完成全部任务。停用或改名不改变历史记录。
+          转料和加工使用同一份任务清单。改名、停用不改变历史记录。
         </p>
-        <p v-else-if="!editingEmployees" class="settings-note">
-          设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
-        </p>
+        <p v-else-if="!editingEmployees" class="settings-note">设置本班组接收物料时的任务。</p>
         <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
           <AccountAvatar v-if="editingEmployees" :name="item.name" :size="24" />
           <ElInput
@@ -408,7 +412,7 @@ async function submitOpening() {
         </div>
         <ElAlert
           v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
-          title="业务全部停用后，上序无法新建转给本班组的转料单。"
+          title="任务全部停用后，上序无法新建转给本班组的转料单。"
           type="info"
           :closable="false"
         />
@@ -438,7 +442,7 @@ async function submitOpening() {
           >
         </div>
         <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
-          尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。
+          尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的任务。
         </p>
       </section>
       <section v-else-if="!businessOnly" class="opening-settings">
@@ -500,10 +504,10 @@ async function submitOpening() {
                   /></ElSelect>
                 </div>
                 <div class="dialog-field">
-                  <span class="dialog-field-label">本班组业务</span
+                  <span class="dialog-field-label">加工任务</span
                   ><ElSelect
                     v-model="line.purpose_id"
-                    aria-label="初始库存业务"
+                    aria-label="初始库存加工任务"
                     clearable
                     placeholder="未分类"
                     :disabled="saving"

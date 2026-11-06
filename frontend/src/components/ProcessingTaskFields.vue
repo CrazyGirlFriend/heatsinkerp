@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElFormItem, ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
+import type { TeamProcessingTask } from '@/types/teamBusiness'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import TeamBusinessDialog from './TeamBusinessDialog.vue'
 
@@ -28,7 +28,6 @@ const emit = defineEmits<{
   validity: [boolean]
 }>()
 const tasks = ref<TeamProcessingTask[]>([])
-const purposes = ref<TeamPurpose[]>([])
 const loading = ref(true),
   error = ref(''),
   settingsOpen = ref(false)
@@ -87,31 +86,10 @@ const validTask = computed(
     !required.value ||
     choices.value.some((item) => item.id === props.taskId),
 )
-const purposeRequired = computed(() => !!props.taskId && purposes.value.length > 0)
-const validPurpose = computed(
-  () =>
-    (props.rework && !routeStep.value) ||
-    (!purposeRequired.value && !props.purposeId) ||
-    purposes.value.some((item) => item.active && item.id === props.purposeId),
-)
 watch(
-  () => [
-    props.context,
-    loading.value,
-    error.value,
-    validTask.value,
-    validPurpose.value,
-    validReworkRecord.value,
-  ],
+  () => [props.context, loading.value, error.value, validTask.value, validReworkRecord.value],
   () =>
-    emit(
-      'validity',
-      !loading.value &&
-        !error.value &&
-        validTask.value &&
-        validPurpose.value &&
-        validReworkRecord.value,
-    ),
+    emit('validity', !loading.value && !error.value && validTask.value && validReworkRecord.value),
   { immediate: true },
 )
 let generation = 0
@@ -128,13 +106,15 @@ async function load() {
     return
   }
   try {
-    const [taskOptions, purposeOptions] = await Promise.all([
-      teamMaterialApi.processingTasks(props.teamId),
-      teamMaterialApi.purposes(props.teamId),
-    ])
+    const taskOptions = await teamMaterialApi.processingTasks(props.teamId)
     if (current !== generation) return
     tasks.value = taskOptions
-    purposes.value = purposeOptions
+    if (!props.taskId && !routeStep.value?.processing_task_id && props.context.purpose_id) {
+      const receivedTask = choices.value.find(
+        (item) => item.purpose_id === props.context.purpose_id,
+      )
+      if (receivedTask) selectTask(receivedTask.id)
+    }
     if (routeStep.value) {
       if (routeStep.value.processing_task_id)
         emit('update:taskId', routeStep.value.processing_task_id)
@@ -146,6 +126,25 @@ async function load() {
     if (current === generation) loading.value = false
   }
 }
+function selectTask(id: number | null) {
+  emit('update:taskId', id)
+  emit(
+    'update:purposeId',
+    routeStep.value?.purpose_id || tasks.value.find((item) => item.id === id)?.purpose_id || null,
+  )
+}
+watch(
+  () => [props.taskId, tasks.value],
+  () => {
+    if (!props.rework || routeStep.value)
+      emit(
+        'update:purposeId',
+        routeStep.value?.purpose_id ||
+          tasks.value.find((item) => item.id === props.taskId)?.purpose_id ||
+          null,
+      )
+  },
+)
 watch(
   () => [props.teamId, props.context, props.rework, props.reworkRecordId],
   () => void load(),
@@ -198,7 +197,7 @@ onBeforeUnmount(() => ++generation)
             : '按工艺执行'
       }}</span>
     </header>
-    <div class="processing-route-task">具体任务 · {{ currentTaskName }}</div>
+    <div class="processing-route-task">加工任务 · {{ currentTaskName }}</div>
     <p v-if="rework && !routeStep && !recordId">请选择原加工记录，核对对应工序和工艺要求。</p>
     <p v-else-if="rework && !routeStep && !validReworkRecord">
       未找到关联的原加工记录，请刷新后重新核对。
@@ -215,37 +214,7 @@ onBeforeUnmount(() => ++generation)
     >
   </section>
   <ElFormItem
-    label="对应业务"
-    :required="purposeRequired"
-    :class="{ 'is-error': submitted && !validPurpose }"
-  >
-    <ElSelect
-      :model-value="purposeId"
-      aria-label="加工对应业务"
-      clearable
-      filterable
-      :placeholder="rework ? '未登记' : '未分类'"
-      :loading="loading"
-      :disabled="disabled || (rework && !routeStep) || !!routeStep?.purpose_id || loading"
-      @update:model-value="emit('update:purposeId', $event || null)"
-    >
-      <ElOption
-        v-for="item in purposes.filter((item) => item.active || item.id === purposeId)"
-        :key="item.id"
-        :value="item.id"
-        :label="item.name"
-        :disabled="!item.active"
-      />
-      <ElOption
-        v-if="purposeId && !purposes.some((item) => item.id === purposeId)"
-        :value="purposeId"
-        :label="origin?.purpose_name || context.purpose_name || '原业务'"
-        disabled
-      />
-    </ElSelect>
-  </ElFormItem>
-  <ElFormItem
-    label="具体任务"
+    label="加工任务"
     :required="required"
     :class="{ 'is-error': submitted && (!validTask || !!error) }"
   >
@@ -257,7 +226,7 @@ onBeforeUnmount(() => ++generation)
       :placeholder="rework ? '未登记' : tasks.length ? '选择本次完成的任务' : '尚未配置任务'"
       :loading="loading"
       :disabled="disabled || (rework && !routeStep) || !!routeStep?.processing_task_id || loading"
-      @update:model-value="emit('update:taskId', $event || null)"
+      @update:model-value="selectTask($event || null)"
     >
       <ElOption v-for="item in choices" :key="item.id" :value="item.id" :label="item.name" />
       <ElOption
@@ -269,17 +238,17 @@ onBeforeUnmount(() => ++generation)
     </ElSelect>
     <small v-if="!loading && !tasks.length && !rework" class="dialog-field-hint">
       可先在<ElButton link type="primary" @click="settingsOpen = true">班组设置</ElButton
-      >维护具体任务。
+      >维护加工任务。
     </small>
     <small
       v-if="
         routeStep?.route_kind === 'rework' && (routeStep.processing_task_id || routeStep.purpose_id)
       "
       class="dialog-field-hint"
-      >按返工工艺指定的业务和任务执行。</small
+      >按返工工艺指定的加工任务执行。</small
     >
     <small v-else-if="rework && !routeStep" class="dialog-field-hint"
-      >沿用原加工记录的业务和任务，历史未登记的不补填。</small
+      >沿用原加工记录的加工任务，历史未登记的不补填。</small
     >
     <ElAlert v-if="error" :title="error" type="error" :closable="false">
       <ElButton link @click="load">重试</ElButton>

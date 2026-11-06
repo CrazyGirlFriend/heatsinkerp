@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from app.database import SessionLocal
 from app.models import (
     MaterialStockBalance,
@@ -11,6 +12,7 @@ from app.models import (
     SharedMaterialMember,
 )
 from test_material_stock import stock_setup as stock_setup  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 NOW = datetime(2026, 11, 5, 12)
 
@@ -160,3 +162,200 @@ def test_factory_stock_requires_admin(client, stock_setup):
         client.get("/api/serial-inventory/stock", headers=stock_setup["target_headers"]).status_code
         == 403
     )
+
+
+def test_property_filters_apply_to_balances_before_pagination(client, stock_setup, monkeypatch):
+    monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
+    with SessionLocal() as db:
+        add_lot(
+            db,
+            stock_setup["target"],
+            "MATCH",
+            days=5,
+            quantity=24,
+            customer_code="C001",
+            product_code="P001",
+            source_batch_no="SOURCE-12",
+        )
+        add_lot(db, stock_setup["target"], "SMALL", days=5, quantity=3, customer_code="C002")
+        db.commit()
+    for field, query in (
+        ("customer_code", "C001"),
+        ("product_code", "P001"),
+        ("source_batch_no", "SOURCE-12"),
+        ("owned_quantity", "24"),
+        ("owned_weight", "2.4"),
+    ):
+        result = stock(
+            client,
+            search_field=field,
+            query=query,
+            receipt_source="opening",
+            route_status="unlinked",
+            stock_age_min=3,
+            page_size=1,
+        )
+        assert result["total"] == 1
+        assert result["items"][0]["serial_no"] == "MATCH"
+    assert (
+        stock(client, search_field="owned_quantity", search_operator="gte", query="4")["total"] == 1
+    )
+    assert (
+        client.get(
+            "/api/serial-inventory/stock", params={"search_field": "owned_quantity", "query": "2.4"}
+        ).status_code
+        == 422
+    )
+
+
+@pytest.mark.usefixtures("legacy_stock")
+def test_processing_state_filters_agree_with_actual_work_and_quantities(client, warehouse):
+    from test_processing_daily import setup_lot, work
+
+    s = warehouse
+    lot, employee = setup_lot(client, s)
+    before = stock(client, team_id=s["other"]["id"], processing_state="unregistered")
+    assert before["total"] == 1 and before["items"][0]["owned_quantity"] == 10
+    assert stock(client, team_id=s["other"]["id"], processing_state="complete")["total"] == 0
+    result = work(client, s, lot, employee)
+    assert result.status_code == 201, result.text
+    after = stock(client, team_id=s["other"]["id"], processing_state="complete", page_size=1)
+    assert after["total"] == 1
+    assert after["items"][0]["processing_state"] == "complete"
+    assert after["items"][0]["owned_quantity"] == 10
+    assert stock(client, team_id=s["other"]["id"], processing_state="unregistered")["total"] == 0
+
+
+@pytest.mark.usefixtures("legacy_stock")
+def test_processed_and_remaining_stock_use_separate_clocks_through_repeated_splits(
+    client, warehouse, monkeypatch
+):
+    from test_processing_daily import setup_lot, work
+    from test_warehouse_classification import base
+
+    s = warehouse
+    lot, employee = setup_lot(client, s)
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, lot["id"]).received_at = NOW - timedelta(days=10)
+        db.commit()
+    monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
+    monkeypatch.setattr("app.material_analytics.utcnow", lambda: NOW)
+    monkeypatch.setattr("app.factory_overview.utcnow", lambda: NOW)
+    monkeypatch.setattr("app.quantity_adjustments.utcnow", lambda: NOW - timedelta(days=2))
+    first = work(client, s, lot, employee, completed_quantity=6, completed_weight=60)
+    assert first.status_code == 201, first.text
+    produced, remaining = first.json()["outputs"]
+    rows = stock(client, team_id=s["other"]["id"])["items"]
+    by_role = {r["processing_role"]: r for r in rows}
+    assert by_role["produced"]["stock_age_hours"] == 48
+    assert by_role["produced"]["stock_age_basis"] == "processed"
+    assert by_role["remaining"]["stock_age_hours"] == 240
+    assert by_role["remaining"]["stock_age_basis"] == "received"
+    assert by_role["remaining"]["stock_age_started_at"] == "2026-10-26T12:00:00+00:00"
+
+    monkeypatch.setattr("app.quantity_adjustments.utcnow", lambda: NOW - timedelta(days=1))
+    second = work(
+        client,
+        s,
+        remaining,
+        employee,
+        completed_quantity=2,
+        completed_weight=20,
+        idempotency_key="age-second",
+    )
+    assert second.status_code == 201, second.text
+    old = stock(client, team_id=s["other"]["id"], stock_age_min=7)
+    assert old["total"] == 1
+    assert old["items"][0]["owned_quantity"] == 2
+    assert old["items"][0]["stock_age_hours"] == 240
+    completed = stock(
+        client, team_id=s["other"]["id"], processing_state="complete", stock_age_max=3
+    )
+    assert completed["total"] == 1
+    assert completed["items"][0]["owned_quantity"] == 8
+    assert completed["items"][0]["stock_age_hours"] == 48
+    analytics = client.get(base(s, True) + "/analytics").json()
+    ages = {r["key"]: r["quantity"] for r in analytics["stock_age"]}
+    assert ages["ge7"] == 2 and ages["1_3"] == 8
+    factory = client.get("/api/factory-overview").json()
+    factory_ages = {r["key"]: r["quantity"] for r in factory["stock_age"]}
+    assert factory_ages["ge7"] == 2 and factory_ages["1_3"] == 8
+    filtered = client.get(base(s, True) + "/inventory", params={"stock_age": "ge7"}).json()
+    assert filtered["total"] == 1 and filtered["items"][0]["owned_quantity"] == 2
+
+    # Derive clocks from provenance; do not overwrite actual child creation/receipt facts.
+    with SessionLocal() as db:
+        assert db.get(MaterialTransfer, produced["id"]).received_at == NOW - timedelta(days=2)
+        assert db.get(MaterialTransfer, remaining["id"]).received_at == NOW - timedelta(days=2)
+
+
+@pytest.mark.usefixtures("legacy_stock")
+def test_same_team_reallocation_keeps_clocks_and_next_team_receipt_starts_over(
+    client, warehouse, monkeypatch
+):
+    from test_processing_daily import setup_lot, work
+    from test_serial_reallocations import reallocate
+    from test_warehouse_classification import confirm, dispatch
+
+    s = warehouse
+    lot, employee = setup_lot(client, s)
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, lot["id"]).received_at = NOW - timedelta(days=10)
+        db.commit()
+    monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
+    monkeypatch.setattr("app.quantity_adjustments.utcnow", lambda: NOW - timedelta(days=2))
+    first = work(client, s, lot, employee, completed_quantity=6, completed_weight=60)
+    assert first.status_code == 201, first.text
+    produced, remaining = first.json()["outputs"]
+    for child, serial, hours in ((produced, "DONE-ORDER", 48), (remaining, "WAIT-ORDER", 240)):
+        changed = reallocate(
+            client,
+            {"team": s["other"], "headers": s["other_headers"]},
+            child,
+            serial_no=serial,
+            quantity=1,
+            weight=10,
+            idempotency_key=f"age-{serial}",
+        )
+        assert changed.status_code == 201, changed.text
+        assert stock(client, serial_no=serial)["items"][0]["stock_age_hours"] == hours
+    sent = dispatch(
+        client,
+        s,
+        [dict(source_transfer_id=produced["id"], quantity=1, weight=10)],
+        workshop=True,
+    )
+    assert sent.status_code == 201, sent.text
+    assert confirm(client, s, sent.json()).status_code == 200
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, sent.json()["items"][0]["id"]).received_at = NOW - timedelta(
+            hours=6
+        )
+        db.commit()
+    received = stock(client, team_id=s["team"]["id"])["items"][0]
+    assert received["stock_age_hours"] == 6
+    assert received["stock_age_basis"] == "received"
+
+
+@pytest.mark.usefixtures("legacy_stock")
+def test_unsplit_processing_uses_last_work_instead_of_receipt_or_later_updates(
+    client, warehouse, monkeypatch
+):
+    from test_processing_daily import setup_lot, work
+
+    s = warehouse
+    lot, employee = setup_lot(client, s, code="FACTORY-WIRE")
+    with SessionLocal() as db:
+        row = db.get(MaterialTransfer, lot["id"])
+        row.received_at = NOW - timedelta(days=10)
+        db.commit()
+    monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
+    monkeypatch.setattr("app.quantity_adjustments.utcnow", lambda: NOW - timedelta(hours=5))
+    done = work(client, s, lot, employee, input_quantity=10, processing_status="complete")
+    assert done.status_code == 201, done.text
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, lot["id"]).updated_at = NOW
+        db.commit()
+    row = stock(client, team_id=s["other"]["id"])["items"][0]
+    assert row["stock_age_hours"] == 5
+    assert row["stock_age_basis"] == "processed"

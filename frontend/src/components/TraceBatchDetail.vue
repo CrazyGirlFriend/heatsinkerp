@@ -166,7 +166,7 @@ defineEmits<{ open: [code: string] }>()
           <dd>{{ batch.source_serial_no || '—' }}</dd>
         </div>
         <div v-if="batch.purpose_name">
-          <dt>{{ batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务' }}</dt>
+          <dt>{{ batch.entry_kind === 'processing_output' ? '加工任务' : '接收任务' }}</dt>
           <dd>{{ batch.purpose_name }}</dd>
         </div>
       </dl>

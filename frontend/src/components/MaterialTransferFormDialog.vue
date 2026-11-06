@@ -250,7 +250,7 @@ const validationIssues = computed(() => {
       form.purposeId !== editingSnapshot.value?.purpose_id &&
       !purposes.items.value.some((item) => item.active && item.id === form.purposeId)
     )
-      add('purposeId', '请选择下序班组的接收业务')
+      add('purposeId', '请选择下序班组的接收任务')
   }
   if (enteredQuantity.value == null)
     add('quantity', `请输入${external.value ? actionLabel.value : '转料'}件数`)
@@ -697,14 +697,14 @@ onBeforeUnmount(() => {
           </ElFormItem>
           <ElFormItem
             v-if="!external"
-            label="接收业务"
+            label="接收任务"
             :required="purposes.items.value.length > 0"
             :error="fieldErrors.purposeId"
             data-validation-field="purposeId"
           >
             <ElSelect
               v-model="form.purposeId"
-              aria-label="接收业务"
+              aria-label="接收任务"
               :loading="purposes.loading.value"
               :disabled="!canSubmit || !form.nextTeamId"
               :placeholder="
@@ -713,7 +713,7 @@ onBeforeUnmount(() => {
                   : !purposes.items.value.length
                     ? '接收班组尚未配置业务'
                     : purposes.items.value.some((item) => item.active)
-                      ? '请选择接收业务'
+                      ? '请选择接收任务'
                       : '接收班组暂无启用业务'
               "
             >

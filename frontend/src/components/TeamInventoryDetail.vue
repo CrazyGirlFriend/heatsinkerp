@@ -421,6 +421,19 @@ onBeforeUnmount(() => {
           group.serial_no
         }}</ElButton></ElDescriptionsItem
       >
+      <ElDescriptionsItem label="库存件数">{{
+        inventoryAmount(group.owned_quantity)
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem label="库存重量 (kg)">{{
+        inventoryAmount(group.owned_weight)
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem v-if="processing" label="加工状态"
+        ><ProcessingStockStatus
+          :summary="group"
+          :material-type="group.material_type"
+          :pending="!!group.in_transit_quantity || !!group.in_transit_weight"
+          compact
+      /></ElDescriptionsItem>
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="规格">{{
         group.transfer_specification || '—'
@@ -428,8 +441,8 @@ onBeforeUnmount(() => {
       <ElDescriptionsItem label="物料类型">{{
         materialTypeLabel(group.material_type || null)
       }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="本班组业务">{{
-        group.purpose_name || '未指定业务'
+      <ElDescriptionsItem label="加工任务">{{
+        group.purpose_name || '未指定任务'
       }}</ElDescriptionsItem>
       <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{
         inventorySourceLabel(group, warehouse)
@@ -478,6 +491,22 @@ onBeforeUnmount(() => {
               }}</ElButton></template
             ></ElTableColumn
           >
+          <ElTableColumn label="库存件数" min-width="110" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
+            ><template #default="{ row }"
+              ><ProcessingStockStatus
+                :state="row.processing_state"
+                :material-type="row.transfer.material_type" /></template
+          ></ElTableColumn>
           <ElTableColumn
             v-if="
               processing && rows.some((row) => row.processing_role || row.transfer.processing_role)
@@ -491,7 +520,7 @@ onBeforeUnmount(() => {
               ] || '—'
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="派工工序" min-width="170" align="center"
+          <ElTableColumn label="当前工艺工序" min-width="170" align="center"
             ><template #default="{ row }"
               ><ElButton
                 v-if="row.transfer.rework_route_id"
@@ -517,16 +546,6 @@ onBeforeUnmount(() => {
           <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip
             ><template #default="{ row }">{{
               currentLocations(asStock(row))
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="库存件数" min-width="110" align="right"
-            ><template #default="{ row }">{{
-              inventoryAmount(row.owned_quantity)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"
-            ><template #default="{ row }">{{
-              inventoryAmount(row.owned_weight)
             }}</template></ElTableColumn
           >
           <ElTableColumn label="要求交货时间" min-width="180" align="center">
@@ -667,12 +686,6 @@ onBeforeUnmount(() => {
                     : '—'
             }}</template></ElTableColumn
           >
-          <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
-            ><template #default="{ row }"
-              ><ProcessingStockStatus
-                :state="row.processing_state"
-                :material-type="row.transfer.material_type" /></template
-          ></ElTableColumn>
           <ElTableColumn
             label="操作"
             :width="canWrite ? (canReallocate ? 310 : 250) : 110"

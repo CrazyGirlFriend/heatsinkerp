@@ -1501,7 +1501,7 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn
                     prop="purpose_name"
-                    label="接收业务"
+                    label="接收任务"
                     min-width="120"
                     show-overflow-tooltip
                     ><template #default="{ row }">{{
@@ -1618,7 +1618,7 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn
                     prop="purpose_name"
-                    label="接收业务"
+                    label="接收任务"
                     min-width="120"
                     show-overflow-tooltip
                     ><template #default="{ row }">{{
@@ -1730,7 +1730,7 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn
                     prop="purpose_name"
-                    label="接收业务"
+                    label="接收任务"
                     min-width="120"
                     show-overflow-tooltip
                     ><template #default="{ row }">{{

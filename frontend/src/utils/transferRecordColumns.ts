@@ -51,7 +51,7 @@ export const transferRecordColumns = [
         : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name,
     true,
   ),
-  column('purpose', '接收业务', 125, materialPurposeLabel, true),
+  column('purpose', '接收任务', 125, materialPurposeLabel, true),
   column('material_type', '物料类型', 120, (row) => materialTypeLabel(row.material_type), true),
   column('quantity', '数量', 120, (row) => row.quantity, true),
   column('weight', '重量', 140, (row) => row.weight, true),

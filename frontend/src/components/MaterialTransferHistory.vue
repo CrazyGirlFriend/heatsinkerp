@@ -154,8 +154,8 @@ function fieldLabel(field: string, clearance = false, amendment = false): string
       next_team_id: '加工班组编号',
       next_team_code: '加工班组编码',
       next_team_name: '加工班组',
-      purpose_id: '本班组业务编号',
-      purpose_name: '本班组业务',
+      purpose_id: '加工任务编号',
+      purpose_name: '加工任务',
       received_at: '加工时间',
       received_by: '登记人',
       transfer_specification: '实际尺寸',
@@ -164,8 +164,8 @@ function fieldLabel(field: string, clearance = false, amendment = false): string
   }
   if (field === 'reason' && clearance) return '清零原因'
   const purposeLabels: Record<string, string> = {
-    purpose_id: '接收业务编号',
-    purpose_name: '接收业务',
+    purpose_id: '接收任务编号',
+    purpose_name: '接收任务',
     opening_stock_id: '初始库存登记编号',
   }
   if (purposeLabels[field]) return purposeLabels[field]

@@ -7,10 +7,10 @@ import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
-from app.models import MaterialStockBalance, TeamProcessingTask
+from app.models import MaterialInspection, MaterialStockBalance, TeamProcessingTask
 from engineered_rework_helpers import approve_rework, resume_rework
 from sqlalchemy import create_engine
-from test_engineered_rework import save_plan
+from test_engineered_rework import approved_quality_issue, save_plan
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -61,7 +61,7 @@ def test_two_tasks_keep_100_physical_pieces_and_group_work_separately(client, wa
     lot, employee = setup_lot(client, s, quantity=100)
     first_task, second_task = tasks(client, s)
     url = base(s, True)
-    purpose = client.post(url + "/purposes", json={"name": "产品加工"}).json()
+    purpose = {"id": first_task["purpose_id"]}
     first = work(
         client, s, lot, employee, processing_task_id=first_task["id"], purpose_id=purpose["id"]
     )
@@ -148,10 +148,15 @@ def test_partial_task_remaining_keeps_only_previous_completed_tasks(client, ware
         idempotency_key="not-completed-task",
     )
     assert denied.status_code == 422 and "工艺" in denied.text
+    inspection_id, qc_headers = approved_quality_issue(client, s, done, ctx(client, s, done))
+    # This approved inspection predates the later split; preserve its original source.
+    with SessionLocal.begin() as db:
+        db.get(MaterialInspection, inspection_id).source_transfer_id = first_child["id"]
     invalid_request = client.post(
         "/api/process-routes/rework-requests",
-        headers=s["other_headers"],
+        headers=qc_headers,
         json={
+            "inspection_id": inspection_id,
             "source_transfer_id": remaining["id"],
             "rework_of_id": second.json()["id"],
             "expected_revision": context["revision"],
@@ -262,10 +267,17 @@ def test_remaining_of_later_task_can_rework_an_earlier_completed_task(client, wa
         second["outputs"][0]["id"]
     ]
     context = ctx(client, s, remaining)
+    inspection_id, qc_headers = approved_quality_issue(
+        client, s, second["outputs"][0], ctx(client, s, second["outputs"][0])
+    )
+    # Historical inspection belongs to the completed earlier operation, before splitting.
+    with SessionLocal.begin() as db:
+        db.get(MaterialInspection, inspection_id).source_transfer_id = first["outputs"][0]["id"]
     requested = client.post(
         "/api/process-routes/rework-requests",
-        headers=s["other_headers"],
+        headers=qc_headers,
         json={
+            "inspection_id": inspection_id,
             "source_transfer_id": remaining["id"],
             "rework_of_id": first["id"],
             "expected_revision": context["revision"],
@@ -300,7 +312,7 @@ def test_engineered_rework_preserves_disabled_and_legacy_original_history(client
     legacy = work(client, s, lot, employee).json()
     task1, _ = tasks(client, s)
     url = base(s, True)
-    purpose = client.post(url + "/purposes", json={"name": "原业务"}).json()
+    purpose = {"id": task1["purpose_id"]}
     first = work(
         client,
         s,
@@ -313,10 +325,6 @@ def test_engineered_rework_preserves_disabled_and_legacy_original_history(client
     client.patch(
         url + f"/processing-tasks/{task1['id']}",
         json={"name": "更名任务", "active": False, "expected_version": 1},
-    )
-    client.patch(
-        url + f"/purposes/{purpose['id']}",
-        json={"name": "更名业务", "active": False, "expected_version": 1},
     )
     current = approve_rework(client, s, first["outputs"][0], first)
     retry = work(
@@ -351,7 +359,7 @@ def test_engineered_rework_preserves_disabled_and_legacy_original_history(client
     records = {row["id"]: row for row in client.get(url + "/processing-records").json()["items"]}
     assert (records[first["id"]]["processing_task_name"], records[first["id"]]["purpose_name"]) == (
         "粗磨",
-        "原业务",
+        "粗磨",
     )
     assert records[legacy["id"]]["processing_task_id"] is None
     assert records[legacy["id"]]["purpose_id"] is None
@@ -413,8 +421,8 @@ def test_task_date_replay_filters_and_immutable_names(client, warehouse):
     lot, employee = setup_lot(client, s)
     task1, task2 = tasks(client, s)
     url = base(s, True)
-    purpose1 = client.post(url + "/purposes", json={"name": "业务一"}).json()
-    purpose2 = client.post(url + "/purposes", json={"name": "业务二"}).json()
+    purpose1 = {"id": task1["purpose_id"]}
+    purpose2 = {"id": task2["purpose_id"]}
     extra = {
         "processing_task_id": task1["id"],
         "purpose_id": purpose1["id"],
@@ -456,10 +464,6 @@ def test_task_date_replay_filters_and_immutable_names(client, warehouse):
         url + f"/processing-tasks/{task1['id']}",
         json={"name": "粗磨改名", "active": False, "expected_version": 1},
     )
-    client.patch(
-        url + f"/purposes/{purpose1['id']}",
-        json={"name": "业务改名", "active": False, "expected_version": 1},
-    )
     params = {
         "processing_task_id": task1["id"],
         "purpose_id": purpose1["id"],
@@ -475,7 +479,7 @@ def test_task_date_replay_filters_and_immutable_names(client, warehouse):
         == daily["items"][0]["processing_task_name"]
         == "粗磨"
     )
-    assert records["items"][0]["purpose_name"] == daily["items"][0]["purpose_name"] == "业务一"
+    assert records["items"][0]["purpose_name"] == daily["items"][0]["purpose_name"] == "粗磨"
     assert records["processing_tasks"] == [
         {"id": task1["id"], "name": "粗磨"},
         {"id": task2["id"], "name": "精磨"},
@@ -485,7 +489,7 @@ def test_task_date_replay_filters_and_immutable_names(client, warehouse):
     assert viewer["processing_tasks"] == records["processing_tasks"]
     assert client.get(url + "/processing-tasks", headers=s["headers"]).status_code == 403
     assert client.get(url + "/processing-records", params={"query": "粗磨"}).json()["total"] == 1
-    assert client.get(url + "/processing-daily", params={"query": "业务一"}).json()["total"] == 1
+    assert client.get(url + "/processing-daily", params={"query": "粗磨"}).json()["total"] == 1
 
 
 def test_ordinary_transfer_back_starts_a_new_task_cycle(client, warehouse):
@@ -503,7 +507,14 @@ def test_ordinary_transfer_back_starts_a_new_task_cycle(client, warehouse):
     back = dispatch(
         client,
         s,
-        [{"source_transfer_id": sent["items"][0]["id"], "quantity": 10, "weight": 100}],
+        [
+            {
+                "source_transfer_id": sent["items"][0]["id"],
+                "quantity": 10,
+                "weight": 100,
+                "purpose_id": task1["purpose_id"],
+            }
+        ],
         idempotency_key="returned",
     ).json()
     assert confirm(client, s, back, workshop=True).status_code == 200

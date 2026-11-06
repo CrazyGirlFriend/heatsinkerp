@@ -25,6 +25,7 @@ import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
+import { processingStateLabels, processingRoleLabels } from '@/types/materialProcessing'
 import StatePanel from './StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
@@ -200,7 +201,7 @@ async function loadPurposes() {
     const result = await teamMaterialApi.purposes(props.teamId)
     if (current === purposeVersion) purposes.value = result
   } catch {
-    if (current === purposeVersion) purposesError.value = '本组业务选项加载失败，请重试。'
+    if (current === purposeVersion) purposesError.value = '加工任务选项加载失败，请重试。'
   } finally {
     if (current === purposeVersion) purposesLoading.value = false
   }
@@ -212,6 +213,10 @@ const dateDraft = ref<CalendarRange>({ from: '', to: '' }),
   locationDraft = ref(false),
   analysisDraft = ref(''),
   daysDraft = ref<7 | 30>(30)
+const processingStateDraft = ref<TeamInventoryParams['processing_state']>()
+const processingRoleDraft = ref<TeamInventoryParams['processing_role']>()
+const routeStatusDraft = ref<TeamInventoryParams['route_status']>()
+const processingStates = { ...processingStateLabels, mixed: '部分批次有加工记录' }
 const filterCount = computed(
   () =>
     activeFilters.value.length +
@@ -284,7 +289,9 @@ const columns = computed(() =>
     })),
 )
 const requiredColumnKeys = computed(() =>
-  props.warehouse ? ['owned_quantity', 'material_name'] : ['material_name'],
+  props.processing
+    ? ['owned_quantity', 'owned_weight', 'stock_status', 'material_name']
+    : ['owned_quantity', 'owned_weight', 'material_name'],
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
@@ -306,7 +313,9 @@ const storageKey = computed(() =>
 )
 const searchedColumn = computed(() =>
   text('query').trim()
-    ? searchColumns.value.find((column) => column.key === text('search_field'))
+    ? searchColumns.value
+        .filter((column) => 'format' in column)
+        .find((column) => column.key === text('search_field'))
     : undefined,
 )
 const visibleColumns = computed(() => {
@@ -379,6 +388,8 @@ const filters = computed<TeamInventoryParams>(() => {
   ])
     if (text(key)) params[key] = text(key)
   if (text('rework')) params.rework = text('rework')
+  for (const key of ['processing_state', 'processing_role', 'route_status'])
+    if (text(key)) params[key] = text(key)
   if (props.warehouse && text('receipt_source')) params.receipt_source = text('receipt_source')
   if (props.warehouse && text('location_status') === 'unassigned')
     params.location_status = 'unassigned'
@@ -432,6 +443,23 @@ const activeFilters = computed(() => {
       key: 'receipt_source',
       label: `来源：${warehouseSourceNames[text('receipt_source') as WarehouseSource] || text('receipt_source')}`,
     })
+  if (filters.value.processing_state)
+    chips.push({
+      key: 'processing_state',
+      label:
+        processingStates[filters.value.processing_state as keyof typeof processingStates] ||
+        '无需加工',
+    })
+  if (filters.value.processing_role)
+    chips.push({
+      key: 'processing_role',
+      label: processingRoleLabels[filters.value.processing_role],
+    })
+  if (filters.value.route_status)
+    chips.push({
+      key: 'route_status',
+      label: filters.value.route_status === 'linked' ? '已关联工艺' : '未关联工艺',
+    })
   if (text('rework'))
     chips.push({ key: 'rework', label: text('rework') === 'pending' ? '待返工' : '有返工历史' })
   if (text('source_team_id'))
@@ -449,7 +477,7 @@ const activeFilters = computed(() => {
   if (!props.warehouse && text('purpose_id'))
     chips.push({
       key: 'purpose_id',
-      label: `业务：${text('purpose_id') === '0' ? '未指定业务' : purposes.value.find((purpose) => purpose.id === Number(text('purpose_id')))?.name || text('purpose_id')}`,
+      label: `加工任务：${text('purpose_id') === '0' ? '未指定任务' : purposes.value.find((purpose) => purpose.id === Number(text('purpose_id')))?.name || text('purpose_id')}`,
     })
   const availabilityLabels = {
     current: '有未转出库存',
@@ -504,6 +532,9 @@ function draftFilters(): TeamInventoryParams {
     search_operator:
       queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
     rework: reworkDraft.value || undefined,
+    processing_state: processingStateDraft.value || undefined,
+    processing_role: processingRoleDraft.value || undefined,
+    route_status: routeStatusDraft.value || undefined,
     receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined,
     source_team_id:
       !props.warehouse || sourceDraft.value === 'internal' ? sourceTeamDraft.value : undefined,
@@ -562,6 +593,7 @@ function resetDialogFilters() {
   filterResetRequested.value = true
   daysDraft.value = 30
   reworkDraft.value = ''
+  processingStateDraft.value = processingRoleDraft.value = routeStatusDraft.value = undefined
   sourceDraft.value = ''
   sourceTeamDraft.value = undefined
   typeDraft.value = ''
@@ -756,6 +788,9 @@ function syncFilterDrafts() {
   sourceTeamDraft.value = Number(text('source_team_id')) || undefined
   inputError.value = ''
   purposeDraft.value = filters.value.purpose_id
+  processingStateDraft.value = filters.value.processing_state
+  processingRoleDraft.value = filters.value.processing_role
+  routeStatusDraft.value = filters.value.route_status
   dateDraft.value = { ...dates.value }
   urgentDraft.value = text('urgent_only') === 'true'
   locationDraft.value = text('location_status') === 'unassigned'
@@ -964,16 +999,50 @@ onBeforeUnmount(() => {
                   :value="item.value"
                   :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect
             ></label>
+            <label v-if="processing"
+              >加工状态<ElSelect
+                v-model="processingStateDraft"
+                clearable
+                aria-label="库存加工状态筛选"
+                placeholder="全部状态"
+                ><ElOption
+                  v-for="(label, value) in processingStates"
+                  :key="value"
+                  :label="label"
+                  :value="value" /></ElSelect
+            ></label>
+            <label v-if="processing"
+              >加工分类<ElSelect
+                v-model="processingRoleDraft"
+                clearable
+                aria-label="库存加工分类筛选"
+                placeholder="全部分类"
+                ><ElOption
+                  v-for="(label, value) in processingRoleLabels"
+                  :key="value"
+                  :label="label"
+                  :value="value" /></ElSelect
+            ></label>
+            <label
+              >关联工艺<ElSelect
+                v-model="routeStatusDraft"
+                clearable
+                aria-label="库存关联工艺筛选"
+                placeholder="全部"
+                ><ElOption label="已关联" value="linked" /><ElOption
+                  label="未关联"
+                  value="unlinked" /></ElSelect
+            ></label>
             <label v-if="!warehouse"
-              >本组业务<ElSelect
+              >加工任务<ElSelect
                 v-model="purposeDraft"
                 class="inventory-purpose-filter"
-                aria-label="库存本组业务筛选"
-                placeholder="全部本组业务"
+                aria-label="库存加工任务筛选"
+                placeholder="全部加工任务"
                 clearable
                 filterable
                 :loading="purposesLoading"
-                ><ElOption :value="0" label="未指定业务" /><ElOption
+                ><ElOption :value="0" label="未指定任务" /><ElOption
                   v-for="purpose in purposes"
                   :key="purpose.id"
                   :value="purpose.id"
@@ -1051,7 +1120,9 @@ onBeforeUnmount(() => {
           :show-trigger="false"
           :storage-key="storageKey"
           :description="
-            warehouse ? '流水号、库存件数、材质和操作列始终显示。仅保存在当前浏览器。' : undefined
+            processing
+              ? '流水号、库存件数、重量、加工状态、材质和操作始终显示。'
+              : '流水号、库存件数、重量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"

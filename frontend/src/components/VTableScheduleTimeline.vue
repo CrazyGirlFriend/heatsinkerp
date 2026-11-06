@@ -25,12 +25,14 @@ import {
 } from '@tabler/icons-vue'
 import FactoryNavIcon from './FactoryNavIcon.vue'
 import AppButton from './AppButton.vue'
+import AppInput from './AppInput.vue'
 import AppPopover from './AppPopover.vue'
 import ScheduleDateRange from './ScheduleDateRange.vue'
 import ScheduleBatchSummary from './ScheduleBatchSummary.vue'
 import ScheduleDeliveryMark from './ScheduleDeliveryMark.vue'
 import { useChartPalette } from '@/composables/useChartPalette'
 import { BOARD_DAY, boardDate, boardDeliveryState, boardTeamColor } from '@/utils/scheduleBoard'
+import { progressWeek } from '@/utils/scheduleProgress'
 import {
   ganttDate,
   ganttBatchRelations,
@@ -59,15 +61,19 @@ const emit = defineEmits<{
 const host = ref<HTMLElement>()
 const palette = useChartPalette()
 const now = ref(Date.now())
-const range = ref<[string, string]>(ganttRange([], now.value))
+const defaultWeek = progressWeek(now.value, now.value)
+const range = ref<[string, string]>([boardDate(defaultWeek.start), boardDate(defaultWeek.end - 1)])
 const canvasId = `schedule-gantt-${useId()}`
 const baseMillisecondsPerPixel = BOARD_DAY / 120
-const millisecondsPerPixel = ref(baseMillisecondsPerPixel)
+const millisecondsPerPixel = ref(baseMillisecondsPerPixel / 0.67)
 const zoom = computed(() => baseMillisecondsPerPixel / millisecondsPerPixel.value)
+const zoomInput = ref('67')
+const zoomInputElement = ref<InstanceType<typeof AppInput>>()
+const editingZoom = ref(false)
 const viewportWidth = ref(900)
 const zoomLimits = ref({ min: 30_000, max: BOARD_DAY })
 const visibleRange = ref('')
-const fittedRange = ref(true)
+const fittedRange = ref(false)
 const overviewLabel = computed(() => {
   const start = new Date(`${range.value[0]}T00:00:00`)
   const end = new Date(`${range.value[1]}T00:00:00`)
@@ -118,6 +124,16 @@ const teamSymbols: Record<string, InstanceType<typeof FactoryNavIcon>['$props'][
   电镀: 'plating',
   检验: 'inspection',
 }
+const teamLegend = computed(() => {
+  const present = new Set(
+    props.tasks.flatMap((task) =>
+      task.nodes.filter((node) => node.status !== 'cancelled').map((node) => node.team_name),
+    ),
+  )
+  return [...new Set([...Object.keys(teamSymbols), ...present])]
+    .filter((name) => present.has(name))
+    .map((name) => ({ name, color: boardTeamColor(name) }))
+})
 function teamSymbol(name: string, color: string) {
   const key = `team:${name}`
   if (!iconCache.has(key)) {
@@ -157,7 +173,12 @@ function statusIcon(state: string, color: string) {
 const tableWidth = 300
 const headerHeight = 64
 const density = computed(() =>
-  ganttDensity((millisecondsPerPixel.value * viewportWidth.value) / BOARD_DAY),
+  ganttDensity(
+    Math.min(
+      (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1,
+      (millisecondsPerPixel.value * viewportWidth.value) / BOARD_DAY,
+    ),
+  ),
 )
 const font = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif'
 const colors = computed(
@@ -266,11 +287,10 @@ function applyNativeScale(value: number) {
   if (!gantt?.zoomScaleManager) return
   const manager = gantt.zoomScaleManager
   manager.updateZoomLimits()
-  // Do not zoom out beyond the selected period and leave an empty time axis.
-  const period = Date.parse(range.value[1]) - Date.parse(range.value[0]) + BOARD_DAY
+  // Explicit percentages stay independent of the period and viewport width.
   zoomLimits.value = {
     min: manager.getGlobalMinMillisecondsPerPixel(),
-    max: Math.min(manager.getGlobalMaxMillisecondsPerPixel(), period / viewportWidth.value),
+    max: manager.getGlobalMaxMillisecondsPerPixel(),
   }
   gantt.parsedOptions.zoom!.maxMillisecondsPerPixel = zoomLimits.value.max
   const scale = Math.max(zoomLimits.value.min, Math.min(zoomLimits.value.max, value))
@@ -309,6 +329,31 @@ function focusPeriod(start: Date, end: Date) {
 }
 function changeZoom(direction: number) {
   gantt?.zoomByFactor(direction > 0 ? 1.2 : 1 / 1.2)
+}
+function beginZoom() {
+  editingZoom.value = true
+  zoomInputElement.value?.select()
+}
+function commitZoom() {
+  if (!editingZoom.value) return
+  const value = zoomInput.value.trim().replace(/%$/, '').trim()
+  const percent = Number(value)
+  editingZoom.value = false
+  if (/^\d+(\.\d+)?$/.test(value) && Number.isFinite(percent) && percent > 0) {
+    fittedRange.value = false
+    applyNativeScale((baseMillisecondsPerPixel * 100) / percent)
+    syncZoomState()
+  }
+  zoomInput.value = String(Math.round(zoom.value * 100))
+}
+function submitZoom() {
+  commitZoom()
+  zoomInputElement.value?.blur()
+}
+function cancelZoom() {
+  zoomInput.value = String(Math.round(zoom.value * 100))
+  editingZoom.value = false
+  zoomInputElement.value?.blur()
 }
 function shift(direction: number) {
   const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
@@ -798,22 +843,12 @@ function options(scrollTop = gantt?.scrollTop || 0): GanttConstructorOptions {
         if (sizing.scale < 1) {
           rootContainer.setAttributes({ fill: 'transparent' })
           const trackY = height - 1
+          // Keep the full team gradient opaque at every progress value, matching the expanded bar.
           rootContainer.add(
             new VRender.Rect({
               x: 0,
               y: trackY,
               width,
-              height: 4,
-              fill: gradient,
-              fillOpacity: 0.25,
-              pickable: false,
-            }),
-          )
-          rootContainer.add(
-            new VRender.Rect({
-              x: 0,
-              y: trackY,
-              width: (width * (progress ?? 0)) / 100,
               height: 4,
               fill: gradient,
               pickable: false,
@@ -1073,7 +1108,6 @@ function render(resetScroll = false) {
   if (!host.value) return
   rendering = true
   viewportWidth.value = Math.max(1, (host.value.clientWidth || 1200) - tableWidth - 4)
-  if (resetScroll) fittedRange.value = true
   if (fittedRange.value) millisecondsPerPixel.value = initialScale()
   const scale = millisecondsPerPixel.value
   const previousDensity = renderedDensity * (densityGroups[0]?.attribute.scaleY ?? 1)
@@ -1192,7 +1226,6 @@ watch(
         previous.every((task, index) => tasks[index]?.id === task.id)
       if (!appended) {
         resetScroll = true
-        fit()
       }
     }
     await nextTick()
@@ -1201,7 +1234,13 @@ watch(
   { immediate: true },
 )
 watch(() => [props.loading, props.loadingMore, props.hasMore, props.loadError], requestMoreIfNeeded)
-watch(range, () => render(true))
+watch(range, () => {
+  fittedRange.value = true
+  render(true)
+})
+watch(zoom, () => {
+  if (!editingZoom.value) zoomInput.value = String(Math.round(zoom.value * 100))
+})
 watch(colors, () => {
   const left = gantt?.scrollLeft || 0
   const top = gantt?.scrollTop || 0
@@ -1215,7 +1254,6 @@ watch(colors, () => {
 })
 onMounted(() => {
   viewportWidth.value = Math.max(1, (host.value?.clientWidth || 1200) - tableWidth - 4)
-  millisecondsPerPixel.value = initialScale()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointerdown', onPointerDown)
   render()
@@ -1270,7 +1308,20 @@ onBeforeUnmount(() => {
           >
             <IconMinus :size="14" />
           </AppButton>
-          <span>{{ Math.round(zoom * 100) }}%</span>
+          <AppInput
+            ref="zoomInputElement"
+            v-model="zoomInput"
+            class="gantt-zoom-input"
+            size="small"
+            inputmode="decimal"
+            aria-label="缩放百分比"
+            @focus="beginZoom"
+            @blur="commitZoom"
+            @keydown.enter.prevent="submitZoom"
+            @keydown.esc.stop.prevent="cancelZoom"
+          >
+            <template #suffix>%</template>
+          </AppInput>
           <AppButton
             text
             native-type="button"
@@ -1300,22 +1351,38 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <footer class="gantt-legend">
-      <span v-for="state in ['pending', 'completed', 'completed_late', 'overdue']" :key="state"
-        ><ScheduleDeliveryMark :state="state" />{{
-          {
-            pending: '待完成',
-            completed: '按时完成',
-            completed_late: '逾期完成',
-            overdue: '逾期未交齐',
-          }[state]
-        }}</span
+      <div
+        v-if="teamLegend.length"
+        class="gantt-team-legend"
+        role="group"
+        aria-label="班组颜色说明"
       >
-      <div class="gantt-load-status">
-        <slot name="load-status"
-          ><span class="gantt-visible-range">{{ visibleRange }}</span></slot
+        <span class="gantt-legend-label">班组</span>
+        <span v-for="team in teamLegend" :key="team.name" class="gantt-team-key">
+          <i :style="{ backgroundColor: team.color }" aria-hidden="true" />{{ team.name }}
+        </span>
+      </div>
+      <div class="gantt-status-legend" role="group" aria-label="交期状态说明">
+        <span class="gantt-legend-label">交期</span>
+        <span v-for="state in ['pending', 'completed', 'completed_late', 'overdue']" :key="state"
+          ><ScheduleDeliveryMark :state="state" />{{
+            {
+              pending: '待完成',
+              completed: '按时完成',
+              completed_late: '逾期完成',
+              overdue: '逾期未交齐',
+            }[state]
+          }}</span
         >
-        <span v-if="loadingMore" role="status">加载中…</span>
-        <AppButton v-else-if="loadError" text @click="emit('load-more')">加载失败，重试</AppButton>
+        <div class="gantt-load-status">
+          <slot name="load-status"
+            ><span class="gantt-visible-range">{{ visibleRange }}</span></slot
+          >
+          <span v-if="loadingMore" role="status">加载中…</span>
+          <AppButton v-else-if="loadError" text @click="emit('load-more')"
+            >加载失败，重试</AppButton
+          >
+        </div>
       </div>
     </footer>
     <AppPopover
@@ -1325,7 +1392,7 @@ onBeforeUnmount(() => {
       virtual-triggering
       trigger="manual"
       placement="top-end"
-      :width="360"
+      :width="320"
       :show-arrow="false"
       :teleported="true"
     >
@@ -1344,7 +1411,7 @@ onBeforeUnmount(() => {
           @open="open(hovered)"
         >
           <template #actions>
-            <AppButton text circle aria-label="取消选中批次" @click="hidePopover"
+            <AppButton text circle size="small" aria-label="取消选中批次" @click="hidePopover"
               ><IconX :size="16"
             /></AppButton>
           </template>
@@ -1476,11 +1543,26 @@ onBeforeUnmount(() => {
   border: 1px solid var(--wm-border, #e4e4e7);
   background: var(--wm-muted-surface, #fafafa);
 }
-.gantt-zoom span {
-  min-width: 42px;
+.gantt-zoom-input {
+  width: 64px;
+}
+.gantt-zoom-input :deep(.el-input__wrapper) {
+  min-height: 28px;
+  padding: 0 4px;
+  background: transparent;
+  box-shadow: none;
+}
+.gantt-zoom-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--wm-border, #e4e4e7);
+}
+.gantt-zoom-input :deep(.el-input__inner) {
   font-size: 12px;
-  text-align: center;
+  text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.gantt-zoom-input :deep(.el-input__suffix) {
+  margin-left: 2px;
+  color: var(--wm-text, #18181b);
 }
 .gantt-zoom button {
   border: 0;
@@ -1535,13 +1617,44 @@ onBeforeUnmount(() => {
 }
 .gantt-legend {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 22px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 12px;
   border-top: 1px solid var(--wm-border, #e4e4e7);
   color: var(--wm-muted, #71717a);
   font-size: 12px;
+}
+.gantt-team-legend,
+.gantt-status-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.gantt-team-legend {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.gantt-status-legend {
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.gantt-legend-label {
+  flex-shrink: 0;
+  color: var(--wm-text, #18181b);
+  font-weight: 600;
+}
+.gantt-team-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.gantt-team-key i {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 .gantt-load-status {
   margin-left: auto;
@@ -1550,7 +1663,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   font-variant-numeric: tabular-nums;
 }
-.gantt-legend > span {
+.gantt-status-legend > span {
   display: flex;
   align-items: center;
   gap: 5px;

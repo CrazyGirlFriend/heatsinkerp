@@ -171,6 +171,9 @@ class TeamProcessingTask(Base):
     __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_processing_task_name"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    purpose_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_purposes.id", ondelete="RESTRICT"), unique=True
+    )
     name: Mapped[str] = mapped_column(String(80))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)

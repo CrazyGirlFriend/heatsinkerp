@@ -43,13 +43,18 @@ const measurements = computed(() => [
 <template>
   <div class="batch-detail" :style="{ '--team': boardTeamColor(node.team_name) }">
     <header>
-      <span class="detail-icon"><IconCalendarEvent :size="18" /></span>
+      <span class="detail-icon"><IconCalendarEvent :size="16" /></span>
       <div class="detail-heading">
         <span class="detail-team"
           >{{ node.team_name
           }}<template v-if="node.batch_number"> · 第{{ node.batch_number }}批</template></span
         >
-        <div class="detail-serial">{{ serialNo }}</div>
+        <div class="detail-meta">
+          <span class="detail-serial">{{ serialNo }}</span>
+          <span class="detail-status"
+            ><ScheduleDeliveryMark :state="state" />{{ statusLabel }}</span
+          >
+        </div>
       </div>
       <slot name="actions" />
     </header>
@@ -60,7 +65,6 @@ const measurements = computed(() => [
       :transition="reduced ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }"
     >
       <div class="detail-content">
-        <span class="detail-status"><ScheduleDeliveryMark :state="state" />{{ statusLabel }}</span>
         <table v-if="batches && batches.length > 1" class="detail-batches">
           <thead>
             <tr>
@@ -114,8 +118,10 @@ const measurements = computed(() => [
           重量 {{ formatAmount(node.dispatched_weight) }} /
           {{ formatAmount(node.target_weight) }} kg
         </div>
-        <dl v-if="relations" class="detail-dates detail-relations">
-          <div v-for="(label, key) in { upstream: '上序来料', downstream: '下序去向' }" :key="key">
+      </div>
+      <footer>
+        <dl v-if="relations" class="detail-relations">
+          <div v-for="(label, key) in { upstream: '上序', downstream: '下序' }" :key="key">
             <dt>{{ label }}</dt>
             <dd>
               <template v-if="relations[key].length">
@@ -123,16 +129,18 @@ const measurements = computed(() => [
                   {{ batch.team_name }} · 第{{ batch.batch_number }}批
                 </span>
               </template>
-              <span v-else>—</span>
+              <span v-else>{{
+                key === 'downstream'
+                  ? node.next_team_name || node.external_destination || '交付'
+                  : '—'
+              }}</span>
             </dd>
           </div>
         </dl>
-      </div>
-      <footer>
-        <span
+        <span v-else class="detail-destination"
           >{{ node.team_name }} <IconArrowRight :size="13" />
           {{ node.next_team_name || node.external_destination || '交付' }}</span
-        ><AppButton size="small" class="detail-button" @click="emit('open')">
+        ><AppButton text size="small" class="detail-button" @click="emit('open')">
           查看明细 <IconChevronRight :size="14" />
         </AppButton>
       </footer>
@@ -160,15 +168,15 @@ const measurements = computed(() => [
   gap: 5px;
 }
 .batch-detail header {
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px 12px;
 }
 .detail-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 34px;
-  height: 34px;
-  border-radius: 10px;
+  flex: 0 0 28px;
+  height: 28px;
+  border-radius: 8px;
   background: var(--team);
   color: #fff;
 }
@@ -177,9 +185,8 @@ const measurements = computed(() => [
   min-width: 0;
 }
 .detail-content {
-  padding: 14px 16px 16px;
+  padding: 0 12px 10px;
   border-top: 1px solid var(--wm-border, #e4e4e7);
-  border-radius: 20px 20px 0 0;
   background: var(--wm-surface, #fff);
 }
 .detail-reveal {
@@ -191,18 +198,21 @@ const measurements = computed(() => [
 }
 .detail-status {
   display: inline-flex;
-  gap: 5px;
-  padding: 3px 8px;
-  border: 1px solid var(--wm-border, #e4e4e7);
-  border-radius: 99px;
-  background: var(--wm-muted-surface, #f5f5f7);
+  gap: 4px;
   color: var(--wm-muted, #71717a);
   font-size: 11px;
   white-space: nowrap;
 }
-.detail-serial {
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
   margin-top: 2px;
+}
+.detail-serial {
   color: var(--wm-muted, #71717a);
+  overflow-wrap: anywhere;
 }
 .detail-batches {
   width: 100%;
@@ -232,9 +242,9 @@ const measurements = computed(() => [
   gap: 5px;
 }
 .detail-dates {
-  margin: 16px 0;
+  margin: 10px 0;
   display: grid;
-  gap: 7px;
+  gap: 4px;
 }
 .detail-dates > div {
   display: flex;
@@ -244,31 +254,45 @@ const measurements = computed(() => [
 }
 .detail-dates dt {
   color: var(--wm-muted, #71717a);
+  flex-shrink: 0;
 }
 .detail-dates dd {
   margin: 0;
-  padding: 3px 8px;
-  border: 1px solid var(--wm-border, #e4e4e7);
-  border-radius: 7px;
-  background: var(--wm-muted-surface, #f5f5f7);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.detail-relations {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+.detail-relations > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.detail-relations dt {
+  flex-shrink: 0;
 }
 .detail-relations dd {
   display: grid;
-  gap: 3px;
-  text-align: right;
+  gap: 2px;
+  margin: 0;
+  color: var(--wm-text, #20242c);
+  overflow-wrap: anywhere;
 }
 .detail-quantities {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  padding: 12px 10px;
-  border: 1px solid var(--wm-border, #e4e4e7);
+  padding: 8px;
   border-radius: 8px;
   background: var(--wm-muted-surface, #f5f5f7);
 }
 .detail-quantities > div {
   display: grid;
-  gap: 5px;
+  gap: 2px;
+  min-width: 0;
   padding-left: 8px;
   border-left: 1px solid var(--wm-border, #e4e4e7);
 }
@@ -284,6 +308,7 @@ const measurements = computed(() => [
   font-size: 16px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .detail-quantities small {
   font-size: 11px;
@@ -297,11 +322,16 @@ const measurements = computed(() => [
 }
 .batch-detail footer {
   justify-content: space-between;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   border-top: 1px solid var(--wm-border, #e4e4e7);
   color: var(--wm-muted, #71717a);
 }
 .detail-button {
   flex-shrink: 0;
+}
+.detail-destination {
+  flex-wrap: wrap;
+  min-width: 0;
 }
 </style>

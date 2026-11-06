@@ -85,7 +85,7 @@ const fields = computed<DocumentField[]>(() => {
                 : '接收班组',
       value: external ? t.external_destination || '—' : t.next_team.name,
     },
-    { label: processed ? '本班组业务' : '接收业务', value: materialPurposeLabel(t) },
+    { label: processed ? '加工任务' : '接收任务', value: materialPurposeLabel(t) },
     ...(t.process_route
       ? [
           { label: '派工工艺', value: t.process_route.title },

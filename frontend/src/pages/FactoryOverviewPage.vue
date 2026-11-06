@@ -18,6 +18,8 @@ import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
+import FactoryOperationsOverview from '@/components/FactoryOperationsOverview.vue'
+import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import FactoryPerformancePanel from '@/components/FactoryPerformancePanel.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
@@ -40,11 +42,17 @@ const view = computed(() =>
     ? 'inventory'
     : route.query.view === 'quality'
       ? 'quality'
-      : 'production',
+      : route.query.view === 'production'
+        ? 'production'
+        : 'overview',
 )
 const days = computed(() => {
   const value = typeof route.query.days === 'string' ? Number(route.query.days) : NaN
-  return Number.isInteger(value) && value >= 1 && value <= 365 ? value : 30
+  return Number.isInteger(value) && value >= 1 && value <= 365
+    ? value
+    : view.value === 'overview'
+      ? 7
+      : 30
 })
 const periodSelect = ref<InstanceType<typeof ElSelect>>()
 const customDays = ref<number | undefined>(days.value)
@@ -259,29 +267,17 @@ onBeforeUnmount(() => {
           <p v-if="view === 'inventory' && report">{{ formatDateTime(report.as_of) }} 更新</p>
         </div>
       </div>
-      <nav class="factory-sections factory-main-sections" aria-label="统计视图">
-        <button
-          type="button"
-          :aria-pressed="view === 'production'"
-          @click="preference({ view: 'production' })"
-        >
-          生产完成
-        </button>
-        <button
-          type="button"
-          :aria-pressed="view === 'quality'"
-          @click="preference({ view: 'quality' })"
-        >
-          检验与质量
-        </button>
-        <button
-          type="button"
-          :aria-pressed="view === 'inventory'"
-          @click="preference({ view: 'inventory' })"
-        >
-          库存与交接
-        </button>
-      </nav>
+      <WatermelonSegmented
+        label="统计视图"
+        :model-value="view"
+        :options="[
+          { value: 'overview', label: '运行概览' },
+          { value: 'production', label: '生产完成' },
+          { value: 'quality', label: '检验与质量' },
+          { value: 'inventory', label: '库存与交接' },
+        ]"
+        @update:model-value="preference({ view: $event })"
+      />
       <div v-if="view === 'inventory'" class="factory-controls">
         <TableExportButton
           :source="exportSource"
@@ -347,7 +343,14 @@ onBeforeUnmount(() => {
         <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
       </div>
     </header>
-    <FactoryPerformancePanel v-if="view !== 'inventory'" :scene="view" :motion="motion" />
+    <FactoryOperationsOverview
+      v-if="view === 'overview'"
+      :days="days"
+      :metric="metric"
+      :motion="motion"
+      @preference="preference"
+    />
+    <FactoryPerformancePanel v-else-if="view !== 'inventory'" :scene="view" :motion="motion" />
     <template v-else>
       <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
       <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />

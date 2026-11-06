@@ -16,3 +16,17 @@ defineProps<{ primary?: boolean; loading?: boolean; disabled?: boolean }>()
     <template #loading><IconLoader2 :size="16" class="wm-button-spinner is-loading" /></template>
   </AppButton>
 </template>
+
+<style scoped>
+.wm-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 1.25;
+}
+.wm-button-label :deep(svg) {
+  display: block;
+  flex: 0 0 auto;
+}
+</style>

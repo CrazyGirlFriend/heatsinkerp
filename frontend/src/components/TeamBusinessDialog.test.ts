@@ -22,7 +22,9 @@ const allowed = {
 beforeEach(() => {
   state.auth = { currentUser: { id: 41, team_id: 2 }, isTeamAccount: true, isAdmin: false }
   localStorage.clear()
-  vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
+    { id: 1, team_id: 2, name: '检验', active: true, version: 1, purpose_id: 1 },
+  ])
   vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
@@ -30,6 +32,13 @@ beforeEach(() => {
   ])
   vi.spyOn(teamMaterialApi, 'openingState').mockResolvedValue(allowed)
   vi.spyOn(teamMaterialApi, 'savePurpose').mockResolvedValue({
+    id: 1,
+    team_id: 2,
+    name: '检验',
+    active: true,
+    version: 2,
+  })
+  vi.spyOn(teamMaterialApi, 'saveProcessingTask').mockResolvedValue({
     id: 1,
     team_id: 2,
     name: '去毛刺',
@@ -165,7 +174,7 @@ describe('team business settings', () => {
       version: 2,
     })
     await render('employees')
-    expect(wrapper.find('[aria-label="业务名称 1"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="任务名称 1"]').exists()).toBe(false)
     await wrapper.get('input[aria-label="员工名称 4"]').setValue('王工')
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
     await click('保存')
@@ -225,11 +234,11 @@ describe('team business settings', () => {
     await flushPromises()
     expect(teamMaterialApi.purposes).toHaveBeenCalledWith(2)
     expect(teamMaterialApi.openingState).not.toHaveBeenCalled()
-    expect(wrapper.find('[aria-label="业务名称 1"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="任务名称 1"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('初始库存')
-    await wrapper.get('input[aria-label="业务名称 1"]').setValue('新业务')
+    await wrapper.get('input[aria-label="任务名称 1"]').setValue('新业务')
     await click('保存')
-    expect(teamMaterialApi.savePurpose).toHaveBeenCalledWith(
+    expect(teamMaterialApi.saveProcessingTask).toHaveBeenCalledWith(
       2,
       { name: '新业务', active: true, expected_version: 1 },
       1,
@@ -263,9 +272,9 @@ describe('team business settings', () => {
   })
   it('rejects a blank existing name without taking the separate new-business draft', async () => {
     await render('purposes')
-    await wrapper.get('input[aria-label="新增业务名称"]').setValue('去毛刺')
-    await wrapper.get('input[aria-label="业务名称 1"]').setValue('')
-    const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="业务名称 1"]').element
+    await wrapper.get('input[aria-label="新增任务名称"]').setValue('去毛刺')
+    await wrapper.get('input[aria-label="任务名称 1"]').setValue('')
+    const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="任务名称 1"]').element
     const nameField = nameInput.closest<HTMLElement>('.el-input')!
     nameField.animate = vi.fn()
     const focus = vi.spyOn(nameInput, 'focus')
@@ -274,7 +283,7 @@ describe('team business settings', () => {
     expect(nameField.animate).toHaveBeenCalledOnce()
     expect(
       wrapper
-        .get('input[aria-label="业务名称 1"]')
+        .get('input[aria-label="任务名称 1"]')
         .element.closest('.el-input')!
         .classList.contains('is-error'),
     ).toBe(true)
@@ -282,19 +291,19 @@ describe('team business settings', () => {
   })
   it('keeps a business edit after a failed save and submits disable with its version', async () => {
     await render('purposes')
-    await wrapper.get('input[aria-label="业务名称 1"]').setValue('去毛刺')
+    await wrapper.get('input[aria-label="任务名称 1"]').setValue('去毛刺')
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
-    vi.mocked(teamMaterialApi.savePurpose).mockRejectedValueOnce(
+    vi.mocked(teamMaterialApi.saveProcessingTask).mockRejectedValueOnce(
       new Error('业务配置已变化，请刷新后重试'),
     )
     await click('保存')
-    expect(teamMaterialApi.savePurpose).toHaveBeenCalledWith(
+    expect(teamMaterialApi.saveProcessingTask).toHaveBeenCalledWith(
       2,
       { name: '去毛刺', active: false, expected_version: 1 },
       1,
     )
     expect(wrapper.emitted('changed')).toBeUndefined()
-    expect((wrapper.get('input[aria-label="业务名称 1"]').element as HTMLInputElement).value).toBe(
+    expect((wrapper.get('input[aria-label="任务名称 1"]').element as HTMLInputElement).value).toBe(
       '去毛刺',
     )
     expect(wrapper.getComponent(ElSwitch).props('modelValue')).toBe(false)
@@ -392,16 +401,16 @@ describe('team business settings', () => {
   })
   it('uses versioned own-team purpose saves without production registration', async () => {
     await render('purposes')
-    await wrapper.get('input[aria-label="业务名称 1"]').setValue('去毛刺')
+    await wrapper.get('input[aria-label="任务名称 1"]').setValue('去毛刺')
     await click('保存')
-    expect(teamMaterialApi.savePurpose).toHaveBeenCalledWith(
+    expect(teamMaterialApi.saveProcessingTask).toHaveBeenCalledWith(
       2,
       { name: '去毛刺', active: true, expected_version: 1 },
       1,
     )
-    await wrapper.get('input[aria-label="新增业务名称"]').setValue('发货')
-    await click('新增业务')
-    expect(teamMaterialApi.savePurpose).toHaveBeenLastCalledWith(
+    await wrapper.get('input[aria-label="新增任务名称"]').setValue('发货')
+    await click('新增任务')
+    expect(teamMaterialApi.saveProcessingTask).toHaveBeenLastCalledWith(
       2,
       { name: '发货', active: true },
       undefined,

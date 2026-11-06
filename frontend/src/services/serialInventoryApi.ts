@@ -1,14 +1,18 @@
 import { httpRequest } from './httpClient'
 import type { MaterialType } from '@/types/materialTransfer'
-import type { TeamInventoryRow } from '@/types/teamInventory'
+import type { TeamInventoryRow, TeamInventoryParams } from '@/types/teamInventory'
+import type { ProcessingState } from '@/types/materialProcessing'
 
 export interface GlobalInventoryRow extends TeamInventoryRow {
   team_id: number
   team_name: string
   team_code: string
   stock_age_hours: number | null
+  stock_age_started_at?: string | null
+  stock_age_basis?: 'received' | 'processed' | 'mixed' | null
+  processing_state?: ProcessingState | 'mixed' | 'not_required'
 }
-export interface GlobalInventoryParams {
+export interface GlobalInventoryParams extends TeamInventoryParams {
   query?: string
   serial_no?: string
   team_id?: number
@@ -16,6 +20,9 @@ export interface GlobalInventoryParams {
   material_type?: string
   stock_age_min?: number
   stock_age_max?: number
+  processing_state?: ProcessingState | 'mixed' | 'not_required'
+  processing_role?: 'remaining' | 'produced' | 'scrap'
+  route_status?: 'linked' | 'unlinked'
   page?: number
   page_size?: number
 }

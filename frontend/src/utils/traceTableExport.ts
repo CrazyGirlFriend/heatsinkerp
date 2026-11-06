@@ -20,7 +20,7 @@ export function serialHistoryExportSource(history: SerialHistory) {
         value: (row: (typeof rows)[number]) => formatDateTime(row.at),
       },
       { key: 'kind', label: '操作', value: (row) => historyKindNames[row.kind] },
-      { key: 'business', label: '本班组业务', value: (row) => row.business },
+      { key: 'business', label: '加工任务', value: (row) => row.business },
       { key: 'counterpart', label: '来源 / 去向', value: (row) => row.counterpart },
       { key: 'quantity', label: '件数', value: (row) => row.quantity },
       { key: 'weight', label: '重量 (kg)', value: (row) => row.weight },

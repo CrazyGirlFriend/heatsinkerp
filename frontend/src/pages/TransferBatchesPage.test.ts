@@ -129,7 +129,7 @@ const defaultHeaders = [
   '材质',
   '来源',
   '去向',
-  '接收业务',
+  '接收任务',
   '物料类型',
   '数量',
   '重量',
@@ -304,7 +304,7 @@ describe('transfer header filtering', () => {
     for (const [label, value, end] of [
       ['流水号', 'YS-001'],
       ['材质', '材料1'],
-      ['接收业务', '业务1'],
+      ['接收任务', '业务1'],
       ['批次号', 'TL-'],
       ['来源', '1,2'],
       ['去向', '7,8'],
@@ -696,7 +696,7 @@ describe('transfer list refresh continuity', () => {
     expect(page.find('.transfer-flow, .receipt-flow, .flow-track').exists()).toBe(false)
     const mobileRows = page.findAll('.mobile-transfer-parties')
     expect(mobileRows.map((row) => row.findAll('small').map((label) => label.text()))).toEqual(
-      Array.from({ length: 4 }, () => ['来源', '去向', '接收业务']),
+      Array.from({ length: 4 }, () => ['来源', '去向', '接收任务']),
     )
     expect(mobileRows[0].text()).toContain('供应商 A')
     expect(mobileRows[1].text()).toContain('去毛刺')

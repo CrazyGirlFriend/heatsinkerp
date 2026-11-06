@@ -1,4 +1,4 @@
-"""Team-owned purpose vocabulary; never a route or a production operation."""
+"""One team task directory shared by receiving and processing."""
 
 from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -46,6 +46,7 @@ def directory_item_dict(row):
         "name": row.name,
         "active": row.active,
         "version": row.version,
+        **({"purpose_id": row.purpose_id} if isinstance(row, TeamProcessingTask) else {}),
     }
 
 
@@ -53,7 +54,7 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
     """Call with target Team locked; configuration writes take that same lock."""
     if team_id is None:
         if purpose_id is not None:
-            raise HTTPException(422, "对外出库不能指定下序班组业务")
+            raise HTTPException(422, "对外出库不能指定下序加工任务")
         return {"purpose_id": None, "purpose_name": None}
     if purpose_id is None:
         # Unconfigured teams and historical clients remain usable. Once a team
@@ -64,7 +65,7 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
             and db.scalar(select(TeamPurpose.id).where(TeamPurpose.team_id == team_id).limit(1))
             is not None
         ):
-            raise HTTPException(422, "请选择下序班组的接收业务；无可用选项时请联系该班组长")
+            raise HTTPException(422, "请选择下序班组的加工任务；无可用选项时请联系该班组长")
         return {"purpose_id": None, "purpose_name": None}
     row = db.scalar(
         select(TeamPurpose)
@@ -73,7 +74,7 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
         .execution_options(populate_existing=True)
     )
     if row is None or row.team_id != team_id or not row.active:
-        raise HTTPException(422, "接收业务须属于接收班组且处于启用状态")
+        raise HTTPException(422, "加工任务须属于接收班组且处于启用状态")
     return {"purpose_id": row.id, "purpose_name": row.name}
 
 
@@ -104,7 +105,7 @@ def save_directory_item(
     model, label, action = (
         (TeamEmployee, "员工", "employee_changed")
         if employee
-        else (TeamPurpose, "业务", "purpose_changed")
+        else (TeamPurpose, "加工任务", "purpose_changed")
     )
     if processing_task:
         model, label, action = TeamProcessingTask, "加工任务", "processing_task_changed"
@@ -149,6 +150,46 @@ def save_directory_item(
                 row.version += 1
                 row.updated_at = utcnow()
             db.flush()
+            if not employee and not inspection_problem and team.code in PROCESSING_TEAM_CODES:
+                if processing_task:
+                    purpose = db.get(TeamPurpose, row.purpose_id) if row.purpose_id else None
+                    if purpose is None:
+                        purpose = db.scalar(
+                            select(TeamPurpose).where(
+                                TeamPurpose.team_id == team_id,
+                                TeamPurpose.name == (before["name"] if before else row.name),
+                            )
+                        )
+                    if purpose is None:
+                        purpose = TeamPurpose(team_id=team_id, name=row.name, active=row.active)
+                        db.add(purpose)
+                        db.flush()
+                    else:
+                        purpose.name, purpose.active = row.name, row.active
+                        purpose.version += 1
+                        purpose.updated_at = utcnow()
+                    row.purpose_id = purpose.id
+                else:
+                    task = db.scalar(
+                        select(TeamProcessingTask).where(TeamProcessingTask.purpose_id == row.id)
+                    )
+                    if task is None:
+                        task = db.scalar(
+                            select(TeamProcessingTask).where(
+                                TeamProcessingTask.team_id == team_id,
+                                TeamProcessingTask.name == (before["name"] if before else row.name),
+                            )
+                        )
+                    if task is None:
+                        task = TeamProcessingTask(
+                            team_id=team_id, name=row.name, active=row.active, purpose_id=row.id
+                        )
+                        db.add(task)
+                    else:
+                        task.name, task.active, task.purpose_id = row.name, row.active, row.id
+                        task.version += 1
+                        task.updated_at = utcnow()
+                db.flush()
             result = directory_item_dict(row)
             db.add(
                 TeamSettingEvent(

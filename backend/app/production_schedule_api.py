@@ -53,6 +53,13 @@ def utc_bound(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+@router.get("/overview")
+def get_overview(days: int = Query(7, ge=1, le=365), db: Session = Depends(get_db)):
+    from .factory_schedule_overview import overview
+
+    return overview(db, days)
+
+
 @router.get("")
 def list_schedules(
     team_id: int | None = Query(default=None, ge=1),

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
@@ -21,7 +20,6 @@ import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import type { ProcessingDailyRow, ProcessingRecordSummary } from '@/types/materialProcessing'
-import type { TeamPurpose } from '@/types/teamBusiness'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { ProcessingRecord } from '@/types/materialProcessing'
@@ -62,11 +60,8 @@ const query = ref(''),
   filtersOpen = ref(false)
 const workKind = ref('')
 const processorId = ref<number | null>(null)
-const taskId = ref<number | null>(null),
-  purposeId = ref<number | null>(null)
-const tasks = ref<{ id: number; name: string }[]>([]),
-  purposes = ref<TeamPurpose[]>([])
-const directoryError = ref('')
+const taskId = ref<number | null>(null)
+const tasks = ref<{ id: number; name: string }[]>([])
 const processors = ref<{ id: number; name: string }[]>([])
 const processorName = computed({
   get: () => processors.value.find((person) => person.id === processorId.value)?.name || '',
@@ -89,8 +84,7 @@ const rows = ref<ProcessingRecord[]>([]),
   error = ref('')
 const detailOpen = ref(false),
   sourceId = ref<number | null>(null)
-let generation = 0,
-  directoryGeneration = 0
+let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => props.teamId,
   busy: () => loading.value || detailOpen.value,
@@ -103,13 +97,12 @@ function syncFilters() {
   }
   processorId.value = Number(text('processor_id')) || null
   taskId.value = Number(text('processing_task_id')) || null
-  purposeId.value = Number(text('purpose_id')) || null
 }
 function resetFilters() {
   workKind.value = ''
   dates.value = { from: '', to: '' }
   processorId.value = null
-  taskId.value = purposeId.value = null
+  taskId.value = null
 }
 function filters() {
   return {
@@ -133,7 +126,7 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
       processing_task_id: applyFilters
         ? taskId.value || undefined
         : text('processing_task_id') || undefined,
-      purpose_id: applyFilters ? purposeId.value || undefined : text('purpose_id') || undefined,
+      purpose_id: applyFilters ? undefined : text('purpose_id') || undefined,
       query: query.value.trim() || undefined,
       processor_id: applyFilters
         ? processorId.value || undefined
@@ -203,10 +196,10 @@ function exportSource() {
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
-      { key: 'purpose_name', label: '对应业务', value: (row) => row.purpose_name || '未登记' },
+
       {
         key: 'processing_task_name',
-        label: '具体任务',
+        label: '加工任务',
         value: (row) => row.processing_task_name || '未登记',
       },
       {
@@ -291,13 +284,8 @@ function exportSource() {
 }
 const dailyColumns = [
   {
-    key: 'purpose_name',
-    label: '对应业务',
-    value: (r: ProcessingDailyRow) => r.purpose_name || '未登记',
-  },
-  {
     key: 'processing_task_name',
-    label: '具体任务',
+    label: '加工任务',
     value: (r: ProcessingDailyRow) => r.processing_task_name || '未登记',
   },
   {
@@ -429,25 +417,6 @@ watch(
   },
   { immediate: true },
 )
-async function loadDirectories() {
-  const id = props.teamId,
-    current = ++directoryGeneration
-  directoryError.value = ''
-  purposes.value = []
-  try {
-    const purposeOptions = await teamMaterialApi.purposes(id)
-    if (current !== directoryGeneration) return
-    purposes.value = purposeOptions
-  } catch (e) {
-    if (current === directoryGeneration)
-      directoryError.value = e instanceof Error ? e.message : '筛选选项读取失败'
-  }
-}
-watch(
-  () => props.teamId,
-  () => void loadDirectories(),
-  { immediate: true },
-)
 watch(
   () => props.refreshKey,
   () => {
@@ -456,7 +425,6 @@ watch(
 )
 onBeforeUnmount(() => {
   ++generation
-  ++directoryGeneration
 })
 </script>
 
@@ -484,9 +452,6 @@ onBeforeUnmount(() => {
           @apply="apply(1, pageSize, true)"
           @reset="resetFilters"
         >
-          <ElAlert v-if="directoryError" :title="directoryError" type="error" :closable="false">
-            <ElButton link @click="loadDirectories">重新读取筛选选项</ElButton>
-          </ElAlert>
           <label
             >加工性质<ElSelect
               v-model="workKind"
@@ -499,7 +464,7 @@ onBeforeUnmount(() => {
           ></label>
           <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
           <label
-            >具体任务<ElSelect
+            >加工任务<ElSelect
               v-model="taskId"
               clearable
               filterable
@@ -511,21 +476,6 @@ onBeforeUnmount(() => {
                 :key="item.id"
                 :value="item.id"
                 :label="item.name"
-              /> </ElSelect
-          ></label>
-          <label
-            >对应业务<ElSelect
-              v-model="purposeId"
-              clearable
-              filterable
-              placeholder="全部业务"
-              aria-label="加工业务筛选"
-            >
-              <ElOption
-                v-for="item in purposes"
-                :key="item.id"
-                :value="item.id"
-                :label="`${item.name}${item.active ? '' : '（已停用）'}`"
               /> </ElSelect
           ></label>
           <label
@@ -570,7 +520,7 @@ onBeforeUnmount(() => {
                 <dd>{{ row.process_step_name || '历史未登记' }}</dd>
               </div>
               <div>
-                <dt>具体任务</dt>
+                <dt>加工任务</dt>
                 <dd>{{ row.processing_task_name || '历史未登记' }}</dd>
               </div>
               <div v-if="row.rework_of_id">
@@ -616,9 +566,6 @@ onBeforeUnmount(() => {
           ><PersonName :name="row.processor_name || '未登记'"
         /></template>
       </ElTableColumn>
-      <ElTableColumn label="对应业务" min-width="140" align="center" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
-      </ElTableColumn>
       <ElTableColumn label="工艺工序" min-width="160" align="center"
         ><template #default="{ row }">
           <ElButton
@@ -632,7 +579,7 @@ onBeforeUnmount(() => {
           ><span v-else>{{ row.process_step_name || '—' }}</span>
         </template></ElTableColumn
       >
-      <ElTableColumn label="具体任务" min-width="140" align="center" show-overflow-tooltip>
+      <ElTableColumn label="加工任务" min-width="140" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
       </ElTableColumn>
       <ElTableColumn label="物料类型" min-width="115"

@@ -133,15 +133,11 @@ describe('cutting processing records', () => {
       .findAllComponents(ElSelect)
       .find((item) => item.find('[aria-label="加工任务筛选"]').exists())!
       .vm.$emit('update:modelValue', 8)
-    wrapper
-      .findAllComponents(ElSelect)
-      .find((item) => item.find('[aria-label="加工业务筛选"]').exists())!
-      .vm.$emit('update:modelValue', 3)
+    expect(wrapper.find('[aria-label="加工业务筛选"]').exists()).toBe(false)
     wrapper.getComponent(FilterDialog).vm.$emit('apply')
     await flushPromises()
     expect(router.currentRoute.value.query).toMatchObject({
       processing_task_id: '8',
-      purpose_id: '3',
     })
     const exports = wrapper.getComponent(TableExportButton)
     const details = exports.props('source')()!
@@ -152,11 +148,11 @@ describe('cutting processing records', () => {
     await grouped.load(new AbortController().signal, () => {})
     expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
       5,
-      expect.objectContaining({ processing_task_id: 8, purpose_id: 3 }),
+      expect.objectContaining({ processing_task_id: 8, purpose_id: undefined }),
     )
     expect(teamMaterialApi.processingDaily).toHaveBeenLastCalledWith(
       5,
-      expect.objectContaining({ processing_task_id: 8, purpose_id: 3 }),
+      expect.objectContaining({ processing_task_id: 8, purpose_id: undefined }),
     )
     wrapper.getComponent(FilterDialog).vm.$emit('reset')
     wrapper.getComponent(FilterDialog).vm.$emit('apply')

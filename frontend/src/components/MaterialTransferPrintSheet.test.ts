@@ -69,7 +69,7 @@ describe('shared transfer print template', () => {
         '实际尺寸',
         '件数',
         '重量 (kg)',
-        '接收业务',
+        '接收任务',
         '本次批次 / 条码',
       ])
       expect(copy.text()).toContain(name)

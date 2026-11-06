@@ -42,6 +42,8 @@ const row: GlobalInventoryRow = {
   team_name: '库房',
   team_code: 'FACTORY-WAREHOUSE',
   stock_age_hours: 125,
+  stock_age_started_at: '2026-10-30T20:00:00Z',
+  stock_age_basis: 'received',
 }
 const response = (
   items: GlobalInventoryRow[] = [
@@ -92,6 +94,7 @@ it('loads all teams immediately and opens the existing inventory detail for the 
   expect(table.text()).toContain('48')
   expect(table.text()).toContain('4.8')
   expect(table.text()).toContain('5天5小时')
+  expect(table.find('[title^="从本班组接收起算"]').exists()).toBe(true)
   const buttons = table.findAll('button').filter((b) => b.text() === '明细')
   await buttons[1]!.trigger('click')
   expect(page.findComponent(TeamInventoryDetail).props()).toMatchObject({
@@ -99,6 +102,20 @@ it('loads all teams immediately and opens the existing inventory detail for the 
     group: { group_id: 12 },
     canWrite: false,
   })
+})
+
+it('explains the processing clock without calling it a receipt time', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(
+    response([
+      { ...row, stock_age_basis: 'processed', stock_age_hours: 6 },
+      { ...row, group_id: 12, stock_age_basis: 'mixed' },
+    ]),
+  )
+  const { page } = await render()
+  const table = page.get('[aria-label="全厂库存明细"]')
+  expect(table.find('[title^="从加工完成登记起算"]').text()).toBe('6小时')
+  expect(table.find('[title*="当前行取最长滞留"]').exists()).toBe(true)
+  expect(table.find('[title^="最早在库批次接收于"]').exists()).toBe(false)
 })
 
 it('combines team and residence filters, validates bounds and resets pagination', async () => {
@@ -116,7 +133,9 @@ it('combines team and residence filters, validates bounds and resets pagination'
   expect(page.text()).toContain('滞留时间下限不能大于上限')
   expect(api.stock).toHaveBeenCalledTimes(1)
   await page.get('input[aria-label="滞留至多（天）"]').setValue('14')
-  const select = page.findAllComponents(AppSelect)[0]!
+  const select = page
+    .findAllComponents(AppSelect)
+    .find((s) => s.find('[aria-label="所在班组"]').exists())!
   select.vm.$emit('update:modelValue', 2)
   filter.vm.$emit('apply')
   await flushPromises()
@@ -195,4 +214,56 @@ it('keeps the full table and pagination for an empty filter result', async () =>
   expect(page.text()).toContain('暂无符合条件的库存')
   expect(page.findComponent(WorkspacePagination).props('total')).toBe(0)
   expect(page.find('[aria-label="全厂库存明细"]').exists()).toBe(true)
+})
+
+it('keeps quantity and processing state visible even when column choices hide everything', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(
+    response([
+      {
+        ...row,
+        team_code: 'FACTORY-GRIND',
+        processing_state: 'unregistered',
+        processing_unregistered_batch_count: 1,
+      },
+    ]),
+  )
+  const { page } = await render()
+  page.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', [])
+  await flushPromises()
+  const table = page.get('[aria-label="全厂库存明细"]')
+  expect(table.findAll('thead th').map((c) => c.text())).toEqual([
+    '流水号',
+    '所在班组',
+    '库存件数',
+    '库存重量 (kg)',
+    '加工状态',
+    '操作',
+  ])
+  expect(table.text()).toContain('48')
+  expect(table.text()).toContain('未登记加工')
+})
+
+it('combines property search with processing filters and clears pagination', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response())
+  const { page, router } = await render('/material-trace?page=2')
+  const filter = page.getComponent(FilterDialog)
+  await filter.get('button').trigger('click')
+  const select = (name: string) =>
+    page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())!
+  select('搜索属性').vm.$emit('update:modelValue', 'owned_quantity')
+  await flushPromises()
+  select('比较方式').vm.$emit('update:modelValue', 'gte')
+  select('加工状态筛选').vm.$emit('update:modelValue', 'complete')
+  await page.get('input[aria-label="搜索属性内容"]').setValue('40')
+  filter.vm.$emit('apply')
+  await flushPromises()
+  expect(router.currentRoute.value.query.page).toBe('1')
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      search_field: 'owned_quantity',
+      search_operator: 'gte',
+      query: '40',
+      processing_state: 'complete',
+    }),
+  )
 })

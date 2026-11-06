@@ -238,7 +238,7 @@ it('labels the snapshot and does not query live stock or open a possibly unrelat
     dataIndex: 0,
     data: {
       title: '检验',
-      description: '接收业务',
+      description: '接收任务',
       quantity: 100,
       weight: 12.5,
       batches: [snapshot.history.flows[0]!.batch_no],

@@ -17,6 +17,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
+from .inventory_age import stock_age_table
 from .material_analytics import (
     META_FIELDS,
     SearchField,
@@ -50,6 +51,12 @@ WarehouseSearchField = Literal[
     "in_transit_weight",
     "external_pending_quantity",
     "external_pending_weight",
+    "source_batch_no",
+    "shortage_weight",
+    "processing_registered_quantity",
+    "processing_registered_weight",
+    "processing_unregistered_quantity",
+    "processing_unregistered_weight",
 ]
 
 
@@ -67,6 +74,22 @@ class WarehouseInventoryFilters(SerialFilters):
     )
     stock_age_min: float | None = Field(default=None, ge=0, le=36500)
     stock_age_max: float | None = Field(default=None, ge=0, le=36500)
+    processing_state: (
+        Literal[
+            "unregistered",
+            "registered",
+            "partial",
+            "complete",
+            "mixed",
+            "pending",
+            "cleared",
+            "not_applicable",
+            "not_required",
+        ]
+        | None
+    ) = None
+    processing_role: Literal["remaining", "produced", "scrap"] | None = None
+    route_status: Literal["linked", "unlinked"] | None = None
 
     @model_validator(mode="after")
     def validate_search(self):
@@ -84,15 +107,33 @@ class WarehouseInventoryFilters(SerialFilters):
             "oldest_received_at": "last_activity_at",
             "on_hand_quantity": "available_quantity",
             "on_hand_weight": "available_weight",
+            "shortage_weight": "available_weight",
         }.get(self.search_field, self.search_field)
-        if field.startswith(("owned_", "in_transit_", "external_pending_")):
+        if field.startswith(("owned_", "in_transit_", "external_pending_", "processing_")):
             field = "available_weight" if field.endswith("_weight") else "available_quantity"
+        if field == "source_batch_no":
+            field = "serial_no"
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
         return self
 
 
 def origin_columns(include_team=False):
     manual = mt.entry_kind == "warehouse_receipt"
+    registered = registered_lots(None)
+    # Keep this key in the shared grouping so list rows, source pickers and
+    # drill-downs cannot combine processed lots with unprocessed ones.
+    processing_group = func.coalesce(
+        select(
+            func.coalesce(
+                registered.c.processing_status,
+                case((registered.c.latest_id.is_not(None), "registered"), else_="unregistered"),
+            )
+        )
+        .where(registered.c.lot_id == mt.id)
+        .correlate(mt)
+        .scalar_subquery(),
+        "unregistered",
+    )
     return {
         **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
@@ -105,6 +146,7 @@ def origin_columns(include_team=False):
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
         "processing_role": mt.processing_role,
+        "processing_group": processing_group,
         "rework_pending": mt.rework_pending,
         "rework_count": mt.rework_count,
         "purpose_id": mt.purpose_id,
@@ -127,6 +169,7 @@ def warehouse_groups(team_id, filters):
 
     stock = stock_table(team_id)
     registered = registered_lots(team_id)
+    age = stock_age_table(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     origins = origin_columns(include_team=team_id is None)
     moves = (
@@ -191,6 +234,11 @@ def warehouse_groups(team_id, filters):
             func.count(mt.id).label("batch_count"),
             func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
             func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
+            func.min(case((remaining, age.c.started_at), else_=None)).label("stock_age_started_at"),
+            case(
+                (func.count(func.distinct(case((remaining, age.c.basis)))) > 1, "mixed"),
+                else_=func.min(case((remaining, age.c.basis))),
+            ).label("stock_age_basis"),
             func.max(
                 case(
                     (
@@ -214,6 +262,7 @@ def warehouse_groups(team_id, filters):
         .outerjoin(moves, moves.c.lot_id == mt.id)
         .outerjoin(losses, losses.c.lot_id == mt.id)
         .outerjoin(registered, registered.c.lot_id == mt.id)
+        .outerjoin(age, age.c.transfer_id == mt.id)
         .group_by(*origins.values())
         .subquery()
     )
@@ -223,12 +272,53 @@ def group_conditions(table, anchor):
     return [column.is_not_distinct_from(anchor[name]) for name, column in table.items()]
 
 
+def processing_state_column(table, team_id):
+    from .team_constants import PROCESSING_TEAM_CODES
+
+    c = table.c
+    production = select(Team.id).where(Team.code.in_(PROCESSING_TEAM_CODES))
+    team = c.team_id if team_id is None else team_id
+    return case(
+        (~select(Team.id).where(Team.id == team, Team.id.in_(production)).exists(), "not_required"),
+        (c.material_type.in_(SCRAP_MATERIAL_TYPES), "not_applicable"),
+        (
+            and_(
+                c.processing_registered_batch_count > 0, c.processing_unregistered_batch_count > 0
+            ),
+            "mixed",
+        ),
+        (c.processing_partial_batch_count > 0, "partial"),
+        (
+            and_(
+                c.processing_registered_batch_count > 0,
+                c.processing_complete_batch_count == c.processing_registered_batch_count,
+            ),
+            "complete",
+        ),
+        (c.processing_registered_batch_count > 0, "registered"),
+        (c.processing_unregistered_batch_count > 0, "unregistered"),
+        (or_(c.in_transit_quantity > 0, c.in_transit_weight > 0), "pending"),
+        else_="cleared",
+    )
+
+
 def list_inventory(db, team_id, filters):
     if team_id is not None:
         require_team(db, team_id)
     now = utcnow()
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
+    processing_state = processing_state_column(table, team_id)
+    if filters.processing_state:
+        conditions.append(processing_state == filters.processing_state)
+    if filters.processing_role:
+        conditions.append(table.c.processing_role == filters.processing_role)
+    if filters.route_status:
+        conditions.append(
+            table.c.process_route_id.is_not(None)
+            if filters.route_status == "linked"
+            else table.c.process_route_id.is_(None)
+        )
     if filters.rework:
         conditions.append(
             table.c.rework_pending.is_(True)
@@ -239,13 +329,20 @@ def list_inventory(db, team_id, filters):
         from .team_constants import WAREHOUSE_TEAM_CODE
         from .warehouse_placements import unassigned_predicate
 
-        if require_team(db, team_id).code != WAREHOUSE_TEAM_CODE:
+        if team_id is not None and require_team(db, team_id).code != WAREHOUSE_TEAM_CODE:
             raise HTTPException(422, "仅库房可以按仓位筛选")
+        if team_id is None:
+            conditions.append(
+                table.c.team_id.in_(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE))
+            )
         stock = stock_table(team_id)
         matching = (
             select(mt.id)
             .join(stock, stock.c.transfer_id == mt.id)
-            .where(*group_conditions(origin_columns(), table.c), unassigned_predicate(stock))
+            .where(
+                *group_conditions(origin_columns(include_team=team_id is None), table.c),
+                unassigned_predicate(stock),
+            )
         )
         conditions.append(matching.exists())
     if filters.availability != "all":
@@ -288,13 +385,15 @@ def list_inventory(db, team_id, filters):
     if filters.urgent_only:
         conditions.append(table.c.serial_no.in_(urgent_serials()))
     if filters.stock_age:
-        # Age belongs to remaining lots in this classification, not a different
-        # source/purpose of the same serial. New receipts must not reset it.
-        conditions.append(age_conditions(table.c.oldest_received_at, utcnow())[filters.stock_age])
+        conditions.append(age_conditions(table.c.stock_age_started_at, now)[filters.stock_age])
     if filters.stock_age_min is not None:
-        conditions.append(table.c.oldest_received_at <= now - timedelta(days=filters.stock_age_min))
+        conditions.append(
+            table.c.stock_age_started_at <= now - timedelta(days=filters.stock_age_min)
+        )
     if filters.stock_age_max is not None:
-        conditions.append(table.c.oldest_received_at >= now - timedelta(days=filters.stock_age_max))
+        conditions.append(
+            table.c.stock_age_started_at >= now - timedelta(days=filters.stock_age_max)
+        )
     term = (filters.query or "").strip()
     field = filters.search_field
     matching_sources = [
@@ -409,7 +508,7 @@ def list_inventory(db, team_id, filters):
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
     rows = (
         db.execute(
-            select(table)
+            select(table, processing_state.label("processing_state"))
             .where(*conditions)
             .order_by(table.c.last_activity_at.desc(), table.c.group_id.desc())
             .offset((filters.page - 1) * filters.page_size)
@@ -473,11 +572,11 @@ def list_inventory(db, team_id, filters):
             team = teams[row["team_id"]]
             item.update(team_name=team.name, team_code=team.code)
         item["stock_age_hours"] = (
-            max(0, (now - row["oldest_received_at"]).total_seconds() / 3600)
-            if row["oldest_received_at"]
+            max(0, (now - row["stock_age_started_at"]).total_seconds() / 3600)
+            if row["stock_age_started_at"]
             else None
         )
-        for key in ("last_activity_at", "oldest_received_at"):
+        for key in ("last_activity_at", "oldest_received_at", "stock_age_started_at"):
             item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
     from .shared_material import annotate_groups

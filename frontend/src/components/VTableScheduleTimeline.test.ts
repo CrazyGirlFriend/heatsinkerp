@@ -149,6 +149,118 @@ afterEach(() => {
   native.instances.length = 0
   vi.clearAllMocks()
 })
+it('starts with the current Monday-to-Sunday week at 67% and keeps it when data arrives', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-06T10:00:00+08:00'))
+  let resize: () => void = () => {}
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        resize = callback
+      }
+      observe() {}
+      disconnect() {}
+    },
+  )
+  vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+    callback()
+    return 1
+  })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const wrapper = mount(VTableScheduleTimeline, {
+    props: { tasks: [], loading: true },
+    global: { stubs: { AppPopover: true, AppButton: true, ScheduleDateRange: true } },
+  })
+  try {
+    await flushPromises()
+    const instance = native.instances[0]!
+    expect(instance.options.minDate).toBe('2026-11-02T00:00:00.000')
+    expect(instance.options.maxDate).toBe('2026-11-08T23:59:59.999')
+    expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
+    await wrapper.setProps({ tasks: [task], loading: false })
+    await flushPromises()
+    Object.defineProperty(wrapper.get('.gantt-canvas').element, 'clientWidth', { value: 2000 })
+    resize()
+    await wrapper.setProps({ tasks: [{ ...task, id: 99 }] })
+    await flushPromises()
+    expect(instance.options.minDate).toBe('2026-11-02T00:00:00.000')
+    expect(instance.options.maxDate).toBe('2026-11-08T23:59:59.999')
+    expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
+    expect(instance.options.rowHeight).toBe(32)
+    expect((wrapper.get('input[aria-label="缩放百分比"]').element as HTMLInputElement).value).toBe(
+      '67',
+    )
+  } finally {
+    wrapper.unmount()
+    clock.mockRestore()
+  }
+})
+it('applies typed zoom on Enter or blur and keeps input, buttons and native wheel zoom in sync', async () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
+  vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+    callback()
+    return 1
+  })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const wrapper = mount(VTableScheduleTimeline, {
+    attachTo: document.body,
+    props: { tasks: [task] },
+    global: { stubs: { AppPopover: true, AppButton: true, ScheduleDateRange: true } },
+  })
+  try {
+    await flushPromises()
+    const instance = native.instances[0]!
+    const input = wrapper.get('input[aria-label="缩放百分比"]')
+    const field = input.element as HTMLInputElement
+    field.focus()
+    await input.setValue('125')
+    expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
+    await input.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(instance.getCurrentMillisecondsPerPixel()).toBe(720000 / 1.25)
+    for (const invalid of ['', 'abc', '0', '-2']) {
+      field.focus()
+      await input.setValue(invalid)
+      field.blur()
+      await flushPromises()
+      expect(instance.getCurrentMillisecondsPerPixel()).toBe(720000 / 1.25)
+      expect((input.element as HTMLInputElement).value).toBe('125')
+    }
+    field.focus()
+    await input.setValue('67%')
+    field.blur()
+    await flushPromises()
+    expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
+    await wrapper.get('[aria-label="放大时间轴"]').trigger('click')
+    await flushPromises()
+    expect((input.element as HTMLInputElement).value).toBe('80')
+    const scale = instance.getCurrentMillisecondsPerPixel()
+    field.focus()
+    await input.setValue('300')
+    await input.trigger('keydown', { key: 'Escape' })
+    field.blur()
+    await flushPromises()
+    expect(instance.getCurrentMillisecondsPerPixel()).toBe(scale)
+    expect((input.element as HTMLInputElement).value).toBe('80')
+    instance.setMillisecondsPerPixel(360000)
+    await flushPromises()
+    expect((input.element as HTMLInputElement).value).toBe('200')
+    field.focus()
+    await input.setValue('99999')
+    field.blur()
+    await flushPromises()
+    expect(instance.getCurrentMillisecondsPerPixel()).toBe(30000)
+    expect((input.element as HTMLInputElement).value).toBe('2400')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('mounts bars around the viewport and preserves the selected period when appending rows', async () => {
   vi.stubGlobal(
     'ResizeObserver',
@@ -259,6 +371,8 @@ it('shows batch quantities on the bars without expandable table rows', async () 
     const largeQuantity = draw({ ...batch, quantity: '1,400' })
     const teamName = largeQuantity.find((graphic: any) => graphic.attribute.text === '线切割')
     expect(teamName.AABBBounds.width()).toBeLessThanOrEqual(teamName.attribute.maxLineWidth)
+    expect(wrapper.get('[aria-label="班组颜色说明"]').text()).toContain('线切割')
+    expect(wrapper.get('.gantt-team-key i').attributes('style')).toContain('rgb(34, 117, 199)')
     expect(largeQuantity.map((graphic: any) => graphic.attribute.text)).toContain('1,400件')
     const narrow = draw({ ...batch, quantity: '1,400' }, 90)
     expect(narrow.map((graphic: any) => graphic.attribute.text)).toEqual(
@@ -329,13 +443,26 @@ it('fits a selected month, drills into dates and restores the overview while pre
     line.children
       .filter((item: any) => item.attribute.height === 4)
       .map((item: any) => item.attribute.width),
-  ).toEqual([60, 45])
+  ).toEqual([60])
   expect(expandedGradient.gradient).toBe('linear')
   expect(
     line.children
       .filter((item: any) => item.attribute.height === 4)
       .map((item: any) => item.attribute.fill),
-  ).toEqual([expandedGradient, expandedGradient])
+  ).toEqual([expandedGradient])
+  // Zooming out must not wash out a team's color or restart its gradient at the progress edge.
+  for (const progress of [0, 25, 75, 100]) {
+    const track = instance.options.taskBar
+      .customLayout({
+        width: 60,
+        height: 20,
+        taskRecord: { ...batch, progress },
+      })
+      .rootContainer.children.filter((item: any) => item.attribute.height === 4)
+    expect(track).toHaveLength(1)
+    expect(track[0].attribute).toMatchObject({ width: 60, fill: expandedGradient })
+    expect(track[0].attribute.fillOpacity ?? 1).toBe(1)
+  }
   expect(line.children.map((item: any) => item.attribute.text)).toEqual(
     expect.arrayContaining(['线切割 75%']),
   )
@@ -419,7 +546,9 @@ it('fits a selected month, drills into dates and restores the overview while pre
   // Wheel zoom updates the same indicator; the toolbar is not a second zoom system.
   instance.setMillisecondsPerPixel(360000)
   await flushPromises()
-  expect(wrapper.get('.gantt-zoom span').text()).toBe('200%')
+  expect((wrapper.get('input[aria-label="缩放百分比"]').element as HTMLInputElement).value).toBe(
+    '200',
+  )
   await selectRange('2028-02-29', '2028-02-29')
   expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(86400000 / 696)
   expect(instance.scrollLeft).toBe(0)
@@ -598,11 +727,13 @@ it('keeps batch lanes in the compact overview and exposes saved team totals in d
 })
 it('pins batch details on click, opens the real schedule from details, and releases the native canvas', async () => {
   let resize: () => void = () => {}
+  let observerCount = 0
   vi.stubGlobal(
     'ResizeObserver',
     class {
       constructor(callback: () => void) {
         resize = callback
+        observerCount++
       }
       observe() {}
       disconnect = native.disconnect
@@ -701,7 +832,7 @@ it('pins batch details on click, opens the real schedule from details, and relea
   expect(afterRelease).not.toHaveBeenCalled()
   expect(instance.scenegraph.release).toHaveBeenCalledTimes(1)
   expect(instance.release).toHaveBeenCalledTimes(1)
-  expect(native.disconnect).toHaveBeenCalledTimes(1)
+  expect(native.disconnect).toHaveBeenCalledTimes(observerCount)
 })
 
 it('opens details only on click, keeps them while hovering, and clears selection with Escape', async () => {

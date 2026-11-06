@@ -10,6 +10,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db
+from .inventory_age import stock_age_table
 from .material_analytics import (
     AGE_LABELS,
     age_conditions,
@@ -417,8 +418,9 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         }
         for key, values in movement.items()
     }
+    age = stock_age_table()
     age_bucket = case(
-        *[(condition, key) for key, condition in age_conditions(stock.c.received_at, now).items()],
+        *[(condition, key) for key, condition in age_conditions(age.c.started_at, now).items()],
         else_="unknown",
     )
     age_rows = {
@@ -430,6 +432,8 @@ def factory_overview(db: Session, days: int = 30) -> dict:
                 func.sum(stock.c.on_hand_quantity).label("quantity"),
                 func.sum(stock.c.on_hand_weight).label("weight"),
             )
+            .select_from(stock)
+            .outerjoin(age, age.c.transfer_id == stock.c.transfer_id)
             .where(in_scope, remaining)
             .group_by(age_bucket),
         )

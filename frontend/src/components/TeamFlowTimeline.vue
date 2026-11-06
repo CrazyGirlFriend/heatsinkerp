@@ -174,7 +174,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
     <div v-if="model.extent" class="timeline-scroll">
       <div class="timeline-content">
         <div class="timeline-columns">
-          <span>接收批次 / 本组业务</span><span>收发过程</span><span>当前库存</span>
+          <span>接收批次 / 加工任务</span><span>收发过程</span><span>当前库存</span>
         </div>
         <FlowPreviewCanvas
           ref="chart"

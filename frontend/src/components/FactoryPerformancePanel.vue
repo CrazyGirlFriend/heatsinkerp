@@ -505,7 +505,7 @@ onBeforeUnmount(() => {
             :label="
               [
                 row.material_name,
-                row.purpose_name || '未指定业务',
+                row.purpose_name || '未指定任务',
                 row.processing_task_name || '历史未登记任务',
                 row.process_step_name,
               ]
@@ -611,7 +611,7 @@ onBeforeUnmount(() => {
               <th scope="row">{{ row.team_name }}</th>
               <td>{{ row.serial_no }}</td>
               <td>{{ row.material_name || '未填写材质' }}</td>
-              <td>{{ row.purpose_name || '未指定业务' }}</td>
+              <td>{{ row.purpose_name || '未指定任务' }}</td>
               <td>{{ row.processing_task_name || '历史未登记任务' }}</td>
               <td>{{ row.process_step_name || '—' }}</td>
               <td>{{ formatAmount(row.completed_quantity) }}</td>

@@ -123,7 +123,7 @@ defineExpose({
 <template>
   <AppPopover
     :virtual-ref="anchor"
-    :virtual-triggering="!!anchor"
+    :virtual-triggering="showTrigger === false || !!anchor"
     v-model:visible="opened"
     trigger="click"
     placement="bottom-end"

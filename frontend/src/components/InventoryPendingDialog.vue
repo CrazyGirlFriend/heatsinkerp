@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
           row.next_team?.name || row.external_destination || '—'
         }}</template></ElTableColumn
       >
-      <ElTableColumn label="接收业务" min-width="125" align="center" show-overflow-tooltip
+      <ElTableColumn label="接收任务" min-width="125" align="center" show-overflow-tooltip
         ><template #default="{ row }">{{ materialPurposeLabel(row) }}</template></ElTableColumn
       >
       <ElTableColumn label="件数" min-width="100" align="center"

@@ -7,6 +7,8 @@ import AppButton from '@/components/AppButton.vue'
 import AppInput from '@/components/AppInput.vue'
 import AppNumberInput from '@/components/AppNumberInput.vue'
 import AppSelect from '@/components/AppSelect.vue'
+import AppDatePicker from '@/components/AppDatePicker.vue'
+import ProcessingStockStatus from '@/components/ProcessingStockStatus.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import InventoryColumnSettings from '@/components/InventoryColumnSettings.vue'
 import InventoryPendingDialog from '@/components/InventoryPendingDialog.vue'
@@ -28,7 +30,14 @@ import {
   type GlobalInventoryParams,
   type GlobalInventoryRow,
 } from '@/services/serialInventoryApi'
-import { warehouseColumns, inventorySourceLabel } from '@/types/teamInventory'
+import {
+  warehouseColumns,
+  warehouseSearchColumns,
+  warehouseSearchKind,
+  warehouseSourceNames,
+  inventorySourceLabel,
+} from '@/types/teamInventory'
+import { processingStateLabels, processingRoleLabels } from '@/types/materialProcessing'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { materialTypeOptions } from '@/types/materialTransfer'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
@@ -44,12 +53,25 @@ const number = (key: string) =>
   text(key) !== '' && Number.isFinite(Number(text(key))) ? Number(text(key)) : undefined
 const params = computed<GlobalInventoryParams>(() => ({
   query: text('query') || undefined,
+  search_field: (text('search_field') || 'all') as GlobalInventoryParams['search_field'],
+  search_operator: (text('search_operator') || 'eq') as GlobalInventoryParams['search_operator'],
   serial_no: text('serial_no') || undefined,
   team_id: number('inventory_team_id'),
   material_name: text('material_name') || undefined,
   material_type: text('material_type') || undefined,
   stock_age_min: number('stock_age_min'),
   stock_age_max: number('stock_age_max'),
+  processing_state:
+    (text('processing_state') as GlobalInventoryParams['processing_state']) || undefined,
+  processing_role:
+    (text('processing_role') as GlobalInventoryParams['processing_role']) || undefined,
+  route_status: (text('route_status') as GlobalInventoryParams['route_status']) || undefined,
+  rework: (text('rework') as GlobalInventoryParams['rework']) || undefined,
+  receipt_source: (text('receipt_source') as GlobalInventoryParams['receipt_source']) || undefined,
+  availability: (text('availability') as GlobalInventoryParams['availability']) || 'owned',
+  source_team_id: number('source_team_id'),
+  date_from: text('date_from') || undefined,
+  date_to: text('date_to') || undefined,
   page: Math.max(1, number('page') || 1),
   page_size: [10, 20, 50, 100].includes(number('page_size') || 0) ? number('page_size') : 20,
 }))
@@ -61,6 +83,13 @@ const queryDraft = ref(''),
   filtersOpen = ref(false),
   filterError = ref('')
 const draft = ref<GlobalInventoryParams>({})
+const searchColumns = warehouseSearchColumns.filter((c) => !['rework', 'stock_age'].includes(c.key))
+const searchKind = computed(() => warehouseSearchKind(draft.value.search_field || 'all'))
+const stateLabels = {
+  ...processingStateLabels,
+  mixed: '部分批次有加工记录',
+  not_required: '无需加工',
+}
 const detail = ref<GlobalInventoryRow | null>(null),
   pending = ref<GlobalInventoryRow | null>(null)
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
@@ -75,9 +104,18 @@ function ageLabel(row: GlobalInventoryRow) {
     rest = Math.floor(hours % 24)
   return days ? `${days}天${rest ? `${rest}小时` : ''}` : `${rest}小时`
 }
+function ageHint(row: GlobalInventoryRow) {
+  if (!row.stock_age_started_at) return '暂无滞留起算时间'
+  const at = formatDateTime(row.stock_age_started_at)
+  if (row.stock_age_basis === 'processed') return `从加工完成登记起算：${at}`
+  if (row.stock_age_basis === 'mixed')
+    return `未加工从接收起算，加工后从完成登记起算；当前行取最长滞留，自 ${at}`
+  return `从本班组接收起算：${at}`
+}
 const defaults = [
   'owned_quantity',
   'owned_weight',
+  'processing_state',
   'material_name',
   'material_type',
   'transfer_specification',
@@ -102,7 +140,17 @@ const columns = [
           : c.format(row),
     })),
   { key: 'stock_age', label: '滞留时间', width: 135, defaultVisible: true, format: ageLabel },
+  {
+    key: 'processing_state',
+    label: '加工状态',
+    width: 160,
+    defaultVisible: true,
+    format: (row: GlobalInventoryRow) =>
+      row.processing_state ? stateLabels[row.processing_state] : '—',
+  },
 ]
+const requiredKeys = ['owned_quantity', 'owned_weight', 'processing_state']
+const selectableColumns = columns.filter((c) => !requiredKeys.includes(c.key))
 // Keep quantities beside the serial, with supplementary properties available in column settings.
 columns.sort((a, b) => {
   const order = [...defaults, 'stock_age']
@@ -114,11 +162,14 @@ columns.sort((a, b) => {
 const choices = ref<InventoryColumnChoice<string>[]>(
   columns.map((c) => ({ key: c.key, visible: c.defaultVisible })),
 )
-const visibleColumns = computed(() =>
-  choices.value
+const visibleColumns = computed(() => [
+  ...requiredKeys.map((key) => columns.find((c) => c.key === key)!),
+  ...choices.value
     .filter((c) => c.visible)
-    .flatMap((c) => columns.filter((column) => column.key === c.key)),
-)
+    .flatMap((c) =>
+      columns.filter((column) => column.key === c.key && !requiredKeys.includes(c.key)),
+    ),
+])
 const chips = computed(() => {
   const p = params.value
   const list: { keys: (keyof GlobalInventoryParams)[]; label: string }[] = []
@@ -133,6 +184,30 @@ const chips = computed(() => {
     list.push({
       keys: ['material_type'],
       label: materialTypeOptions.find((t) => t.value === p.material_type)?.label || p.material_type,
+    })
+  for (const [key, label] of Object.entries({
+    processing_state: p.processing_state && stateLabels[p.processing_state],
+    processing_role: p.processing_role && processingRoleLabels[p.processing_role],
+    receipt_source: p.receipt_source && warehouseSourceNames[p.receipt_source],
+    rework: p.rework && (p.rework === 'pending' ? '待返工' : '有返工历史'),
+    route_status: p.route_status && (p.route_status === 'linked' ? '已关联工艺' : '未关联工艺'),
+    source_team_id:
+      p.source_team_id &&
+      `来源 ${directory.items.find((t) => Number(t.id) === p.source_team_id)?.name || p.source_team_id}`,
+    availability:
+      p.availability !== 'owned' &&
+      `库存范围 ${p.availability === 'all' ? '含零库存' : p.availability === 'scrap' ? '废料' : p.availability === 'available' ? '可转出' : '未转出'}`,
+  }))
+    if (label) list.push({ keys: [key as keyof GlobalInventoryParams], label: String(label) })
+  if (p.query && p.search_field !== 'all')
+    list.push({
+      keys: ['query', 'search_field', 'search_operator'],
+      label: `${searchColumns.find((c) => c.key === p.search_field)?.label || p.search_field} ${p.search_operator === 'gte' ? '≥' : p.search_operator === 'lte' ? '≤' : ''} ${p.query}`,
+    })
+  if (p.date_from || p.date_to)
+    list.push({
+      keys: ['date_from', 'date_to'],
+      label: `流转日期 ${p.date_from || '不限'}～${p.date_to || '不限'}`,
     })
   if (p.stock_age_min != null || p.stock_age_max != null)
     list.push({
@@ -151,8 +226,24 @@ async function navigate(next: GlobalInventoryParams) {
 }
 async function search() {
   const query = queryDraft.value.trim()
-  if (query === (params.value.query || '') && !params.value.serial_no) return refresh()
-  await navigate({ ...params.value, query: query || undefined, serial_no: undefined, page: 1 })
+  if (
+    query === (params.value.query || '') &&
+    !params.value.serial_no &&
+    params.value.search_field === 'all'
+  )
+    return refresh()
+  await navigate({
+    ...params.value,
+    query: query || undefined,
+    search_field: 'all',
+    search_operator: 'eq',
+    serial_no: undefined,
+    page: 1,
+  })
+}
+function clearPropertyQuery() {
+  draft.value.query = ''
+  draft.value.search_operator = 'eq'
 }
 function openFilters() {
   draft.value = { ...params.value }
@@ -164,11 +255,29 @@ async function applyFilters() {
     filterError.value = '滞留时间下限不能大于上限'
     return
   }
+  if (draft.value.date_from && draft.value.date_to && draft.value.date_from > draft.value.date_to) {
+    filterError.value = '开始日期不能晚于结束日期'
+    return
+  }
+  if (
+    draft.value.query &&
+    searchKind.value === 'number' &&
+    (!Number.isFinite(Number(draft.value.query)) || Number(draft.value.query) < 0)
+  ) {
+    filterError.value = '请输入有效非负数字'
+    return
+  }
   filtersOpen.value = false
   await navigate({ ...draft.value, page: 1 })
 }
 function resetFilters() {
-  draft.value = { query: params.value.query, page_size: params.value.page_size }
+  draft.value = {
+    query: params.value.search_field === 'all' ? params.value.query : undefined,
+    search_field: 'all',
+    search_operator: 'eq',
+    availability: 'owned',
+    page_size: params.value.page_size,
+  }
   filterError.value = ''
 }
 async function removeChip(keys: (keyof GlobalInventoryParams)[]) {
@@ -272,7 +381,7 @@ function exportSource() {
       <WorkspaceDataToolbar
         v-model="queryDraft"
         search-label="搜索库存"
-        placeholder="流水号、材质、规格或业务"
+        placeholder="流水号、材质、规格或任务"
         :maxlength="160"
         :loading="loading"
         columns
@@ -289,6 +398,48 @@ function exportSource() {
             @apply="applyFilters"
             @reset="resetFilters"
           >
+            <label class="filter-wide"
+              >搜索属性<AppSelect
+                v-model="draft.search_field"
+                aria-label="搜索属性"
+                filterable
+                @change="clearPropertyQuery"
+                ><ElOption value="all" label="综合搜索" /><ElOption
+                  v-for="column in searchColumns"
+                  :key="column.key"
+                  :value="column.key"
+                  :label="column.label" /></AppSelect
+            ></label>
+            <label v-if="searchKind === 'number'"
+              >比较方式<AppSelect v-model="draft.search_operator" aria-label="比较方式"
+                ><ElOption value="eq" label="等于" /><ElOption
+                  value="gte"
+                  label="不少于" /><ElOption value="lte" label="不多于" /></AppSelect
+            ></label>
+            <label :class="{ 'filter-wide': searchKind !== 'number' }"
+              >搜索内容
+              <AppDatePicker
+                v-if="searchKind === 'date'"
+                v-model="draft.query"
+                aria-label="属性日期"
+                type="date"
+                value-format="YYYY-MM-DD"
+              />
+              <AppSelect
+                v-else-if="searchKind === 'status'"
+                v-model="draft.query"
+                aria-label="加急状态"
+                clearable
+                ><ElOption value="urgent" label="加急" /><ElOption value="normal" label="普通"
+              /></AppSelect>
+              <AppInput
+                v-else
+                v-model="draft.query"
+                aria-label="搜索属性内容"
+                clearable
+                :placeholder="searchKind === 'number' ? '输入件数或重量' : '输入属性内容'"
+              />
+            </label>
             <label
               >所在班组<AppSelect
                 v-model="draft.team_id"
@@ -331,6 +482,97 @@ function exportSource() {
                   :label="type.label" /></AppSelect
             ></label>
             <label
+              >加工状态<AppSelect
+                v-model="draft.processing_state"
+                aria-label="加工状态筛选"
+                clearable
+                placeholder="全部状态"
+                ><ElOption
+                  v-for="(label, value) in stateLabels"
+                  :key="value"
+                  :label="label"
+                  :value="value" /></AppSelect
+            ></label>
+            <label
+              >加工分类<AppSelect
+                v-model="draft.processing_role"
+                aria-label="加工分类筛选"
+                clearable
+                placeholder="全部分类"
+                ><ElOption
+                  v-for="(label, value) in processingRoleLabels"
+                  :key="value"
+                  :label="label"
+                  :value="value" /></AppSelect
+            ></label>
+            <label
+              >来源<AppSelect
+                v-model="draft.receipt_source"
+                aria-label="来源筛选"
+                clearable
+                placeholder="全部来源"
+                ><ElOption
+                  v-for="(label, value) in warehouseSourceNames"
+                  :key="value"
+                  :label="label"
+                  :value="value" /></AppSelect
+            ></label>
+            <label
+              >来源班组<AppSelect
+                v-model="draft.source_team_id"
+                aria-label="来源班组筛选"
+                clearable
+                filterable
+                placeholder="全部来源班组"
+                ><ElOption
+                  v-for="team in directory.items"
+                  :key="team.id"
+                  :label="team.name"
+                  :value="Number(team.id)" /></AppSelect
+            ></label>
+            <label
+              >返工属性<AppSelect
+                v-model="draft.rework"
+                aria-label="返工属性筛选"
+                clearable
+                placeholder="全部"
+                ><ElOption value="pending" label="待返工" /><ElOption
+                  value="worked"
+                  label="有返工历史" /></AppSelect
+            ></label>
+            <label
+              >关联工艺<AppSelect
+                v-model="draft.route_status"
+                aria-label="关联工艺筛选"
+                clearable
+                placeholder="全部"
+                ><ElOption value="linked" label="已关联" /><ElOption
+                  value="unlinked"
+                  label="未关联" /></AppSelect
+            ></label>
+            <label class="filter-wide"
+              >库存范围<AppSelect v-model="draft.availability" aria-label="库存范围"
+                ><ElOption value="owned" label="当前库存（含转出待确认）" /><ElOption
+                  value="current"
+                  label="尚未转出" /><ElOption value="available" label="正常料可转出" /><ElOption
+                  value="scrap"
+                  label="废料可处理" /><ElOption value="all" label="全部（含零库存）" /></AppSelect
+            ></label>
+            <label
+              >流转开始日期<AppDatePicker
+                v-model="draft.date_from"
+                aria-label="流转开始日期"
+                type="date"
+                value-format="YYYY-MM-DD"
+            /></label>
+            <label
+              >流转结束日期<AppDatePicker
+                v-model="draft.date_to"
+                aria-label="流转结束日期"
+                type="date"
+                value-format="YYYY-MM-DD"
+            /></label>
+            <label
               >滞留至少（天）<AppNumberInput
                 v-model="draft.stock_age_min"
                 aria-label="滞留至少（天）"
@@ -369,7 +611,8 @@ function exportSource() {
       <InventoryColumnSettings
         ref="columnSettings"
         :storage-key="`global-inventory-columns:${auth.currentUser?.id || 'local'}`"
-        :columns="columns"
+        :columns="selectableColumns"
+        description="流水号、班组、件数、重量、加工状态及操作始终显示。"
         :show-trigger="false"
         @change="choices = $event"
       />
@@ -408,15 +651,20 @@ function exportSource() {
           :key="column.key"
           :label="column.label"
           :min-width="column.width"
+          :fixed="column.key === 'owned_quantity' ? 'left' : undefined"
           :align="'numeric' in column && column.numeric ? 'right' : 'left'"
         >
           <template #default="{ row }"
-            ><span
-              :title="
-                column.key === 'stock_age'
-                  ? `最早在库批次接收于 ${formatDateTime(row.oldest_received_at)}`
-                  : undefined
-              "
+            ><ProcessingStockStatus
+              v-if="column.key === 'processing_state' && row.processing_state !== 'not_required'"
+              :summary="row"
+              :material-type="row.material_type"
+              :pending="!!row.in_transit_quantity || !!row.in_transit_weight"
+              compact
+            />
+            <span
+              v-else
+              :title="column.key === 'stock_age' ? ageHint(row as GlobalInventoryRow) : undefined"
               >{{ column.format(row as GlobalInventoryRow) }}</span
             ></template
           >

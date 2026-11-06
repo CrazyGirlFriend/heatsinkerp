@@ -40,6 +40,23 @@ function check(label: string, value: boolean) {
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it('anchors the first external open to the toolbar button', async () => {
+    const anchor = document.createElement('button')
+    document.body.appendChild(anchor)
+    try {
+      wrapper = mount(InventoryColumnSettings, {
+        props: { storageKey: key, showTrigger: false },
+        attachTo: document.body,
+      })
+      await flushPromises()
+      ;(wrapper.vm as unknown as { open: (element: HTMLElement) => void }).open(anchor)
+      await flushPromises()
+      const popper = wrapper.findComponent({ name: 'ElPopper' })
+      expect((popper.vm as unknown as { triggerRef: HTMLElement }).triggerRef).toBe(anchor)
+    } finally {
+      anchor.remove()
+    }
+  })
   it('uses context-specific instructions without changing inventory defaults', async () => {
     await render()
     expect(wrapper.get('.column-choices').attributes('aria-label')).toBe('库存明细可选列')

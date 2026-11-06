@@ -954,7 +954,7 @@ describe('source batch dispatch and loss drafts', () => {
     await destination()
     wrapper
       .findAllComponents(ElSelect)
-      .find((select) => select.props('ariaLabel') === '统一接收业务')!
+      .find((select) => select.props('ariaLabel') === '统一接收任务')!
       .vm.$emit('change', 31)
     await flushPromises()
     await submit()
@@ -967,7 +967,7 @@ describe('source batch dispatch and loss drafts', () => {
     expect(
       wrapper
         .findAllComponents(ElSelect)
-        .filter((select) => /TL\d+接收业务/.test(select.props('ariaLabel') || ''))
+        .filter((select) => /TL\d+接收任务/.test(select.props('ariaLabel') || ''))
         .every((select) => select.props('modelValue') === undefined),
     ).toBe(true)
   })
@@ -1175,19 +1175,19 @@ describe('source batch dispatch and loss drafts', () => {
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(
       wrapper
-        .get('input[aria-label="TL10接收业务"]')
+        .get('input[aria-label="TL10接收任务"]')
         .element.closest('.el-form-item')!
         .classList.contains('is-error'),
     ).toBe(true)
     expect(
       wrapper
-        .get('input[aria-label="TL11接收业务"]')
+        .get('input[aria-label="TL11接收任务"]')
         .element.closest('.el-form-item')!
         .classList.contains('is-error'),
     ).toBe(true)
     const selects = wrapper
       .findAllComponents(ElSelect)
-      .filter((select) => /TL\d+接收业务/.test(select.props('ariaLabel') || ''))
+      .filter((select) => /TL\d+接收任务/.test(select.props('ariaLabel') || ''))
     selects[0]!.vm.$emit('update:modelValue', 31)
     selects[1]!.vm.$emit('update:modelValue', 32)
     await submit()

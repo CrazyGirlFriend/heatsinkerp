@@ -6,6 +6,7 @@ import {
   processingRoleLabels,
   type ProcessingRole,
   type ProcessingSummary,
+  type ProcessingState,
 } from './materialProcessing'
 import type { SerialSummary, SerialParams } from './materialAnalytics'
 import { inventoryColumns } from './inventoryColumns'
@@ -152,7 +153,7 @@ export const warehouseColumns = [
   },
   {
     key: 'process_route',
-    label: '工艺工序',
+    label: '当前工艺工序',
     width: 180,
     defaultVisible: true,
     format: (row: TeamInventoryRow) =>
@@ -196,7 +197,7 @@ export const warehouseColumns = [
   },
   {
     key: 'purpose_name',
-    label: '本班组业务',
+    label: '加工任务',
     width: 150,
     defaultVisible: true,
     format: (row: TeamInventoryRow) => row.purpose_name || '—',
@@ -329,6 +330,7 @@ export const warehouseSerialColumn = {
 } as const
 export const warehouseSearchColumns = [
   warehouseSerialColumn,
+  { key: 'source_batch_no', label: '来源批次' } as const,
   ...warehouseColumns.filter(
     (column) =>
       ![
@@ -340,8 +342,6 @@ export const warehouseSearchColumns = [
         'delivery_schedule_status',
         'dispatchable_quantity',
         'dispatchable_weight',
-        'in_transit_quantity',
-        'in_transit_weight',
       ].includes(column.key),
   ),
 ]
@@ -360,6 +360,9 @@ export interface TeamInventoryParams extends Omit<SerialParams, 'availability' |
   rework?: 'pending' | 'worked'
   receipt_source?: WarehouseSource
   location_status?: 'unassigned'
+  processing_state?: ProcessingState | 'mixed' | 'not_required'
+  processing_role?: ProcessingRole
+  route_status?: 'linked' | 'unlinked'
   source_team_id?: number
   /** 0 selects receipts without an assigned receiving business. */
   purpose_id?: number

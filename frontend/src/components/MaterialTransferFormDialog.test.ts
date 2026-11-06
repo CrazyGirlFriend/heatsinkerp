@@ -389,7 +389,7 @@ describe('material transfer document form', () => {
     expect(materialTransferApi.create).not.toHaveBeenCalled()
     wrapper
       .findAllComponents(ElSelect)
-      .find((select) => select.props('ariaLabel') === '接收业务')!
+      .find((select) => select.props('ariaLabel') === '接收任务')!
       .vm.$emit('update:modelValue', 31)
     await submit()
     expect(materialTransferApi.create).toHaveBeenCalledWith(

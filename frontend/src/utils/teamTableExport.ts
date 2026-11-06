@@ -50,7 +50,7 @@ export function transferExportFields(
           ),
         ]
       : []),
-    field('purpose', '接收业务', materialPurposeLabel),
+    field('purpose', '接收任务', materialPurposeLabel),
     field('quantity', '件数', (row) => row.quantity),
     field('weight', '重量 (kg)', (row) => row.weight),
     ...(section === 'pending'

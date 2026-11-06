@@ -226,7 +226,7 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
   for (const [label, content] of [
     ['材质', item.material_name],
     ['实际尺寸', item.transfer_specification],
-    ['接收业务', materialPurposeLabel(item)],
+    ['接收任务', materialPurposeLabel(item)],
   ] as const) {
     if (content && content.length > 24) fields.push({ label, value: content })
   }

@@ -11,7 +11,7 @@ import json
 from sqlalchemy import or_, select
 
 from .database import SessionLocal
-from .models import Team, TeamPurpose
+from .models import Team, TeamProcessingTask, TeamPurpose
 
 MATERIAL_TEAMS = (
     ("FACTORY-WAREHOUSE", "库房", "warehouse", "物料收发及转废接收"),
@@ -67,6 +67,28 @@ def configure_material_teams(db):
             )
         ):
             db.add(TeamPurpose(team_id=grinding.id, name="平磨", active=True))
+        db.flush()
+        if grinding:
+            for purpose in db.scalars(
+                select(TeamPurpose).where(TeamPurpose.team_id == grinding.id)
+            ):
+                task = db.scalar(
+                    select(TeamProcessingTask).where(
+                        TeamProcessingTask.team_id == grinding.id,
+                        TeamProcessingTask.name == purpose.name,
+                    )
+                )
+                if task is None:
+                    db.add(
+                        TeamProcessingTask(
+                            team_id=grinding.id,
+                            purpose_id=purpose.id,
+                            name=purpose.name,
+                            active=purpose.active,
+                        )
+                    )
+                elif task.purpose_id is None:
+                    task.purpose_id = purpose.id
     return {"inserted": inserted, "renamed": renamed, "kept": kept}
 
 

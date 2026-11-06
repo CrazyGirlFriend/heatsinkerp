@@ -786,7 +786,7 @@ onBeforeUnmount(() => {
                 >材质关键词<ElInput v-model="columnDraft.material_query" maxlength="160" clearable
               /></label>
               <label
-                >接收业务关键词<ElInput
+                >接收任务关键词<ElInput
                   v-model="columnDraft.purpose_query"
                   maxlength="160"
                   clearable
@@ -976,7 +976,7 @@ onBeforeUnmount(() => {
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'purpose'"
-                  label="接收业务"
+                  label="接收任务"
                   :context="route.fullPath"
                   :value="columns.purpose_query"
                   @apply="(value) => applyColumn('purpose_query', value)"
@@ -1087,7 +1087,7 @@ onBeforeUnmount(() => {
                 ><span
                   ><small>去向</small><span>{{ transfer.next_team.name }}</span></span
                 ><span
-                  ><small>接收业务</small><span>{{ materialPurposeLabel(transfer) }}</span></span
+                  ><small>接收任务</small><span>{{ materialPurposeLabel(transfer) }}</span></span
                 ></span
               >
               <span class="mobile-material-brief"

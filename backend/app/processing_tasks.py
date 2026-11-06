@@ -183,12 +183,20 @@ def snapshot(db, lot, payload, prior_work=None):
         raise HTTPException(409, "本批已完成该任务，再次执行请登记返工")
     from .team_business import purpose_snapshot
 
+    # Historical published routes may still carry a separate receiving purpose.
+    # Otherwise the selected task determines the handoff requirement.
+    purpose_id = payload.purpose_id or lot.purpose_id
+    from .process_routes import processing_step
+
+    route_step = lot.process_route.steps[processing_step(lot)] if lot.process_route_id else None
+    if task and task.purpose_id and not (route_step and route_step.get("purpose_id")):
+        if payload.purpose_id is not None and payload.purpose_id != task.purpose_id:
+            raise HTTPException(422, "转料与加工须使用同一项加工任务")
+        purpose_id = task.purpose_id
     purpose = (
         {"purpose_id": lot.purpose_id, "purpose_name": lot.purpose_name}
         if payload.purpose_id is None and task is None
-        else purpose_snapshot(
-            db, lot.next_team_id, payload.purpose_id or lot.purpose_id, required=task is not None
-        )
+        else purpose_snapshot(db, lot.next_team_id, purpose_id, required=task is not None)
     )
     if purpose["purpose_id"] is None:
         purpose["purpose_name"] = lot.purpose_name

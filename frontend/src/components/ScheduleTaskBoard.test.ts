@@ -237,6 +237,13 @@ describe('task scheduling board', () => {
     expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
   })
+  it('opens overdue work directly from the factory overview', async () => {
+    await render('/production-schedules?status=overdue')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'overdue' }),
+    )
+    expect(wrapper.get('.filter-count').text()).toBe('1')
+  })
   it('keeps controls inside the overview without a title bar or pagination', async () => {
     await render('/production-schedules?serial_no=S-001')
     expect(wrapper.find('.task-board__toolbar').exists()).toBe(false)

@@ -558,7 +558,7 @@ onBeforeUnmount(() => {
             </p>
             <p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p>
             <p v-if="colors.some((entry) => entry.name === '未分类')">
-              未登记接收业务的历史批次标为“未分类”。
+              未登记接收任务的历史批次标为“未分类”。
             </p>
             <p v-if="example">演示数据，不影响库存。</p>
           </div>

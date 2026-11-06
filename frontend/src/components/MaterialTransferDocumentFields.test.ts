@@ -70,7 +70,7 @@ describe('transfer destination fields', () => {
       const row = wrapper
         .findAll('tr')
         .find((item) => item.findAll('th').some((th) => th.text() === '接收班组'))!
-      expect(row.findAll('th').map((th) => th.text())).toEqual(['接收班组', '接收业务'])
+      expect(row.findAll('th').map((th) => th.text())).toEqual(['接收班组', '接收任务'])
       expect(row.findAll('td').map((td) => td.text())).toEqual(['检验', purpose_name || '未指定'])
       wrapper.unmount()
     },

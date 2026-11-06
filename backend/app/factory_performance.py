@@ -239,6 +239,32 @@ def production_report(
     }
 
 
+def production_activity(db, teams, dates, period="day"):
+    """Sum reported work across operations, explicitly measured in piece-operations."""
+    facts = production_facts(
+        db, [team.id for team in teams if team.code in PROCESSING_TEAM_CODES], dates
+    )
+    sums = [
+        func.sum(case((facts.c.work_kind == kind, facts.c.quantity), else_=0)).label(key)
+        for kind, key in (("initial", "completed_quantity"), ("rework", "rework_quantity"))
+    ]
+    keys = ("completed_quantity", "rework_quantity")
+    grouped = defaultdict(lambda: defaultdict(int))
+    totals = defaultdict(int)
+    for row in db.execute(
+        select(facts.c.processing_date, *sums).group_by(facts.c.processing_date)
+    ).mappings():
+        add_metrics(grouped[period_start(row["processing_date"], period)], row, keys)
+        add_metrics(totals, row, keys)
+    return {
+        "totals": quantities(totals, keys),
+        "trend": [
+            {"date": day.isoformat(), **quantities(grouped[day], keys)}
+            for day in period_dates(dates, period)
+        ],
+    }
+
+
 def checked_day(dates, period="day"):
     intervals = defaultdict(list)
     for day in dates:
@@ -443,6 +469,7 @@ def report(
     serial_no: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
     work_id: Annotated[int | None, Query(gt=0)] = None,
     material_name: Annotated[str | None, Query(min_length=1, max_length=160)] = None,
+    include_activity: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -481,4 +508,9 @@ def report(
         ),
         "quality": quality_report(db, selected, dates, period, material_name),
         "issues": issues_report(db, user, dates, team_id, period, material_name),
+        **(
+            {"activity": production_activity(db, selected, dates, period)}
+            if include_activity
+            else {}
+        ),
     }

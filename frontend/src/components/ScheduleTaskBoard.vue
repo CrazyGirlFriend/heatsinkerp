@@ -75,7 +75,10 @@ const loadSize = ref(50),
 const hasMore = computed(() => !props.management && rows.value.length < total.value)
 const initialSerial = typeof route.query.serial_no === 'string' ? route.query.serial_no : ''
 const query = ref(initialSerial),
-  filters = ref<ScheduleFilters>(initialSerial ? { query: initialSerial } : {}),
+  filters = ref<ScheduleFilters>({
+    ...(initialSerial ? { query: initialSerial } : {}),
+    ...(route.query.status === 'overdue' ? { status: 'overdue' } : {}),
+  }),
   filterOpen = ref(false)
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const draftSortOrder = ref<'asc' | 'desc'>('asc')

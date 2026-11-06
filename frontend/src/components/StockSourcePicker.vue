@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
             currentLocations(asStock(row))
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip
+        <ElTableColumn label="加工任务" min-width="120" show-overflow-tooltip
           ><template #default="{ row }">{{
             row.transfer.purpose_name || '未分类'
           }}</template></ElTableColumn

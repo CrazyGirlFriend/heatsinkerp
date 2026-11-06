@@ -633,7 +633,7 @@ const validation = useDialogValidation(() => {
       purposes.items.value.length &&
       !purposes.items.value.some((item) => item.active && item.id === line.purposeId)
     )
-      add('purposeId', '请选择接收业务')
+      add('purposeId', '请选择接收任务')
     const draft = processing[Number(line.source.transfer.id)]
     if (draft) {
       if (!draft.taskFieldsValid) add('processingTask', '请选择有效的加工任务和业务')
@@ -866,7 +866,7 @@ async function submit() {
     return
   }
   if (!isLoss.value && !external.value && (purposes.loading.value || purposes.error.value)) {
-    errorMessage.value = purposes.error.value || '请等待下序业务加载完成'
+    errorMessage.value = purposes.error.value || '请等待下序任务加载完成'
     return
   }
   lines.value.forEach((line) => {
@@ -1291,12 +1291,12 @@ watch(
                 lines.length > 1 &&
                 purposes.items.value.some((item) => item.active)
               "
-              label="统一接收业务"
+              label="统一接收任务"
               class="batch-purpose-field"
             >
               <ElSelect
                 v-model="batchPurposeId"
-                aria-label="统一接收业务"
+                aria-label="统一接收任务"
                 placeholder="选择一次，应用到全部物料"
                 @change="applyBatchPurpose"
                 ><ElOption
@@ -1670,12 +1670,12 @@ watch(
               <ElFormItem
                 v-if="!isLoss && !external"
                 class="source-purpose-field"
-                label="下序接收业务"
+                label="下序接收任务"
                 :error="lineError(line, 'purposeId')"
                 :required="purposes.items.value.length > 0"
                 ><ElSelect
                   v-model="line.purposeId"
-                  :aria-label="`${line.source.transfer.batch_no}接收业务`"
+                  :aria-label="`${line.source.transfer.batch_no}接收任务`"
                   :loading="purposes.loading.value"
                   :disabled="!form.nextTeamId || !purposes.items.value.length"
                   :placeholder="
@@ -1684,7 +1684,7 @@ watch(
                       : !purposes.items.value.length
                         ? '接收班组尚未配置业务'
                         : purposes.items.value.some((item) => item.active)
-                          ? '选择接收业务'
+                          ? '选择接收任务'
                           : '接收班组暂无启用业务'
                   "
                   ><ElOption
