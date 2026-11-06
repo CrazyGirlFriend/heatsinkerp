@@ -107,9 +107,6 @@ function ageLabel(row: GlobalInventoryRow) {
 function ageHint(row: GlobalInventoryRow) {
   if (!row.stock_age_started_at) return '暂无滞留起算时间'
   const at = formatDateTime(row.stock_age_started_at)
-  if (row.stock_age_basis === 'processed') return `从加工完成登记起算：${at}`
-  if (row.stock_age_basis === 'mixed')
-    return `未加工从接收起算，加工后从完成登记起算；当前行取最长滞留，自 ${at}`
   return `从本班组接收起算：${at}`
 }
 const defaults = [

@@ -235,10 +235,7 @@ def warehouse_groups(team_id, filters):
             func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
             func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
             func.min(case((remaining, age.c.started_at), else_=None)).label("stock_age_started_at"),
-            case(
-                (func.count(func.distinct(case((remaining, age.c.basis)))) > 1, "mixed"),
-                else_=func.min(case((remaining, age.c.basis))),
-            ).label("stock_age_basis"),
+            func.min(case((remaining, age.c.basis))).label("stock_age_basis"),
             func.max(
                 case(
                     (

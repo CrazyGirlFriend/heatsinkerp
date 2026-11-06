@@ -227,7 +227,7 @@ def test_processing_state_filters_agree_with_actual_work_and_quantities(client, 
 
 
 @pytest.mark.usefixtures("legacy_stock")
-def test_processed_and_remaining_stock_use_separate_clocks_through_repeated_splits(
+def test_processed_and_remaining_stock_keep_receipt_clock_through_repeated_splits(
     client, warehouse, monkeypatch
 ):
     from test_processing_daily import setup_lot, work
@@ -247,8 +247,9 @@ def test_processed_and_remaining_stock_use_separate_clocks_through_repeated_spli
     produced, remaining = first.json()["outputs"]
     rows = stock(client, team_id=s["other"]["id"])["items"]
     by_role = {r["processing_role"]: r for r in rows}
-    assert by_role["produced"]["stock_age_hours"] == 48
-    assert by_role["produced"]["stock_age_basis"] == "processed"
+    assert by_role["produced"]["stock_age_hours"] == 240
+    assert by_role["produced"]["stock_age_basis"] == "received"
+    assert by_role["produced"]["stock_age_started_at"] == "2026-10-26T12:00:00+00:00"
     assert by_role["remaining"]["stock_age_hours"] == 240
     assert by_role["remaining"]["stock_age_basis"] == "received"
     assert by_role["remaining"]["stock_age_started_at"] == "2026-10-26T12:00:00+00:00"
@@ -265,23 +266,25 @@ def test_processed_and_remaining_stock_use_separate_clocks_through_repeated_spli
     )
     assert second.status_code == 201, second.text
     old = stock(client, team_id=s["other"]["id"], stock_age_min=7)
-    assert old["total"] == 1
-    assert old["items"][0]["owned_quantity"] == 2
-    assert old["items"][0]["stock_age_hours"] == 240
+    assert old["total"] == 2
+    assert sum(row["owned_quantity"] for row in old["items"]) == 10
+    assert all(row["stock_age_hours"] == 240 for row in old["items"])
     completed = stock(
-        client, team_id=s["other"]["id"], processing_state="complete", stock_age_max=3
+        client, team_id=s["other"]["id"], processing_state="complete", stock_age_min=7
     )
     assert completed["total"] == 1
     assert completed["items"][0]["owned_quantity"] == 8
-    assert completed["items"][0]["stock_age_hours"] == 48
+    assert completed["items"][0]["stock_age_hours"] == 240
+    assert stock(client, team_id=s["other"]["id"], stock_age_max=3)["total"] == 0
     analytics = client.get(base(s, True) + "/analytics").json()
     ages = {r["key"]: r["quantity"] for r in analytics["stock_age"]}
-    assert ages["ge7"] == 2 and ages["1_3"] == 8
+    assert ages["ge7"] == 10 and ages["1_3"] == 0
     factory = client.get("/api/factory-overview").json()
     factory_ages = {r["key"]: r["quantity"] for r in factory["stock_age"]}
-    assert factory_ages["ge7"] == 2 and factory_ages["1_3"] == 8
+    assert factory_ages["ge7"] == 10 and factory_ages["1_3"] == 0
     filtered = client.get(base(s, True) + "/inventory", params={"stock_age": "ge7"}).json()
-    assert filtered["total"] == 1 and filtered["items"][0]["owned_quantity"] == 2
+    assert filtered["total"] == 2
+    assert sum(row["owned_quantity"] for row in filtered["items"]) == 10
 
     # Derive clocks from provenance; do not overwrite actual child creation/receipt facts.
     with SessionLocal() as db:
@@ -307,7 +310,7 @@ def test_same_team_reallocation_keeps_clocks_and_next_team_receipt_starts_over(
     first = work(client, s, lot, employee, completed_quantity=6, completed_weight=60)
     assert first.status_code == 201, first.text
     produced, remaining = first.json()["outputs"]
-    for child, serial, hours in ((produced, "DONE-ORDER", 48), (remaining, "WAIT-ORDER", 240)):
+    for child, serial in ((produced, "DONE-ORDER"), (remaining, "WAIT-ORDER")):
         changed = reallocate(
             client,
             {"team": s["other"], "headers": s["other_headers"]},
@@ -318,7 +321,7 @@ def test_same_team_reallocation_keeps_clocks_and_next_team_receipt_starts_over(
             idempotency_key=f"age-{serial}",
         )
         assert changed.status_code == 201, changed.text
-        assert stock(client, serial_no=serial)["items"][0]["stock_age_hours"] == hours
+        assert stock(client, serial_no=serial)["items"][0]["stock_age_hours"] == 240
     sent = dispatch(
         client,
         s,
@@ -338,7 +341,7 @@ def test_same_team_reallocation_keeps_clocks_and_next_team_receipt_starts_over(
 
 
 @pytest.mark.usefixtures("legacy_stock")
-def test_unsplit_processing_uses_last_work_instead_of_receipt_or_later_updates(
+def test_unsplit_processing_keeps_receipt_clock_despite_work_and_later_updates(
     client, warehouse, monkeypatch
 ):
     from test_processing_daily import setup_lot, work
@@ -357,5 +360,5 @@ def test_unsplit_processing_uses_last_work_instead_of_receipt_or_later_updates(
         db.get(MaterialTransfer, lot["id"]).updated_at = NOW
         db.commit()
     row = stock(client, team_id=s["other"]["id"])["items"][0]
-    assert row["stock_age_hours"] == 5
-    assert row["stock_age_basis"] == "processed"
+    assert row["stock_age_hours"] == 240
+    assert row["stock_age_basis"] == "received"

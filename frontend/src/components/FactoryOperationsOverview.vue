@@ -547,8 +547,8 @@ function quality() {
       </DashboardCard>
       <DashboardCard
         title="库存滞留"
-        :subtitle="`按当前批次状态计时 · ${unit}`"
-        help="未加工料从本班组接收起算，加工后的料从加工完成登记起算。拆出的未加工余料保留原接收时间。"
+        :subtitle="`从本班组接收起算 · ${unit}`"
+        help="从本班组接收物料的时刻起算，加工、拆批和同班组转投不重新计时。"
       >
         <template #actions><IconClock :size="18" class="operations-muted" /></template>
         <div v-if="stock" class="operations-age">

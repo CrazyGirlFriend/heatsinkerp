@@ -9,7 +9,7 @@ export interface GlobalInventoryRow extends TeamInventoryRow {
   team_code: string
   stock_age_hours: number | null
   stock_age_started_at?: string | null
-  stock_age_basis?: 'received' | 'processed' | 'mixed' | null
+  stock_age_basis?: 'received' | null
   processing_state?: ProcessingState | 'mixed' | 'not_required'
 }
 export interface GlobalInventoryParams extends TeamInventoryParams {

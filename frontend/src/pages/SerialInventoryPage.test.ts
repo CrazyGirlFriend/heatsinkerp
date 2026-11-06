@@ -104,18 +104,19 @@ it('loads all teams immediately and opens the existing inventory detail for the 
   })
 })
 
-it('explains the processing clock without calling it a receipt time', async () => {
+it('uses receipt time for both processed and unprocessed stock', async () => {
   vi.spyOn(api, 'stock').mockResolvedValue(
     response([
-      { ...row, stock_age_basis: 'processed', stock_age_hours: 6 },
-      { ...row, group_id: 12, stock_age_basis: 'mixed' },
+      { ...row, processing_state: 'complete', stock_age_hours: 240 },
+      { ...row, group_id: 12, processing_state: 'unregistered', stock_age_hours: 240 },
     ]),
   )
   const { page } = await render()
   const table = page.get('[aria-label="全厂库存明细"]')
-  expect(table.find('[title^="从加工完成登记起算"]').text()).toBe('6小时')
-  expect(table.find('[title*="当前行取最长滞留"]').exists()).toBe(true)
-  expect(table.find('[title^="最早在库批次接收于"]').exists()).toBe(false)
+  const ages = table.findAll('[title^="从本班组接收起算"]')
+  expect(ages).toHaveLength(2)
+  expect(ages.map((cell) => cell.text())).toEqual(['10天', '10天'])
+  expect(table.find('[title*="完成登记起算"]').exists()).toBe(false)
 })
 
 it('combines team and residence filters, validates bounds and resets pagination', async () => {
