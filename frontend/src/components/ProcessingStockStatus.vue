@@ -32,12 +32,11 @@ const progress = computed<ProcessingState>(() =>
       ? 'complete'
       : 'registered',
 )
-const current = computed<ProcessingState>(
-  () =>
-    props.state ||
-    (isScrapType(props.materialType)
-      ? 'not_applicable'
-      : registered.value
+const current = computed<ProcessingState>(() =>
+  isScrapType(props.materialType)
+    ? 'not_applicable'
+    : props.state ||
+      (registered.value
         ? progress.value
         : unregistered.value
           ? 'unregistered'
@@ -45,7 +44,10 @@ const current = computed<ProcessingState>(
             ? 'pending'
             : 'cleared'),
 )
-const mixed = computed(() => !props.state && registered.value && unregistered.value)
+const mixed = computed(
+  () =>
+    current.value !== 'not_applicable' && !props.state && registered.value && unregistered.value,
+)
 const label = computed(() =>
   mixed.value ? '部分批次有加工记录' : processingStateLabels[current.value],
 )
@@ -53,9 +55,13 @@ const weightWarning = computed(
   () => (props.summary?.max_weight_difference || 0) > materialWeightToleranceKg,
 )
 const hint = computed(() =>
-  props.summary
-    ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}${weightWarning.value ? `\n同批累计差异超 ${materialWeightToleranceKg} kg` : ''}`
-    : '',
+  current.value === 'not_applicable'
+    ? weightWarning.value
+      ? `同批累计差异超 ${materialWeightToleranceKg} kg`
+      : ''
+    : props.summary
+      ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}${weightWarning.value ? `\n同批累计差异超 ${materialWeightToleranceKg} kg` : ''}`
+      : '',
 )
 </script>
 
@@ -75,7 +81,9 @@ const hint = computed(() =>
       :class="{ 'processing-stock-status--compact': compact }"
       :tabindex="summary ? 0 : undefined"
     >
+      <span v-if="current === 'not_applicable'">—</span>
       <ElTag
+        v-else
         effect="light"
         :type="
           mixed || current === 'partial' || current === 'unregistered' || current === 'pending'
@@ -86,7 +94,7 @@ const hint = computed(() =>
         "
         >{{ label }}</ElTag
       >
-      <small v-if="!compact && summary && registered"
+      <small v-if="current !== 'not_applicable' && !compact && summary && registered"
         >未转出 {{ inventoryAmount(summary.processing_registered_quantity) }} 件</small
       >
       <small v-if="!compact && weightWarning" class="processing-weight-warning"

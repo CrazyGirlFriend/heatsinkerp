@@ -69,9 +69,24 @@ describe('processing stock meaning', () => {
     const scrap = mount(ProcessingStockStatus, {
       props: { materialType: 'scrap_chips', summary: {} },
     })
-    expect(scrap.text()).toBe('废料另计')
+    expect(scrap.text()).toBe('—')
     scrap.unmount()
   })
+  it.each(['waste', 'sludge', 'scrap_chips'] as const)(
+    'does not show processing progress for %s',
+    (materialType) => {
+      const wrapper = mount(ProcessingStockStatus, {
+        props: {
+          materialType,
+          state: 'complete',
+          summary: { processing_registered_batch_count: 1, processing_unregistered_batch_count: 1 },
+        },
+      })
+      expect(wrapper.text()).toBe('—')
+      expect(wrapper.find('.el-tag').exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
   it.each([
     ['partial', '部分加工'],
     ['complete', '本批加工完成'],

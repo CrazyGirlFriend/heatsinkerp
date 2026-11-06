@@ -25,7 +25,11 @@ import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
-import { processingStateLabels, processingRoleLabels } from '@/types/materialProcessing'
+import {
+  inventoryProcessingStateOptions,
+  processingStateLabels,
+  processingRoleLabels,
+} from '@/types/materialProcessing'
 import StatePanel from './StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
@@ -35,6 +39,7 @@ import {
   materialTypeLabel,
   materialTypeOptions,
   isScrapType as isScrapMaterialType,
+  isWeightOnlyType,
 } from '@/types/materialTransfer'
 import {
   warehouseColumns,
@@ -182,7 +187,7 @@ const fieldDraft = ref<WarehouseSearchField>('all'),
   operatorDraft = ref<'eq' | 'gte' | 'lte'>('eq'),
   inputError = ref('')
 const reworkDraft = ref<'pending' | 'worked' | ''>('')
-const availabilityDraft = ref<TeamInventoryParams['availability']>('owned'),
+const availabilityDraft = ref<TeamInventoryParams['availability']>('current'),
   sourceTeamDraft = ref<number | undefined>()
 const purposeDraft = ref<number | undefined>(),
   purposes = ref<TeamPurpose[]>([]),
@@ -214,9 +219,15 @@ const dateDraft = ref<CalendarRange>({ from: '', to: '' }),
   analysisDraft = ref(''),
   daysDraft = ref<7 | 30>(30)
 const processingStateDraft = ref<TeamInventoryParams['processing_state']>()
-const processingRoleDraft = ref<TeamInventoryParams['processing_role']>()
 const routeStatusDraft = ref<TeamInventoryParams['route_status']>()
 const processingStates = { ...processingStateLabels, mixed: '部分批次有加工记录' }
+const processingStateOptions = [
+  ...inventoryProcessingStateOptions,
+  { value: 'mixed', label: processingStates.mixed },
+]
+watch(typeDraft, (value) => {
+  if (isScrapMaterialType(value)) processingStateDraft.value = undefined
+})
 const filterCount = computed(
   () =>
     activeFilters.value.length +
@@ -262,7 +273,12 @@ const sourceTeams = computed(() => directory.items.filter((team) => team.id !== 
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() =>
   warehouseColumns
-    .filter((column) => props.processing || column.key !== 'processing_role')
+    .filter(
+      (column) =>
+        !['process_route', 'processing_role', 'owned_quantity', 'owned_weight'].includes(
+          column.key,
+        ),
+    )
     .map((column) => ({
       ...column,
       label:
@@ -280,26 +296,37 @@ const columns = computed(() =>
             material_type: props.processing ? 120 : 110,
             purpose_name: props.processing ? 95 : 120,
             source: props.processing ? 85 : 120,
-            owned_quantity: props.processing ? 80 : 90,
-            owned_weight: props.processing ? 100 : 110,
+            on_hand_quantity: 110,
+            on_hand_weight: 120,
             stock_status: props.processing ? 135 : 110,
           } as Partial<Record<WarehouseColumnKey, number>>
         )[column.key] || column.width,
-      format: column.key === 'source' ? sourceLabel : column.format,
+      format: (row: TeamInventoryRow) =>
+        column.key === 'source'
+          ? sourceLabel(row)
+          : column.key === 'stock_status' &&
+              props.processing &&
+              isScrapMaterialType(row.material_type)
+            ? '—'
+            : column.format(row),
     })),
 )
 const requiredColumnKeys = computed(() =>
   props.processing
-    ? ['owned_quantity', 'owned_weight', 'stock_status', 'material_name']
-    : ['owned_quantity', 'owned_weight', 'material_name'],
+    ? ['on_hand_quantity', 'on_hand_weight', 'stock_status', 'material_name']
+    : ['on_hand_quantity', 'on_hand_weight', 'material_name'],
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
 )
 const searchColumns = computed(() =>
-  warehouseSearchColumns.map((column) =>
-    column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column,
-  ),
+  warehouseSearchColumns
+    .filter((column) => !['owned_quantity', 'owned_weight'].includes(column.key))
+    .map((column) =>
+      column.key === 'source'
+        ? { ...column, label: props.warehouse ? '来源' : '上序班组' }
+        : column,
+    ),
 )
 const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(
   warehouseColumns
@@ -357,7 +384,9 @@ function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   const external =
     Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0
-  return `本班组库存 ${inventoryAmount(row.owned_quantity)} 件 / ${inventoryAmount(row.owned_weight)} kg\n其中转出待签收 ${inventoryAmount(row.in_transit_quantity)} 件 / ${inventoryAmount(row.in_transit_weight)} kg${external ? `\n其中对外待确认 ${inventoryAmount(row.external_pending_quantity)} 件 / ${inventoryAmount(row.external_pending_weight)} kg` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${inventoryAmount(available.quantity)} 件 / ${inventoryAmount(available.weight)} kg`
+  const amount = (quantity: number | null | undefined, weight: number | null | undefined) =>
+    `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
+  return `当前剩余 ${amount(row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${amount(row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${amount(row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${amount(available.quantity, available.weight)}`
 }
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
@@ -365,7 +394,7 @@ const filters = computed<TeamInventoryParams>(() => {
     page_size: pageSize.value,
     availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability'))
       ? text('availability')
-      : 'owned',
+      : 'current',
   }
   for (const key of [
     'query',
@@ -480,12 +509,12 @@ const activeFilters = computed(() => {
       label: `加工任务：${text('purpose_id') === '0' ? '未指定任务' : purposes.value.find((purpose) => purpose.id === Number(text('purpose_id')))?.name || text('purpose_id')}`,
     })
   const availabilityLabels = {
-    current: '有未转出库存',
+    owned: '含已转出待确认',
     available: '正常料可转出',
     scrap: '废料可处理',
     all: '全部（含零库存）',
   }
-  if (filters.value.availability && filters.value.availability !== 'owned')
+  if (filters.value.availability && filters.value.availability !== 'current')
     chips.push({ key: 'availability', label: availabilityLabels[filters.value.availability] })
   if (text('urgent_only') === 'true') chips.push({ key: 'urgent_only', label: '仅看加急' })
   return chips
@@ -532,8 +561,13 @@ function draftFilters(): TeamInventoryParams {
     search_operator:
       queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
     rework: reworkDraft.value || undefined,
-    processing_state: processingStateDraft.value || undefined,
-    processing_role: processingRoleDraft.value || undefined,
+    processing_state: isScrapMaterialType(typeDraft.value)
+      ? undefined
+      : processingStateDraft.value || undefined,
+    processing_role:
+      isScrapMaterialType(typeDraft.value) || filterResetRequested.value
+        ? undefined
+        : filters.value.processing_role,
     route_status: routeStatusDraft.value || undefined,
     receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined,
     source_team_id:
@@ -584,7 +618,7 @@ function applyDialogFilters() {
   }
   if (filterResetRequested.value) {
     delete params.page
-    if (params.availability === 'owned') delete params.availability
+    if (params.availability === 'current') delete params.availability
   }
   apply(params, '')
   filtersOpen.value = false
@@ -593,13 +627,13 @@ function resetDialogFilters() {
   filterResetRequested.value = true
   daysDraft.value = 30
   reworkDraft.value = ''
-  processingStateDraft.value = processingRoleDraft.value = routeStatusDraft.value = undefined
+  processingStateDraft.value = routeStatusDraft.value = undefined
   sourceDraft.value = ''
   sourceTeamDraft.value = undefined
   typeDraft.value = ''
   materialDraft.value = ''
   purposeDraft.value = undefined
-  availabilityDraft.value = 'owned'
+  availabilityDraft.value = 'current'
   fieldDraft.value = 'all'
   operatorDraft.value = 'eq'
   queryDraft.value = ''
@@ -789,7 +823,6 @@ function syncFilterDrafts() {
   inputError.value = ''
   purposeDraft.value = filters.value.purpose_id
   processingStateDraft.value = filters.value.processing_state
-  processingRoleDraft.value = filters.value.processing_role
   routeStatusDraft.value = filters.value.route_status
   dateDraft.value = { ...dates.value }
   urgentDraft.value = text('urgent_only') === 'true'
@@ -999,29 +1032,17 @@ onBeforeUnmount(() => {
                   :value="item.value"
                   :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect
             ></label>
-            <label v-if="processing"
+            <label v-if="processing && !isScrapMaterialType(typeDraft)"
               >加工状态<ElSelect
                 v-model="processingStateDraft"
                 clearable
                 aria-label="库存加工状态筛选"
                 placeholder="全部状态"
                 ><ElOption
-                  v-for="(label, value) in processingStates"
-                  :key="value"
-                  :label="label"
-                  :value="value" /></ElSelect
-            ></label>
-            <label v-if="processing"
-              >加工分类<ElSelect
-                v-model="processingRoleDraft"
-                clearable
-                aria-label="库存加工分类筛选"
-                placeholder="全部分类"
-                ><ElOption
-                  v-for="(label, value) in processingRoleLabels"
-                  :key="value"
-                  :label="label"
-                  :value="value" /></ElSelect
+                  v-for="option in processingStateOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></ElSelect
             ></label>
             <label
               >关联工艺<ElSelect
@@ -1063,9 +1084,9 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围"
-                ><ElOption value="owned" label="本班组库存（含转出待确认）" /><ElOption
-                  value="current"
-                  label="有未转出库存" /><ElOption
+                ><ElOption value="current" label="当前有料" /><ElOption
+                  value="owned"
+                  label="含已转出待确认" /><ElOption
                   value="available"
                   label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption
                   value="all"
@@ -1121,8 +1142,8 @@ onBeforeUnmount(() => {
           :storage-key="storageKey"
           :description="
             processing
-              ? '流水号、库存件数、重量、加工状态、材质和操作始终显示。'
-              : '流水号、库存件数、重量、材质和操作始终显示。'
+              ? '流水号、数量、重量、加工状态、材质和操作始终显示。'
+              : '流水号、数量、重量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"
@@ -1186,7 +1207,7 @@ onBeforeUnmount(() => {
         :label="column.label"
         :min-width="column.width"
         :fixed="
-          warehouse && ['serial_no', 'owned_quantity', searchedColumn?.key].includes(column.key)
+          warehouse && ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
             ? 'left'
             : undefined
         "
@@ -1326,17 +1347,8 @@ onBeforeUnmount(() => {
             <span v-else>{{ column.format(asRow(row)) }}</span>
           </template>
           <ElTooltip
-            v-else-if="
-              column.key === 'owned_quantity' ||
-              column.key === 'owned_weight' ||
-              column.key === 'on_hand_quantity' ||
-              column.key === 'on_hand_weight'
-            "
-            :content="
-              column.key.startsWith('owned_')
-                ? ownershipHint(asRow(row))
-                : '尚未转出的库存，不含已转出待确认的物料'
-            "
+            v-else-if="column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'"
+            :content="'本班组尚未转出的数量和重量'"
             :trigger="['hover', 'focus']"
             popper-class="inventory-balance-tooltip"
             placement="top"

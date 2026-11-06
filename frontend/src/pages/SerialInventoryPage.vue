@@ -37,9 +37,13 @@ import {
   warehouseSourceNames,
   inventorySourceLabel,
 } from '@/types/teamInventory'
-import { processingStateLabels, processingRoleLabels } from '@/types/materialProcessing'
+import {
+  inventoryProcessingStateOptions,
+  processingStateLabels,
+  processingRoleLabels,
+} from '@/types/materialProcessing'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
-import { materialTypeOptions } from '@/types/materialTransfer'
+import { isScrapType, materialTypeOptions } from '@/types/materialTransfer'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import { formatDateTime } from '@/utils/format'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -68,7 +72,7 @@ const params = computed<GlobalInventoryParams>(() => ({
   route_status: (text('route_status') as GlobalInventoryParams['route_status']) || undefined,
   rework: (text('rework') as GlobalInventoryParams['rework']) || undefined,
   receipt_source: (text('receipt_source') as GlobalInventoryParams['receipt_source']) || undefined,
-  availability: (text('availability') as GlobalInventoryParams['availability']) || 'owned',
+  availability: (text('availability') as GlobalInventoryParams['availability']) || 'current',
   source_team_id: number('source_team_id'),
   date_from: text('date_from') || undefined,
   date_to: text('date_to') || undefined,
@@ -83,13 +87,29 @@ const queryDraft = ref(''),
   filtersOpen = ref(false),
   filterError = ref('')
 const draft = ref<GlobalInventoryParams>({})
-const searchColumns = warehouseSearchColumns.filter((c) => !['rework', 'stock_age'].includes(c.key))
+const searchColumns = warehouseSearchColumns.filter(
+  (c) => !['rework', 'stock_age', 'owned_quantity', 'owned_weight'].includes(c.key),
+)
 const searchKind = computed(() => warehouseSearchKind(draft.value.search_field || 'all'))
 const stateLabels = {
   ...processingStateLabels,
   mixed: '部分批次有加工记录',
   not_required: '无需加工',
 }
+const processingStateOptions = [
+  ...inventoryProcessingStateOptions,
+  { value: 'mixed', label: stateLabels.mixed },
+  { value: 'not_required', label: stateLabels.not_required },
+]
+watch(
+  () => draft.value.material_type,
+  (value) => {
+    if (isScrapType(value)) {
+      draft.value.processing_state = undefined
+      draft.value.processing_role = undefined
+    }
+  },
+)
 const detail = ref<GlobalInventoryRow | null>(null),
   pending = ref<GlobalInventoryRow | null>(null)
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
@@ -110,23 +130,32 @@ function ageHint(row: GlobalInventoryRow) {
   return `从本班组接收起算：${at}`
 }
 const defaults = [
-  'owned_quantity',
-  'owned_weight',
+  'on_hand_quantity',
+  'on_hand_weight',
   'processing_state',
   'material_name',
   'material_type',
   'transfer_specification',
 ]
 const widths: Record<string, number> = {
-  owned_quantity: 110,
-  owned_weight: 125,
+  on_hand_quantity: 110,
+  on_hand_weight: 125,
   material_name: 135,
   material_type: 110,
   transfer_specification: 150,
 }
 const columns = [
   ...warehouseColumns
-    .filter((c) => !['delivery_due_at', 'delivery_schedule_status'].includes(c.key))
+    .filter(
+      (c) =>
+        ![
+          'delivery_due_at',
+          'delivery_schedule_status',
+          'processing_role',
+          'owned_quantity',
+          'owned_weight',
+        ].includes(c.key),
+    )
     .map((c) => ({
       ...c,
       width: widths[c.key] || c.width,
@@ -143,10 +172,14 @@ const columns = [
     width: 160,
     defaultVisible: true,
     format: (row: GlobalInventoryRow) =>
-      row.processing_state ? stateLabels[row.processing_state] : '—',
+      isScrapType(row.material_type)
+        ? '—'
+        : row.processing_state
+          ? stateLabels[row.processing_state]
+          : '—',
   },
 ]
-const requiredKeys = ['owned_quantity', 'owned_weight', 'processing_state']
+const requiredKeys = ['on_hand_quantity', 'on_hand_weight', 'processing_state']
 const selectableColumns = columns.filter((c) => !requiredKeys.includes(c.key))
 // Keep quantities beside the serial, with supplementary properties available in column settings.
 columns.sort((a, b) => {
@@ -192,8 +225,8 @@ const chips = computed(() => {
       p.source_team_id &&
       `来源 ${directory.items.find((t) => Number(t.id) === p.source_team_id)?.name || p.source_team_id}`,
     availability:
-      p.availability !== 'owned' &&
-      `库存范围 ${p.availability === 'all' ? '含零库存' : p.availability === 'scrap' ? '废料' : p.availability === 'available' ? '可转出' : '未转出'}`,
+      p.availability !== 'current' &&
+      `库存范围 ${p.availability === 'all' ? '含零库存' : p.availability === 'scrap' ? '废料' : p.availability === 'available' ? '可转出' : '含已转出待确认'}`,
   }))
     if (label) list.push({ keys: [key as keyof GlobalInventoryParams], label: String(label) })
   if (p.query && p.search_field !== 'all')
@@ -272,7 +305,7 @@ function resetFilters() {
     query: params.value.search_field === 'all' ? params.value.query : undefined,
     search_field: 'all',
     search_operator: 'eq',
-    availability: 'owned',
+    availability: 'current',
     page_size: params.value.page_size,
   }
   filterError.value = ''
@@ -353,6 +386,7 @@ function exportSource() {
       selected: visibleColumns.value.some((v) => v.key === c.key),
       value: (row: GlobalInventoryRow) => {
         const value = c.format(row)
+        if (value === '—') return null
         const numeric = 'numeric' in c && c.numeric ? Number(value.replaceAll(',', '')) : NaN
         return Number.isFinite(numeric) ? numeric : value
       },
@@ -478,29 +512,17 @@ function exportSource() {
                   :value="type.value"
                   :label="type.label" /></AppSelect
             ></label>
-            <label
+            <label v-if="!isScrapType(draft.material_type)"
               >加工状态<AppSelect
                 v-model="draft.processing_state"
                 aria-label="加工状态筛选"
                 clearable
                 placeholder="全部状态"
                 ><ElOption
-                  v-for="(label, value) in stateLabels"
-                  :key="value"
-                  :label="label"
-                  :value="value" /></AppSelect
-            ></label>
-            <label
-              >加工分类<AppSelect
-                v-model="draft.processing_role"
-                aria-label="加工分类筛选"
-                clearable
-                placeholder="全部分类"
-                ><ElOption
-                  v-for="(label, value) in processingRoleLabels"
-                  :key="value"
-                  :label="label"
-                  :value="value" /></AppSelect
+                  v-for="option in processingStateOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></AppSelect
             ></label>
             <label
               >来源<AppSelect
@@ -549,11 +571,13 @@ function exportSource() {
             ></label>
             <label class="filter-wide"
               >库存范围<AppSelect v-model="draft.availability" aria-label="库存范围"
-                ><ElOption value="owned" label="当前库存（含转出待确认）" /><ElOption
-                  value="current"
-                  label="尚未转出" /><ElOption value="available" label="正常料可转出" /><ElOption
-                  value="scrap"
-                  label="废料可处理" /><ElOption value="all" label="全部（含零库存）" /></AppSelect
+                ><ElOption value="current" label="当前有料" /><ElOption
+                  value="owned"
+                  label="含已转出待确认" /><ElOption
+                  value="available"
+                  label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption
+                  value="all"
+                  label="全部（含零库存）" /></AppSelect
             ></label>
             <label
               >流转开始日期<AppDatePicker
@@ -648,7 +672,7 @@ function exportSource() {
           :key="column.key"
           :label="column.label"
           :min-width="column.width"
-          :fixed="column.key === 'owned_quantity' ? 'left' : undefined"
+          :fixed="column.key === 'on_hand_quantity' ? 'left' : undefined"
           :align="'numeric' in column && column.numeric ? 'right' : 'left'"
         >
           <template #default="{ row }"

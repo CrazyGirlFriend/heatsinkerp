@@ -84,7 +84,7 @@ describe('classified stock presentation', () => {
       warehouseColumns.find((column) => column.key === key)!.format(row)
     expect(display('material_type')).toBe('废泥')
     expect(display('purpose_name')).toBe('废泥回库')
-    expect(display('dispatchable_quantity')).toBe('0')
+    expect(display('dispatchable_quantity')).toBe('—')
     expect(display('dispatchable_weight')).toBe('3.456')
     expect(display('owned_quantity')).toBe('—')
     expect(display('owned_weight')).toBe('—')
@@ -98,6 +98,29 @@ describe('classified stock presentation', () => {
     )
   })
 })
+
+it.each([
+  ['semi_finished', '半成品', '12'],
+  ['finished', '成品', '12'],
+  ['waste', '废料', '12'],
+  ['sludge', '废泥', '—'],
+  ['scrap_chips', '废屑', '—'],
+] as const)(
+  'shows %s as a material type with the appropriate quantity unit',
+  (material_type, label, quantity) => {
+    const row = warehouseFixture({ material_type, on_hand_quantity: 12, on_hand_weight: 3.456 })
+    const display = (key: string) =>
+      warehouseColumns.find((column) => column.key === key)!.format(row)
+    expect(display('material_type')).toBe(label)
+    expect(display('on_hand_quantity')).toBe(quantity)
+    expect(display('on_hand_weight')).toBe('3.456')
+    for (const columns of [warehouseColumns, warehouseSearchColumns]) {
+      expect(
+        columns.some((column) => ['scrap_quantity', 'scrap_weight'].includes(column.key)),
+      ).toBe(false)
+    }
+  },
+)
 
 it('exports the same inspection hold status shown in the stock table', () => {
   const row = warehouseFixture({ inspection_hold_count: 2 })

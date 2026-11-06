@@ -319,8 +319,8 @@ describe('warehouse source detail', () => {
     const headings = table.findAll('th').map((cell) => cell.text())
     const cells = table.get('tbody tr').findAll('td')
     for (const [label, amount] of [
-      ['库存件数', '100'],
-      ['库存重量 (kg)', '10'],
+      ['数量（件）', '70'],
+      ['重量（kg）', '7'],
       ['可转出件数', '70'],
       ['可转出重量 (kg)', '7'],
       ['待签收件数', '20'],
@@ -330,6 +330,44 @@ describe('warehouse source detail', () => {
     }
     expect(headings).not.toContain('归属件数')
   })
+  it.each(['sludge', 'scrap_chips'] as const)(
+    'keeps %s batch provenance but leaves piece counts blank in stock and export',
+    async (material_type) => {
+      const stock = source(11, 0)
+      stock.transfer.material_type = material_type
+      stock.processing_role = 'scrap'
+      stock.on_hand_weight = 3.456
+      stock.scrap_available_weight = 3.456
+      vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({
+        items: [stock],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
+      await render()
+      await wrapper.setProps({
+        processing: true,
+        warehouse: false,
+        group: warehouseFixture({ material_type, on_hand_quantity: 0, on_hand_weight: 3.456 }),
+      })
+      await flushPromises()
+      const table = wrapper.get('.warehouse-source-table')
+      const headings = table.findAll('th').map((cell) => cell.text())
+      const cells = table.get('tbody tr').findAll('td')
+      expect(cells[headings.indexOf('数量（件）')]!.text()).toBe('—')
+      expect(cells[headings.indexOf('重量（kg）')]!.text()).toBe('3.456')
+      expect(cells[headings.indexOf('加工状态')]!.text()).toBe('—')
+      expect(cells[headings.indexOf('加工类别')]!.text()).toBe('加工废料')
+      const exportSource = wrapper.findAllComponents(TableExportButton)[0]!.props('source')()!
+      const exported = await exportSource.load(new AbortController().signal, vi.fn())
+      expect(exported[0]).toMatchObject({
+        quantity: null,
+        weight: 3.456,
+        material_type: material_type === 'sludge' ? '废泥' : '废屑',
+        processing_role: '加工废料',
+      })
+    },
+  )
   it('shows inventory details in a centered dialog and keeps batch drilldown independent', async () => {
     await render(false)
     const dialog = wrapper.getComponent({ name: 'ElDialog' })
@@ -450,7 +488,7 @@ describe('warehouse source detail', () => {
       wrapper
         .findAll('.warehouse-source-table tbody tr')
         .map((row) =>
-          ['库存件数', '库存重量 (kg)'].map((label) =>
+          ['数量（件）', '重量（kg）'].map((label) =>
             row.findAll('td')[headings.indexOf(label)]!.text(),
           ),
         ),

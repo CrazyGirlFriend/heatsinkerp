@@ -13,6 +13,8 @@ import { warehouseFixture } from '@/testFixtures/teamInventory'
 import TeamInventoryDetail from '@/components/TeamInventoryDetail.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import AppSelect from '@/components/AppSelect.vue'
+import { ElOption } from 'element-plus'
+import TableExportButton from '@/components/TableExportButton.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 
@@ -37,7 +39,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 const row: GlobalInventoryRow = {
-  ...warehouseFixture({ serial_no: '000012', owned_quantity: 48, owned_weight: 4.8 }),
+  ...warehouseFixture({
+    serial_no: '000012',
+    on_hand_quantity: 48,
+    on_hand_weight: 4.8,
+    owned_quantity: 68,
+    owned_weight: 6.8,
+  }),
   team_id: 1,
   team_name: '库房',
   team_code: 'FACTORY-WAREHOUSE',
@@ -235,8 +243,8 @@ it('keeps quantity and processing state visible even when column choices hide ev
   expect(table.findAll('thead th').map((c) => c.text())).toEqual([
     '流水号',
     '所在班组',
-    '库存件数',
-    '库存重量 (kg)',
+    '数量（件）',
+    '重量（kg）',
     '加工状态',
     '操作',
   ])
@@ -251,7 +259,7 @@ it('combines property search with processing filters and clears pagination', asy
   await filter.get('button').trigger('click')
   const select = (name: string) =>
     page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())!
-  select('搜索属性').vm.$emit('update:modelValue', 'owned_quantity')
+  select('搜索属性').vm.$emit('update:modelValue', 'on_hand_quantity')
   await flushPromises()
   select('比较方式').vm.$emit('update:modelValue', 'gte')
   select('加工状态筛选').vm.$emit('update:modelValue', 'complete')
@@ -261,10 +269,71 @@ it('combines property search with processing filters and clears pagination', asy
   expect(router.currentRoute.value.query.page).toBe('1')
   expect(api.stock).toHaveBeenLastCalledWith(
     expect.objectContaining({
-      search_field: 'owned_quantity',
+      search_field: 'on_hand_quantity',
       search_operator: 'gte',
       query: '40',
       processing_state: 'complete',
     }),
   )
 })
+
+it.each(['waste', 'sludge', 'scrap_chips'] as const)(
+  'uses the same %s material filter, quantities and export as team inventory',
+  async (material_type) => {
+    vi.spyOn(api, 'stock').mockResolvedValue(
+      response([
+        {
+          ...row,
+          material_type,
+          processing_state: 'complete',
+          on_hand_quantity: material_type === 'waste' ? 12 : 0,
+          on_hand_weight: 3.456,
+        },
+      ]),
+    )
+    const { page, router } = await render(
+      '/material-trace?processing_state=complete&processing_role=produced&page=2',
+    )
+    const table = page.get('[aria-label="全厂库存明细"]')
+    const labels = table.findAll('thead th').map((cell) => cell.text())
+    const cells = table.get('tbody tr').findAll('td')
+    expect(cells[labels.indexOf('数量（件）')]!.text()).toBe(material_type === 'waste' ? '12' : '—')
+    expect(cells[labels.indexOf('重量（kg）')]!.text()).toBe('3.456')
+    expect(cells[labels.indexOf('加工状态')]!.text()).toBe('—')
+    const source = page.getComponent(TableExportButton).props('source')()!
+    expect(
+      source.fields.some((field) =>
+        ['processing_role', 'scrap_quantity', 'scrap_weight'].includes(field.key),
+      ),
+    ).toBe(false)
+    const exported = await source.load(new AbortController().signal, vi.fn())
+    expect(exported[0]).toMatchObject({
+      on_hand_quantity: material_type === 'waste' ? 12 : null,
+      on_hand_weight: 3.456,
+      processing_state: null,
+    })
+    const filter = page.getComponent(FilterDialog)
+    await filter.get('button').trigger('click')
+    const select = (name: string) =>
+      page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())
+    expect(
+      select('物料类型')!
+        .findAllComponents(ElOption)
+        .map((option) => option.props('label')),
+    ).toEqual(expect.arrayContaining(['成品', '半成品', '废料', '废泥', '废屑']))
+    expect(select('加工分类筛选')).toBeUndefined()
+    expect(
+      select('加工状态筛选')!
+        .findAllComponents(ElOption)
+        .some((option) => option.props('value') === 'not_applicable'),
+    ).toBe(false)
+    select('物料类型')!.vm.$emit('update:modelValue', material_type)
+    await flushPromises()
+    expect(select('加工状态筛选')).toBeUndefined()
+    filter.vm.$emit('apply')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ material_type, page: '1' })
+    expect(router.currentRoute.value.query.processing_state).toBeUndefined()
+    expect(router.currentRoute.value.query.processing_role).toBeUndefined()
+  },
+)

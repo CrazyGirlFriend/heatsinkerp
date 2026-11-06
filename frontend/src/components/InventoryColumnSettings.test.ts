@@ -169,7 +169,7 @@ describe('inventory display columns', () => {
     ])
     expect(new Set(latest().map((item) => item.key)).size).toBe(warehouseColumns.length)
     expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
-    check('未转出件数', false)
+    check('数量（件）', false)
     await button('应用').trigger('click')
     const saved = latest()
     wrapper.unmount()

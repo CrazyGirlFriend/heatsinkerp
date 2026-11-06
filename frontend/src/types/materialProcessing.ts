@@ -18,8 +18,12 @@ export const processingStateLabels: Record<ProcessingState, string> = {
   unregistered: '未登记加工',
   pending: '已转出 · 待签收',
   cleared: '无未转出库存',
-  not_applicable: '废料另计',
+  not_applicable: '—',
 }
+// Waste is selected by material type, not by processing progress.
+export const inventoryProcessingStateOptions = Object.entries(processingStateLabels)
+  .filter(([value]) => value !== 'not_applicable')
+  .map(([value, label]) => ({ value, label }))
 export interface ProcessingSummary {
   processing_registered_batch_count?: number
   processing_unregistered_batch_count?: number

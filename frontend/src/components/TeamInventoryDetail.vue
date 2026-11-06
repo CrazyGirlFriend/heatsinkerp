@@ -32,7 +32,12 @@ import {
   materialTransferStatusTone,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
-import { inventorySourceLabel, inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
+import {
+  inventorySourceLabel,
+  inventoryAmount,
+  inventoryQuantity,
+  type TeamInventoryRow,
+} from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
@@ -239,6 +244,11 @@ function exportStock() {
     total.value,
     [
       { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
+      {
+        key: 'material_type',
+        label: '物料类型',
+        value: (row: StockBatch) => materialTypeLabel(row.transfer.material_type),
+      },
       ...(props.processing
         ? [
             {
@@ -259,8 +269,13 @@ function exportStock() {
         value: (row) => row.current_specification ?? row.transfer.transfer_specification ?? '',
       },
       { key: 'location', label: '仓位', value: currentLocations },
-      { key: 'quantity', label: '库存件数', value: (row) => row.owned_quantity },
-      { key: 'weight', label: '库存重量 (kg)', value: (row) => row.owned_weight },
+      {
+        key: 'quantity',
+        label: '数量（件）',
+        value: (row) =>
+          isWeightOnlyType(row.transfer.material_type) ? null : row.on_hand_quantity,
+      },
+      { key: 'weight', label: '重量（kg）', value: (row) => row.on_hand_weight },
       {
         key: 'delivery_due_at',
         label: '要求交货时间',
@@ -275,7 +290,8 @@ function exportStock() {
       {
         key: 'available_quantity',
         label: '可处理件数',
-        value: (row) => dispatchableAmounts(row).quantity,
+        value: (row) =>
+          isWeightOnlyType(row.transfer.material_type) ? null : dispatchableAmounts(row).quantity,
       },
       {
         key: 'available_weight',
@@ -421,11 +437,11 @@ onBeforeUnmount(() => {
           group.serial_no
         }}</ElButton></ElDescriptionsItem
       >
-      <ElDescriptionsItem label="库存件数">{{
-        inventoryAmount(group.owned_quantity)
+      <ElDescriptionsItem label="数量（件）">{{
+        inventoryQuantity(group.on_hand_quantity, group.material_type)
       }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="库存重量 (kg)">{{
-        inventoryAmount(group.owned_weight)
+      <ElDescriptionsItem label="重量（kg）">{{
+        inventoryAmount(group.on_hand_weight)
       }}</ElDescriptionsItem>
       <ElDescriptionsItem v-if="processing" label="加工状态"
         ><ProcessingStockStatus
@@ -491,14 +507,14 @@ onBeforeUnmount(() => {
               }}</ElButton></template
             ></ElTableColumn
           >
-          <ElTableColumn label="库存件数" min-width="110" align="right"
+          <ElTableColumn label="数量（件）" min-width="110" align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(row.owned_quantity)
+              inventoryQuantity(row.on_hand_quantity, row.transfer.material_type)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"
+          <ElTableColumn label="重量（kg）" min-width="140" align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(row.owned_weight)
+              inventoryAmount(row.on_hand_weight)
             }}</template></ElTableColumn
           >
           <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
@@ -597,7 +613,10 @@ onBeforeUnmount(() => {
           >
           <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(dispatchableAmounts(asStock(row)).quantity)
+              inventoryQuantity(
+                dispatchableAmounts(asStock(row)).quantity,
+                row.transfer.material_type,
+              )
             }}</template></ElTableColumn
           >
           <ElTableColumn :label="`${availableLabel}重量 (kg)`" min-width="150" align="right"
@@ -607,7 +626,7 @@ onBeforeUnmount(() => {
           >
           <ElTableColumn v-if="hasPending" label="待签收件数" min-width="120" align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(row.in_transit_quantity)
+              inventoryQuantity(row.in_transit_quantity, row.transfer.material_type)
             }}</template></ElTableColumn
           >
           <ElTableColumn v-if="hasPending" label="待签收重量 (kg)" min-width="150" align="right"
@@ -621,7 +640,7 @@ onBeforeUnmount(() => {
             min-width="150"
             align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(row.external_pending_quantity)
+              inventoryQuantity(row.external_pending_quantity, row.transfer.material_type)
             }}</template></ElTableColumn
           >
           <ElTableColumn
@@ -635,7 +654,7 @@ onBeforeUnmount(() => {
           >
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"
             ><template #default="{ row }">{{
-              inventoryAmount(row.lost_quantity)
+              inventoryQuantity(row.lost_quantity, row.transfer.material_type)
             }}</template></ElTableColumn
           >
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"
