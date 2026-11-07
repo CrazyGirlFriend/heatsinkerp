@@ -28,6 +28,8 @@ import TeamReworkRequestDialog from '@/components/TeamReworkRequestDialog.vue'
 import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
 import TeamInspectionRecords from '@/components/TeamInspectionRecords.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
+import type { ProcessingRecord } from '@/types/materialProcessing'
+import { stockAvailable, stockSelectable } from '@/utils/materialStock'
 import DeliverySchedules from '@/components/DeliverySchedules.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
@@ -544,6 +546,7 @@ const pickerOpen = ref(false)
 const reworkRequestOpen = ref(false)
 const pickerMode = ref<'dispatch' | 'loss' | 'reallocate'>('dispatch')
 const openingDispatch = ref(false)
+const processingDispatch = ref<{ recordId: number; version: number } | null>(null)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
 const actionSources = ref<StockBatch[]>([])
 const scanner = ref<InstanceType<typeof MaterialReceiptScanner>>()
@@ -697,6 +700,7 @@ function closeDetails() {
   ++actionVersion
   pickerOpen.value = false
   openingDispatch.value = false
+  processingDispatch.value = null
   drawerOpen.value = false
   selected.value = null
   actionOpen.value = false
@@ -829,6 +833,68 @@ async function dispatchSchedule(schedule: ProductionSchedule, sourceId: number) 
       showToast(e instanceof Error ? e.message : '读取排期物料失败', 'error')
   } finally {
     if (scope === teamKey.value) openingDispatch.value = false
+  }
+}
+async function dispatchProcessing(record: ProcessingRecord) {
+  if (
+    !canWrite.value ||
+    !hasProcessing.value ||
+    tab.value !== 'processing' ||
+    openingDispatch.value
+  )
+    return
+  const ids = record.outputs?.length
+    ? record.outputs.filter((output) => output.role === 'produced').map((output) => output.id)
+    : [record.source_transfer_id]
+  if (!ids.length) {
+    showToast('这次加工暂无可转出的产出批次', 'info')
+    return
+  }
+  closeDetails()
+  const current = actionVersion,
+    scope = teamKey.value
+  openingDispatch.value = true
+  processingDispatch.value = { recordId: record.id, version: current }
+  try {
+    const result = await teamMaterialApi.stock(teamId.value, {
+      source_ids: ids.join(','),
+      availability: 'available',
+      page_size: 100,
+    })
+    if (current !== actionVersion || scope !== teamKey.value || !canWrite.value) return
+    const sources = result.items.filter(
+      (item) => ids.includes(Number(item.transfer.id)) && stockAvailable(item),
+    )
+    if (!sources.length) {
+      showToast('这次加工的产出已转出或已继续加工，暂无可转出库存', 'info')
+      void loadView()
+      return
+    }
+    if (sources.some((item) => item.inspection_hold_id)) {
+      showToast('该批产出正在质量处理中，暂不能转出', 'info')
+      return
+    }
+    if (
+      sources.some(
+        (item) =>
+          !stockSelectable(item) ||
+          item.transfer.rework_pending ||
+          item.processing_state === 'unregistered',
+      )
+    ) {
+      showToast('该批产出的加工状态已变化，请刷新记录后重试', 'info')
+      void loadView()
+      return
+    }
+    await openAction('dispatch', sources)
+  } catch (error) {
+    if (current === actionVersion && scope === teamKey.value)
+      showToast(error instanceof Error ? error.message : '读取加工产出失败，请重试', 'error')
+  } finally {
+    if (processingDispatch.value?.version === current) {
+      processingDispatch.value = null
+      openingDispatch.value = false
+    }
   }
 }
 async function openReallocation(source: StockBatch) {
@@ -1278,7 +1344,9 @@ onBeforeUnmount(() => {
           :can-write="canWrite"
           :fullscreen="fullscreen"
           :refresh-key="overview"
+          :dispatching-record-id="processingDispatch?.recordId"
           @register="openProcessing()"
+          @dispatch="dispatchProcessing"
         />
         <TeamSerialHistory
           v-else-if="['overview', 'history'].includes(tab)"

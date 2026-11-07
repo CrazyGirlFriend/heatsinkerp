@@ -22,6 +22,53 @@ def report(client):
     return response.json()
 
 
+def test_follow_up_lists_are_bounded_and_ordered_by_receipt_or_pending_time(client, warehouse):
+    now = datetime(2026, 11, 7, 4)
+    team = warehouse["team"]
+    with SessionLocal() as db:
+        for index in range(8):
+            for status in ("received", "pending"):
+                db.add(
+                    MaterialTransfer(
+                        batch_no=f"FOLLOW-{status}-{index}",
+                        serial_no=f"691236-{51 + index}",
+                        next_team_id=team["id"],
+                        next_team_code=team["code"],
+                        next_team_name=team["name"],
+                        entry_kind="opening_stock" if status == "received" else "transfer",
+                        source_team_id=warehouse["other"]["id"] if status == "pending" else None,
+                        source_team_code=warehouse["other"]["code"]
+                        if status == "pending"
+                        else None,
+                        source_team_name=warehouse["other"]["name"]
+                        if status == "pending"
+                        else None,
+                        status=status,
+                        stock_tracked=status == "received",
+                        material_type="semi_finished",
+                        quantity=10,
+                        weight=1,
+                        created_by="test",
+                        received_at=now - timedelta(days=20 + index)
+                        if status == "received"
+                        else None,
+                        created_at=now - timedelta(days=index),
+                        updated_at=now,
+                    )
+                )
+        db.commit()
+    for days in (7, 30):
+        data = client.get(f"/api/factory-overview?days={days}").json()
+        assert [row["batch_no"] for row in data["stock_attention"]] == [
+            f"FOLLOW-received-{index}" for index in range(7, 1, -1)
+        ]
+        assert [row["batch_no"] for row in data["pending_attention"]] == [
+            f"FOLLOW-pending-{index}" for index in range(7, 1, -1)
+        ]
+        assert data["stock_attention"][0]["received_at"] == "2026-10-11T04:00:00+00:00"
+        assert data["pending_attention"][0]["created_at"] == "2026-10-31T04:00:00+00:00"
+
+
 def test_factory_conservation_internal_not_inbound_and_batch_count_once(client, outbound):
     before = report(client)
     assert before["totals"]["on_hand_quantity"] == 200

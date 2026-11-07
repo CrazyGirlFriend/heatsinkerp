@@ -4,6 +4,7 @@ from datetime import datetime
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer, SharedMaterialGroup, SharedMaterialMember
+from test_factory_overview import report
 from test_inventory_processing_groups import classified_lots as classified_lots
 from test_inventory_processing_groups import get
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -35,6 +36,9 @@ def test_states_match_filtered_inventory_and_do_not_count_one_serial_five_times(
         )
         assert sum(item["on_hand_quantity"] for item in inventory["items"]) == row["quantity"]
         assert sum(item["on_hand_weight"] for item in inventory["items"]) == row["weight"]
+    factory_team = next(team for team in report(client)["teams"] if team["id"] == team_id)
+    assert factory_team["processing"] == summary["processing"]
+    assert factory_team["serial_count"] == summary["serial_count"]
 
 
 def test_pending_outbound_leaves_source_and_is_not_stock_at_destination(
@@ -79,6 +83,10 @@ def test_pending_outbound_leaves_source_and_is_not_stock_at_destination(
         "processing": [],
     }
     assert destination["pending_incoming"]["quantity"] == 10
+    factory = report(client)
+    source = next(team for team in factory["teams"] if team["id"] == team_id)
+    assert source["processing"] == result["current_stock"]["processing"]
+    assert factory["pending_attention"][0]["quantity"] == 10
 
 
 def test_shared_serials_are_deduplicated_without_multiplying_physical_quantity(client, warehouse):
@@ -152,6 +160,11 @@ def test_shared_serials_are_deduplicated_without_multiplying_physical_quantity(c
     assert states["unregistered"]["batch_count"] == 3
     assert states["not_applicable"]["weight"] == 2
     assert result["totals"]["on_hand_weight"] == 37
+    factory = report(client)
+    factory_team = next(row for row in factory["teams"] if row["id"] == team["id"])
+    assert factory_team["serial_count"] == 2
+    assert factory_team["processing"] == result["current_stock"]["processing"]
+    assert "EMPTY-LOT" not in {row["serial_no"] for row in factory["stock_attention"]}
 
 
 def test_warehouse_stock_is_not_classified_as_unprocessed(client, warehouse):
@@ -176,5 +189,8 @@ def test_warehouse_stock_is_not_classified_as_unprocessed(client, warehouse):
         )
         db.commit()
     assert overview(client, team["id"])["current_stock"]["processing"] == [
+        {"state": "not_required", "quantity": 100, "weight": 10, "batch_count": 1},
+    ]
+    assert report(client)["teams"][0]["processing"] == [
         {"state": "not_required", "quantity": 100, "weight": 10, "batch_count": 1},
     ]

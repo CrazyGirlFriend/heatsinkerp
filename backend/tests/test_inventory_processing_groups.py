@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 from app.configure_material_teams import MATERIAL_TEAMS
 from app.database import SessionLocal
-from app.models import MaterialQuantityAdjustment, MaterialTransfer, Team
+from app.models import MaterialQuantityAdjustment, MaterialTransfer, ProcessRoute, Team
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
@@ -106,6 +106,45 @@ def test_batch_search_does_not_include_a_different_processing_state(client, clas
         assert result["items"][0]["owned_quantity"] == 40
 
 
+def test_rework_requests_keep_their_round_and_stock_separate_before_route_publication(
+    client, classified_lots
+):
+    team_id, ids = classified_lots
+    with SessionLocal() as db:
+        lot_ids = sorted(ids["complete"])
+        for lot_id, round_no in zip(lot_ids, (1, 2), strict=True):
+            route = ProcessRoute(
+                route_kind="rework",
+                title="返工",
+                filename="",
+                source_file=b"",
+                source_sha256="",
+                source_data={},
+                serial_nos=["691236-51"],
+                steps=[],
+                rework_round=round_no,
+                created_by="test",
+            )
+            db.add(route)
+            db.flush()
+            lot = db.get(MaterialTransfer, lot_id)
+            lot.rework_route_id = route.id
+            lot.rework_pending = True
+        db.commit()
+    for url in (f"/api/team-materials/{team_id}/inventory", "/api/serial-inventory/stock"):
+        result = get(client, url, processing_state="rework")
+        assert result["total"] == 2
+        assert {row["rework_round"] for row in result["items"]} == {1, 2}
+        assert all(row["on_hand_quantity"] == 30 for row in result["items"])
+        assert all(row["rework_route_ready"] is False for row in result["items"])
+        for row in result["items"]:
+            sources = get(
+                client, f"/api/team-materials/{team_id}/inventory/{row['group_id']}/sources"
+            )
+            assert sources["total"] == 1
+            assert sources["items"][0]["transfer"]["rework_route_id"] == row["rework_route_id"]
+
+
 def test_pending_outbound_and_processing_picker_keep_the_selected_group(
     client, classified_lots, warehouse
 ):
@@ -155,7 +194,7 @@ def test_all_eight_team_lists_reconcile_with_factory_stock_and_team_totals(clien
             expected = (
                 {"not_required": 120}
                 if kind == "warehouse"
-                else {"complete": 60, "unregistered": 40, "partial": 20}
+                else {"complete": 50, "unregistered": 40, "partial": 20, "rework": 10}
             )
             teams[team.id] = (name, expected)
             for state, quantity in expected.items():
@@ -170,6 +209,8 @@ def test_all_eight_team_lists_reconcile_with_factory_stock_and_team_totals(clien
                     status="received",
                     stock_tracked=True,
                     material_type="semi_finished",
+                    rework_pending=state == "rework",
+                    rework_count=1 if state in ("rework", "complete") else 0,
                     material_name="铜钼",
                     transfer_specification="20×10",
                     quantity=quantity,
@@ -179,14 +220,14 @@ def test_all_eight_team_lists_reconcile_with_factory_stock_and_team_totals(clien
                 )
                 db.add(lot)
                 db.flush()
-                if state in ("complete", "partial"):
+                if state in ("complete", "partial", "rework"):
                     db.add(
                         MaterialQuantityAdjustment(
                             source_transfer_id=lot.id,
                             team_id=team.id,
                             before_quantity=quantity,
                             after_quantity=quantity,
-                            processing_status=state,
+                            processing_status="complete" if state == "rework" else state,
                             weight_snapshot=quantity,
                             stock_revision_before=0,
                             reason="加工登记",
@@ -198,7 +239,7 @@ def test_all_eight_team_lists_reconcile_with_factory_stock_and_team_totals(clien
         db.commit()
 
     factory = get(client, "/api/serial-inventory/stock", page_size=100)
-    assert factory["total"] == 22
+    assert factory["total"] == 29
     assert sum(row["owned_quantity"] for row in factory["items"]) == 960
     assert sum(row["owned_weight"] for row in factory["items"]) == 960
     for team_id, (name, expected) in teams.items():
@@ -220,3 +261,8 @@ def test_all_eight_team_lists_reconcile_with_factory_stock_and_team_totals(clien
             assert details["items"][0]["owned_quantity"] == row["owned_quantity"], name
             if row["processing_state"] != "not_required":
                 assert details["items"][0]["processing_state"] == row["processing_state"], name
+            selected = get(client, url + "/inventory", processing_state=row["processing_state"])
+            assert selected["total"] == 1, name
+            assert selected["items"][0]["group_id"] == row["group_id"], name
+        summary = get(client, url + "/overview", include_summary=True)["current_stock"]
+        assert {row["state"]: row["quantity"] for row in summary["processing"]} == expected, name

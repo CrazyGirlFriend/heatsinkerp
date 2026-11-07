@@ -276,9 +276,8 @@ const columns = computed(() =>
   warehouseColumns
     .filter(
       (column) =>
-        !['process_route', 'processing_role', 'owned_quantity', 'owned_weight'].includes(
-          column.key,
-        ),
+        !['processing_role', 'owned_quantity', 'owned_weight'].includes(column.key) &&
+        (column.key !== 'process_route' || props.processing),
     )
     .map((column) => ({
       ...column,
@@ -301,22 +300,25 @@ const columns = computed(() =>
             on_hand_quantity: 110,
             on_hand_weight: 120,
             stock_status: 135,
+            process_route: 150,
           } as Partial<Record<WarehouseColumnKey, number>>
         )[column.key] || column.width,
       format: (row: TeamInventoryRow) =>
         column.key === 'source'
           ? sourceLabel(row)
-          : column.key === 'stock_status' &&
-              props.processing &&
-              isScrapMaterialType(row.material_type)
-            ? '—'
+          : column.key === 'stock_status' && props.processing
+            ? isScrapMaterialType(row.material_type)
+              ? '—'
+              : row.processing_state && row.processing_state !== 'not_required'
+                ? processingStates[row.processing_state]
+                : column.format(row)
             : column.format(row),
     })),
 )
 const requiredColumnKeys = computed(() =>
   props.processing
-    ? ['on_hand_quantity', 'on_hand_weight', 'stock_status', 'material_name']
-    : ['on_hand_quantity', 'on_hand_weight', 'material_name'],
+    ? ['on_hand_quantity', 'process_route', 'rework', 'stock_status', 'material_name']
+    : ['on_hand_quantity', 'material_name'],
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
@@ -1144,8 +1146,8 @@ onBeforeUnmount(() => {
           :storage-key="storageKey"
           :description="
             processing
-              ? '流水号、数量、重量、加工状态、材质和操作始终显示。'
-              : '流水号、数量、重量、材质和操作始终显示。'
+              ? '流水号、数量、工艺工序、返工情况、加工状态、材质和操作始终显示。'
+              : '流水号、数量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"
@@ -1266,6 +1268,12 @@ onBeforeUnmount(() => {
               >{{ column.format(asRow(row)) }}</ElTag
             >
           </div>
+          <ElTag
+            v-else-if="column.key === 'rework' && !isScrapMaterialType(row.material_type)"
+            :type="row.rework_route_id || row.rework_pending ? 'warning' : 'info'"
+            effect="light"
+            >{{ column.format(asRow(row)) }}</ElTag
+          >
           <template v-else-if="column.key === 'delivery_due_at'">
             <ElButton
               v-if="row.delivery_schedule?.count"
@@ -1288,18 +1296,20 @@ onBeforeUnmount(() => {
             </ElTag>
           </template>
           <ElTag
-            v-else-if="column.key === 'stock_status' && row.inspection_hold_count"
+            v-else-if="column.key === 'stock_status' && row.inspection_hold_count && !processing"
             type="danger"
             effect="light"
             >{{ column.format(asRow(row)) }}</ElTag
           >
-          <ProcessingStockStatus
-            v-else-if="column.key === 'stock_status' && processing"
-            compact
-            :summary="asRow(row)"
-            :material-type="row.material_type"
-            :pending="inventoryHasPending(asRow(row))"
-          />
+          <span v-else-if="column.key === 'stock_status' && processing" class="inventory-inline">
+            <ProcessingStockStatus
+              compact
+              :summary="asRow(row)"
+              :material-type="row.material_type"
+              :pending="inventoryHasPending(asRow(row))"
+            />
+            <ElTag v-if="row.inspection_hold_count" type="danger" effect="light">巡检待处理</ElTag>
+          </span>
           <ElTooltip
             v-else-if="column.key === 'stock_status'"
             :content="ownershipHint(asRow(row))"

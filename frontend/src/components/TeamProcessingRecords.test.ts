@@ -121,6 +121,27 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
 }
 
 describe('cutting processing records', () => {
+  it('offers dispatch on writable records and disables it while loading or after clearing', async () => {
+    await render()
+    const button = () => wrapper.findAll('button').find((item) => item.text() === '转出')!
+    await button().trigger('click')
+    expect(wrapper.emitted('dispatch')).toEqual([[record()]])
+    await wrapper.setProps({ dispatchingRecordId: 1 })
+    expect(button().classes()).toContain('is-loading')
+    expect(button().attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ dispatchingRecordId: undefined })
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [{ ...record(), on_hand_quantity: 0, on_hand_weight: 0, in_transit_quantity: 20 }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await live.refresh()
+    await flushPromises()
+    expect(button().attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ canWrite: false })
+    expect(button()).toBeUndefined()
+  })
   it('filters both exports by task and business and counts employee-task groups independently', async () => {
     const result = await teamMaterialApi.processingRecords(5)
     vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({

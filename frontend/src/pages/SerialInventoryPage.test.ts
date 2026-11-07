@@ -100,7 +100,7 @@ it('loads all teams immediately and opens the existing inventory detail for the 
   expect(table.text()).toContain('库房')
   expect(table.text()).toContain('轧制')
   expect(table.text()).toContain('48')
-  expect(table.text()).toContain('4.8')
+  expect(table.findAll('thead th').map((cell) => cell.text())).not.toContain('重量（kg）')
   expect(table.text()).toContain('5天5小时')
   expect(table.find('[title^="从本班组接收起算"]').exists()).toBe(true)
   const buttons = table.findAll('button').filter((b) => b.text() === '明细')
@@ -244,12 +244,13 @@ it('keeps quantity and processing state visible even when column choices hide ev
     '流水号',
     '所在班组',
     '数量（件）',
-    '重量（kg）',
+    '工艺工序',
+    '返工情况',
     '加工状态',
     '操作',
   ])
   expect(table.text()).toContain('48')
-  expect(table.text()).toContain('未登记加工')
+  expect(table.text()).toContain('待加工')
 })
 
 it('combines property search with processing filters and clears pagination', async () => {
@@ -294,6 +295,10 @@ it.each(['waste', 'sludge', 'scrap_chips'] as const)(
     const { page, router } = await render(
       '/material-trace?processing_state=complete&processing_role=produced&page=2',
     )
+    page
+      .getComponent({ name: 'InventoryColumnSettings' })
+      .vm.$emit('change', [{ key: 'on_hand_weight', visible: true }])
+    await flushPromises()
     const table = page.get('[aria-label="全厂库存明细"]')
     const labels = table.findAll('thead th').map((cell) => cell.text())
     const cells = table.get('tbody tr').findAll('td')

@@ -50,6 +50,7 @@ def registered_lots(team_id):
     return (
         select(
             Transfer.id.label("lot_id"),
+            Transfer.rework_pending,
             func.coalesce(latest.c.latest_id, parent.c.latest_id).label("latest_id"),
             case(
                 (Transfer.rework_pending.is_(True), "unregistered"),
@@ -187,7 +188,7 @@ def annotate_source(item, metadata):
         item["in_transit_quantity"],
         item["in_transit_weight"],
         metadata["latest_id"] is not None,
-        metadata["processing_status"],
+        "rework" if item["transfer"]["rework_pending"] else metadata["processing_status"],
     )
     item["current_specification"] = (
         metadata["after_specification"]

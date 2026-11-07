@@ -13,6 +13,7 @@ import TeamInventory from '@/components/TeamInventory.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
 import DeliverySchedules from '@/components/DeliverySchedules.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
+import type { ProcessingRecord } from '@/types/materialProcessing'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
@@ -597,6 +598,129 @@ describe('team workspace material ledger', () => {
       },
     )
   })
+  describe('dispatch from processing records', () => {
+    const record = {
+      id: 7,
+      source_transfer_id: 10,
+      outputs: [
+        { id: 41, role: 'remaining' },
+        { id: 42, role: 'produced', quantity: 20, weight: 10 },
+        { id: 43, role: 'scrap' },
+      ],
+    } as ProcessingRecord
+    const result = (items = [source(42)]) => ({
+      items,
+      total: items.length,
+      page: 1,
+      page_size: 100,
+    })
+    const dispatch = (row = record) =>
+      wrapper.getComponent(TeamProcessingRecords).vm.$emit('dispatch', row)
+    beforeEach(() => {
+      vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 10,
+      })
+      vi.mocked(teamMaterialApi.stock).mockResolvedValue(result())
+    })
+    it('opens the existing dispatch form with only this record’s produced stock and fresh balances', async () => {
+      const router = await render('/team-workspaces/914?tab=processing&query=SERIAL42')
+      dispatch()
+      await flushPromises()
+      expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, {
+        source_ids: '42',
+        availability: 'available',
+        page_size: 100,
+      })
+      const dialog = wrapper.getComponent(MaterialStockActionDialog)
+      expect(dialog.props()).toMatchObject({
+        modelValue: true,
+        mode: 'dispatch',
+        sources: [source(42)],
+      })
+      expect(router.currentRoute.value.query).toEqual({ tab: 'processing', query: 'SERIAL42' })
+      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+      const reads = vi.mocked(teamMaterialApi.processingRecords).mock.calls.length
+      dialog.vm.$emit('saved', { items: [] })
+      await flushPromises()
+      await vi.waitFor(() =>
+        expect(vi.mocked(teamMaterialApi.processingRecords).mock.calls.length).toBeGreaterThan(
+          reads,
+        ),
+      )
+    })
+    it('supports historical registrations without output lots and uses their current balance', async () => {
+      vi.mocked(teamMaterialApi.stock).mockResolvedValue(result([source(10)]))
+      await render('/team-workspaces/914?tab=processing')
+      dispatch({ ...record, outputs: [] })
+      await flushPromises()
+      expect(teamMaterialApi.stock).toHaveBeenCalledWith(
+        914,
+        expect.objectContaining({ source_ids: '10' }),
+      )
+      expect(wrapper.getComponent(MaterialStockActionDialog).props('sources')).toEqual([source(10)])
+    })
+    it.each(['exhausted', 'quality-hold', 'rework', 'unprocessed'])(
+      'does not open dispatch for %s stock',
+      async (condition) => {
+        const item = source(42)
+        if (condition === 'exhausted') item.available_quantity = item.available_weight = 0
+        if (condition === 'quality-hold') item.inspection_hold_id = 3
+        if (condition === 'rework') item.transfer.rework_pending = true
+        if (condition === 'unprocessed') item.processing_state = 'unregistered'
+        vi.mocked(teamMaterialApi.stock).mockResolvedValue(result([item]))
+        await render('/team-workspaces/914?tab=processing')
+        dispatch()
+        await flushPromises()
+        expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
+        expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info')
+      },
+    )
+    it('prevents duplicate lookups and allows retry after a lookup fails', async () => {
+      let reject!: (error: Error) => void
+      vi.mocked(teamMaterialApi.stock).mockReturnValueOnce(
+        new Promise((_, fail) => {
+          reject = fail
+        }),
+      )
+      await render('/team-workspaces/914?tab=processing')
+      dispatch()
+      dispatch()
+      await flushPromises()
+      expect(teamMaterialApi.stock).toHaveBeenCalledTimes(1)
+      expect(wrapper.getComponent(TeamProcessingRecords).props('dispatchingRecordId')).toBe(7)
+      reject(new Error('网络中断'))
+      await flushPromises()
+      expect(
+        wrapper.getComponent(TeamProcessingRecords).props('dispatchingRecordId'),
+      ).toBeUndefined()
+      dispatch()
+      await flushPromises()
+      expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(true)
+    })
+    it.each(['tab', 'account', 'permission'])(
+      'ignores the pending dispatch lookup after changing %s',
+      async (change) => {
+        let finish!: (value: ReturnType<typeof result>) => void
+        vi.mocked(teamMaterialApi.stock).mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+        )
+        const router = await render('/team-workspaces/914?tab=processing')
+        dispatch()
+        if (change === 'tab') await router.push('/team-workspaces/914?tab=outgoing')
+        if (change === 'account') state.auth.currentUser.id = 99
+        if (change === 'permission') state.auth.currentUserError = '权限刷新失败'
+        await flushPromises()
+        finish(result())
+        await flushPromises()
+        expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
+      },
+    )
+  })
   it.each(['pending', 'receipts', 'outgoing', 'reallocations', 'losses'])(
     'exports %s with the same filters and team scope, closing on navigation',
     async (tab) => {
@@ -842,7 +966,7 @@ describe('team workspace material ledger', () => {
             .get('.warehouse-table')
             .findAll('.inventory-balance')
             .map((cell) => cell.text()),
-        ).toEqual(['70', '7'])
+        ).toEqual(['70'])
         expect(
           wrapper
             .get('.inventory-row-actions')

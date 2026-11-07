@@ -86,6 +86,8 @@ local reporting APIs, and upstream sample data is not included.
   https://ui.watermelon.sh/dashboard/capitalio-dashboard
 - Medesk: grouped bars, rounded ends, sparse dashed grid and compact legends for production
   comparisons. Quality percentages keep their material/inspection basis rather than being averaged.
+  The running overview also adapts its wide primary workspace / narrow action-list composition;
+  `FactoryTeamStatus` uses the shared table and buttons for actual stock states and filtered links.
   https://ui.watermelon.sh/dashboard/medesk-dashboard
 - Library: paired time series with light area fills and a clean delivery donut. Shared
   `useDashboardChart` supplies light/dark tooltips and chart primitives; `LedgerChart` provides

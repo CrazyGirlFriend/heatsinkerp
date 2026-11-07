@@ -32,21 +32,27 @@ const progress = computed<ProcessingState>(() =>
       ? 'complete'
       : 'registered',
 )
-const current = computed<ProcessingState>(() =>
-  isScrapType(props.materialType)
-    ? 'not_applicable'
-    : props.state ||
-      (registered.value
-        ? progress.value
-        : unregistered.value
-          ? 'unregistered'
-          : props.pending
-            ? 'pending'
-            : 'cleared'),
-)
+const current = computed<ProcessingState>(() => {
+  if (isScrapType(props.materialType)) return 'not_applicable'
+  if (props.state) return props.state
+  const reported = props.summary?.processing_state
+  if (reported && reported !== 'mixed' && reported !== 'not_required') return reported
+  if (props.summary?.rework_pending && (registered.value || unregistered.value)) return 'rework'
+  return registered.value
+    ? progress.value
+    : unregistered.value
+      ? 'unregistered'
+      : props.pending
+        ? 'pending'
+        : 'cleared'
+})
 const mixed = computed(
   () =>
-    current.value !== 'not_applicable' && !props.state && registered.value && unregistered.value,
+    current.value !== 'not_applicable' &&
+    current.value !== 'rework' &&
+    !props.state &&
+    registered.value &&
+    unregistered.value,
 )
 const label = computed(() =>
   mixed.value ? '部分批次有加工记录' : processingStateLabels[current.value],
@@ -59,9 +65,11 @@ const hint = computed(() =>
     ? weightWarning.value
       ? `同批累计差异超 ${materialWeightToleranceKg} kg`
       : ''
-    : props.summary
-      ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}${weightWarning.value ? `\n同批累计差异超 ${materialWeightToleranceKg} kg` : ''}`
-      : '',
+    : current.value === 'rework'
+      ? '本批物料待返工；返工完成后按加工结果更新。'
+      : props.summary
+        ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}${weightWarning.value ? `\n同批累计差异超 ${materialWeightToleranceKg} kg` : ''}`
+        : '',
 )
 </script>
 
@@ -86,11 +94,15 @@ const hint = computed(() =>
         v-else
         effect="light"
         :type="
-          mixed || current === 'partial' || current === 'unregistered' || current === 'pending'
-            ? 'warning'
-            : current === 'complete'
-              ? 'success'
-              : 'info'
+          current === 'rework'
+            ? 'danger'
+            : current === 'unregistered'
+              ? 'primary'
+              : mixed || current === 'partial' || current === 'pending'
+                ? 'warning'
+                : current === 'complete'
+                  ? 'success'
+                  : 'info'
         "
         >{{ label }}</ElTag
       >

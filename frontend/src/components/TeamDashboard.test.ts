@@ -44,7 +44,7 @@ it('separates complete, partial and legacy work, and drills into actual remainin
   const metrics = wrapper.findAllComponents(DashboardMetric)
   expect(metrics.map((item) => [item.props('label'), item.props('value')])).toEqual([
     ['在库流水号', 1],
-    ['未加工', 40],
+    ['待加工', 40],
     ['已加工', 60],
     ['待签收', 3],
   ])
@@ -53,6 +53,7 @@ it('separates complete, partial and legacy work, and drills into actual remainin
     ['unregistered', 40],
     ['partial', 20],
     ['complete', 60],
+    ['rework', 0],
     ['registered', 5],
   ])
   donut.vm.$emit('select', 'partial')
@@ -66,7 +67,7 @@ it('separates complete, partial and legacy work, and drills into actual remainin
   wrapper.findAllComponents(WatermelonSegmented)[0]!.vm.$emit('update:modelValue', 'weight')
   await flushPromises()
   expect(metrics[2]!.props()).toMatchObject({ value: 6, unit: 'kg' })
-  expect(donut.props('rows').map((row) => row.value)).toEqual([4, 2, 6, 0.5])
+  expect(donut.props('rows').map((row) => row.value)).toEqual([4, 2, 6, 0, 0.5])
 })
 it('uses a team-scoped quality period for both chart and detail, and shows failures', async () => {
   await render()

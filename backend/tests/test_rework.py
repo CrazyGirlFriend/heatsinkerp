@@ -89,9 +89,18 @@ def test_partial_rework_keeps_remaining_as_rework_not_initial_output(client, war
     assert pending["total"] == 1 and pending["items"][0]["on_hand_quantity"] == 6
     assert pending["items"][0]["processing_registered_quantity"] == 0
     assert pending["items"][0]["processing_unregistered_quantity"] == 6
+    assert pending["items"][0]["processing_state"] == "rework"
+    by_state = client.get(base(s, True) + "/inventory?processing_state=rework").json()
+    assert [row["group_id"] for row in by_state["items"]] == [pending["items"][0]["group_id"]]
+    assert (
+        client.get(base(s, True) + "/inventory?processing_state=unregistered").json()["total"] == 0
+    )
     assert work(client, s, remaining, worker, idempotency_key="wrong-initial").status_code == 422
     finish = work(client, s, remaining, worker, work_kind="rework", idempotency_key="finish-rework")
     assert finish.status_code == 201, finish.text
+    assert client.get(base(s, True) + "/inventory?processing_state=rework").json()["total"] == 0
+    completed = client.get(base(s, True) + "/inventory?processing_state=complete").json()
+    assert sum(row["on_hand_quantity"] for row in completed["items"]) == 10
     summary = client.get(base(s, True) + "/processing-records").json()["summary"]
     assert summary["completed_quantity"] == 10 and summary["rework_quantity"] == 10
     totals = client.get(base(s, True) + "/overview").json()["totals"]

@@ -28,6 +28,9 @@ export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, Sh
   delivery_schedule?: InventoryScheduleSummary
   rework_pending?: boolean
   rework_count?: number
+  rework_route_id?: number | null
+  rework_round?: number | null
+  rework_route_ready?: boolean | null
   inspection_hold_count?: number
   batch_count: number
   current_batch_count: number
@@ -161,11 +164,15 @@ export const warehouseColumns = [
   },
   {
     key: 'process_route',
-    label: '当前工艺工序',
+    label: '工艺工序',
     width: 180,
     defaultVisible: false,
     format: (row: TeamInventoryRow) =>
-      row.process_route ? `${row.process_route.sequence_no} · ${row.process_route.step_name}` : '—',
+      row.rework_route_id && row.rework_route_ready === false
+        ? '待制定返工工艺'
+        : row.process_route
+          ? `${row.process_route.sequence_no} · ${row.process_route.step_name}`
+          : '—',
   },
   {
     key: 'material_type',
@@ -176,17 +183,21 @@ export const warehouseColumns = [
   },
   {
     key: 'rework',
-    label: '返工属性',
+    label: '返工情况',
     width: 130,
     defaultVisible: false,
     format: (row: TeamInventoryRow) =>
-      row.process_route?.route_kind === 'rework'
-        ? '返工中'
-        : row.rework_pending
-          ? '待返工'
+      isScrapType(row.material_type)
+        ? '—'
+        : row.rework_route_id || row.process_route?.route_kind === 'rework' || row.rework_pending
+          ? row.rework_round
+            ? `第 ${row.rework_round} 次返工`
+            : row.rework_pending
+              ? `第 ${(row.rework_count || 0) + 1} 次返工`
+              : '返工工艺'
           : row.rework_count
             ? `已返工 ${row.rework_count} 次`
-            : '—',
+            : '正常加工',
   },
   {
     key: 'processing_role',
@@ -302,7 +313,7 @@ export const warehouseColumns = [
     key: 'on_hand_weight',
     label: '重量（kg）',
     width: 170,
-    defaultVisible: true,
+    defaultVisible: false,
     numeric: true,
     format: (row: TeamInventoryRow) => amount(row.on_hand_weight),
   },
@@ -331,6 +342,7 @@ export const warehousePreviousDefaults = warehouseColumns.map((column) => ({
   visible:
     column.defaultVisible ||
     [
+      'on_hand_weight',
       'process_route',
       'rework',
       'processing_role',

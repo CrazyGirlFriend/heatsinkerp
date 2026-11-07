@@ -39,6 +39,7 @@ const props = defineProps<{
   canWrite?: boolean
   fullscreen?: boolean
   refreshKey?: unknown
+  dispatchingRecordId?: number
 }>()
 const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
 const {
@@ -47,7 +48,7 @@ const {
   open: viewRoute,
   close: closeRoute,
 } = useProcessRouteView()
-const emit = defineEmits<{ register: []; changed: [] }>()
+const emit = defineEmits<{ register: []; changed: []; dispatch: [record: ProcessingRecord] }>()
 const route = useRoute(),
   router = useRouter()
 const text = (key: string) => (typeof route.query[key] === 'string' ? String(route.query[key]) : '')
@@ -657,9 +658,20 @@ onBeforeUnmount(() => {
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />
-      <ElTableColumn label="操作" width="140" fixed="right" align="center"
+      <ElTableColumn label="操作" width="180" fixed="right" align="center"
         ><template #default="{ row }"
-          ><ElButton link type="primary" @click="detail(row)">记录</ElButton></template
+          ><ElButton link type="primary" @click="detail(row)">记录</ElButton>
+          <ElButton
+            v-if="canWrite"
+            link
+            type="primary"
+            :loading="dispatchingRecordId === row.id"
+            :disabled="
+              Boolean(dispatchingRecordId) || !(row.on_hand_quantity > 0 || row.on_hand_weight > 0)
+            "
+            @click="emit('dispatch', row as ProcessingRecord)"
+            >转出</ElButton
+          ></template
         ></ElTableColumn
       >
     </WorkspaceTable>

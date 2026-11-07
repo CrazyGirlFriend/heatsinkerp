@@ -80,6 +80,7 @@ class WarehouseInventoryFilters(SerialFilters):
             "registered",
             "partial",
             "complete",
+            "rework",
             "mixed",
             "pending",
             "cleared",
@@ -140,6 +141,7 @@ def origin_columns(include_team=False):
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
         "process_route_id": mt.process_route_id,
+        "rework_route_id": mt.rework_route_id,
         "process_step_index": mt.process_step_index,
         "process_step_complete": mt.process_step_complete,
         "material_name": func.coalesce(mt.material_name, ""),
@@ -278,6 +280,10 @@ def processing_state_column(table, team_id):
     return case(
         (~select(Team.id).where(Team.id == team, Team.id.in_(production)).exists(), "not_required"),
         (c.material_type.in_(SCRAP_MATERIAL_TYPES), "not_applicable"),
+        (
+            c.rework_pending.is_(True) & or_(c.on_hand_quantity > 0, c.on_hand_weight > 0),
+            "rework",
+        ),
         (
             and_(
                 c.processing_registered_batch_count > 0, c.processing_unregistered_batch_count > 0
@@ -517,7 +523,9 @@ def list_inventory(db, team_id, filters):
     from .models import ProcessRoute
     from .process_routes import route_document
 
-    route_ids = {row["process_route_id"] for row in rows} - {None}
+    route_ids = {row[key] for row in rows for key in ("process_route_id", "rework_route_id")} - {
+        None
+    }
     routes = (
         {
             route.id: route
@@ -551,6 +559,9 @@ def list_inventory(db, team_id, filters):
     for row in rows:
         item = dict(row)
         item.pop("matches_date")
+        rework_route = routes.get(item["rework_route_id"])
+        item["rework_round"] = rework_route.rework_round if rework_route else None
+        item["rework_route_ready"] = rework_route.state == "published" if rework_route else None
         item["process_route"] = (
             route_document(
                 SimpleNamespace(

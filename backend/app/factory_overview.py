@@ -28,6 +28,7 @@ from .models import (
     utcnow,
 )
 from .record_filters import urgent_serials
+from .team_dashboard import stock_processing_totals
 
 router = APIRouter(prefix="/api/factory-overview", dependencies=[Depends(get_current_user)])
 mt = MaterialTransfer
@@ -236,7 +237,9 @@ def factory_overview(db: Session, days: int = 30) -> dict:
                 func.sum(case((serial_stock.c.serial_no.in_(urgent_serials()), 1), else_=0)).label(
                     "urgent_serial_count"
                 ),
-            ).group_by(serial_stock.c.team_id)
+            )
+            .where(func.trim(func.coalesce(serial_stock.c.serial_no, "")) != "")
+            .group_by(serial_stock.c.team_id)
         ).mappings()
     }
     batch_key = mt.batch_no
@@ -257,6 +260,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
             .group_by(mt.next_team_id)
         ).mappings()
     }
+    processing = stock_processing_totals(db, select(stock).where(in_scope).subquery())
     zero_balance = dict.fromkeys(BALANCE_KEYS, 0)
     teams = [
         {
@@ -264,6 +268,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
             "code": code,
             "name": name,
             "active": configured[code].active if code in configured else False,
+            "processing": processing.get(configured[code].id, []) if code in configured else None,
             "serial_count": serial_counts.get(configured[code].id, {}).get("serial_count", 0)
             if code in configured
             else None,
@@ -419,6 +424,55 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         for key, values in movement.items()
     }
     age = stock_age_table()
+    # Keep the actionable rows bounded; these are current states, independent
+    # of the period used for historical movement and delivery performance.
+    report["stock_attention"] = [
+        {
+            **dict(row),
+            "weight": float(row["weight"] or 0),
+            "received_at": row["received_at"].replace(tzinfo=timezone.utc).isoformat(),
+        }
+        for row in db.execute(
+            select(
+                stock.c.transfer_id,
+                stock.c.batch_no,
+                stock.c.serial_no,
+                stock.c.team_id,
+                Team.name.label("team_name"),
+                stock.c.on_hand_quantity.label("quantity"),
+                stock.c.on_hand_weight.label("weight"),
+                age.c.started_at.label("received_at"),
+            )
+            .join(age, age.c.transfer_id == stock.c.transfer_id)
+            .join(Team, Team.id == stock.c.team_id)
+            .where(in_scope, remaining, age.c.started_at.is_not(None))
+            .order_by(age.c.started_at, stock.c.transfer_id)
+            .limit(6)
+        ).mappings()
+    ]
+    report["pending_attention"] = [
+        {
+            **dict(row),
+            "weight": float(row["weight"] or 0),
+            "created_at": row["created_at"].replace(tzinfo=timezone.utc).isoformat(),
+        }
+        for row in db.execute(
+            select(
+                mt.id,
+                mt.batch_no,
+                mt.serial_no,
+                mt.quantity,
+                mt.weight,
+                mt.source_team_name,
+                mt.next_team_name,
+                mt.external_destination,
+                mt.created_at,
+            )
+            .where(pending)
+            .order_by(mt.created_at, mt.id)
+            .limit(6)
+        ).mappings()
+    ]
     age_bucket = case(
         *[(condition, key) for key, condition in age_conditions(age.c.started_at, now).items()],
         else_="unknown",

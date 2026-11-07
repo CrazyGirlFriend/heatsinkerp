@@ -223,6 +223,8 @@ def test_planned_repeated_local_task_is_not_rework(client, warehouse):
     lot = intake(client, s, weight=10).json()
     assert bind(client, route, lot).status_code == 200
     current = receive(client, s, lot)
+    inventory = client.get(base(s, True) + "/inventory").json()["items"]
+    assert inventory[0]["process_route"]["sequence_no"] == 1
     result = work(client, s, current)
     assert result.status_code == 201, result.text
     child = result.json()["outputs"][0]
@@ -243,6 +245,10 @@ def test_planned_repeated_local_task_is_not_rework(client, warehouse):
     result = work(client, s, child)
     assert result.status_code == 201, result.text
     assert result.json()["work_kind"] == "initial" and result.json()["process_step_index"] == 2
+    inventory = client.get(base(s, True) + "/inventory").json()["items"]
+    assert inventory[0]["process_route"]["sequence_no"] == 2
+    assert inventory[0]["process_route"]["step_name"] == "二次轧板"
+    assert not inventory[0]["rework_pending"]
 
 
 def test_legacy_warehouse_stock_requires_route_before_first_transfer(client, warehouse):

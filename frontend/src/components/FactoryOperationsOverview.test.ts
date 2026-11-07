@@ -4,7 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import FactoryOperationsOverview from './FactoryOperationsOverview.vue'
-import LedgerChart from './LedgerChart.vue'
+import FactoryTeamStatus from './FactoryTeamStatus.vue'
 import TeamProductionChart from './TeamProductionChart.vue'
 import AppSelect from './AppSelect.vue'
 import DashboardMetric from './DashboardMetric.vue'
@@ -34,6 +34,31 @@ beforeEach(() => {
   vi.spyOn(factoryOverviewApi, 'get').mockResolvedValue({
     ...factoryFixture(),
     stock_age: [{ key: 'ge7', label: '7天及以上', quantity: 12, weight: 2 }],
+    stock_attention: [
+      {
+        transfer_id: 11,
+        batch_no: 'CK-11',
+        serial_no: '691236-51',
+        team_id: 2,
+        team_name: '轧制',
+        quantity: 12,
+        weight: 2,
+        received_at: '2026-09-01T01:02:00Z',
+      },
+    ],
+    pending_attention: [
+      {
+        id: 12,
+        batch_no: 'CK-12',
+        serial_no: '691236-52',
+        quantity: 8,
+        weight: 1,
+        source_team_name: '库房',
+        next_team_name: '轧制',
+        external_destination: null,
+        created_at: '2026-09-11T01:02:00Z',
+      },
+    ],
   })
   vi.spyOn(productionScheduleApi, 'overview').mockResolvedValue(scheduleFixture())
   vi.spyOn(factoryPerformanceApi, 'get').mockResolvedValue({
@@ -81,6 +106,8 @@ async function render() {
       { path: '/', component: { template: '<div />' } },
       { path: '/material-trace', component: { template: '<div />' } },
       { path: '/team-workspaces/:id', component: { template: '<div />' } },
+      { path: '/transfer-batches', component: { template: '<div />' } },
+      { path: '/production-schedules', component: { template: '<div />' } },
     ],
   })
   await router.push('/')
@@ -110,7 +137,7 @@ it('shows each team’s production independently and filters or opens the select
       .map((card) => card.props('value'))
       .slice(2),
   ).toEqual([130, 80])
-  await click('加工')
+  await click('加工完成')
   const chart = wrapper.getComponent(TeamProductionChart)
   expect(chart.props('rows').map((row) => [row.team_name, row.completed_quantity])).toEqual([
     ['轧制', 610],
@@ -136,14 +163,45 @@ it('shows each team’s production independently and filters or opens the select
   expect(factoryPerformanceApi.get).toHaveBeenCalledWith(
     expect.objectContaining({ include_activity: true }),
   )
-  wrapper
-    .findAllComponents(LedgerChart)
-    .find((chart) => chart.props('label') === '各班组当前库存与待签收量')!
-    .vm.$emit('select', { dataIndex: 1, seriesIndex: 1 })
+})
+it('opens physical stock with its processing state, pending receipt and specific follow-up records', async () => {
+  const router = await render()
+  const table = wrapper.getComponent(FactoryTeamStatus)
+  const team = table.props('teams')[1]!
+  table.vm.$emit('open', team, 'partial')
   await flushPromises()
-  expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
-  await click('查看长期滞留物料')
-  expect(router.currentRoute.value.query).toEqual({ availability: 'current', stock_age_min: '7' })
+  expect(router.currentRoute.value.path).toBe(`/team-workspaces/${team.id}`)
+  expect(router.currentRoute.value.query).toEqual({
+    tab: 'stock',
+    availability: 'current',
+    processing_state: 'partial',
+  })
+  table.vm.$emit('open', team, 'pending')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toEqual({ tab: 'pending', availability: 'current' })
+  table.vm.$emit('open', { ...team, active: false }, 'complete')
+  await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/material-trace')
+  expect(router.currentRoute.value.query).toEqual({
+    inventory_team_id: String(team.id),
+    availability: 'current',
+    processing_state: 'complete',
+  })
+  await click('滞留最长')
+  expect(wrapper.get('.operations-attention').text()).toContain('滞留 11天')
+  expect(wrapper.get('.operations-attention').text()).toContain('12 件 · 2 kg')
+  await wrapper.get('.operations-attention-item').trigger('click')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toEqual({
+    availability: 'current',
+    inventory_team_id: '2',
+    serial_no: '691236-51',
+  })
+  await click('待签收 2')
+  expect(wrapper.get('.operations-attention').text()).toContain('库房 → 轧制')
+  await wrapper.get('.operations-attention-item').trigger('click')
+  await flushPromises()
+  expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?batch_no=CK-12')
 })
 it('shows unavailable and unassessed rates as missing, retains successful data during refresh failure', async () => {
   vi.mocked(productionScheduleApi.overview).mockResolvedValueOnce({
@@ -171,6 +229,31 @@ it('shows unavailable and unassessed rates as missing, retains successful data d
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   await vi.advanceTimersByTimeAsync(60000)
   expect(factoryOverviewApi.get).toHaveBeenCalledTimes(count)
+})
+it('separates warehouse work and preserves partial or unclassified stock instead of treating it as complete', async () => {
+  const data = factoryFixture()
+  data.teams[0]!.processing = [{ state: 'not_required', quantity: 100, weight: 10, batch_count: 1 }]
+  data.teams[1]!.processing = [
+    { state: 'unregistered', quantity: 40, weight: 4, batch_count: 1 },
+    { state: 'partial', quantity: 20, weight: 2, batch_count: 1 },
+    { state: 'complete', quantity: 60, weight: 6, batch_count: 2 },
+    { state: 'registered', quantity: 5, weight: 0.5, batch_count: 1 },
+  ]
+  vi.mocked(factoryOverviewApi.get).mockResolvedValueOnce(data)
+  await render()
+  const rows = wrapper.findAll('.team-status tbody tr')
+  expect(rows[0]!.text()).toContain('备料与转出')
+  expect(rows[0]!.find('.team-state').exists()).toBe(false)
+  expect(rows[1]!.findAll('.team-state').map((cell) => cell.text())).toEqual([
+    '40',
+    '20',
+    '60',
+    '0',
+  ])
+  expect(rows[2]!.findAll('.team-state').map((cell) => cell.text())).toEqual(['—', '—', '—', '—'])
+  expect(rows[2]!.get('.team-state button').attributes('disabled')).toBeDefined()
+  await wrapper.setProps({ metric: 'weight' })
+  expect(rows[1]!.findAll('.team-state').map((cell) => cell.text())).toEqual(['4', '2', '6', '0'])
 })
 it('does not restore stale results when the period changes during a request', async () => {
   let resolveOld!: (value: ScheduleOverview) => void

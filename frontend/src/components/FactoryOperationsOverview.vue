@@ -11,30 +11,23 @@ import {
   IconTarget,
   IconRefresh,
   IconClock,
+  IconCheck,
 } from '@tabler/icons-vue'
-import type { EChartsCoreOption } from 'echarts/core'
 import AppAlert from './AppAlert.vue'
 import AppButton from './AppButton.vue'
 import AppSelect from './AppSelect.vue'
 import DashboardCard from './DashboardCard.vue'
 import DashboardToolbar from './DashboardToolbar.vue'
 import DashboardMetric from './DashboardMetric.vue'
-import DashboardDistribution from './DashboardDistribution.vue'
-import LedgerChart from './LedgerChart.vue'
+import FactoryTeamStatus from './FactoryTeamStatus.vue'
 import TeamProductionChart from './TeamProductionChart.vue'
 import StatePanel from './StatePanel.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
-import {
-  useDashboardChart,
-  dashboardBar,
-  dashboardLine,
-  dashboardColors,
-} from '@/composables/useDashboardChart'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { factoryToday, formatAmount as number, formatDateTime } from '@/utils/format'
-import type { FactoryOverview } from '@/types/factoryOverview'
+import type { FactoryOverview, FactoryTeam } from '@/types/factoryOverview'
 import type { FactoryPerformance } from '@/types/factoryPerformance'
 import type { ProductionSchedule, ScheduleOverview } from '@/types/productionSchedule'
 import type { Metric } from '@/types/materialAnalytics'
@@ -48,7 +41,8 @@ const delivery = ref<ScheduleOverview | null>(null)
 const loading = ref(false),
   errors = ref<string[]>([]),
   updated = ref('')
-const trendView = ref('movement')
+const trendView = ref('stock')
+const attentionView = ref('delivery')
 const productionTeamId = ref<number>()
 const productionTeams = computed(() => performance.value?.activity?.teams || [])
 const visibleProductionTeams = computed(() =>
@@ -57,32 +51,12 @@ const visibleProductionTeams = computed(() =>
     : productionTeams.value,
 )
 let generation = 0
-const { palette, tooltip, plot } = useDashboardChart()
-const colors = [
-  dashboardColors.primary,
-  dashboardColors.secondary,
-  dashboardColors.warning,
-  dashboardColors.danger,
-]
 const unit = computed(() => (props.metric === 'weight' ? 'kg' : '件'))
 const period = computed(() => `近 ${props.days} 天`)
 const periodOptions = computed(() =>
   [...new Set([7, 30, 90, props.days])]
     .sort((a, b) => a - b)
     .map((value) => ({ value: String(value), label: `${value} 天` })),
-)
-const ageDistribution = computed(() =>
-  (stock.value?.stock_age || []).map((row, i) => ({
-    key: row.key,
-    label: row.label || row.key,
-    value: row[props.metric],
-    color: [
-      dashboardColors.primary,
-      dashboardColors.secondary,
-      dashboardColors.warning,
-      dashboardColors.danger,
-    ][i % 4]!,
-  })),
 )
 const teamRows = computed(() => stock.value?.teams.filter((team) => team.id != null) || [])
 const stockWarning = computed(() => {
@@ -144,13 +118,18 @@ onBeforeUnmount(() => {
 function inventory(query: Record<string, string> = {}) {
   void router.push({ path: '/material-trace', query: { availability: 'current', ...query } })
 }
-function teamInventory(index: number, pending = false) {
-  const team = teamRows.value[index]
-  if (team?.id)
-    void router.push({
-      path: `/team-workspaces/${team.id}`,
-      query: { tab: pending ? 'pending' : 'stock' },
-    })
+function teamInventory(team: FactoryTeam, state?: string) {
+  if (!team.id) return
+  const filters: Record<string, string> =
+    state && state !== 'pending' ? { processing_state: state } : {}
+  if (!team.active) {
+    inventory({ inventory_team_id: String(team.id), ...filters })
+    return
+  }
+  void router.push({
+    path: `/team-workspaces/${team.id}`,
+    query: { tab: state === 'pending' ? 'pending' : 'stock', availability: 'current', ...filters },
+  })
 }
 function openProduction(teamId: number) {
   void router.push({
@@ -163,15 +142,6 @@ function openProduction(teamId: number) {
       date_to: factoryToday(),
     },
   })
-}
-function stockAge(key: string) {
-  const ranges: Record<string, Record<string, string>> = {
-    lt1: { stock_age_max: '1' },
-    '1_3': { stock_age_min: '1', stock_age_max: '3' },
-    '3_7': { stock_age_min: '3', stock_age_max: '7' },
-    ge7: { stock_age_min: '7' },
-  }
-  inventory(ranges[key] || {})
 }
 function attentionDue(row: ProductionSchedule) {
   return (
@@ -243,72 +213,89 @@ const metrics = computed(() => [
     open: () => schedule(),
   },
 ])
-const stockOption = computed<EChartsCoreOption>(() =>
-  plot(
-    teamRows.value.map((team) => team.name),
-    [
-      dashboardBar(
-        '在库',
-        teamRows.value.map((team) => team.balance?.[`on_hand_${props.metric}`] ?? null),
-        colors[0]!,
-      ),
-      dashboardBar(
-        '待签收',
-        teamRows.value.map((team) => team.pending_incoming?.[props.metric] ?? 0),
-        colors[2]!,
-      ),
-    ],
-    unit.value,
-    true,
-  ),
-)
-const deliveryValues = computed(() =>
-  delivery.value
-    ? [
-        delivery.value.period.completed,
-        delivery.value.period.completed_late,
-        delivery.value.period.overdue,
-      ]
-    : [],
-)
-const deliveryLabels = ['按时完成', '逾期完成', '逾期未交完']
-const deliveryColors = [dashboardColors.success, colors[2], colors[3]]
-const deliveryOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { ...tooltip.value, trigger: 'item', formatter: '{b}：{c} 个节点' },
-  series: [
-    {
-      type: 'pie',
-      radius: ['74%', '94%'],
-      center: ['50%', '50%'],
-      label: { show: false },
-      emphasis: { scaleSize: 4 },
-      itemStyle: { borderRadius: 4, borderWidth: 2, borderColor: palette.value?.surface || '#fff' },
-      data: deliveryValues.value.map((value, i) => ({
-        value,
-        name: deliveryLabels[i],
-        itemStyle: { color: deliveryColors[i] },
-      })),
-    },
-  ],
-}))
-const trendOption = computed<EChartsCoreOption>(() => {
-  const labels = stock.value?.trend.map((row) => row.key.slice(5)) || []
-  const values = [
-    stock.value?.trend.map((row) => row.inbound[props.metric]) || [],
-    stock.value?.trend.map((row) => row.outbound[props.metric] + row.shipment[props.metric]) || [],
-  ]
-  return plot(
-    labels,
-    values.map((data, i) => dashboardLine(['入库', '对外出库'][i]!, data, colors[i]!, i === 0)),
-    unit.value,
+function elapsed(time: string | null | undefined) {
+  if (!time) return '时间未填写'
+  const hours = Math.max(
+    0,
+    dayjs(stock.value?.as_of || delivery.value?.as_of).diff(dayjs(time), 'hour'),
   )
+  return hours >= 24
+    ? `${Math.floor(hours / 24)}天${hours % 24 ? `${hours % 24}小时` : ''}`
+    : hours
+      ? `${hours}小时`
+      : '不足1小时'
+}
+const attentionOptions = computed(() => [
+  {
+    value: 'delivery',
+    label: `交期${delivery.value ? ` ${delivery.value.overdue_count + delivery.value.today_count}` : ''}`,
+  },
+  { value: 'age', label: '滞留最长' },
+  { value: 'pending', label: `待签收${stock.value ? ` ${stock.value.pending.batches}` : ''}` },
+])
+const attentionRows = computed(() => {
+  if (attentionView.value === 'delivery')
+    return (delivery.value?.attention || []).map((row) => ({
+      id: String(row.id),
+      serial: row.serial_no,
+      team: row.team_name,
+      time: attentionDue(row),
+      tone: row.status === 'overdue' ? 'danger' : 'warning',
+      badge: row.status === 'overdue' ? `逾期 ${elapsed(attentionDue(row))}` : '今日到期',
+      amount:
+        row.target_quantity != null
+          ? `待交 ${number(Math.max(0, row.target_quantity - row.dispatched_quantity))} 件`
+          : row.target_weight != null
+            ? `待交 ${number(Math.max(0, row.target_weight - row.dispatched_weight))} kg`
+            : '数量待填写',
+      open: () => schedule(row),
+    }))
+  if (attentionView.value === 'age')
+    return (stock.value?.stock_attention || []).map((row) => ({
+      id: row.batch_no,
+      serial: row.serial_no || row.batch_no,
+      team: row.team_name,
+      time: row.received_at,
+      tone: 'neutral',
+      badge: `滞留 ${elapsed(row.received_at)}`,
+      amount: `${number(row.quantity)} 件 · ${number(row.weight)} kg`,
+      open: () =>
+        inventory({
+          inventory_team_id: String(row.team_id),
+          ...(row.serial_no ? { serial_no: row.serial_no } : {}),
+        }),
+    }))
+  return (stock.value?.pending_attention || []).map((row) => ({
+    id: row.batch_no,
+    serial: row.serial_no || row.batch_no,
+    team: `${row.source_team_name || '外部'} → ${row.next_team_name || row.external_destination || '待确认'}`,
+    time: row.created_at,
+    tone: 'warning',
+    badge: `等待 ${elapsed(row.created_at)}`,
+    amount: `${number(row.quantity)} 件 · ${number(row.weight)} kg`,
+    open: () => router.push({ path: '/transfer-batches', query: { batch_no: row.batch_no } }),
+  }))
 })
+const attentionReady = computed(() =>
+  attentionView.value === 'delivery' ? !!delivery.value : !!stock.value,
+)
+function allAttention() {
+  if (attentionView.value === 'delivery') schedule()
+  else if (attentionView.value === 'age') inventory()
+  else void router.push('/transfer-batches?status=pending')
+}
 const qcTeam = computed(() => performance.value?.teams.find((team) => team.code === 'FACTORY-QC'))
 function quality() {
   if (qcTeam.value)
     void router.push({
       path: `/team-workspaces/${qcTeam.value.id}`,
-      query: { tab: 'quality-feedback' },
+      query: {
+        tab: 'quality-feedback',
+        date_from: dayjs(factoryToday())
+          .subtract(props.days - 1, 'day')
+          .format('YYYY-MM-DD'),
+        date_to: factoryToday(),
+      },
     })
   else emit('preference', { view: 'quality' })
 }
@@ -356,469 +343,402 @@ function quality() {
     </div>
     <div class="operations-main">
       <DashboardCard
-        :title="trendView === 'movement' ? '物料收发趋势' : '各班组加工完成量'"
-        :subtitle="`${period} · ${trendView === 'production' && metric === 'quantity' ? '件次' : unit}`"
+        class="operations-teams"
+        :title="trendView === 'stock' ? '各班组当前情况' : '各班组加工完成量'"
+        :subtitle="
+          trendView === 'stock'
+            ? `实际在库 · ${unit}`
+            : `${period} · ${metric === 'quantity' ? '件次' : unit}`
+        "
         :help="
-          trendView === 'movement'
-            ? '入库仅统计库房登记，对外出库包含库房对外出库与检验发货；内部交接不计为新增产量。'
-            : '各班组分别统计实际加工登记，正常加工与返工分开。点击柱条查看该班组加工记录。'
+          trendView === 'stock'
+            ? '在库只计算本班实际剩余物料；已转出待签收单独显示。加工状态与库存明细一致，废料和历史进度未标明的物料不算已完成。库房只负责备料与转出。'
+            : '按实际加工日期，各班组分别统计正常加工和返工。不同工序的件次不能相加作为成品产量。'
         "
       >
-        <template #actions>
+        <template #actions
+          ><WatermelonSegmented
+            v-model="trendView"
+            label="班组概况内容"
+            :options="[
+              { value: 'stock', label: '当前物料' },
+              { value: 'production', label: '加工完成' },
+            ]"
+        /></template>
+        <FactoryTeamStatus
+          v-if="trendView === 'stock' && stock"
+          :teams="teamRows"
+          :metric="metric"
+          :motion="motion"
+          @open="teamInventory"
+        />
+        <div
+          v-else-if="trendView === 'production' && performance?.activity"
+          class="operations-production"
+        >
           <AppSelect
-            v-if="trendView === 'production'"
             v-model="productionTeamId"
             class="operations-team-select"
             aria-label="概览加工班组"
             placeholder="全部班组"
             clearable
-          >
-            <ElOption
+            ><ElOption
               v-for="team in productionTeams"
               :key="team.team_id"
               :label="team.team_name"
               :value="team.team_id"
-            />
-          </AppSelect>
-          <WatermelonSegmented
-            v-model="trendView"
-            label="趋势内容"
-            :options="[
-              { value: 'movement', label: '收发' },
-              { value: 'production', label: '加工' },
-            ]"
-        /></template>
-        <div
-          class="operations-trend"
-          :class="{ 'operations-trend--teams': trendView === 'production' }"
-        >
+          /></AppSelect>
           <TeamProductionChart
-            v-if="trendView === 'production' && performance?.activity"
             :rows="visibleProductionTeams"
             :metric="metric"
             :motion="motion"
             @select="openProduction"
           />
-          <LedgerChart
-            v-else-if="trendView === 'movement' && stock"
-            :option="trendOption"
-            smooth-update
-            :enter-duration="800"
-            :update-duration="400"
-            :motion="motion"
-            label="每日入库与对外出库"
-          /><StatePanel
-            v-else
-            :state="loading ? 'loading' : 'error'"
-            title="趋势数据未读取"
-            @retry="load()"
-          />
         </div>
-        <template v-if="trendView === 'movement' && stock" #footer
-          ><div class="operations-trend-summary">
-            <span
-              >入库 <strong>{{ number(stock.period_totals.inbound[metric]) }}</strong>
-              {{ unit }}</span
-            ><span
-              >对外出库
-              <strong>{{
-                number(stock.period_totals.outbound[metric] + stock.period_totals.shipment[metric])
-              }}</strong>
-              {{ unit }}</span
-            >
-          </div>
-        </template>
-      </DashboardCard>
-      <DashboardCard
-        title="交期与待办"
-        :subtitle="`${period}履约 · 当前待处理`"
-        help="圆环统计所选周期内已完成或已逾期的交接节点；待办保留所有逾期和今日待交节点，按紧急程度显示前六项。"
-      >
-        <template #actions
-          ><AppButton link @click="schedule()">生产排期<IconArrowRight :size="15" /></AppButton
-        ></template>
-        <template v-if="delivery">
-          <div class="operations-delivery">
-            <div class="operations-donut">
-              <LedgerChart
-                :option="deliveryOption"
-                smooth-update
-                :enter-duration="800"
-                :update-duration="400"
-                label="交期履约构成"
-                :motion="motion"
-              />
-              <div>
-                <strong>{{ number(delivery.assessed_count) }}</strong
-                ><span>已考核节点</span>
-              </div>
-            </div>
-            <div class="operations-delivery-legend">
-              <div v-for="(label, i) in deliveryLabels" :key="label">
-                <i :style="{ background: deliveryColors[i] }" /><span>{{ label }}</span
-                ><strong>{{ number(deliveryValues[i]) }}</strong>
-              </div>
-            </div>
-          </div>
-          <div class="operations-attention" aria-label="交期待办">
-            <button
-              v-for="row in delivery.attention"
-              :key="row.id"
-              type="button"
-              @click="schedule(row)"
-            >
-              <span class="operations-due-dot" :class="row.status" /><strong>{{
-                row.serial_no
-              }}</strong
-              ><span class="operations-attention-team">{{ row.team_name }}</span
-              ><time>{{ formatDateTime(attentionDue(row)).slice(5) }}</time
-              ><IconArrowRight :size="14" />
-            </button>
-            <p v-if="!delivery.attention.length" class="operations-empty">
-              当前没有逾期或今日待交节点
-            </p>
-          </div>
-        </template>
         <StatePanel
           v-else
           :state="loading ? 'loading' : 'error'"
-          title="交期数据未读取"
+          title="班组数据未读取"
           @retry="load()"
         />
+        <template #footer
+          ><div class="operations-team-footer">
+            <span
+              ><i class="operations-live-dot" />{{ teamRows.length }} 个班组<span
+                class="operations-footer-note"
+              >
+                · 点击数量查看明细</span
+              ></span
+            >
+            <AppButton
+              link
+              @click="
+                trendView === 'stock' ? inventory() : emit('preference', { view: 'production' })
+              "
+              >{{ trendView === 'stock' ? '库存明细' : '生产完成分析' }}<IconArrowRight :size="15"
+            /></AppButton></div
+        ></template>
+      </DashboardCard>
+      <DashboardCard class="operations-inbox" title="需要跟进" subtitle="当前待办">
+        <template #actions
+          ><span class="operations-inbox-icon"><IconClock :size="19" /></span
+        ></template>
+        <WatermelonSegmented v-model="attentionView" label="待办类型" :options="attentionOptions" />
+        <div v-if="attentionReady" class="operations-attention" aria-label="当前待办清单">
+          <AppButton
+            v-for="row in attentionRows"
+            :key="row.id"
+            link
+            class="operations-attention-item"
+            :aria-label="`查看${row.serial} ${row.team} ${row.badge}`"
+            :title="formatDateTime(row.time)"
+            @click="row.open()"
+          >
+            <span class="operations-attention-content">
+              <span class="operations-attention-top"
+                ><strong>{{ row.serial }}</strong
+                ><span class="operations-attention-badge" :class="row.tone">{{
+                  row.badge
+                }}</span></span
+              >
+              <span class="operations-attention-bottom"
+                ><span>{{ row.team }}</span
+                ><span>{{ row.amount }}</span
+                ><IconArrowRight :size="14"
+              /></span>
+            </span>
+          </AppButton>
+          <div v-if="!attentionRows.length" class="operations-empty">
+            <IconCheck :size="25" /><strong>{{
+              attentionView === 'delivery'
+                ? '当前无逾期或今日待交'
+                : attentionView === 'pending'
+                  ? '当前没有待签收物料'
+                  : '当前没有在库物料'
+            }}</strong>
+          </div>
+        </div>
+        <StatePanel
+          v-else
+          :state="loading ? 'loading' : 'error'"
+          title="待办数据未读取"
+          @retry="load()"
+        />
+        <template #footer
+          ><AppButton link class="operations-attention-all" @click="allAttention"
+            >{{
+              attentionView === 'delivery'
+                ? '查看全部交期'
+                : attentionView === 'age'
+                  ? '查看库存明细'
+                  : '查看全部待签收'
+            }}<IconArrowRight :size="15" /></AppButton
+        ></template>
       </DashboardCard>
     </div>
-    <div class="operations-lower">
-      <DashboardCard
-        title="物料在哪些班组"
-        :subtitle="`当前库存 · ${unit}`"
-        help="显示各班组未转出的物料与待签收量。点击柱条进入对应班组；停用班组的已有库存仍保留。"
-      >
-        <template #actions
-          ><AppButton link @click="inventory()">库存明细<IconArrowRight :size="15" /></AppButton
-        ></template>
-        <div class="operations-stock-chart">
-          <LedgerChart
-            v-if="stock"
-            :option="stockOption"
-            smooth-update
-            :enter-duration="800"
-            :update-duration="400"
-            :motion="motion"
-            label="各班组当前库存与待签收量"
-            :empty="!teamRows.length"
-            @select="teamInventory($event.dataIndex, $event.seriesIndex === 1)"
-          /><StatePanel
-            v-else
-            :state="loading ? 'loading' : 'error'"
-            title="库存数据未读取"
-            @retry="load()"
-          />
-        </div>
-      </DashboardCard>
-      <DashboardCard
-        title="库存滞留"
-        :subtitle="`从本班组接收起算 · ${unit}`"
-        help="从本班组接收物料的时刻起算，加工、拆批和同班组转投不重新计时。"
-      >
-        <template #actions><IconClock :size="18" class="operations-muted" /></template>
-        <DashboardDistribution
-          v-if="stock"
-          :rows="ageDistribution"
-          :unit="unit"
-          label="库存滞留分布"
-          selectable
-          :motion="motion"
-          @select="stockAge"
-        />
-        <StatePanel
-          v-else
-          :state="loading ? 'loading' : 'error'"
-          title="滞留数据未读取"
-          @retry="load()"
-        />
-        <template #footer
-          ><AppButton link @click="stockAge('ge7')"
-            >查看长期滞留物料<IconArrowRight :size="15" /></AppButton
-        ></template>
-      </DashboardCard>
-      <DashboardCard
-        title="质量跟进"
-        :subtitle="`${period}发现的问题`"
-        help="仅统计当前账号可查看的质量问题。问题状态按待反馈、处理中、已关闭区分；不将抽检、全检和复检混算为一个合格率。"
-      >
-        <template #actions
-          ><AppButton link @click="quality()"
-            ><IconArrowRight :size="17" /><span class="operations-sr-only"
-              >查看质量跟进</span
-            ></AppButton
-          ></template
+    <div class="operations-context">
+      <div class="operations-fulfilment">
+        <span class="operations-context-label">{{ period }}交期</span
+        ><span
+          >按时完成 <b>{{ delivery ? number(delivery.period.completed) : '—' }}</b></span
+        ><span
+          >逾期完成 <b>{{ delivery ? number(delivery.period.completed_late) : '—' }}</b></span
+        ><span
+          >逾期未交完 <b>{{ delivery ? number(delivery.period.overdue) : '—' }}</b></span
         >
-        <template v-if="performance">
-          <div class="operations-quality-total">
-            <strong>{{ number(performance.issues.summary.unresolved) }}</strong
-            ><span>项未闭环</span>
-          </div>
-          <div class="operations-quality-states">
-            <span
-              >待反馈 <b>{{ performance.issues.summary.pending }}</b></span
-            ><span
-              >处理中 <b>{{ performance.issues.summary.processing }}</b></span
-            ><span
-              >已关闭 <b>{{ performance.issues.summary.closed }}</b></span
-            >
-          </div>
-          <div class="operations-problems">
-            <div
-              v-for="row in performance.issues.problems.slice(0, 3)"
-              :key="row.problem_type_id ?? row.name"
-            >
-              <span>{{ row.name }}</span
-              ><strong>{{ row.issue_count }}</strong>
-            </div>
-            <p v-if="!performance.issues.problems.length" class="operations-empty">
-              所选周期暂无质量问题
-            </p>
-          </div>
-        </template>
-        <StatePanel
-          v-else
-          :state="loading ? 'loading' : 'error'"
-          title="质量数据未读取"
-          @retry="load()"
-        />
-        <template #footer
-          ><AppButton link @click="emit('preference', { view: 'quality' })"
-            >检验与质量分析<IconArrowRight :size="15" /></AppButton
-        ></template>
-      </DashboardCard>
+      </div>
+      <AppButton link class="operations-quality" aria-label="查看质量跟进" @click="quality()"
+        ><span>{{ period }}质量</span
+        ><b>{{ performance ? `${number(performance.issues.summary.unresolved)} 项未处理` : '—' }}</b
+        ><IconArrowRight :size="15"
+      /></AppButton>
     </div>
   </div>
 </template>
-
 <style scoped>
-.operations-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 .operations-overview {
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
+.operations-overview :deep(.dashboard-toolbar) {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
 .operations-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
+  background: var(--wm-bg);
+  overflow: hidden;
+}
+.operations-metrics :deep(.dashboard-metric) {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 16px 22px;
+}
+.operations-metrics :deep(.dashboard-metric + .dashboard-metric) {
+  border-left: 1px solid var(--wm-border);
+}
+.operations-metrics :deep(.dashboard-metric strong) {
+  font-size: 29px;
+}
+.operations-metrics :deep(.dashboard-metric__heading) {
+  font-size: 12px;
 }
 .operations-main {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: minmax(0, 2.15fr) minmax(320px, 1fr);
+  align-items: stretch;
   gap: 16px;
 }
-.operations-stock-chart {
-  height: 280px;
-  display: flex;
+.operations-teams :deep(.dashboard-card__header),
+.operations-inbox :deep(.dashboard-card__header) {
+  padding: 20px 20px 16px;
 }
-.operations-main > :deep(.dashboard-card) {
-  min-height: 340px;
-}
-.operations-lower {
-  display: grid;
-  grid-template-columns: 1.45fr 1fr 1fr;
-  gap: 16px;
-}
-.operations-trend {
-  height: 254px;
-  display: flex;
-  padding-top: 8px;
-}
-.operations-trend--teams {
-  height: auto;
-}
-.operations-team-select {
-  width: 136px;
-}
-.operations-delivery {
-  display: flex;
-  align-items: center;
-  gap: 24px;
+.operations-teams :deep(.dashboard-card__body) {
   padding-bottom: 8px;
 }
-.operations-donut {
-  width: 128px;
-  height: 128px;
-  position: relative;
-  display: flex;
-  flex-shrink: 0;
-}
-.operations-donut > div:last-child {
-  position: absolute;
-  inset: 0;
+.operations-inbox :deep(.dashboard-card__body) {
   display: flex;
   flex-direction: column;
+  padding-bottom: 0;
+}
+.operations-inbox :deep(.wm-segmented) {
+  align-self: stretch;
+}
+.operations-team-footer {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-.operations-donut strong {
-  font-size: 25px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-.operations-donut span {
-  font-size: 10px;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--wm-muted);
-  margin-top: 3px;
+  font-size: 11px;
 }
-.operations-delivery-legend {
+.operations-team-footer > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.operations-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wm-success-text);
+}
+.operations-inbox-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--wm-muted-surface);
+  color: var(--wm-muted);
+}
+.operations-attention {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  margin-top: 10px;
 }
-.operations-delivery-legend > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.operations-delivery-legend i,
-.operations-due-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-.operations-delivery-legend strong {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-}
-.operations-attention {
-  max-height: 166px;
-  overflow-y: auto;
-  border-top: 1px solid var(--wm-border);
-}
-.operations-attention button {
-  display: flex;
-  align-items: center;
+.operations-attention-item.el-button {
   width: 100%;
-  gap: 10px;
-  border: 0;
+  height: auto;
+  min-height: 70px;
+  padding: 14px 0;
+  margin: 0;
+  border-radius: 0;
   border-bottom: 1px solid var(--wm-table-divider);
-  padding: 9px 0;
-  background: transparent;
-  color: var(--wm-text);
   text-align: left;
-  cursor: pointer;
+  white-space: normal;
+}
+.operations-attention-item.el-button:last-child {
+  border-bottom: 0;
+}
+.operations-attention-item :deep(> span) {
+  width: 100%;
+  min-width: 0;
+}
+.operations-attention-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.operations-attention-top,
+.operations-attention-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.operations-attention-top strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wm-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.operations-attention-badge {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: var(--wm-muted);
+  background: var(--wm-muted-surface);
+  flex-shrink: 0;
+}
+.operations-attention-badge.danger {
+  color: var(--wm-danger-text);
+  background: var(--wm-danger-bg);
+}
+.operations-attention-badge.warning {
+  color: var(--wm-warning-text);
+  background: var(--wm-warning-bg);
+}
+.operations-attention-bottom {
+  color: var(--wm-muted);
+  font-size: 11px;
+}
+.operations-attention-bottom > span:first-child {
+  margin-right: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.operations-attention-bottom > span:nth-child(2) {
+  white-space: nowrap;
+}
+.operations-attention-bottom > svg {
+  flex-shrink: 0;
+}
+.operations-attention-all {
+  width: 100%;
+  justify-content: space-between;
+}
+.operations-attention-all :deep(> span) {
+  width: 100%;
+  justify-content: space-between;
+}
+.operations-empty {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--wm-muted);
+  min-height: 220px;
   font-size: 12px;
 }
-.operations-attention button:hover {
-  background: var(--wm-hover);
+.operations-empty strong {
+  font-weight: 400;
 }
-.operations-attention button strong {
-  font-weight: 550;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 145px;
+.operations-empty svg {
+  color: var(--wm-success-text);
 }
-.operations-attention-team {
-  color: var(--wm-muted);
+.operations-production {
+  min-height: 448px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
-.operations-attention time {
-  margin-left: auto;
+.operations-production :deep(.team-production-chart) {
+  flex: none;
+}
+.operations-team-select {
+  width: 140px;
+  margin: 0 0 12px auto;
+}
+.operations-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 0 4px;
   font-size: 11px;
   color: var(--wm-muted);
-  white-space: nowrap;
 }
-.operations-due-dot.overdue {
-  background: var(--wm-danger-text);
-}
-.operations-due-dot.today {
-  background: var(--wm-warning-text);
-}
-.operations-quality-total {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding-top: 6px;
-}
-.operations-quality-total strong {
-  font-size: 32px;
-  font-weight: 600;
-}
-.operations-quality-total span {
-  font-size: 12px;
-  color: var(--wm-muted);
-}
-.operations-quality-states {
+.operations-fulfilment {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
-  font-size: 11px;
-  color: var(--wm-muted);
-  margin: 12px 0 14px;
+  align-items: center;
+  gap: 18px;
 }
-.operations-quality-states b {
+.operations-context b {
+  font-weight: 600;
   color: var(--wm-text);
-  margin-left: 3px;
-}
-.operations-problems > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 12px;
-  border-top: 1px solid var(--wm-table-divider);
-}
-.operations-problems strong {
+  margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }
-.operations-trend-summary {
-  display: flex;
-  gap: 20px;
-  color: var(--wm-muted);
-  font-size: 11px;
-}
-.operations-trend-summary strong {
+.operations-context-label {
   color: var(--wm-text);
-  font-size: 13px;
-  margin: 0 3px;
+  font-weight: 500;
 }
-.operations-muted,
-.operations-empty {
-  color: var(--wm-muted);
-}
-.operations-empty {
-  font-size: 12px;
-  padding: 16px 0;
-  text-align: center;
+.operations-quality {
+  font-size: 11px;
 }
 .operations-overview :deep(.el-button > span) {
   gap: 6px;
 }
 .operations-overview :deep(.state-panel) {
-  min-height: 150px;
+  min-height: 220px;
 }
-.operations-overview--motion .operations-metrics > *,
-.operations-overview--motion .dashboard-card {
-  animation: operations-enter 320ms ease-out both;
+.operations-overview--motion .operations-main > * {
+  animation: overview-enter 350ms ease-out both;
 }
-.operations-overview--motion .operations-metrics > :nth-child(2) {
-  animation-delay: 35ms;
+.operations-overview--motion .operations-main > :nth-child(2) {
+  animation-delay: 60ms;
 }
-.operations-overview--motion .operations-metrics > :nth-child(3) {
-  animation-delay: 70ms;
-}
-.operations-overview--motion .operations-metrics > :nth-child(4) {
-  animation-delay: 105ms;
-}
-@keyframes operations-enter {
+@keyframes overview-enter {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -828,35 +748,44 @@ function quality() {
     transform: translateY(0);
   }
 }
-@media (max-width: 1200px) {
-  .operations-updated > span:last-child:not(.operations-status) {
-    display: none;
+@media (max-width: 1400px) {
+  .operations-main {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .operations-lower {
-    grid-template-columns: 1fr 1fr;
+  .operations-attention {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
   }
-  .operations-lower > :first-child {
+  .operations-empty {
     grid-column: 1 / -1;
   }
 }
-@media (max-width: 800px) {
+@media (max-width: 700px) {
   .operations-metrics {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .operations-main,
-  .operations-lower {
-    grid-template-columns: 1fr;
+  .operations-metrics :deep(.dashboard-metric:nth-child(3)) {
+    border-left: 0;
   }
-  .operations-toolbar {
-    align-items: flex-start;
+  .operations-metrics :deep(.dashboard-metric:nth-child(n + 3)) {
+    border-top: 1px solid var(--wm-border);
   }
-  .operations-tools {
+  .operations-metrics :deep(.dashboard-metric) {
+    padding: 14px;
+  }
+  .operations-attention {
+    display: flex;
+  }
+  .operations-teams :deep(.dashboard-card__header) {
     flex-wrap: wrap;
+  }
+  .operations-footer-note {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .operations-overview--motion .dashboard-card,
-  .operations-overview--motion .operations-metrics > * {
+  .operations-overview--motion .operations-main > * {
     animation: none;
   }
 }

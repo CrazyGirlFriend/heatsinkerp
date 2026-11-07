@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
-import { ElTooltip } from 'element-plus'
+import { ElTag, ElTooltip } from 'element-plus'
 
 describe('processing stock meaning', () => {
   it('keeps a compact status and accessible weight warning with quantities in its tooltip', () => {
@@ -89,13 +89,40 @@ describe('processing stock meaning', () => {
   )
   it.each([
     ['partial', '部分加工'],
-    ['complete', '本批加工完成'],
-    ['unregistered', '未登记加工'],
+    ['complete', '加工完成'],
+    ['unregistered', '待加工'],
+    ['rework', '待返工'],
     ['pending', '已转出 · 待签收'],
     ['cleared', '无未转出库存'],
   ] as const)('uses the actual stock state %s', (state, label) => {
     const wrapper = mount(ProcessingStockStatus, { props: { state } })
     expect(wrapper.text()).toBe(label)
+    wrapper.unmount()
+  })
+  it('uses the returned state for rework, without mistaking old completed records or rework history for current completion', async () => {
+    const wrapper = mount(ProcessingStockStatus, {
+      props: {
+        compact: true,
+        summary: {
+          processing_state: 'rework',
+          rework_pending: true,
+          processing_registered_batch_count: 1,
+          processing_complete_batch_count: 1,
+        },
+      },
+    })
+    expect(wrapper.text()).toBe('待返工')
+    expect(wrapper.getComponent(ElTag).props('type')).toBe('danger')
+    await wrapper.setProps({
+      summary: {
+        processing_state: 'complete',
+        rework_pending: false,
+        processing_registered_batch_count: 1,
+        processing_complete_batch_count: 1,
+      },
+    })
+    expect(wrapper.text()).toBe('加工完成')
+    expect(wrapper.getComponent(ElTag).props('type')).toBe('success')
     wrapper.unmount()
   })
 })

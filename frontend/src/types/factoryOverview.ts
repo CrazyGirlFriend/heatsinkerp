@@ -1,4 +1,4 @@
-import type { MaterialBalance } from './teamMaterials'
+import type { MaterialBalance, TeamMaterialOverview } from './teamMaterials'
 import type { Amount, ChartPoint } from './materialAnalytics'
 import type { MaterialEntryKind } from './materialTransfer'
 
@@ -25,6 +25,7 @@ export interface FactoryTeam {
   serial_count?: number | null
   urgent_serial_count?: number | null
   pending_incoming?: (Amount & { batches: number }) | null
+  processing?: NonNullable<TeamMaterialOverview['current_stock']>['processing'] | null
 }
 export interface FactoryOverview {
   as_of: string
@@ -42,6 +43,23 @@ export interface FactoryOverview {
   serial_ranking: Record<'quantity' | 'weight', ChartPoint[]>
   recent_batches: FactoryRecentBatch[]
   stock_matrix: FactoryStockMatrix
+  stock_attention?: (Amount & {
+    transfer_id: number
+    batch_no: string
+    serial_no: string | null
+    team_id: number
+    team_name: string
+    received_at: string
+  })[]
+  pending_attention?: (Amount & {
+    id: number
+    batch_no: string
+    serial_no: string | null
+    source_team_name: string | null
+    next_team_name: string | null
+    external_destination: string | null
+    created_at: string
+  })[]
 }
 
 export interface FactoryRecentBatch extends Amount {

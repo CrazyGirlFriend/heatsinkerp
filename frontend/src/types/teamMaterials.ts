@@ -39,7 +39,13 @@ export interface TeamMaterialOverview {
     unnumbered_batch_count: number
     processing: {
       state:
-        'unregistered' | 'partial' | 'complete' | 'registered' | 'not_required' | 'not_applicable'
+        | 'unregistered'
+        | 'partial'
+        | 'complete'
+        | 'rework'
+        | 'registered'
+        | 'not_required'
+        | 'not_applicable'
       batch_count: number
       quantity: number
       weight: number

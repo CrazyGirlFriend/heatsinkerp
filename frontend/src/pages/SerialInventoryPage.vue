@@ -131,7 +131,8 @@ function ageHint(row: GlobalInventoryRow) {
 }
 const defaults = [
   'on_hand_quantity',
-  'on_hand_weight',
+  'process_route',
+  'rework',
   'processing_state',
   'material_name',
   'material_type',
@@ -140,6 +141,7 @@ const defaults = [
 const widths: Record<string, number> = {
   on_hand_quantity: 110,
   on_hand_weight: 125,
+  process_route: 150,
   material_name: 135,
   material_type: 110,
   transfer_specification: 150,
@@ -149,7 +151,6 @@ const columns = [
     .filter(
       (c) =>
         ![
-          'process_route',
           'delivery_due_at',
           'delivery_schedule_status',
           'processing_role',
@@ -180,7 +181,7 @@ const columns = [
           : '—',
   },
 ]
-const requiredKeys = ['on_hand_quantity', 'on_hand_weight', 'processing_state']
+const requiredKeys = ['on_hand_quantity', 'process_route', 'rework', 'processing_state']
 const selectableColumns = columns.filter((c) => !requiredKeys.includes(c.key))
 // Keep quantities beside the serial, with supplementary properties available in column settings.
 columns.sort((a, b) => {
@@ -634,7 +635,7 @@ function exportSource() {
         ref="columnSettings"
         :storage-key="`global-inventory-columns:${auth.currentUser?.id || 'local'}`"
         :columns="selectableColumns"
-        description="流水号、班组、件数、重量、加工状态及操作始终显示。"
+        description="流水号、班组、件数、工艺工序、返工情况、加工状态及操作始终显示。"
         :show-trigger="false"
         @change="choices = $event"
       />

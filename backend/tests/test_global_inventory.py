@@ -282,6 +282,10 @@ def test_processed_and_remaining_stock_keep_receipt_clock_through_repeated_split
     factory = client.get("/api/factory-overview").json()
     factory_ages = {r["key"]: r["quantity"] for r in factory["stock_age"]}
     assert factory_ages["ge7"] == 10 and factory_ages["1_3"] == 0
+    attention = factory["stock_attention"]
+    assert sum(row["quantity"] for row in attention) == 10
+    assert {row["received_at"] for row in attention} == {"2026-10-26T12:00:00+00:00"}
+    assert lot["id"] not in {row["transfer_id"] for row in attention}
     filtered = client.get(base(s, True) + "/inventory", params={"stock_age": "ge7"}).json()
     assert filtered["total"] == 2
     assert sum(row["owned_quantity"] for row in filtered["items"]) == 10

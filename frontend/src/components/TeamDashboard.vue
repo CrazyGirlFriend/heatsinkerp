@@ -107,7 +107,7 @@ const metrics = computed(() => [
   ...(props.processing
     ? [
         {
-          label: '未加工',
+          label: '待加工',
           value: amount('unregistered'),
           unit: unit.value,
           precision: metric.value === 'weight' ? 3 : 0,
@@ -158,9 +158,10 @@ const metrics = computed(() => [
 ])
 const processingRows = computed(() =>
   [
-    { key: 'unregistered', label: '未加工', color: colors.primary },
+    { key: 'unregistered', label: '待加工', color: colors.primary },
     { key: 'partial', label: '部分加工', color: colors.warning },
     { key: 'complete', label: '已加工', color: colors.success },
+    { key: 'rework', label: '待返工', color: colors.danger },
     { key: 'registered', label: '进度未标明', color: colors.neutral },
   ]
     .filter(
