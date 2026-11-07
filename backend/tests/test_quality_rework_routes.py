@@ -137,24 +137,35 @@ def test_qc_cannot_submit_unrelated_stock_or_closed_issue(client, inspection):
         assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0
 
 
-def test_only_qc_can_request_rework_even_with_a_confirmed_issue(client, inspection):
+def test_only_qc_can_submit_an_inspection_issue_but_team_can_submit_its_own_problem(
+    client, inspection
+):
     s, lot, headers, _ = inspection
     issue = create_check(client, inspection).json()
     assert decide(client, headers, issue).status_code == 200
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     before = client.get(base(s, True) + "/overview").json()["totals"]
     for actor in (s["headers"], s["other_headers"], client.headers):
-        for issue_id in (None, issue["id"]):
+        for issue_id in (issue["id"],) if actor == s["other_headers"] else (None, issue["id"]):
             denied = client.post(
                 "/api/process-routes/rework-requests",
                 headers=actor,
                 json=request_body(context, issue_id),
             )
             assert denied.status_code == 403, denied.text
-        assert client.get("/api/process-routes/rework-sources", headers=actor).status_code == 403
+        assert client.get("/api/process-routes/rework-sources", headers=actor).status_code == (
+            200 if actor == s["other_headers"] else 403
+        )
     assert client.get(base(s, True) + "/overview").json()["totals"] == before
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0
+    submitted = client.post(
+        "/api/process-routes/rework-requests",
+        headers=s["other_headers"],
+        json=request_body(context, None),
+    )
+    assert submitted.status_code == 201, submitted.text
+    assert submitted.json()["rework_request"]["inspection_id"] is None
 
 
 def test_qc_requires_a_confirmed_issue_and_rechecks_changed_decisions(client, inspection):
@@ -167,7 +178,7 @@ def test_qc_requires_a_confirmed_issue_and_rechecks_changed_decisions(client, in
         result = client.post(
             "/api/process-routes/rework-requests", headers=headers, json={**body, **missing}
         )
-        assert result.status_code == 422, result.text
+        assert result.status_code == 403, result.text
     assert client.get(path, headers=headers).status_code == 409
     assert (
         client.post("/api/process-routes/rework-requests", headers=headers, json=body).status_code

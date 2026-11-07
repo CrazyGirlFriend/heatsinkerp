@@ -1,6 +1,12 @@
 import { httpClient, httpRequest, HttpRequestError } from './httpClient'
-import type { ProcessRoute, ProcessRouteContext, RouteOrderDocument } from '@/types/processRoute'
-import type { MaterialPage } from '@/types/teamMaterials'
+import type {
+  ProcessRoute,
+  ProcessRouteContext,
+  RouteOrderDocument,
+  ReworkRound,
+  ReworkSource,
+} from '@/types/processRoute'
+import type { MaterialPage, QuantityAdjustmentContext } from '@/types/teamMaterials'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 export class ProcessRouteSerialConflictError extends Error {}
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -73,6 +79,7 @@ export const processRouteApi = {
     sortOrder: 'asc' | 'desc' = 'desc',
     pageSize = 20,
     kind: 'normal' | 'rework' | 'all' = 'normal',
+    reworkScope: 'open' | 'ended' | 'all' = 'all',
   ) =>
     request<
       MaterialPage<ProcessRoute> & {
@@ -80,20 +87,27 @@ export const processRouteApi = {
         pending_rework_count?: number
       }
     >(
-      `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}`,
+      `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}${kind === 'rework' ? '&rework_scope=' + reworkScope : ''}`,
     ),
   options: (teamId: number) =>
     request<{ tasks: TeamProcessingTask[]; purposes: TeamPurpose[] }>(`/options/${teamId}`),
   requestRework: (body: {
     source_transfer_id: number
     rework_of_id: number
-    inspection_id: number
+    inspection_id?: number
     expected_revision: number
     quantity: number
     weight: number
     reason: string
     idempotency_key: string
   }) => request<ProcessRoute>('/rework-requests', 'POST', body),
+  reworkSources: (query = '', page = 1) =>
+    request<MaterialPage<ReworkSource>>(
+      `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
+    ),
+  reworkSourceContext: (id: number) =>
+    request<QuantityAdjustmentContext>(`/rework-sources?lot_id=${id}`),
+  reworkRounds: (id: number) => request<ReworkRound[]>(`/${id}/rework-rounds`),
   resumeRework: (id: number, revision: number) =>
     request(`/rework-lots/${id}/resume`, 'POST', { expected_revision: revision }),
   resolve: (serialNo: string) =>

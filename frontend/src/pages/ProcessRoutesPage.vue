@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import ElAlert from '@/components/AppAlert.vue'
+import ElSelect from '@/components/AppSelect.vue'
+import { ElOption } from 'element-plus'
+import { reworkProgressLabels, type ReworkProgress } from '@/types/processRoute'
 import AppPopover from '@/components/AppPopover.vue'
 import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import PersonName from '@/components/PersonName.vue'
@@ -45,6 +48,12 @@ const canEdit = computed(
       (auth.isTeamAccount && String(auth.currentUser?.team_id) === String(team.value?.id))),
 )
 const routeKind = ref<'normal' | 'rework'>(location.query.kind === 'rework' ? 'rework' : 'normal')
+const reworkScope = ref<'open' | 'ended' | 'all'>('open')
+function changeReworkScope() {
+  pendingOnly.value = false
+  page.value = 1
+  void load()
+}
 const newMenuOpen = ref(false),
   pendingOnly = ref(false)
 function clearPending() {
@@ -56,6 +65,7 @@ function createRework() {
   routeKind.value = 'rework'
   void router.replace({ query: { ...location.query, kind: 'rework' } })
   pendingOnly.value = true
+  reworkScope.value = 'open'
   page.value = 1
   query.value = appliedQuery.value = ''
   void load()
@@ -63,6 +73,7 @@ function createRework() {
 function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
   pendingOnly.value = false
+  reworkScope.value = 'open'
   routeKind.value = kind
   if ((location.query.kind === 'rework' ? 'rework' : 'normal') !== kind)
     void router.replace({
@@ -124,6 +135,7 @@ async function load() {
       sortOrder.value,
       pageSize.value,
       routeKind.value,
+      routeKind.value === 'rework' ? reworkScope.value : 'all',
     )
     if (request !== generation) return
     items.value = result.items
@@ -346,6 +358,17 @@ onBeforeUnmount(() => {
           />
         </template>
         <template #status>
+          <ElSelect
+            v-if="routeKind === 'rework'"
+            v-model="reworkScope"
+            aria-label="返工处理范围"
+            style="width: 120px"
+            @change="changeReworkScope"
+          >
+            <ElOption value="open" label="未结束" />
+            <ElOption value="ended" label="已复检" />
+            <ElOption value="all" label="全部轮次" />
+          </ElSelect>
           <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待制定</ElTag>
           <ElButton
             v-else-if="routeKind === 'rework' && canEdit && pendingRework"
@@ -564,6 +587,16 @@ onBeforeUnmount(() => {
             </template>
           </ElTableColumn>
         </template>
+        <ElTableColumn v-if="routeKind === 'rework'" label="返工批次" width="190"
+          ><template #default="{ row }">{{
+            row.rework_request?.batch_no || '—'
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn v-if="routeKind === 'rework'" label="轮次" width="80" align="center"
+          ><template #default="{ row }"
+            >第 {{ row.rework_request?.round }} 轮</template
+          ></ElTableColumn
+        >
         <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
           <template #default="{ row }">
             <div
@@ -658,6 +691,19 @@ onBeforeUnmount(() => {
             ></template
           >
         </ElTableColumn>
+        <ElTableColumn v-if="routeKind === 'rework'" label="加工件数" width="100" align="right"
+          ><template #default="{ row }"
+            >{{ row.rework_progress?.completed_quantity ?? 0 }} /
+            {{ row.rework_request?.quantity }}</template
+          ></ElTableColumn
+        >
+        <ElTableColumn v-if="routeKind === 'rework'" label="处理进度" width="120" align="center"
+          ><template #default="{ row }">{{
+            row.rework_progress
+              ? reworkProgressLabels[row.rework_progress.state as ReworkProgress['state']]
+              : '—'
+          }}</template></ElTableColumn
+        >
         <ElTableColumn
           label="工艺人员"
           :width="routeKind === 'rework' ? 110 : undefined"

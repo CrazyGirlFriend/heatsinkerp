@@ -117,7 +117,15 @@ it('removes the previous twenty-row page immediately when requesting ten rows', 
   wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
   await flushPromises()
   expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 10, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    10,
+    'normal',
+    'all',
+  )
   expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
   finish(response(10))
   await flushPromises()
@@ -352,7 +360,15 @@ it('searches only after submission and refreshes the applied query', async () =>
   await wrapper.get('input[aria-label="工艺记录搜索"]').setValue(' S-001 ')
   await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('S-001', 1, undefined, 'desc', 20, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    'S-001',
+    1,
+    undefined,
+    'desc',
+    20,
+    'normal',
+    'all',
+  )
 })
 it('does not expose import or roster writes to a warehouse or production account', async () => {
   state.admin = false
@@ -425,7 +441,15 @@ it('opens a rework notice for a production account with viewing permission only'
   })
   await render({ business_notice: 'rework:7', notice: 'open-7' })
   expect(target).toHaveBeenCalledWith('rework', 7)
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'rework',
+    'open',
+  )
   const editor = wrapper.getComponent(ProcessRouteEditor)
   expect(editor.props('route')?.id).toBe(reworkRouteFixture.id)
   expect(editor.props('viewOnly')).toBe(true)
@@ -436,15 +460,39 @@ it('requests global time ordering and resets to page one on sort or size changes
   const { ElPagination } = await import('element-plus')
   wrapper.getComponent(ElPagination).vm.$emit('current-change', 3)
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 3, undefined, 'desc', 20, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    3,
+    undefined,
+    'desc',
+    20,
+    'normal',
+    'all',
+  )
   wrapper
     .getComponent({ name: 'ElTable' })
     .vm.$emit('sort-change', { prop: 'updated_at', order: 'ascending' })
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'asc', 20, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'asc',
+    20,
+    'normal',
+    'all',
+  )
   wrapper.getComponent(ElPagination).vm.$emit('size-change', 50)
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'asc', 50, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'asc',
+    50,
+    'normal',
+    'all',
+  )
   expect(wrapper.find('.el-pagination').exists()).toBe(true)
   expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
   expect(wrapper.find('.el-pagination__sizes').exists()).toBe(true)
@@ -481,7 +529,15 @@ it('separates pending rework with visible problems and teams, and opens manual a
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(pending)
   await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'rework',
+    'open',
+  )
   for (const text of ['尺寸超差', '巡检', '待制定', '待指定'])
     expect(wrapper.text()).toContain(text)
   expect(wrapper.get('.route-list tbody tr td').text()).toBe(pending.serial_nos[0])
@@ -492,12 +548,16 @@ it('separates pending rework with visible problems and teams, and opens manual a
   ).toEqual(['研磨', '轧制'])
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',
+    '返工批次',
+    '轮次',
     '问题',
     '提交班组',
     '问题来源',
     '涉及班组',
     '执行班组',
     '工艺状态',
+    '加工件数',
+    '处理进度',
     '工艺人员',
     '更新时间',
     '操作',
@@ -542,13 +602,21 @@ it('shows authored rework execution teams without claiming work has finished', a
 
 it('defaults to normal engineering and clears a previous search when switching views', async () => {
   await render()
-  expect(processRouteApi.list).toHaveBeenCalledWith('', 1, undefined, 'desc', 20, 'normal')
+  expect(processRouteApi.list).toHaveBeenCalledWith('', 1, undefined, 'desc', 20, 'normal', 'all')
   await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
   await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
   await flushPromises()
   await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'rework',
+    'open',
+  )
   expect((wrapper.get('input[aria-label="工艺记录搜索"]').element as HTMLInputElement).value).toBe(
     '',
   )
@@ -558,7 +626,15 @@ it('starts rework from pending submitted problems rather than creating an unrela
   await render()
   await wrapper.get('.new-route-options button:last-child').trigger('click')
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, 'draft', 'desc', 20, 'rework')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    'draft',
+    'desc',
+    20,
+    'rework',
+    'open',
+  )
   expect(wrapper.find('process-route-editor-stub').exists()).toBe(false)
   expect(wrapper.text()).toContain('待制定')
 })
@@ -596,11 +672,27 @@ it('does not flag a complete route as missing documents', async () => {
 
 it('opens the requested process type and follows navigation between normal and rework', async () => {
   const router = await render({ kind: 'rework' })
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'rework',
+    'open',
+  )
   expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('返工工艺')
   await router.push('/process-routes')
   await flushPromises()
-  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'normal')
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'normal',
+    'all',
+  )
   expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('正常工艺')
   await router.back()
   await flushPromises()

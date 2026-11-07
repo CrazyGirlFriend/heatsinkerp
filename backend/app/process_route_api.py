@@ -208,6 +208,7 @@ async def import_word(
 @router.get("")
 def list_routes(
     kind: Literal["normal", "rework", "all"] = "normal",
+    rework_scope: Literal["open", "ended", "all"] = "all",
     state: Literal["draft", "published"] | None = None,
     query: str = Query(default="", max_length=160),
     page: int = Query(default=1, ge=1),
@@ -288,6 +289,20 @@ def list_routes(
         ~superseded,
     ]
     where.extend(current)
+    from .rework_rounds import progress_documents
+
+    progress = None
+    if kind == "rework" and rework_scope != "all":
+        progress = progress_documents(db, db.scalars(select(ProcessRoute).where(*where)))
+        where.append(
+            ProcessRoute.id.in_(
+                [
+                    route_id
+                    for route_id, value in progress.items()
+                    if (value["state"] in ("passed", "failed")) == (rework_scope == "ended")
+                ]
+            )
+        )
     effective_time = func.coalesce(ProcessRoute.updated_at, ProcessRoute.created_at)
     ordering = (
         (effective_time.asc(), ProcessRoute.id.asc())
@@ -307,6 +322,8 @@ def list_routes(
         .limit(page_size)
     ).all()
     rows = [row for row, _ in result]
+    if progress is None:
+        progress = progress_documents(db, rows)
     materials = {row.id: material for row, material in result}
     drawings = {row.id: [] for row in rows}
     for drawing in db.scalars(
@@ -339,6 +356,7 @@ def list_routes(
                 rework_batch_no=scope["batch_no"],
                 rework_quantity=scope["quantity"],
                 rework_weight=scope["weight"],
+                rework_progress=progress[row.id],
             )
         items.append(item)
     policy = db.get(ProcessRoutePolicy, 1)
@@ -766,6 +784,18 @@ def remove_drawing(
         row.version += 1
         db.flush()
         return document(row, db=db)
+
+
+@router.get("/{route_id}/rework-rounds")
+def rework_rounds(
+    route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    from .rework_rounds import round_documents
+
+    row = require_route_reader(require_route(db, route_id), user)
+    if row.route_kind != "rework":
+        raise HTTPException(422, "请选择返工工艺")
+    return round_documents(db, row, user)
 
 
 @router.get("/{route_id}")

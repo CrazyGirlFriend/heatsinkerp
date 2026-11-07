@@ -8,6 +8,7 @@ defineExpose({
   blur: () => input.value?.blur(),
   select: () => input.value?.select(),
   clear: () => input.value?.clear(),
+  resizeTextarea: () => input.value?.resizeTextarea(),
 })
 </script>
 <template>

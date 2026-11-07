@@ -72,6 +72,7 @@ export interface ReworkRouteRequest {
   resume_team_id: number
 }
 export interface ProcessRoute {
+  rework_progress?: ReworkProgress
   material_name?: string
   step_summary?: Pick<ProcessRouteStep, 'sequence_no' | 'name' | 'team_id'>[]
   missing_documents?: string[]
@@ -110,6 +111,43 @@ export interface ProcessRoute {
   created_at: string
   updated_at?: string | null
   published_at: string | null
+}
+export interface ReworkProgress {
+  quantity: number
+  completed_quantity: number
+  passed_quantity: number
+  state: 'awaiting_route' | 'processing' | 'awaiting_inspection' | 'passed' | 'failed'
+  inspections: {
+    id: number
+    batch_no: string
+    scope: 'sample' | 'full'
+    sample_quantity: number
+    failed_quantity: number
+    inspector_name: string
+    checked_at: string
+  }[]
+}
+export interface ReworkRound {
+  route_id: number
+  state: 'draft' | 'published'
+  engineering_employee_name: string | null
+  request: ReworkRouteRequest
+  progress: ReworkProgress
+  steps: ProcessRouteStep[]
+}
+export const reworkProgressLabels: Record<ReworkProgress['state'], string> = {
+  awaiting_route: '待制定',
+  processing: '待加工完成',
+  awaiting_inspection: '待复检确认',
+  passed: '复检合格',
+  failed: '复检不合格',
+}
+export interface ReworkSource {
+  id: number
+  serial_no: string
+  batch_no: string
+  quantity: number
+  weight: number
 }
 export interface ProcessRouteContext {
   execution_serial?: string | null

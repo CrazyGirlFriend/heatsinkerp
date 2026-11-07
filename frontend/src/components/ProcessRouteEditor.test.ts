@@ -56,6 +56,7 @@ vi.mock('@/stores/auth', () => ({
 }))
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(processRouteApi, 'reworkRounds').mockResolvedValue([])
   openWord.mockReset()
   openDrawing.mockReset()
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(structuredClone(routeFixture))

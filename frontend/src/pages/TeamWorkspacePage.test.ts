@@ -30,6 +30,7 @@ import { showToast } from '@/stores/toast'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
+import TeamReworkRequestDialog from '@/components/TeamReworkRequestDialog.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
@@ -207,6 +208,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
         ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
         transition: !animate,
         StockSourcePicker: true,
+        TeamReworkRequestDialog: true,
         DeliverySchedules: true,
         TeamAnalyticsCharts: true,
         TeamDashboard: true,
@@ -248,7 +250,7 @@ describe('team workspace material ledger', () => {
     })
     expect(dashboard.exists()).toBe(false)
   })
-  it.each(['production', 'warehouse', 'administrator', 'foreign-qc', 'inactive-qc'])(
+  it.each(['warehouse', 'administrator', 'foreign-qc', 'inactive-qc'])(
     'does not expose rework submission for %s',
     async (account) => {
       let teamId = 914
@@ -266,6 +268,18 @@ describe('team workspace material ledger', () => {
       expect(wrapper.text()).not.toContain('提交返工问题')
     },
   )
+  it('opens direct rework submission for the stock-holding production team', async () => {
+    const router = await render('/team-workspaces/914')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '提交返工问题')!
+      .trigger('click')
+    expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(true)
+    expect(router.currentRoute.value.query.tab).not.toBe('quality-feedback')
+    await router.push('/team-workspaces/900')
+    await flushPromises()
+    expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(false)
+  })
   it('takes the QC leader to quality issues instead of an unlinked stock request', async () => {
     state.auth.currentUser.team_id = 900
     const router = await render('/team-workspaces/900')

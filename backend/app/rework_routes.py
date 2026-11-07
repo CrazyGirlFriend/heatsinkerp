@@ -26,6 +26,7 @@ from .models import (
 from .models import MaterialQuantityAdjustment as Work
 from .models import MaterialStockBalance as Balance
 from .schemas import SCRAP_MATERIAL_TYPES
+from .team_constants import PROCESSING_TEAM_CODES
 
 
 class ReworkRequest(BaseModel):
@@ -202,13 +203,16 @@ def request_document(db, route):
     }
 
 
-def source_stock(db, user, query="", page=1, lot_id=None):
-    """Legacy stock lookup remains read-only and restricted to QC."""
-    from .quality_feedback import is_qc
-
+def require_requester(user):
     team = stock.require_actor(user, user.team_id)
-    if not is_qc(user):
-        raise HTTPException(403, "仅检验班组可提交返工问题")
+    if team.kind != "production" or team.code not in PROCESSING_TEAM_CODES:
+        raise HTTPException(403, "仅生产班组可提交返工问题")
+    return team
+
+
+def source_stock(db, user, query="", page=1, lot_id=None):
+    """Direct requests select physical stock held by the submitting team."""
+    team = require_requester(user)
     stmt = (
         select(MaterialTransfer, Balance)
         .join(Balance, Balance.transfer_id == MaterialTransfer.id)
@@ -283,11 +287,9 @@ def request_rework(db, payload, user):
     from .process_route_api import document
     from .quality_feedback import is_qc, require_rework_issue
 
-    team = stock.require_actor(user, user.team_id)
-    if not is_qc(user):
+    team = require_requester(user)
+    if payload.inspection_id is not None and not is_qc(user):
         raise HTTPException(403, "仅检验班组可提交返工问题")
-    if payload.inspection_id is None:
-        raise HTTPException(422, "请关联检验班组已确认返工的质量问题")
     request_hash = stock.fingerprint(payload)
 
     def replay(row):
@@ -302,11 +304,16 @@ def request_rework(db, payload, user):
             )
             if prior:
                 return replay(prior)
-            require_rework_issue(db, payload.inspection_id, user, lock=True)
+            if payload.inspection_id is not None:
+                require_rework_issue(db, payload.inspection_id, user, lock=True)
             from .inspections import lock_hold
 
-            hold = lock_hold(db, payload.source_transfer_id)
             lot = stock.lock_lot(db, payload.source_transfer_id)
+            if payload.inspection_id is None and lot.next_team_id != team.id:
+                raise HTTPException(403, "只能提交本班组在库物料的返工问题")
+            hold = lock_hold(db, lot.id)
+            if payload.inspection_id is None and hold:
+                raise HTTPException(409, "本批物料已被检验锁定，请从对应质量问题提交返工")
             if lot.status != "received" or not lot.stock_tracked:
                 raise HTTPException(409, "请选择已签收的在库批次")
             # Recheck after the source lock: retries must not reserve another portion.

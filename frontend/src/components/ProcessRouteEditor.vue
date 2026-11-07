@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppDisclosure from './AppDisclosure.vue'
 import AppDetailTable from './AppDetailTable.vue'
+import ReworkRoundsTable from './ReworkRoundsTable.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
@@ -10,7 +11,7 @@ import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import { RouterLink } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElForm, ElFormItem, ElIcon, ElOption, ElTooltip, type InputInstance } from 'element-plus'
+import { ElForm, ElFormItem, ElIcon, ElOption, ElTooltip } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
@@ -125,7 +126,7 @@ const modifying = computed(
   () => !!draft.value.parent_id || (editingSaved.value && draft.value.state === 'published'),
 )
 const editorMain = ref<HTMLElement>()
-const instructionInputs = ref<InputInstance[]>([])
+const instructionInputs = ref<InstanceType<typeof ElInput>[]>([])
 let editorObserver: ResizeObserver | undefined
 let resizeFrame = 0
 let editorWidth = 0
@@ -877,6 +878,11 @@ onMounted(async () => {
             </tbody>
           </AppDetailTable>
         </div>
+        <ReworkRoundsTable
+          v-if="draft.rework_request && draft.id"
+          :route-id="draft.id"
+          :version="draft.version"
+        />
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
           <div
             v-if="!readonly && fieldErrors.attachments"

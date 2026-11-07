@@ -24,6 +24,7 @@ import TeamInventory from '@/components/TeamInventory.vue'
 import TeamDashboard from '@/components/TeamDashboard.vue'
 import InspectionRegistrationDialog from '@/components/InspectionRegistrationDialog.vue'
 import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
+import TeamReworkRequestDialog from '@/components/TeamReworkRequestDialog.vue'
 import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
 import TeamInspectionRecords from '@/components/TeamInspectionRecords.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
@@ -540,6 +541,7 @@ const actionOpen = ref(false)
 const reallocationOpen = ref(false),
   reallocationSource = ref<StockBatch | null>(null)
 const pickerOpen = ref(false)
+const reworkRequestOpen = ref(false)
 const pickerMode = ref<'dispatch' | 'loss' | 'reallocate'>('dispatch')
 const openingDispatch = ref(false)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
@@ -550,6 +552,7 @@ watch(
   [teamKey, () => auth.currentUser?.id, canWrite],
   () => {
     receiptReceiver.value = null
+    reworkRequestOpen.value = false
   },
   { flush: 'sync' },
 )
@@ -1144,10 +1147,19 @@ onBeforeUnmount(() => {
     @fullscreen-change="fullscreen = $event"
   >
     <template
-      v-if="canWrite && team?.code === 'FACTORY-QC' && tab !== 'quality-feedback'"
+      v-if="
+        canWrite && hasProcessing && (team?.code !== 'FACTORY-QC' || tab !== 'quality-feedback')
+      "
       #messages
     >
-      <ElButton @click="selectSection('quality-feedback')">提交返工问题</ElButton>
+      <ElButton
+        @click="
+          team?.code === 'FACTORY-QC'
+            ? selectSection('quality-feedback')
+            : (reworkRequestOpen = true)
+        "
+        >提交返工问题</ElButton
+      >
     </template>
     <template v-if="syncMessage" #fullscreen-status
       ><span role="status" :title="syncMessage">{{
@@ -1954,6 +1966,17 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <template #dialogs>
+      <TeamReworkRequestDialog
+        v-if="reworkRequestOpen && canWrite && hasProcessing"
+        :key="teamId"
+        @close="reworkRequestOpen = false"
+        @saved="
+          () => {
+            showToast('返工问题已提交工艺班组')
+            void loadView()
+          }
+        "
+      />
       <InspectionRegistrationDialog
         v-if="inspectionOpen && canWrite"
         :inspection-team-id="teamId"

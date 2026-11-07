@@ -4,6 +4,7 @@ import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { ref } from 'vue'
 import CompactFormSection from './CompactFormSection.vue'
+import WeightInput from './WeightInput.vue'
 import { ElForm, ElFormItem, ElOption } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
@@ -12,7 +13,7 @@ import { processRouteApi } from '@/services/processRouteApi'
 import { materialRequestKey } from '@/utils/materialStock'
 const props = defineProps<{
   context: QuantityAdjustmentContext
-  inspectionId: number
+  inspectionId?: number
   initialReason?: string
 }>()
 const emit = defineEmits<{ changed: []; busy: [boolean] }>()
@@ -32,7 +33,7 @@ async function save() {
     !original.value ||
     quantity.value == null ||
     weight.value == null ||
-    !Number.isFinite(quantity.value) ||
+    !Number.isInteger(quantity.value) ||
     quantity.value <= 0 ||
     !Number.isFinite(weight.value) ||
     weight.value <= 0 ||
@@ -109,16 +110,10 @@ async function save() {
         /></ElFormItem>
         <ElFormItem
           class="form-field--medium"
-          label="返工重量（kg）"
+          label="返工重量"
           required
           :error="submitted && (!weight || weight <= 0) ? '请填写返工重量' : ''"
-          ><ElInputNumber
-            v-model="weight"
-            :min="0.000001"
-            :max="context.weight"
-            :step="0.000001"
-            :precision="6"
-            aria-label="返工重量"
+          ><WeightInput v-model="weight" :max="context.weight" ariaLabel="返工重量"
         /></ElFormItem>
         <ElFormItem
           class="form-field--full"
