@@ -437,161 +437,164 @@ onBeforeUnmount(() => {
             >
           </template></ElTableColumn
         >
-        <template v-if="routeKind === 'normal'">
-          <ElTableColumn label="材质" width="120">
-            <template #default="{ row }">
-              <span :class="{ 'route-empty': !row.material_name }">{{
-                row.material_name || '—'
-              }}</span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="工序概要" min-width="300" :show-overflow-tooltip="false">
-            <template #default="{ row }">
-              <div
-                v-if="routeSteps(row).length"
-                class="route-step-summary"
-                role="group"
-                :aria-label="`${row.serial_nos[0]} 的 ${routeSteps(row).length} 道工序`"
-                :aria-description="routePath(row)"
-              >
-                <template
-                  v-for="(step, index) in routeSteps(row).slice(0, visibleStepCount)"
-                  :key="index"
-                >
-                  <span v-if="index" class="route-path-connector" aria-hidden="true" />
-                  <AppPopover
-                    :trigger="['hover', 'focus']"
-                    :show-after="180"
-                    :hide-after="120"
-                    placement="bottom-start"
-                    :width="320"
-                    @before-enter="loadStepDetails(row.id)"
-                  >
-                    <template #reference>
-                      <button
-                        type="button"
-                        class="route-step-node"
-                        :aria-label="`工序 ${step.sequence_no} · ${step.name || '未命名工序'}`"
-                      >
-                        <FactoryNavIcon :name="stepIcon(step)" />
-                      </button>
-                    </template>
-                    <div class="route-path-heading">
-                      <span>{{ step.name || '未命名工序' }}</span>
-                      <span class="route-path-total">工序 {{ step.sequence_no }}</span>
-                    </div>
-                    <div class="route-step-detail" :aria-busy="stepDetails[row.id]?.loading">
-                      <span
-                        v-if="!stepDetails[row.id] || stepDetails[row.id]?.loading"
-                        class="route-path-total"
-                      >
-                        加载中…
-                      </span>
-                      <div v-else-if="stepDetails[row.id]?.error" role="alert">
-                        {{ stepDetails[row.id]?.error }}
-                        <ElButton link @click="loadStepDetails(row.id)">重试</ElButton>
-                      </div>
-                      <template v-else>
-                        <p>
-                          {{
-                            stepDetails[row.id]?.steps?.[index]?.instructions || '未填写工艺要求'
-                          }}
-                        </p>
-                        <div class="route-step-quantity">
-                          <span>计划加工数量</span>
-                          <span>{{
-                            stepDetails[row.id]?.steps?.[index]?.planned_quantity || '—'
-                          }}</span>
-                        </div>
-                      </template>
-                    </div>
-                  </AppPopover>
-                </template>
-                <template v-if="routeSteps(row).length > visibleStepCount">
-                  <span class="route-path-connector" aria-hidden="true" />
-                  <AppPopover
-                    :trigger="['hover', 'focus']"
-                    :show-after="180"
-                    :hide-after="120"
-                    placement="bottom-start"
-                    :width="360"
-                  >
-                    <template #reference>
-                      <button
-                        type="button"
-                        class="route-path-more"
-                        :aria-label="`另有 ${routeSteps(row).length - visibleStepCount} 道工序，查看完整路线`"
-                      >
-                        +{{ routeSteps(row).length - visibleStepCount }}
-                      </button>
-                    </template>
-                    <div class="route-path-heading">
-                      <span>{{ row.serial_nos[0] }}</span>
-                      <span class="route-path-total">{{ routeSteps(row).length }} 道工序</span>
-                    </div>
-                    <ol class="route-path-list" aria-label="完整工序顺序" tabindex="0">
-                      <li v-for="(step, index) in routeSteps(row)" :key="index">
-                        <span class="route-path-sequence">{{ step.sequence_no }}</span>
-                        <span class="route-step-symbol"
-                          ><FactoryNavIcon :name="stepIcon(step)"
-                        /></span>
-                        <span>{{ step.name || '未命名工序' }}</span>
-                      </li>
-                    </ol>
-                  </AppPopover>
-                </template>
-              </div>
-              <span v-else class="route-empty">—</span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="图纸" width="88" align="center" :show-overflow-tooltip="false">
-            <template #default="{ row }">
-              <ElButton
-                v-if="row.drawings?.length === 1"
-                link
-                class="route-drawing-count"
-                :aria-label="`查看 ${row.serial_nos[0]} 的图纸`"
-                :loading="drawingLoading === `${row.id}:${row.drawings[0].id}`"
-                @click="openDrawing(row.id, row.drawings[0])"
-                >1 份</ElButton
-              >
-              <AppPopover
-                v-else-if="row.drawings?.length"
-                :visible="drawingMenu === row.id"
-                trigger="click"
-                placement="bottom-end"
-                :width="280"
-                @update:visible="drawingMenu = $event ? row.id : null"
-              >
-                <template #reference>
-                  <ElButton
-                    link
-                    class="route-drawing-count"
-                    :aria-label="`选择 ${row.serial_nos[0]} 的图纸`"
-                    :loading="drawingLoading.startsWith(`${row.id}:`)"
-                    >{{ row.drawings.length }} 份<ElIcon><ArrowDown /></ElIcon
-                  ></ElButton>
-                </template>
-                <div class="route-path-heading">{{ row.serial_nos[0] }} · 图纸</div>
-                <div class="route-drawing-files">
-                  <ElButton
-                    v-for="drawing in row.drawings"
-                    :key="drawing.id"
-                    text
-                    @click="openDrawing(row.id, drawing)"
-                    >{{ drawing.filename }}</ElButton
-                  >
-                </div>
-              </AppPopover>
-              <span v-else class="route-empty">—</span>
-            </template>
-          </ElTableColumn>
-        </template>
-        <ElTableColumn v-if="routeKind === 'rework'" label="返工批次" width="190"
-          ><template #default="{ row }">{{
-            row.rework_request?.batch_no || '—'
-          }}</template></ElTableColumn
+        <ElTableColumn v-if="routeKind === 'normal'" label="材质" width="120">
+          <template #default="{ row }">
+            <span :class="{ 'route-empty': !row.material_name }">{{
+              row.material_name || '—'
+            }}</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn
+          :label="routeKind === 'rework' ? '返工概要' : '工序概要'"
+          min-width="300"
+          :show-overflow-tooltip="false"
         >
+          <template #default="{ row }">
+            <div
+              v-if="routeSteps(row).length"
+              class="route-step-summary"
+              role="group"
+              :aria-label="`${row.serial_nos[0]} 的 ${routeSteps(row).length} 道工序`"
+              :aria-description="routePath(row)"
+            >
+              <template
+                v-for="(step, index) in routeSteps(row).slice(0, visibleStepCount)"
+                :key="index"
+              >
+                <span v-if="index" class="route-path-connector" aria-hidden="true" />
+                <AppPopover
+                  :trigger="['hover', 'focus']"
+                  :show-after="180"
+                  :hide-after="120"
+                  placement="bottom-start"
+                  :width="320"
+                  @before-enter="loadStepDetails(row.id)"
+                >
+                  <template #reference>
+                    <button
+                      type="button"
+                      class="route-step-node"
+                      :aria-label="`工序 ${step.sequence_no} · ${step.name || '未命名工序'}`"
+                    >
+                      <FactoryNavIcon :name="stepIcon(step)" />
+                    </button>
+                  </template>
+                  <div class="route-path-heading">
+                    <span>{{ step.name || '未命名工序' }}</span>
+                    <span class="route-path-total">工序 {{ step.sequence_no }}</span>
+                  </div>
+                  <div class="route-step-detail" :aria-busy="stepDetails[row.id]?.loading">
+                    <span
+                      v-if="!stepDetails[row.id] || stepDetails[row.id]?.loading"
+                      class="route-path-total"
+                    >
+                      加载中…
+                    </span>
+                    <div v-else-if="stepDetails[row.id]?.error" role="alert">
+                      {{ stepDetails[row.id]?.error }}
+                      <ElButton link @click="loadStepDetails(row.id)">重试</ElButton>
+                    </div>
+                    <template v-else>
+                      <p>
+                        {{ stepDetails[row.id]?.steps?.[index]?.instructions || '未填写工艺要求' }}
+                      </p>
+                      <div class="route-step-quantity">
+                        <span>计划加工数量</span>
+                        <span>{{
+                          stepDetails[row.id]?.steps?.[index]?.planned_quantity || '—'
+                        }}</span>
+                      </div>
+                    </template>
+                  </div>
+                </AppPopover>
+              </template>
+              <template v-if="routeSteps(row).length > visibleStepCount">
+                <span class="route-path-connector" aria-hidden="true" />
+                <AppPopover
+                  :trigger="['hover', 'focus']"
+                  :show-after="180"
+                  :hide-after="120"
+                  placement="bottom-start"
+                  :width="360"
+                >
+                  <template #reference>
+                    <button
+                      type="button"
+                      class="route-path-more"
+                      :aria-label="`另有 ${routeSteps(row).length - visibleStepCount} 道工序，查看完整路线`"
+                    >
+                      +{{ routeSteps(row).length - visibleStepCount }}
+                    </button>
+                  </template>
+                  <div class="route-path-heading">
+                    <span>{{ row.serial_nos[0] }}</span>
+                    <span class="route-path-total">{{ routeSteps(row).length }} 道工序</span>
+                  </div>
+                  <ol class="route-path-list" aria-label="完整工序顺序" tabindex="0">
+                    <li v-for="(step, index) in routeSteps(row)" :key="index">
+                      <span class="route-path-sequence">{{ step.sequence_no }}</span>
+                      <span class="route-step-symbol"
+                        ><FactoryNavIcon :name="stepIcon(step)"
+                      /></span>
+                      <span>{{ step.name || '未命名工序' }}</span>
+                    </li>
+                  </ol>
+                </AppPopover>
+              </template>
+            </div>
+            <span v-else class="route-empty">{{
+              routeKind === 'rework' && row.state !== 'published' ? '待制定' : '—'
+            }}</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn
+          v-if="routeKind === 'normal'"
+          label="图纸"
+          width="88"
+          align="center"
+          :show-overflow-tooltip="false"
+        >
+          <template #default="{ row }">
+            <ElButton
+              v-if="row.drawings?.length === 1"
+              link
+              class="route-drawing-count"
+              :aria-label="`查看 ${row.serial_nos[0]} 的图纸`"
+              :loading="drawingLoading === `${row.id}:${row.drawings[0].id}`"
+              @click="openDrawing(row.id, row.drawings[0])"
+              >1 份</ElButton
+            >
+            <AppPopover
+              v-else-if="row.drawings?.length"
+              :visible="drawingMenu === row.id"
+              trigger="click"
+              placement="bottom-end"
+              :width="280"
+              @update:visible="drawingMenu = $event ? row.id : null"
+            >
+              <template #reference>
+                <ElButton
+                  link
+                  class="route-drawing-count"
+                  :aria-label="`选择 ${row.serial_nos[0]} 的图纸`"
+                  :loading="drawingLoading.startsWith(`${row.id}:`)"
+                  >{{ row.drawings.length }} 份<ElIcon><ArrowDown /></ElIcon
+                ></ElButton>
+              </template>
+              <div class="route-path-heading">{{ row.serial_nos[0] }} · 图纸</div>
+              <div class="route-drawing-files">
+                <ElButton
+                  v-for="drawing in row.drawings"
+                  :key="drawing.id"
+                  text
+                  @click="openDrawing(row.id, drawing)"
+                  >{{ drawing.filename }}</ElButton
+                >
+              </div>
+            </AppPopover>
+            <span v-else class="route-empty">—</span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn v-if="routeKind === 'rework'" label="轮次" width="80" align="center"
           ><template #default="{ row }"
             >第 {{ row.rework_request?.round }} 轮</template

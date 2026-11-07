@@ -502,6 +502,7 @@ it('separates pending rework with visible problems and teams, and opens manual a
   const pending = {
     ...reworkRouteFixture,
     state: 'draft' as const,
+    steps: [],
     rework_batch_no: 'TL-REWORK-1',
     rework_quantity: 4,
     rework_weight: 40,
@@ -541,6 +542,8 @@ it('separates pending rework with visible problems and teams, and opens manual a
   for (const text of ['尺寸超差', '巡检', '待制定', '待指定'])
     expect(wrapper.text()).toContain(text)
   expect(wrapper.get('.route-list tbody tr td').text()).toBe(pending.serial_nos[0])
+  expect(wrapper.get('.route-list tbody tr td:nth-child(2)').text()).toBe('待制定')
+  expect(wrapper.find('.route-step-node').exists()).toBe(false)
   expect(wrapper.get('.rework-problem').text()).toBe('尺寸超差')
   expect(wrapper.get('.rework-problem').attributes('title')).toBe('实测厚度偏大')
   expect(
@@ -548,7 +551,7 @@ it('separates pending rework with visible problems and teams, and opens manual a
   ).toEqual(['研磨', '轧制'])
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',
-    '返工批次',
+    '返工概要',
     '轮次',
     '问题',
     '提交班组',
@@ -575,11 +578,22 @@ it('separates pending rework with visible problems and teams, and opens manual a
 })
 
 it('shows authored rework execution teams without claiming work has finished', async () => {
+  const authored = {
+    ...reworkRouteFixture,
+    steps: [{ ...reworkRouteFixture.steps[0]!, team_id: 3 }],
+  }
+  const detail = vi.spyOn(processRouteApi, 'detail').mockResolvedValue(authored)
   await render()
   vi.mocked(processRouteApi.list).mockResolvedValue({
     items: [
       {
-        ...reworkRouteFixture,
+        ...authored,
+        steps: [],
+        step_summary: authored.steps.map(({ sequence_no, name, team_id }) => ({
+          sequence_no,
+          name,
+          team_id,
+        })),
         rework_request: {
           ...reworkRouteFixture.rework_request!,
           execution_team_names: ['研磨', '检验'],
@@ -598,6 +612,20 @@ it('shows authored rework execution teams without claiming work has finished', a
     wrapper.findAll('[aria-label="执行班组"] [role="listitem"]').map((item) => item.text()),
   ).toEqual(['研磨', '检验'])
   expect(wrapper.text()).not.toContain('已完成')
+  expect(wrapper.text()).not.toContain(authored.rework_request!.batch_no)
+  expect(wrapper.get('.route-step-node').text()).toBe('')
+  expect(wrapper.get('.route-step-summary').findComponent(FactoryNavIcon).props('name')).toBe(
+    'grinding',
+  )
+  expect(detail).not.toHaveBeenCalled()
+  wrapper
+    .findAllComponents(ElPopover)
+    .find((popover) => popover.find('.route-step-node').exists())!
+    .vm.$emit('before-enter')
+  await flushPromises()
+  expect(detail).toHaveBeenCalledWith(authored.id)
+  expect(wrapper.get('.route-step-detail').text()).toContain('返工精磨至2.50±0.01mm')
+  expect(wrapper.get('.route-step-quantity').text()).toContain(authored.steps[0]!.planned_quantity)
 })
 
 it('defaults to normal engineering and clears a previous search when switching views', async () => {
