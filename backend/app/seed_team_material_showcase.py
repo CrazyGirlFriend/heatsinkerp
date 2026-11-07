@@ -16,7 +16,7 @@ from .configure_material_teams import MATERIAL_TEAMS, configure_material_teams
 from .database import SessionLocal
 from .material_stock import DispatchCreate, LossCreate, create_dispatch, create_loss
 from .material_transfer_workflow import confirm_material_transfer, confirm_outbound
-from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, User
+from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, TeamPurpose, User
 from .schemas import MaterialReceiptConfirm, MaterialTransferConfirm, WarehouseReceiptCreate
 from .seed_material_transfer_showcase import demo_receiving_employee
 from .warehouse_receipts import create_receipt
@@ -86,6 +86,16 @@ def seed_team_material_showcase(db, password):
     def send(
         actor, target, lots, key, *, quantity=10, weight="1.000", confirm=False, external=None
     ):
+        purpose_id = (
+            None
+            if external
+            else db.scalar(
+                select(TeamPurpose.id)
+                .where(TeamPurpose.team_id == target.team_id, TeamPurpose.active.is_(True))
+                .order_by(TeamPurpose.id)
+                .limit(1)
+            )
+        )
         payload = DispatchCreate(
             sent_employee_id=demo_receiving_employee(db, actor.team_id, "演示转料员"),
             next_team_id=None if external else target.team_id,
@@ -96,6 +106,7 @@ def seed_team_material_showcase(db, password):
             lines=[
                 {
                     "source_transfer_id": lot["id"],
+                    "purpose_id": purpose_id,
                     "quantity": quantity,
                     "weight": weight,
                     "material_type": "finished" if actor is leaders[-1] else "semi_finished",

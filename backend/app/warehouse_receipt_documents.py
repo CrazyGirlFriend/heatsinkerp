@@ -2,10 +2,8 @@
 
 import hashlib
 from pathlib import PurePath
-from typing import Annotated, Literal
-from urllib.parse import quote
 
-from fastapi import Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,16 +11,12 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from . import material_stock
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
-from .database import get_db
 from .models import MaterialTransfer, User, WarehouseReceiptDocument, utcnow
 from .order_document_preview import order_document_preview
 from .process_route_drawings import MAX_DRAWINGS, drawing_preview, validate_drawing
-from .process_route_import import MAX_FILE_BYTES, parse_docx
+from .process_route_import import parse_docx
 from .process_route_orders import merge_materials, parse_order
 
-router = AsyncAPIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 MEDIA_TYPES = {
     "process": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "drawing": "application/pdf",
@@ -108,71 +102,7 @@ def save_upload(db, team_id, user, kind, filename, content, parsed):
         raise
 
 
-@router.post("/teams/{team_id}/receipt-documents", status_code=201)
-async def upload_document(
-    team_id: int,
-    kind: Annotated[Literal["process", "drawing", "order"], Form()],
-    file: Annotated[UploadFile, File()],
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    from .warehouse_receipts import require_warehouse
-
-    try:
-        require_warehouse(material_stock.require_actor(user, team_id))
-        filename = PurePath((file.filename or "").replace("\\", "/")).name
-        content = await file.read(MAX_FILE_BYTES + 1)
-        parsed = await run_in_threadpool(parsed_document, kind, filename, content)
-        return await db.run_sync(
-            lambda session: save_upload(session, team_id, user, kind, filename, content, parsed)
-        )
-    finally:
-        await file.close()
-
-
-@router.get("/receipt-documents/{document_id}")
-def read_document(
-    document_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    return document(require_reader(db, document_id, user))
-
-
-@router.get("/receipt-documents/{document_id}/file")
-async def download_document(
-    document_id: int,
-    preview: bool = False,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    def original(session):
-        row = require_reader(session, document_id, user)
-        return row.kind, row.filename, row.content
-
-    kind, filename, content = await db.run_sync(original)
-    media_type = MEDIA_TYPES[kind]
-    if preview and kind == "order":
-        content = await run_in_threadpool(order_document_preview, content, filename)
-        media_type = "application/pdf"
-        filename = str(PurePath(filename).with_suffix(".pdf"))
-    elif preview and kind == "drawing":
-        content = await run_in_threadpool(drawing_preview, content)
-    return Response(
-        content,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": ("inline" if preview else "attachment")
-            + "; filename*=UTF-8''"
-            + quote(filename),
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, no-store",
-        },
-    )
-
-
-@router.delete("/receipt-documents/{document_id}", status_code=204)
-def delete_upload(
-    document_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def delete_upload(document_id: int, user: User, db: Session):
     with db.begin():
         row = db.scalar(
             select(WarehouseReceiptDocument)
@@ -213,8 +143,7 @@ def has_confirmed_order(db, lot, serial_no):
     )
 
 
-@router.get("/material-transfers/{batch_no}/receipt-documents")
-def receipt_documents(batch_no: str, db: Session = Depends(get_db)):
+def receipt_documents(batch_no: str, db: Session):
     lot = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
     if lot is None:
         raise HTTPException(404, "物料批次不存在")
@@ -283,3 +212,19 @@ def attach_documents(db, receipt, documents):
         row.pending_key = None
         row.confirmed_at = utcnow()
     db.flush()
+
+
+async def download_payload(db: AsyncSession, document_id: int, user: User, preview: bool):
+    def original(session):
+        row = require_reader(session, document_id, user)
+        return row.kind, row.filename, row.content
+
+    kind, filename, content = await db.run_sync(original)
+    media_type = MEDIA_TYPES[kind]
+    if preview and kind == "order":
+        content = await run_in_threadpool(order_document_preview, content, filename)
+        media_type = "application/pdf"
+        filename = str(PurePath(filename).with_suffix(".pdf"))
+    elif preview and kind == "drawing":
+        content = await run_in_threadpool(drawing_preview, content)
+    return content, filename, media_type

@@ -2,18 +2,15 @@
 
 from collections import defaultdict
 from datetime import date, timedelta, timezone
-from typing import Annotated, Literal
+from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import HTTPException
 from sqlalchemy import Numeric, and_, case, cast, func, literal_column, or_, select, true, union_all
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
 from .config import settings
 from .configure_material_teams import MATERIAL_TEAMS
-from .database import get_db
 from .models import (
     InspectionFeedbackTeam as Member,
 )
@@ -36,7 +33,6 @@ from .record_filters import RecordFilters, day_bounds
 from .schemas import SCRAP_MATERIAL_TYPES
 from .team_constants import PROCESSING_TEAM_CODES
 
-router = AsyncAPIRouter(prefix="/api/factory-performance")
 PRODUCTION_METRICS = (
     "record_count",
     "initial_record_count",
@@ -482,18 +478,18 @@ def issues_report(db, user, dates, team_id, period="day", material_name=None):
     }
 
 
-@router.get("")
 def report(
+    *,
     date_from: date | None = None,
     date_to: date | None = None,
-    team_id: int | None = Query(default=None, gt=0),
+    team_id: int | None = None,
     period: Literal["day", "week", "month"] = "day",
-    serial_no: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-    work_id: Annotated[int | None, Query(gt=0)] = None,
-    material_name: Annotated[str | None, Query(min_length=1, max_length=160)] = None,
+    serial_no: str | None = None,
+    work_id: int | None = None,
+    material_name: str | None = None,
     include_activity: bool = False,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: Session,
+    user: User,
 ):
     now = utcnow()
     today = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(settings.factory_timezone)).date()

@@ -1,4 +1,7 @@
 import type { ProcessRouteStep } from './processRoute'
+import type { components } from './generated/api'
+type Contract = components['schemas']
+type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 export const scheduleStatusLabels = {
   pending: '待交货',
   today: '今日到期',
@@ -8,16 +11,8 @@ export const scheduleStatusLabels = {
   cancelled: '已取消',
   not_assessed: '备料与转出',
 } as const
-export type ScheduleStatus = keyof typeof scheduleStatusLabels
-export interface ScheduleOverview {
-  as_of: string
-  date_from: string
-  date_to: string
-  period: { completed: number; completed_late: number; overdue: number }
-  assessed_count: number
-  on_time_rate: number | null
-  overdue_count: number
-  today_count: number
+export type ScheduleStatus = Contract['ScheduleResponse']['status']
+export type ScheduleOverview = Omit<Contract['ScheduleOverviewResponse'], 'attention'> & {
   attention: ProductionSchedule[]
 }
 export const completionBasisLabels = {
@@ -25,7 +20,7 @@ export const completionBasisLabels = {
   weight: '按重量',
   both: '件数和重量',
 } as const
-export type CompletionBasis = keyof typeof completionBasisLabels
+export type CompletionBasis = Contract['ScheduleResponse']['completion_basis']
 export const scheduleExecutionLabels = {
   waiting_material: '待关联物料',
   pending_receipt: '待签收',
@@ -35,7 +30,7 @@ export const scheduleExecutionLabels = {
   completed: '已完成',
   cancelled: '已取消',
 } as const
-export type ScheduleExecutionState = keyof typeof scheduleExecutionLabels
+export type ScheduleExecutionState = Contract['ScheduleResponse']['execution_state']
 export function scheduleStatusTone(status: ScheduleStatus) {
   if (status === 'overdue' || status === 'completed_late') return 'danger'
   if (status === 'today') return 'warning'
@@ -84,91 +79,49 @@ export interface ScheduleBatchWrite {
   target_weight: number | null
   upstream_batch_ids: number[]
 }
-export interface ScheduleBatch extends ScheduleBatchWrite {
-  planned_start_at?: string | null
-  id: number
-  status: ScheduleStatus
-  warnings: string[]
-  dispatched_quantity: number
-  dispatched_weight: number
-  received_quantity: number
-  received_weight: number
-  completed_at: string | null
-}
-export interface ProductionSchedule extends ScheduleWrite {
-  planning_state?: 'pending' | 'submitted' | 'revision_pending' | 'confirmed'
-  pending_batches?: ScheduleBatchWrite[] | null
-  order_locked?: boolean
-  delivery_batches?: CustomerDeliveryBatch[]
-  final_due_at?: string | null
-  batches?: ScheduleBatch[]
-  planned_start_at?: string | null
-  parent_schedule_id?: number
-  batch_number?: number
-  time_warnings?: string[]
-  upstream_timeline_ids?: number[]
-  route_link?: { state: 'unlinked' | 'linked' | 'changed'; latest_route_id: number | null }
-  id: number
-  task_id?: number
-  task_no?: string
-  task_title?: string
-  execution_state?: ScheduleExecutionState
-  quality_held?: boolean
-  assessment_enabled?: boolean
-  stock?: {
-    on_hand_quantity: number
-    on_hand_weight: number
-    pending_quantity: number
-    pending_weight: number
-    batch_count: number
-    rework_quantity: number
+export type ScheduleBatch = OptionalFields<Contract['ScheduleBatchResponse'], 'planned_start_at'>
+// The board also constructs batch rows locally. Keep that view projection separate
+// from the complete HTTP response without duplicating server field definitions.
+type ScheduleCore = Pick<
+  Contract['ScheduleResponse'],
+  | 'id'
+  | 'team_name'
+  | 'next_team_name'
+  | 'version'
+  | 'status'
+  | 'cancelled_at'
+  | 'created_at'
+  | 'updated_at'
+  | 'dispatched_quantity'
+  | 'dispatched_weight'
+  | 'received_quantity'
+  | 'received_weight'
+  | 'remaining_quantity'
+  | 'remaining_weight'
+  | 'completed_at'
+>
+export type ProductionSchedule = ScheduleWrite &
+  ScheduleCore &
+  Partial<
+    Omit<
+      Contract['ScheduleResponse'],
+      keyof ScheduleWrite | keyof ScheduleCore | 'batches' | 'pending_batches' | 'route_link'
+    >
+  > & {
+    pending_batches?: Contract['ScheduleBatchProposalResponse'][] | null
+    batches?: ScheduleBatch[]
+    parent_schedule_id?: number
+    batch_number?: number
+    time_warnings?: string[]
+    upstream_timeline_ids?: number[]
+    route_link?: NonNullable<Contract['ScheduleResponse']['route_link']>
+    deliveries?: Contract['ScheduleDeliveryResponse'][]
+    history?: (Omit<Contract['ScheduleEventResponse'], 'before' | 'after'> & {
+      before: ScheduleAuditSnapshot | null
+      after: ScheduleAuditSnapshot | null
+    })[]
   }
-  initial_due_at?: string
-  team_name: string
-  next_team_name: string | null
-  material_name?: string | null
-  version: number
-  status: ScheduleStatus
-  cancelled_at: string | null
-  created_at: string
-  updated_at: string
-  processed_quantity?: number
-  dispatched_quantity: number
-  dispatched_weight: number
-  received_quantity: number
-  received_weight: number
-  remaining_quantity: number | null
-  remaining_weight: number | null
-  completed_at: string | null
-  linked_batches?: {
-    source_transfer_id: number
-    batch_no: string
-    material_name: string
-    quantity: number
-    weight: number
-    received_at: string | null
-    status: string
-  }[]
-  deliveries?: {
-    id: number
-    batch_no: string
-    quantity: number
-    weight: number
-    transferred_at: string
-    received_at: string | null
-    status: string
-    schedule_batch_id?: number | null
-    counts_toward_delivery?: boolean
-  }[]
-  history?: {
-    id: number
-    action: string
-    actor: string
-    occurred_at: string
-    before: ScheduleAuditSnapshot | null
-    after: ScheduleAuditSnapshot | null
-  }[]
-}
+
 export interface ScheduleFilters {
   task_id?: number
   query?: string
@@ -184,18 +137,7 @@ export interface ScheduleFilters {
   page?: number
   page_size?: number
 }
-export interface ScheduleSourceOption {
-  source_transfer_id: number
-  batch_no: string
-  serial_no: string
-  material_name: string
-  material_type: string
-  quantity: number
-  weight: number
-  on_hand_quantity: number
-  on_hand_weight: number
-  received_at: string | null
-}
+export type ScheduleSourceOption = Contract['ScheduleSourceOptionResponse']
 export type ScheduleSummary = Pick<
   ProductionSchedule,
   | 'id'
@@ -226,11 +168,7 @@ export type ScheduleSummary = Pick<
   | 'batches'
   | 'predecessor_id'
 >
-export interface CustomerDeliveryBatch {
-  batch_number: number
-  due_at: string
-  target_quantity: number
-}
+export type CustomerDeliveryBatch = Contract['CustomerDeliveryBatchResponse']
 export interface DispatchTaskWrite {
   planned_quantity?: number
   serial_no: string
@@ -242,54 +180,24 @@ export interface DispatchTaskWrite {
   notes: string | null
   idempotency_key: string
 }
-export interface ScheduleTask {
-  order_document?: import('./processRoute').RouteOrderDocument | null
-  business_people?: { id: number; name: string }[]
-  delivery_batches?: CustomerDeliveryBatch[]
-  locked_at?: string | null
-  cancelled_at?: string | null
-  reworks?: {
-    route_id: number
-    route_version: number
-    schedule_id: number
-    batch_no: string
-    problem: string
-    quantity: number
-    completed_quantity: number
-    state: 'awaiting_route' | 'processing' | 'processed'
-  }[]
-  route_changed?: boolean
-  id: number
-  task_no: string
-  title: string
-  serial_no: string
-  business_person_id?: number | null
-  business_person_name?: string | null
-  shared_source?: boolean
-  notes: string | null
-  version: number
-  created_at: string
-  updated_at: string
-  final_due_at: string
-  status: ScheduleStatus
-  nodes: ProductionSchedule[]
-  locations?: {
-    team_id: number
-    team_name: string
-    quantity: number
-    weight: number
-    pending_quantity: number
-    pending_weight: number
-    batch_count: number
-    quality_held: boolean
-  }[]
-}
-export interface BusinessPerson {
-  id: number
-  name: string
-  active: boolean
-  version: number
-}
+type ScheduleTaskCore = Pick<
+  Contract['ScheduleTaskResponse'],
+  | 'id'
+  | 'task_no'
+  | 'title'
+  | 'serial_no'
+  | 'notes'
+  | 'version'
+  | 'created_at'
+  | 'updated_at'
+  | 'final_due_at'
+  | 'status'
+>
+export type ScheduleTask = ScheduleTaskCore &
+  Partial<Omit<Contract['ScheduleTaskDetailResponse'], keyof ScheduleTaskCore | 'nodes'>> & {
+    nodes: ProductionSchedule[]
+  }
+export type BusinessPerson = Contract['BusinessPersonResponse']
 export interface ScheduleSelection {
   value: number | string
   label: string
@@ -308,15 +216,10 @@ export interface InventorySchedules {
   sources: (InventoryScheduleSummary & { source_transfer_id: number })[]
 }
 
-export interface ScheduleRouteOption {
-  id: number
-  title: string
-  version: number
-  published_at: string
-  execution_serial?: string | null
-  serial_nos?: string[]
-  steps: ProcessRouteStep[]
-}
+export type ScheduleRouteOption = Omit<
+  OptionalFields<Contract['ScheduleRouteOptionResponse'], 'execution_serial' | 'serial_nos'>,
+  'steps'
+> & { steps: ProcessRouteStep[] }
 export interface ScheduleRouteLink {
   expected_version: number
   route_id: number
@@ -324,10 +227,4 @@ export interface ScheduleRouteLink {
   mappings: { schedule_id: number; expected_version: number; step_index: number }[]
 }
 
-export interface ScheduleReworkOption {
-  route_id: number
-  route_version: number
-  problem: string
-  batch_no: string
-  plans: { id: number; team_name: string; due_at: string }[]
-}
+export type ScheduleReworkOption = Contract['ScheduleReworkOptionResponse']

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -230,7 +231,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <button
+  <AppButton
+    unstyled
     type="button"
     class="notice-trigger"
     :class="{ 'is-compact': compact }"
@@ -241,7 +243,7 @@ onBeforeUnmount(() => {
     <ElIcon><Bell /></ElIcon><span v-if="!compact">消息通知</span>
     <span v-if="unread" class="notice-count">{{ unread > 99 ? '99+' : unread }}</span>
     <span v-else-if="error" class="notice-error" aria-hidden="true">!</span>
-  </button>
+  </AppButton>
   <AppDrawer
     v-model="visible"
     title="消息通知"
@@ -289,7 +291,8 @@ onBeforeUnmount(() => {
         aria-label="业务消息"
       >
         <li v-for="item in items" :key="`${item.source}:${item.id}`">
-          <button
+          <AppButton
+            unstyled
             :id="`business-notice-${item.source}:${item.id}`"
             type="button"
             class="inbox-item"
@@ -326,7 +329,7 @@ onBeforeUnmount(() => {
               <span v-if="item.batch_no" class="inbox-batch">{{ item.batch_no }}</span>
             </span>
             <ElIcon class="inbox-arrow" aria-hidden="true"><ArrowRight /></ElIcon>
-          </button>
+          </AppButton>
         </li>
       </TransitionGroup>
       <div v-else class="inbox-empty" role="status">

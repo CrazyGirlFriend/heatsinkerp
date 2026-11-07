@@ -1433,10 +1433,11 @@ onBeforeUnmount(() => {
     </AppPopover>
     <div class="gantt-accessible">
       <template v-for="task in tasks" :key="task.id">
-        <button type="button" @click="emit('open-task', task)">
+        <AppButton unstyled type="button" @click="emit('open-task', task)">
           {{ task.serial_no }} · 查看排期明细
-        </button>
-        <button
+        </AppButton>
+        <AppButton
+          unstyled
           v-for="node in task.nodes"
           :key="node.id"
           type="button"
@@ -1444,7 +1445,7 @@ onBeforeUnmount(() => {
         >
           {{ task.serial_no }} · {{ node.sequence_no }} {{ node.team_name }} ·
           {{ formatDateTime(node.due_at) }}
-        </button>
+        </AppButton>
       </template>
     </div>
   </section>

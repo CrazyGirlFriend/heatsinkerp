@@ -1,21 +1,10 @@
-import type {
-  MaterialTransfer,
-  MaterialType,
-  MaterialEntryKind,
-  SludgeMeasurement,
-} from './materialTransfer'
-export interface TeamDirectoryItem {
-  id: number
-  team_id: number
-  name: string
-  active: boolean
-  version: number
-}
+import type { components } from './generated/api'
+import type { MaterialTransfer, MaterialType, SludgeMeasurement } from './materialTransfer'
+export type TeamDirectoryItem = components['schemas']['TeamDirectoryItemResponse']
 export type TeamPurpose = TeamDirectoryItem
 export type TeamEmployee = TeamDirectoryItem
-export interface TeamProcessingTask extends TeamDirectoryItem {
-  purpose_id?: number | null
-}
+export type TeamProcessingTask = TeamDirectoryItem &
+  Partial<Pick<components['schemas']['TeamProcessingTaskResponse'], 'purpose_id'>>
 export interface OpeningLine extends SludgeMeasurement {
   serial_no: string
   material_name: string
@@ -33,92 +22,33 @@ export interface OpeningState {
   can_submit: boolean
   items: MaterialTransfer[]
 }
-export interface SerialHistoryEvent {
-  id: string
-  at: string
-  kind:
-    | 'incoming'
-    | 'opening'
-    | 'outgoing'
-    | 'adjusted'
-    | 'voided'
-    | 'loss'
-    | 'quantity_changed'
-    | 'processing_input'
-    | 'processing_output'
-  batch_no: string
-  source_batch_no: string
-  counterpart: string
-  material_type: MaterialType | null
-  source_material_type: MaterialType | null
-  quantity: number
-  weight: number
-  delta_quantity: number
-  delta_weight: number
-  balance_quantity: number
-  balance_weight: number
-  status: string
-  entry_kind?: MaterialEntryKind
-}
-export interface SerialHistoryGroup {
-  key: string
-  purpose_id: number | null
-  name: string
-  incoming_quantity: number
-  incoming_weight: number
-  outgoing_quantity: number
-  outgoing_weight: number
-  lost_quantity: number
-  lost_weight: number
-  on_hand_quantity: number
-  on_hand_weight: number
-  owned_quantity?: number
-  owned_weight?: number
-  baseline_quantity: number
-  baseline_weight: number
-  events: SerialHistoryEvent[]
-}
-export interface SerialHistory {
-  serial_no: string
-  found: boolean
-  groups: SerialHistoryGroup[]
-  date_from: string | null
-  date_to: string | null
-  untracked_count: number
-  pending_incoming_count: number
-  team_name: string
-  flows: SerialHistoryFlow[]
-  observed_at?: string
-  closing_at?: string
-  lots?: SerialHistoryLot[]
-}
-export interface SerialHistoryLot {
-  batch_no: string
-  group_key: string
-  received_at: string
-  from_name: string
-  quantity: number
-  weight: number
-  on_hand_quantity: number
-  on_hand_weight: number
-  owned_quantity?: number
-  owned_weight?: number
-  baseline_quantity: number
-  baseline_weight: number
-  closing_quantity: number
-  closing_weight: number
-  last_event_at: string
-}
-export interface SerialHistoryFlow {
-  id: string
-  group_key: string
-  direction: 'incoming' | 'outgoing'
-  batch_no: string
-  at: string
-  from_name: string
-  to_name: string
-  quantity: number
-  weight: number
-  status: string
-  entry_kind: MaterialEntryKind
-}
+// Historical read-only snapshots predate material provenance and per-lot balances.
+// Live responses are validated by the backend; chart inputs also accept those snapshots.
+type HistoryContract = components['schemas']
+type LegacyOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+export type SerialHistoryEvent = LegacyOptional<
+  HistoryContract['SerialHistoryEvent'],
+  'entry_kind' | 'processing_role' | 'transfer_specification'
+>
+export type SerialHistoryGroup = Omit<
+  LegacyOptional<
+    HistoryContract['SerialHistoryGroup'],
+    'owned_quantity' | 'owned_weight' | 'processing_delta_quantity' | 'processing_delta_weight'
+  >,
+  'events'
+> & { events: SerialHistoryEvent[] }
+export type SerialHistoryLot = LegacyOptional<
+  HistoryContract['SerialHistoryLot'],
+  | 'owned_quantity'
+  | 'owned_weight'
+  | 'entry_kind'
+  | 'processing_role'
+  | 'material_type'
+  | 'transfer_specification'
+  | 'source_batch_no'
+>
+export type SerialHistoryFlow = HistoryContract['SerialHistoryFlow']
+export type SerialHistory = Omit<
+  LegacyOptional<HistoryContract['SerialHistory'], 'observed_at' | 'closing_at'>,
+  'groups' | 'lots'
+> & { groups: SerialHistoryGroup[]; lots?: SerialHistoryLot[] }

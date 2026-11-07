@@ -1,42 +1,14 @@
+import type { components } from '@/types/generated/api'
 import { API_BASE, authorizationValue, httpRequest, HttpRequestError } from './httpClient'
 
-export type WarehouseLocation = {
-  id: number
-  team_id: number
-  name: string
-  active: boolean
-  version: number
-  status: 'available' | 'locked' | 'occupied' | 'disabled'
-  has_stock: boolean
-  draft_locked?: boolean
-  batches: (import('@/types/sharedMaterial').SharedMaterialFields & {
-    id: number
-    batch_no: string
-    serial_no: string
-    material_name?: string
-    material_type?: string
-    quantity: number
-    weight: number
-    status: string
-    created_at?: string
-    received_at?: string | null
-    available_quantity?: number
-    available_weight?: number
-  })[]
-}
+export type WarehouseLocation = components['schemas']['WarehouseLocationResponse']
 export type WarehouseLocationFilter = 'occupied' | 'available' | 'pending' | 'draft' | 'disabled'
 export type WarehouseMaterial = { serial_no: string; material_name: string; material_type: string }
 export type WarehouseLeaseGroup = Map<
   number,
   { key: string; material: string; owners: Set<symbol>; slot: WarehouseLocation }
 >
-export type WarehouseLease = {
-  id: number
-  name: string
-  key: string
-  expires_at: string
-  hold_until: string
-}
+export type WarehouseLease = components['schemas']['WarehouseLeaseResponse']
 export const locationState = {
   available: '空闲',
   locked: '已锁定',
@@ -60,9 +32,7 @@ export const warehouseLocationApi = {
   list(query = '', page = 1, pageSize = 20, state?: WarehouseLocationFilter) {
     const params = new URLSearchParams({ query, page: String(page), page_size: String(pageSize) })
     if (state) params.set('state', state)
-    return request<{ items: WarehouseLocation[]; total: number; team_id: number }>(
-      `/warehouse-locations?${params}`,
-    )
+    return request<components['schemas']['WarehouseLocationPage']>(`/warehouse-locations?${params}`)
   },
   save(payload: { name: string; active: boolean; expected_version?: number }, id?: number) {
     return request<WarehouseLocation>(

@@ -12,7 +12,7 @@ import ElButton from '@/components/AppButton.vue'
 import AccountAvatar from './AccountAvatar.vue'
 import AvatarPicker from './AvatarPicker.vue'
 import { useAuthStore } from '@/stores/auth'
-import { appPinia } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
 import { showToast } from '@/stores/toast'
 
 const props = defineProps<{ modelValue: boolean }>()

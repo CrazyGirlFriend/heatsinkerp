@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
-import { appPinia } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning'
 

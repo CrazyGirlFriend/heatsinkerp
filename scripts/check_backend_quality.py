@@ -5,7 +5,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PATHS = ("backend/app", "backend/tests", "backend/alembic", "scripts/check_backend_quality.py")
+PATHS = (
+    "backend/app",
+    "backend/tests",
+    "backend/alembic",
+    "scripts/check_backend_quality.py",
+    "scripts/export_openapi.py",
+)
 
 if __name__ == "__main__":
     for command in (("check", *PATHS), ("format", "--check", *PATHS)):

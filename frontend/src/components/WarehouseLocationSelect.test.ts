@@ -19,6 +19,7 @@ const slot: WarehouseLocation = {
   version: 1,
   status: 'available',
   has_stock: false,
+  draft_locked: false,
   batches: [],
 }
 const claim: WarehouseLease = {
@@ -73,6 +74,13 @@ describe('warehouse location selector', () => {
     batches: [
       {
         id: 10,
+        location_id: 2,
+        shared_group_id: null,
+        shared_unallocated: false,
+        created_at: '2026-11-07T00:00:00Z',
+        received_at: '2026-11-07T00:00:00Z',
+        available_quantity: 20,
+        available_weight: 3,
         batch_no: 'TL10',
         serial_no: 'YS-007',
         material_name: '材料1',
@@ -83,6 +91,13 @@ describe('warehouse location selector', () => {
       },
       {
         id: 11,
+        location_id: 2,
+        shared_group_id: null,
+        shared_unallocated: false,
+        created_at: '2026-11-07T00:00:00Z',
+        received_at: null,
+        available_quantity: 0,
+        available_weight: 0,
         batch_no: 'TL11',
         serial_no: 'YS-007',
         material_name: '材料1',

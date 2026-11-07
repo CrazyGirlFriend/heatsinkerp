@@ -10,6 +10,7 @@ const result = spawnSync(
     'src',
     'eslint.config.mjs',
     'scripts/check-format.mjs',
+    'scripts/generate-api-types.mjs',
   ],
   { cwd: root, stdio: 'inherit' },
 )

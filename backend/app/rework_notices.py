@@ -1,16 +1,11 @@
 """Team-scoped rework messages. Reading is independent from processing a problem."""
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
-from .database import get_db
 from .models import MaterialTransfer, ProcessRoute, ReworkNotice, Team, User, utcnow
 from .team_constants import ENGINEERING_TEAM_CODE
-
-router = AsyncAPIRouter(prefix="/api/rework-notices", dependencies=[Depends(get_current_user)])
 
 
 def notify_engineering(db, route):
@@ -35,13 +30,7 @@ def require_team_access(user, team_id):
         raise HTTPException(403, "只能查看本班组消息")
 
 
-@router.get("")
-def list_notices(
-    team_id: int = Query(ge=1),
-    page: int = Query(1, ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def list_notices(*, team_id: int, page: int = 1, user: User, db: Session):
     require_team_access(user, team_id)
     where = ReworkNotice.team_id == team_id
     total = db.scalar(select(func.count()).select_from(ReworkNotice).where(where))
@@ -82,11 +71,8 @@ def list_notices(
     }
 
 
-@router.get("/{notice_id}/route")
-def notice_route(
-    notice_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    from .process_route_api import document
+def notice_route(*, notice_id: int, user: User, db: Session):
+    from .process_route_documents import document
     from .process_routes import require_route_reader
 
     notice = db.get(ReworkNotice, notice_id)
@@ -102,10 +88,7 @@ def notice_route(
     return document(route, db=db)
 
 
-@router.post("/{notice_id}/read")
-def mark_read(
-    notice_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def mark_read(*, notice_id: int, user: User, db: Session):
     with db.begin():
         notice = db.scalar(
             select(ReworkNotice).where(ReworkNotice.id == notice_id).with_for_update()

@@ -1,40 +1,11 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
-import type { MaterialTransferDocumentFields } from '@/types/materialTransfer'
+import type { components } from '@/types/generated/api'
 
-export interface MainSystemConfiguration {
-  enabled: boolean
-  base_url: string
-  timeout_seconds: number
-  has_token: boolean
-  version: number
-  source: 'database' | 'environment'
-  key_ready: boolean
-  allowed_origins: string[]
-  updated_by: string | null
-  updated_at: string | null
-  last_test_at: string | null
-  last_test_ok: boolean | null
-  last_test_message: string | null
-}
-export interface ConfigurationSave {
-  enabled: boolean
-  base_url: string
-  token: string
-  timeout_seconds: number
-  expected_version: number
-}
-export interface ConfigurationTestResult {
-  ok: boolean
-  message: string
-  tested_at: string
-  data: null | {
-    serial_no: string
-    revision: string
-    updated_at: string
-    active: boolean
-    document: Omit<MaterialTransferDocumentFields, 'delivery_date' | 'delivery_quantity'>
-  }
-}
+type Contract = components['schemas']
+export type MainSystemConfiguration = Contract['MainSystemConfigurationResponse']
+export type ConfigurationSave = Contract['ConfigurationSave']
+export type ConfigurationTestResult = Contract['ConfigurationTestResponse']
+
 async function request<T>(suffix = '', options: HttpRequestOptions = {}): Promise<T> {
   try {
     return await httpRequest<T>('/main-system/configuration' + suffix, {

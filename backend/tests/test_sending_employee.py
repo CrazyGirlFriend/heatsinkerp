@@ -27,6 +27,7 @@ def request_for(client, setup, kind):
                 "quantity": 12,
                 "weight": 3,
                 "idempotency_key": "sender-direct",
+                "transfer_specification": "100 × 80 × 5 mm",
             },
         )
     lots = [receive_lot(client, setup, key=f"sender-lot-{i}") for i in range(2)]

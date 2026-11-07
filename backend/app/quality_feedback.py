@@ -1,10 +1,8 @@
 """One failed inspection, several team replies, and an explicit QC-leader decision."""
 
 from datetime import timezone
-from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -30,31 +28,10 @@ from .models import (
 from .models import (
     MaterialInspection as Inspection,
 )
+from .quality_schemas import Decision as Decision
+from .quality_schemas import FeedbackWrite as FeedbackWrite
 from .record_filters import RecordFilters
 from .team_constants import INSPECTION_TEAM_CODE
-
-
-class FeedbackWrite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    expected_version: int = Field(ge=0)
-    notes: str = Field(default="", max_length=2000)
-    idempotency_key: str = Field(min_length=1, max_length=100)
-
-    @field_validator("idempotency_key")
-    @classmethod
-    def key(cls, value):
-        if not value.strip():
-            raise ValueError("提交标识不能为空")
-        return value.strip()
-
-
-class Decision(FeedbackWrite):
-    disposition: Literal[
-        "pending", "rework", "shipment", "transfer", "reallocate", "scrap", "other"
-    ]
-    status: Literal["pending", "processing", "closed"]
-    involved_team_ids: list[int] = Field(min_length=1, max_length=50)
-    release_legacy_hold: bool = False
 
 
 def is_qc(user):

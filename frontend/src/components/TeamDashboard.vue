@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import {
   IconHash,
-  IconBox,
-  IconCircleCheck,
+  IconClock,
+  IconAlertCircle,
   IconTruckDelivery,
   IconRefresh,
   IconArrowRight,
@@ -15,6 +15,7 @@ import DashboardToolbar from './DashboardToolbar.vue'
 import DashboardMetric from './DashboardMetric.vue'
 import DashboardCard from './DashboardCard.vue'
 import DashboardDonut from './DashboardDonut.vue'
+import DashboardDistribution from './DashboardDistribution.vue'
 import StatePanel from './StatePanel.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { dashboardColors as colors } from '@/composables/useDashboardChart'
@@ -33,20 +34,58 @@ const props = defineProps<{
   error: string
 }>()
 const emit = defineEmits<{ refresh: []; navigate: [query: Record<string, string>] }>()
-const metric = ref<Metric>('quantity'),
-  days = ref('30')
+const metric = ref<Metric>('quantity')
+const qualityPeriod = ref('week')
 const quality = ref<FactoryPerformance['issues']['summary'] | null>(null)
 const qualityLoading = ref(false),
   qualityError = ref('')
 let generation = 0
 const unit = computed(() => (metric.value === 'quantity' ? '件' : 'kg'))
 const current = computed(() => props.overview?.current_stock)
-const period = computed(() => ({
-  date_from: dayjs(factoryToday())
-    .subtract(Number(days.value) - 1, 'day')
-    .format('YYYY-MM-DD'),
-  date_to: factoryToday(),
-}))
+const workOrders = computed(() => props.overview?.work_orders)
+const periodLabels: Record<string, string> = { today: '今日', week: '本周', month: '本月' }
+const period = computed(() => {
+  const selected = workOrders.value?.periods.find((item) => item.key === qualityPeriod.value)
+  const today = dayjs(factoryToday())
+  const start =
+    qualityPeriod.value === 'month'
+      ? today.startOf('month')
+      : qualityPeriod.value === 'week'
+        ? today.subtract((today.day() + 6) % 7, 'day')
+        : today
+  return {
+    date_from: selected?.date_from ?? start.format('YYYY-MM-DD'),
+    date_to: selected?.date_to ?? today.format('YYYY-MM-DD'),
+  }
+})
+const workHelp = computed(() =>
+  props.processing
+    ? '按流水号去重。本期登记过加工的计入加工工单；截至当前没有未完成在库批次的，按最后一次加工日期计入已完成。同号多批、重复工序和返工不会重复计数；重新来料或返工未完成时，不计为整单完成。'
+    : '按流水号去重。本期发生收料或转出的计入收发工单；本期已转出且本班组已无剩余正常料的计入已转完。库房不统计加工。',
+)
+function openWorkPeriod(item: { date_from: string; date_to: string }) {
+  emit('navigate', {
+    tab: props.processing ? 'processing' : 'history',
+    date_from: item.date_from,
+    date_to: item.date_to,
+  })
+}
+function periodRows(item: { processed_count: number; completed_count: number }) {
+  return [
+    {
+      key: 'complete',
+      label: props.processing ? '已完成' : '已转完',
+      value: item.completed_count,
+      color: colors.success,
+    },
+    {
+      key: 'pending',
+      label: props.processing ? '未全部完成' : '未全部转完',
+      value: item.processed_count - item.completed_count,
+      color: colors.primary,
+    },
+  ]
+}
 function inventory(filters: Record<string, string> = {}) {
   emit('navigate', { tab: 'stock', availability: 'current', ...filters })
 }
@@ -72,7 +111,7 @@ async function loadQuality() {
   }
 }
 watch(
-  () => [props.teamId, days.value],
+  () => [props.teamId, qualityPeriod.value],
   () => {
     quality.value = null
     void loadQuality()
@@ -104,46 +143,28 @@ const metrics = computed(() => [
     help: '仅统计本班组还有剩余物料的流水号，重复批次只算一次；共投按关联流水号去重，已转出待签收的料不计入。',
     open: () => inventory(),
   },
-  ...(props.processing
-    ? [
-        {
-          label: '待加工',
-          value: amount('unregistered'),
-          unit: unit.value,
-          precision: metric.value === 'weight' ? 3 : 0,
-          icon: IconBox,
-          detail: '当前在库 · 尚未登记加工',
-          open: () => inventory({ processing_state: 'unregistered' }),
-        },
-        {
-          label: '已加工',
-          value: amount('complete'),
-          unit: unit.value,
-          precision: metric.value === 'weight' ? 3 : 0,
-          icon: IconCircleCheck,
-          tone: 'success' as const,
-          detail: '本批完成 · 尚未转出',
-          help: '只统计本批加工完成的剩余物料。部分加工及历史进度未标明单列，不算全部完成。',
-          open: () => inventory({ processing_state: 'complete' }),
-        },
-      ]
-    : [
-        {
-          label: '在库数量',
-          value: props.overview?.totals.on_hand_quantity ?? null,
-          unit: '件',
-          icon: IconBox,
-          open: () => inventory(),
-        },
-        {
-          label: '在库重量',
-          value: props.overview?.totals.on_hand_weight ?? null,
-          unit: 'kg',
-          precision: 3,
-          icon: IconBox,
-          open: () => inventory(),
-        },
-      ]),
+  {
+    label: props.processing ? '今日在途工单' : '待转出工单',
+    value: workOrders.value?.in_progress_count ?? null,
+    unit: '单',
+    icon: IconClock,
+    tone: 'warning' as const,
+    detail: props.processing ? '已收料 · 尚未全部加工完成' : '已收料 · 仍有物料待转出',
+    help: '截至当前仍在本班组的正常料，按流水号去重；包含此前收到但未完成的料，不包含上序已发出但本班组尚未签收的料。',
+    static: true,
+    open: () => {},
+  },
+  {
+    label: '当前逾期工单',
+    value: workOrders.value?.overdue_count ?? null,
+    unit: '单',
+    icon: IconAlertCircle,
+    tone: 'danger' as const,
+    detail: props.processing ? '超过约定交期 · 尚未交完' : '库房交期不考核',
+    help: '与交期页面一致，按流水号去重；任一批次逾期未交完即计入。已交完、已取消及尚未确认的计划不计入。',
+    static: !props.processing,
+    open: () => emit('navigate', { tab: 'delivery-schedule', status: 'overdue' }),
+  },
   {
     label: '待签收',
     value: props.overview?.pending_incoming.count ?? null,
@@ -234,6 +255,26 @@ const qualityRows = computed(() =>
           @open="item.open"
         />
       </div>
+      <div v-if="workOrders" class="team-dashboard-periods">
+        <DashboardCard
+          v-for="item in workOrders.periods"
+          :key="item.key"
+          :title="`${periodLabels[item.key]}${processing ? '加工' : '收发'}工单`"
+          :subtitle="`${item.date_from.slice(5)} — ${item.date_to.slice(5)}`"
+          :help="workHelp"
+        >
+          <DashboardDistribution
+            :rows="periodRows(item)"
+            unit="单"
+            :label="`${periodLabels[item.key]}工单完成情况`"
+            motion
+          />
+          <template #footer
+            ><AppButton link @click="openWorkPeriod(item)"
+              >{{ processing ? '加工记录' : '收发历史' }}<IconArrowRight :size="16" /></AppButton
+          ></template>
+        </DashboardCard>
+      </div>
       <div
         class="team-dashboard-charts"
         :class="{ 'team-dashboard-charts--warehouse': !processing }"
@@ -271,17 +312,17 @@ const qualityRows = computed(() =>
         </DashboardCard>
         <DashboardCard
           title="质量问题"
-          :subtitle="`近 ${days} 天发现 · 本班组涉及`"
+          :subtitle="`${periodLabels[qualityPeriod]}发现 · 本班组涉及`"
           help="只统计当前账号可见、涉及本班组的问题。复检不重复计数，处理状态以当前状态为准。"
         >
           <template #actions
             ><WatermelonSegmented
-              v-model="days"
+              v-model="qualityPeriod"
               label="质量统计周期"
               :options="[
-                { value: '7', label: '7天' },
-                { value: '30', label: '30天' },
-                { value: '90', label: '90天' },
+                { value: 'today', label: '今日' },
+                { value: 'week', label: '本周' },
+                { value: 'month', label: '本月' },
               ]"
           /></template>
           <StatePanel
@@ -327,6 +368,11 @@ const qualityRows = computed(() =>
   align-items: stretch;
   gap: 16px;
 }
+.team-dashboard-periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
 .team-dashboard-charts--warehouse {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -345,7 +391,8 @@ const qualityRows = computed(() =>
   .team-dashboard-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .team-dashboard-charts {
+  .team-dashboard-charts,
+  .team-dashboard-periods {
     grid-template-columns: minmax(0, 1fr);
   }
 }

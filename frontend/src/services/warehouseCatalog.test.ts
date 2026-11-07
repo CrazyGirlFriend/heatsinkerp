@@ -31,6 +31,8 @@ function fixture(unassignedCount: number, locationCount: number) {
   }))
   vi.spyOn(warehouseLocationApi, 'list').mockImplementation(
     async (_query, page = 1, size = 50) => ({
+      page: page ?? 1,
+      page_size: size,
       items: slots.slice((page - 1) * size, page * size),
       total: slots.length,
       team_id: 1,

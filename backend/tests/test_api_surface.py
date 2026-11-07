@@ -11,6 +11,27 @@ from sqlalchemy import select
 from test_material_transfers import _leader, _team
 
 
+def test_successful_json_responses_have_explicit_contracts():
+    # These retained compatibility endpoints always reject writes (410 / 422).
+    disabled_writes = {
+        ("put", "/api/factory-dashboard/delivery-plan"),
+        ("post", "/api/production-schedules"),
+    }
+    missing = []
+    for path, methods in app.openapi()["paths"].items():
+        for method, operation in methods.items():
+            if (method, path) in disabled_writes:
+                continue
+            for status, response in operation.get("responses", {}).items():
+                content = response.get("content", {})
+                if not status.startswith("2") or "application/json" not in content:
+                    continue
+                schema = content["application/json"]["schema"]
+                if not any(key in schema for key in ("$ref", "properties", "items", "anyOf")):
+                    missing.append(f"{method.upper()} {path}: {schema}")
+    assert not missing, "Declare a response model:\n" + "\n".join(missing)
+
+
 def test_only_supported_business_routes_are_registered(client):
     paths = set(app.openapi()["paths"])
     supported_prefixes = (
@@ -27,6 +48,8 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/serial-inventory",
         "/api/material-input-suggestions",
         "/api/material-dispatches",
+        "/api/receipt-documents/",
+        "/api/transfer-amendments/",
         "/api/team-materials/",
         "/api/inspections",
         "/api/quality-feedback",

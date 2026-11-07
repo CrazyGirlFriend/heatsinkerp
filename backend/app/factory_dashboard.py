@@ -10,14 +10,11 @@ from datetime import date, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import HTTPException
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
 from .config import settings
-from .database import get_db
 from .material_stock import literal_query, stock_table
 from .material_weight import MATERIAL_WEIGHT_TOLERANCE
 from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
@@ -27,7 +24,6 @@ from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_map
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
-router = AsyncAPIRouter(prefix="/api/factory-dashboard", dependencies=[Depends(get_current_user)])
 mt = MaterialTransfer
 
 
@@ -80,16 +76,6 @@ def serial_page(db, query="", page=1, page_size=50):
         "page": page,
         "page_size": page_size,
     }
-
-
-@router.get("/serials")
-def get_serials(
-    query: str = Query("", max_length=80),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    return serial_page(db, query, page, page_size)
 
 
 def shipping_series(db, serials, start, end):
@@ -147,13 +133,7 @@ def shipping_series(db, serials, start, end):
     }
 
 
-@router.get("/shipments")
-def get_shipments(
-    date_from: date,
-    date_to: date,
-    serial_no: list[str] = Query(default=[], max_length=100),
-    db: Session = Depends(get_db),
-):
+def get_shipments(*, date_from: date, date_to: date, serial_no: list[str], db: Session):
     if any(not s.strip() or len(s) > 80 for s in serial_no):
         raise HTTPException(422, "流水号格式无效")
     return shipping_series(db, list(dict.fromkeys(serial_no)), date_from, date_to)
@@ -413,13 +393,7 @@ def yields(db, owned):
     return result
 
 
-@router.get("/yields")
-def get_yields(
-    material: str = Query("", max_length=160),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(30, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
+def get_yields(*, material: str = "", page: int = 1, page_size: int = 30, db: Session):
     _, owned = ownership(db)
     rows = [r for r in yields(db, owned) if not material or r["material"] == material]
     rows.sort(key=lambda r: (r["serial_no"], r["material"]), reverse=True)
@@ -431,12 +405,7 @@ def get_yields(
     }
 
 
-@router.get("/team-yields")
-def get_team_yields(
-    serial_no: str = Query(min_length=1, max_length=80),
-    material: str = Query("", max_length=160),
-    db: Session = Depends(get_db),
-):
+def get_team_yields(*, serial_no: str, material: str = "", db: Session):
     stock = stock_table()
     predicates = [stock.c.serial_no == serial_no]
     if material:
@@ -565,13 +534,13 @@ def get_team_yields(
     }
 
 
-@router.get("/stock-detail")
 def get_stock_detail(
-    team_id: int | None = Query(None, ge=1),
-    material: str = Query("", max_length=160),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(30, ge=1, le=100),
-    db: Session = Depends(get_db),
+    *,
+    team_id: int | None = None,
+    material: str = "",
+    page: int = 1,
+    page_size: int = 30,
+    db: Session,
 ):
     stock = stock_table()
     name = material_name(stock.c.material_name)
@@ -633,8 +602,7 @@ def get_stock_detail(
     }
 
 
-@router.get("/delivery-plan")
-def get_plan(serial_no: str = Query(min_length=1, max_length=80), db: Session = Depends(get_db)):
+def get_plan(*, serial_no: str, db: Session):
     if not db.scalar(
         select(mt.id).where(mt.serial_no == serial_no, mt.status != "voided").limit(1)
     ):
@@ -647,7 +615,6 @@ def get_plan(serial_no: str = Query(min_length=1, max_length=80), db: Session = 
     }
 
 
-@router.put("/delivery-plan")
 def save_plan():
     raise HTTPException(410, "交期已改为在源头批次单据上填写，请打开对应转料单或入库单")
 
@@ -740,13 +707,7 @@ def delivery_rows(db, today):
     return rows
 
 
-@router.get("/deliveries")
-def get_deliveries(
-    query: str = Query("", max_length=80),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(30, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
+def get_deliveries(*, query: str = "", page: int = 1, page_size: int = 30, db: Session):
     rows = [
         r
         for r in delivery_rows(db, local_day(utcnow()))
@@ -760,8 +721,7 @@ def get_deliveries(
     }
 
 
-@router.get("")
-def get_dashboard(db: Session = Depends(get_db)):
+def get_dashboard(*, db: Session):
     now = utcnow()
     today = local_day(now)
     matrix, owned = ownership(db)

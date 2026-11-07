@@ -8,7 +8,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
-import { HttpRequestError, httpRequest } from '@/services/httpClient'
+import { HttpRequestError } from '@/services/httpClient'
+import { serialUrgencyApi } from '@/services/serialUrgencyApi'
 import type { SerialUrgency } from '@/types/recordFilters'
 const props = defineProps<{ modelValue: boolean; serialNo: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; changed: [] }>()
@@ -27,9 +28,7 @@ async function load() {
   state.value = null
   busy.value = true
   try {
-    const result = await httpRequest<SerialUrgency>(
-      `/serial-urgency?serial_no=${encodeURIComponent(props.serialNo)}`,
-    )
+    const result = await serialUrgencyApi.get(props.serialNo)
     if (current === version) {
       state.value = result
       reason.value = result.reason || ''
@@ -46,14 +45,11 @@ async function save() {
   error.value = ''
   const current = version
   try {
-    await httpRequest('/serial-urgency', {
-      method: 'PUT',
-      body: {
-        serial_no: props.serialNo,
-        urgent: !state.value.urgent,
-        reason: reason.value.trim() || null,
-        expected_version: state.value.version,
-      },
+    await serialUrgencyApi.update({
+      serial_no: props.serialNo,
+      urgent: !state.value.urgent,
+      reason: reason.value.trim() || null,
+      expected_version: state.value.version,
     })
     if (current === version) {
       emit('changed')

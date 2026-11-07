@@ -10,11 +10,20 @@ from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
 from .models import User
+from .processing_read_schemas import QuantityAdjustmentContextResponse
+from .quality_schemas import (
+    Decision,
+    FeedbackWrite,
+    QualityFeedbackDetailResponse,
+    QualityFeedbackPageResponse,
+    QualityReworkStockResponse,
+)
+from .read_schemas import PageResponse
 
 router = AsyncAPIRouter(prefix="/api/quality-feedback", tags=["quality feedback"])
 
 
-@router.get("")
+@router.get("", response_model=QualityFeedbackPageResponse, response_model_exclude_unset=True)
 def records(
     team_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -43,25 +52,40 @@ def records(
             page=page,
             page_size=page_size,
         ),
+        schema=QualityFeedbackPageResponse,
     )
 
 
-@router.get("/{issue_id}")
+@router.get(
+    "/{issue_id}", response_model=QualityFeedbackDetailResponse, response_model_exclude_unset=True
+)
 def detail(issue_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return team_read_response(db, lambda session: feedback.detail(session, issue_id, user))
+    return team_read_response(
+        db,
+        lambda session: feedback.detail(session, issue_id, user),
+        schema=QualityFeedbackDetailResponse,
+    )
 
 
-@router.post("/{issue_id}/reply")
+@router.post(
+    "/{issue_id}/reply",
+    response_model=QualityFeedbackDetailResponse,
+    response_model_exclude_unset=True,
+)
 def reply(
     issue_id: int,
-    payload: feedback.FeedbackWrite,
+    payload: FeedbackWrite,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return feedback.write(db, issue_id, payload, user)
 
 
-@router.get("/{issue_id}/rework-stock")
+@router.get(
+    "/{issue_id}/rework-stock",
+    response_model=PageResponse[QualityReworkStockResponse] | QuantityAdjustmentContextResponse,
+    response_model_exclude_unset=True,
+)
 def rework_stock(
     issue_id: int,
     source_transfer_id: int | None = Query(default=None, ge=1),
@@ -75,10 +99,14 @@ def rework_stock(
     )
 
 
-@router.post("/{issue_id}/decision")
+@router.post(
+    "/{issue_id}/decision",
+    response_model=QualityFeedbackDetailResponse,
+    response_model_exclude_unset=True,
+)
 def decide(
     issue_id: int,
-    payload: feedback.Decision,
+    payload: Decision,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

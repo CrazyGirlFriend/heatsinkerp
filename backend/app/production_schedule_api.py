@@ -27,6 +27,7 @@ from .models import ProductionScheduleOrderFile, User
 from .order_document_preview import order_document_preview
 from .process_route_import import MAX_FILE_BYTES
 from .process_route_orders import parse_order
+from .process_route_read_schemas import RouteOrderDocumentResponse
 from .production_schedule_schemas import (
     BusinessPersonWrite,
     ScheduleCancel,
@@ -37,6 +38,21 @@ from .production_schedule_schemas import (
     ScheduleUpdate,
 )
 from .schedule_permissions import require_dispatch
+from .schedule_read_schemas import (
+    BusinessPersonPageResponse,
+    BusinessPersonResponse,
+    InventorySchedulesResponse,
+    ScheduleCandidatesResponse,
+    ScheduleDetailResponse,
+    ScheduleOverviewResponse,
+    SchedulePageResponse,
+    ScheduleReworkOptionResponse,
+    ScheduleRouteOptionResponse,
+    ScheduleSerialPageResponse,
+    ScheduleSourcePageResponse,
+    ScheduleTaskDetailResponse,
+    ScheduleTaskPageResponse,
+)
 
 router = APIRouter(
     prefix="/api/production-schedules",
@@ -53,14 +69,14 @@ def utc_bound(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=ScheduleOverviewResponse, response_model_exclude_unset=True)
 def get_overview(days: int = Query(7, ge=1, le=365), db: Session = Depends(get_db)):
     from .factory_schedule_overview import overview
 
     return overview(db, days)
 
 
-@router.get("")
+@router.get("", response_model=SchedulePageResponse, response_model_exclude_unset=True)
 def list_schedules(
     team_id: int | None = Query(default=None, ge=1),
     task_id: int | None = Query(default=None, ge=1),
@@ -97,7 +113,9 @@ def create_schedule(
     raise HTTPException(422, "请在调度工作台按流水号工艺新建排期")
 
 
-@router.get("/source-options")
+@router.get(
+    "/source-options", response_model=ScheduleSourcePageResponse, response_model_exclude_unset=True
+)
 def source_options(
     team_id: int = Query(ge=1),
     serial_no: str = Query(min_length=1, max_length=80),
@@ -112,7 +130,9 @@ def source_options(
     )
 
 
-@router.get("/candidates")
+@router.get(
+    "/candidates", response_model=ScheduleCandidatesResponse, response_model_exclude_unset=True
+)
 def candidates(
     team_id: int = Query(ge=1),
     source_transfer_ids: str = Query(min_length=1, max_length=1200),
@@ -129,12 +149,14 @@ def candidates(
     return schedules.candidates(db, team_id, ids, next_team_id, external_destination)
 
 
-@router.post("/inventory")
+@router.post(
+    "/inventory", response_model=InventorySchedulesResponse, response_model_exclude_unset=True
+)
 def inventory(payload: ScheduleInventoryQuery, db: Session = Depends(get_db)):
     return schedules.inventory_summaries(db, payload)
 
 
-@router.get("/tasks")
+@router.get("/tasks", response_model=ScheduleTaskPageResponse, response_model_exclude_unset=True)
 def list_tasks(
     team_id: int | None = Query(default=None, ge=1),
     serial_no: str | None = Query(default=None, max_length=80),
@@ -174,7 +196,9 @@ def list_tasks(
     )
 
 
-@router.get("/business-people")
+@router.get(
+    "/business-people", response_model=BusinessPersonPageResponse, response_model_exclude_unset=True
+)
 def list_business_people(
     query: str | None = Query(default=None, max_length=80),
     page: int = Query(default=1, ge=1),
@@ -184,14 +208,23 @@ def list_business_people(
     return business_people.list_people(db, query=query, page=page, page_size=page_size)
 
 
-@router.post("/business-people", status_code=201)
+@router.post(
+    "/business-people",
+    response_model=BusinessPersonResponse,
+    response_model_exclude_unset=True,
+    status_code=201,
+)
 def create_business_person(
     payload: BusinessPersonWrite, user: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     return business_people.save_person(db, payload)
 
 
-@router.patch("/business-people/{person_id}")
+@router.patch(
+    "/business-people/{person_id}",
+    response_model=BusinessPersonResponse,
+    response_model_exclude_unset=True,
+)
 def update_business_person(
     person_id: int,
     payload: BusinessPersonWrite,
@@ -201,47 +234,36 @@ def update_business_person(
     return business_people.save_person(db, payload, person_id)
 
 
-@router.get("/serial-options")
+@router.get(
+    "/serial-options", response_model=ScheduleSerialPageResponse, response_model_exclude_unset=True
+)
 def serial_options(
     query: str | None = Query(default=None, max_length=80),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    from sqlalchemy import func, select
+    from .production_schedule_queries import serial_options as query_serials
 
-    from .material_stock import literal_query
-    from .models import ProductionScheduleTask
-
-    grouped = (
-        select(ProductionScheduleTask.serial_no, func.count().label("task_count"))
-        .where(ProductionScheduleTask.cancelled_at.is_(None))
-        .group_by(ProductionScheduleTask.serial_no)
-    )
-    if query:
-        grouped = grouped.where(literal_query(query, [ProductionScheduleTask.serial_no]))
-    total = db.scalar(select(func.count()).select_from(grouped.subquery())) or 0
-    rows = db.execute(
-        grouped.order_by(ProductionScheduleTask.serial_no)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).mappings()
-    return {
-        "items": [dict(row) for row in rows],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
+    return query_serials(db, query, page, page_size)
 
 
-@router.get("/route-options")
+@router.get(
+    "/route-options",
+    response_model=list[ScheduleRouteOptionResponse],
+    response_model_exclude_unset=True,
+)
 def new_task_route_options(
     serial_no: str = Query(default="", max_length=80), db: Session = Depends(get_db)
 ):
     return dispatch_planning.route_options(db, serial_no.strip())
 
 
-@router.put("/tasks/{task_id}/lock")
+@router.put(
+    "/tasks/{task_id}/lock",
+    response_model=ScheduleTaskDetailResponse,
+    response_model_exclude_unset=True,
+)
 def lock_task(
     task_id: int,
     payload: dispatch_planning.TaskLock,
@@ -261,7 +283,11 @@ def delete_task(
     dispatch_planning.delete_task(db, task_id, payload, user)
 
 
-@router.post("/{schedule_id}/review")
+@router.post(
+    "/{schedule_id}/review",
+    response_model=ScheduleDetailResponse,
+    response_model_exclude_unset=True,
+)
 def review_plan(
     schedule_id: int,
     payload: schedule_batches.PlanReview,
@@ -271,7 +297,12 @@ def review_plan(
     return schedule_batches.review(db, schedule_id, payload, user)
 
 
-@router.post("/tasks", status_code=201)
+@router.post(
+    "/tasks",
+    response_model=ScheduleTaskDetailResponse,
+    response_model_exclude_unset=True,
+    status_code=201,
+)
 async def create_task(
     payload: Annotated[str, Form()],
     file: Annotated[UploadFile | None, File()] = None,
@@ -301,7 +332,9 @@ async def read_order(file):
     return filename, content, document
 
 
-@router.post("/parse-order")
+@router.post(
+    "/parse-order", response_model=RouteOrderDocumentResponse, response_model_exclude_unset=True
+)
 async def preview_order(
     file: Annotated[UploadFile, File()], user: User = Depends(require_dispatch)
 ):
@@ -311,7 +344,7 @@ async def preview_order(
         await file.close()
 
 
-@router.get("/tasks/{task_id}/order")
+@router.get("/tasks/{task_id}/order", response_class=Response)
 async def download_order(task_id: int, preview: bool = False, db: AsyncSession = Depends(get_db)):
     def original(session):
         tasks.require_task(session, task_id)
@@ -339,7 +372,7 @@ async def download_order(task_id: int, preview: bool = False, db: AsyncSession =
     )
 
 
-@router.post("/order-preview")
+@router.post("/order-preview", response_class=Response)
 async def preview_order_original(
     file: Annotated[UploadFile, File()], user: User = Depends(require_dispatch)
 ):
@@ -360,12 +393,20 @@ async def preview_order_original(
         await file.close()
 
 
-@router.get("/tasks/{task_id}/rework-options")
+@router.get(
+    "/tasks/{task_id}/rework-options",
+    response_model=list[ScheduleReworkOptionResponse],
+    response_model_exclude_unset=True,
+)
 def task_rework_options(task_id: int, db: Session = Depends(get_db)):
     return schedule_reworks.available(db, tasks.require_task(db, task_id))
 
 
-@router.post("/tasks/{task_id}/rework")
+@router.post(
+    "/tasks/{task_id}/rework",
+    response_model=ScheduleTaskDetailResponse,
+    response_model_exclude_unset=True,
+)
 def link_task_rework(
     task_id: int,
     payload: schedule_reworks.ReworkLink,
@@ -375,12 +416,20 @@ def link_task_rework(
     return schedule_reworks.link(db, task_id, payload, user)
 
 
-@router.get("/tasks/{task_id}/route-options")
+@router.get(
+    "/tasks/{task_id}/route-options",
+    response_model=list[ScheduleRouteOptionResponse],
+    response_model_exclude_unset=True,
+)
 def task_route_options(task_id: int, db: Session = Depends(get_db)):
     return schedule_routes.option_documents(db, tasks.require_task(db, task_id))
 
 
-@router.post("/tasks/{task_id}/route")
+@router.post(
+    "/tasks/{task_id}/route",
+    response_model=ScheduleTaskDetailResponse,
+    response_model_exclude_unset=True,
+)
 def link_task_route(
     task_id: int,
     payload: schedule_routes.RouteLink,
@@ -390,12 +439,16 @@ def link_task_route(
     return schedule_routes.link(db, task_id, payload, user)
 
 
-@router.get("/tasks/{task_id}")
+@router.get(
+    "/tasks/{task_id}", response_model=ScheduleTaskDetailResponse, response_model_exclude_unset=True
+)
 def task_detail(task_id: int, db: Session = Depends(get_db)):
     return tasks.detail(db, task_id)
 
 
-@router.patch("/tasks/{task_id}")
+@router.patch(
+    "/tasks/{task_id}", response_model=ScheduleTaskDetailResponse, response_model_exclude_unset=True
+)
 def update_task(
     task_id: int,
     payload: ScheduleTaskUpdate,
@@ -405,12 +458,16 @@ def update_task(
     return tasks.update_task(db, task_id, payload, user)
 
 
-@router.get("/{schedule_id}")
+@router.get(
+    "/{schedule_id}", response_model=ScheduleDetailResponse, response_model_exclude_unset=True
+)
 def detail(schedule_id: int, db: Session = Depends(get_db)):
     return schedules.detail(db, schedule_id)
 
 
-@router.patch("/{schedule_id}")
+@router.patch(
+    "/{schedule_id}", response_model=ScheduleDetailResponse, response_model_exclude_unset=True
+)
 def update(
     schedule_id: int,
     payload: ScheduleUpdate,
@@ -420,7 +477,11 @@ def update(
     return schedules.save_plan(db, payload, user, schedule_id)
 
 
-@router.put("/{schedule_id}/batches")
+@router.put(
+    "/{schedule_id}/batches",
+    response_model=ScheduleDetailResponse,
+    response_model_exclude_unset=True,
+)
 def update_batches(
     schedule_id: int,
     payload: schedule_batches.BatchPlanWrite,
@@ -430,7 +491,11 @@ def update_batches(
     return schedule_batches.save(db, schedule_id, payload, user)
 
 
-@router.patch("/{schedule_id}/commitment")
+@router.patch(
+    "/{schedule_id}/commitment",
+    response_model=ScheduleDetailResponse,
+    response_model_exclude_unset=True,
+)
 def update_commitment(
     schedule_id: int,
     payload: ScheduleCommitmentUpdate,
@@ -440,7 +505,11 @@ def update_commitment(
     return schedules.update_commitment(db, schedule_id, payload, user)
 
 
-@router.post("/{schedule_id}/cancel")
+@router.post(
+    "/{schedule_id}/cancel",
+    response_model=ScheduleDetailResponse,
+    response_model_exclude_unset=True,
+)
 def cancel(
     schedule_id: int,
     payload: ScheduleCancel,

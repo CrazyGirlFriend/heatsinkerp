@@ -134,7 +134,7 @@ async def inventory_stream(request, credentials, view="inventory"):
             yield message("auth-expired", {})
 
 
-@router.get("/stream")
+@router.get("/stream", response_class=StreamingResponse)
 async def inventory_endpoint(
     request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
 ):
@@ -154,7 +154,7 @@ async def stream_response(request, credentials, view):
     )
 
 
-@router.get("/changes")
+@router.get("/changes", response_class=StreamingResponse)
 async def changes_endpoint(
     request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
 ):

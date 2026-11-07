@@ -292,6 +292,7 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
     selected = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     payload = {
         "serial_no": "SLOT-DIRECT",
+        "transfer_specification": "100 × 80 × 5 mm",
         "material_type": "semi_finished",
         "quantity": 10,
         "weight": 1,
@@ -399,12 +400,12 @@ def test_heartbeats_cannot_extend_a_draft_beyond_ten_minutes(client, warehouse):
     from datetime import datetime, timezone
     from unittest.mock import patch
 
-    start = utcnow()
+    start = utcnow().replace(microsecond=832198)
     slot = create_slot(client)
     with patch("app.warehouse_locations.utcnow", return_value=start):
         first = claim(client, slot, warehouse["headers"]).json()
     deadline = datetime.fromisoformat(first["hold_until"]).replace(tzinfo=None)
-    assert deadline == start + timedelta(minutes=10)
+    assert deadline == (start + timedelta(minutes=10)).replace(microsecond=0)
     with patch("app.warehouse_locations.utcnow", return_value=start + timedelta(minutes=9)):
         renewed = claim(client, slot, warehouse["headers"], first["key"]).json()
         assert renewed["expires_at"] == deadline.replace(tzinfo=timezone.utc).isoformat()

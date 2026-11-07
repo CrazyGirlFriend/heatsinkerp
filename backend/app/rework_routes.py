@@ -284,7 +284,7 @@ def source_stock(db, user, query="", page=1, lot_id=None):
 
 
 def request_rework(db, payload, user):
-    from .process_route_api import document
+    from .process_route_documents import document
     from .quality_feedback import is_qc, require_rework_issue
 
     team = require_requester(user)

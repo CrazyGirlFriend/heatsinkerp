@@ -7,8 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 BACKEND = Path(__file__).parents[1]
@@ -16,6 +18,9 @@ BACKEND = Path(__file__).parents[1]
 
 def test_fresh_database_upgrades_to_head_and_can_run_again(tmp_path):
     database = tmp_path / "fresh.sqlite"
+    config = Config(str(BACKEND / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND / "alembic"))
+    head = ScriptDirectory.from_config(config).get_current_head()
     for _ in range(2):
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -27,9 +32,7 @@ def test_fresh_database_upgrades_to_head_and_can_run_again(tmp_path):
         )
         assert result.returncode == 0, result.stdout + result.stderr
     with sqlite3.connect(database) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "20261031_0063",
-        )
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (head,)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
 

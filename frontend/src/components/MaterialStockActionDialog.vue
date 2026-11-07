@@ -36,9 +36,8 @@ import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { factoryToday, formatDateTime } from '@/utils/format'
-import { productionScheduleApi } from '@/services/productionScheduleApi'
-import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
-import { isScheduleApplicable } from '@/utils/inventorySchedule'
+import { useStockActionSchedules } from '@/composables/useStockActionSchedules'
+import type { ProductionSchedule } from '@/types/productionSchedule'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
@@ -148,15 +147,6 @@ const lines = ref<
     scheduleBatchId?: number
   }[]
 >([])
-function lineScheduleBatches(line: (typeof lines.value)[number]) {
-  const options = lineSchedules(line)
-  return (
-    (
-      options.find((s) => s.id === line.scheduleId) ||
-      (options.length === 1 ? options[0] : undefined)
-    )?.batches || []
-  )
-}
 function enteredQuantity(line: (typeof lines.value)[number]) {
   return isWeightOnlyType(line.materialType) ? 0 : line.quantity
 }
@@ -188,26 +178,6 @@ const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
-const scheduleCandidates = ref<Record<number, ScheduleSummary[]>>({})
-const schedulesLoading = ref(false)
-const scheduleError = ref('')
-const scheduleRefresh = ref(0)
-function lineSchedules(line: (typeof lines.value)[number]) {
-  return !line.shared && isScheduleApplicable(line.materialType)
-    ? scheduleCandidates.value[Number(line.source.transfer.id)] || []
-    : []
-}
-function scheduleLabel(schedule: ScheduleSummary) {
-  const basis =
-    schedule.completion_basis ||
-    (schedule.target_quantity != null || schedule.remaining_quantity != null
-      ? 'quantity'
-      : 'weight')
-  const quantity = basis === 'weight' ? null : schedule.remaining_quantity
-  const weight = basis === 'quantity' ? null : schedule.remaining_weight
-  const task = schedule.task_title || schedule.task_no
-  return `${task ? `${task} · ` : ''}#${schedule.id} · ${formatDateTime(schedule.due_at)}${quantity == null ? '' : ` · 待交 ${quantity} 件`}${weight == null ? '' : ` · 待交 ${weight} kg`}`
-}
 const batchPurposeId = ref<number>()
 const processing = reactive<
   Record<
@@ -725,82 +695,14 @@ watch(
   },
   { immediate: true },
 )
-watch(
-  () =>
-    [
-      props.modelValue,
-      props.teamId,
-      props.mode,
-      form.nextTeamId,
-      form.entryKind,
-      form.externalDestination,
-      lines.value.map((line) => `${line.source.transfer.id}:${line.materialType}`).join(','),
-      scheduleRefresh.value,
-    ] as const,
-  async (_, __, onCleanup) => {
-    let current = true
-    onCleanup(() => {
-      current = false
-    })
-    scheduleError.value = ''
-    scheduleCandidates.value = {}
-    schedulesLoading.value = false
-    if (
-      !props.modelValue ||
-      isLoss.value ||
-      (!external.value && !form.nextTeamId) ||
-      (external.value && !form.externalDestination)
-    )
-      return
-    const ids = [
-      ...new Set(
-        lines.value
-          .filter((line) => isScheduleApplicable(line.materialType))
-          .map((line) => Number(line.source.transfer.id)),
-      ),
-    ]
-    if (!ids.length) return
-    schedulesLoading.value = true
-    try {
-      const result = await productionScheduleApi.candidates({
-        team_id: props.teamId,
-        source_transfer_ids: ids.join(','),
-        ...(external.value
-          ? { external_destination: form.externalDestination }
-          : { next_team_id: Number(form.nextTeamId) }),
-      })
-      if (!current) return
-      scheduleCandidates.value = Object.fromEntries(
-        result.items.map((item) => [item.source_transfer_id, item.schedules]),
-      )
-      for (const line of lines.value) {
-        const options = lineSchedules(line)
-        if (!options.some((option) => option.id === line.scheduleId)) {
-          line.scheduleId =
-            options.find((option) => option.id === props.initialSchedule?.id)?.id ??
-            (options.length === 1 ? options[0]!.id : undefined)
-        }
-      }
-      const initial = props.initialSchedule
-      const sameDestination =
-        initial &&
-        (external.value
-          ? initial.external_destination === form.externalDestination
-          : initial.next_team_id === Number(form.nextTeamId))
-      if (
-        sameDestination &&
-        !lines.value.some((line) => lineSchedules(line).some((option) => option.id === initial.id))
-      )
-        scheduleError.value = '该排期已调整或已完成，请返回交货排期刷新后再操作。'
-    } catch (error) {
-      if (current)
-        scheduleError.value = error instanceof Error ? error.message : '交货排期读取失败，请重试'
-    } finally {
-      if (current) schedulesLoading.value = false
-    }
-  },
-  { immediate: true },
-)
+const {
+  schedulesLoading,
+  scheduleError,
+  scheduleRefresh,
+  lineSchedules,
+  lineScheduleBatches,
+  scheduleLabel,
+} = useStockActionSchedules(props, form, lines)
 watch(
   () => `${auth.currentUser?.id ?? ''}:${auth.currentUser?.team_id ?? ''}:${auth.isTeamAccount}`,
   () => {

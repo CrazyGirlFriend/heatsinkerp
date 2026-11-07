@@ -239,7 +239,7 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
     )
     latest = dispatch(client, warehouse, lines).json()["items"]
     assert latest[0]["status"] == "received"
-    assert latest[0]["allowed_actions"] == []
+    assert latest[0]["allowed_actions"] == ["request_amendment"]
     for index, item in enumerate(latest):
         assert item["urgency"]["urgent"] == (index % 3 == 0)
         assert item["source_transfer_batch_no"] == origins[index % 3]["batch_no"]

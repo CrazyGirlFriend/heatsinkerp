@@ -53,7 +53,16 @@ const emit = defineEmits<{
   batchDispatch: [sourceIds: number[]]
 }>()
 const pageSize = ref(20)
-type Batch = WarehouseLocation['batches'][number]
+// The same detail view also accepts unassigned stock, which has no location yet.
+type Batch = Omit<
+  WarehouseLocation['batches'][number],
+  'location_id' | 'available_quantity' | 'available_weight' | 'created_at' | 'received_at'
+> & {
+  available_quantity?: number
+  available_weight?: number
+  created_at?: string
+  received_at?: string | null
+}
 const entries = ref<WarehouseCatalogRow[]>([])
 const placement = ref<StockBatch | null>(null)
 const rows = computed(() => entries.value.flatMap((row) => (row.location ? [row.location] : [])))
@@ -144,9 +153,9 @@ const detailOpen = ref(false),
   detailId = ref<number>(),
   detailTab = ref<'received' | 'pending'>('received')
 const detail = computed(() => rows.value.find((row) => row.id === detailId.value))
-const received = (row: WarehouseLocation) =>
+const received = (row: WarehouseLocation): Batch[] =>
   row.batches.filter((batch) => batch.status === 'received')
-const pending = (row: WarehouseLocation) =>
+const pending = (row: WarehouseLocation): Batch[] =>
   row.batches.filter((batch) => batch.status === 'pending')
 const stocked = (row: WarehouseLocation) =>
   received(row).some((batch) => batch.quantity > 0 || batch.weight > 0)
@@ -185,8 +194,10 @@ function stockBatch(stock: StockBatch): Batch {
   return {
     ...stock.transfer,
     id: Number(stock.transfer.id),
-    material_name: stock.transfer.material_name ?? undefined,
-    material_type: stock.transfer.material_type ?? undefined,
+    material_name: stock.transfer.material_name ?? null,
+    material_type: stock.transfer.material_type ?? null,
+    shared_group_id: stock.transfer.shared_group_id ?? null,
+    shared_unallocated: stock.transfer.shared_unallocated ?? false,
     status: 'received',
     quantity: stock.unassigned_quantity ?? 0,
     weight: stock.unassigned_weight ?? 0,

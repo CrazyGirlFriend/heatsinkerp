@@ -1,7 +1,7 @@
 """A demo-only correction must preserve stock, history and non-demo records."""
 
 import pytest
-from app.configure_material_teams import MATERIAL_TEAMS, configure_material_teams
+from app.configure_material_teams import MATERIAL_TEAMS
 from app.database import SessionLocal
 from app.models import MaterialTransfer, MaterialTransferEvent, Team, TeamPurpose
 from app.repair_demo_purposes import LEGACY_NAMES, protected_fingerprints, repair_demo_purposes
@@ -16,7 +16,12 @@ pytestmark = pytest.mark.usefixtures("legacy_stock")
 @pytest.fixture()
 def demo(client):
     with SessionLocal() as db:
-        configure_material_teams(db)
+        # Reproduce the September directory, before unified task defaults existed.
+        db.add_all(
+            Team(code=code, name=name, kind=kind, description=description)
+            for code, name, kind, description in MATERIAL_TEAMS
+        )
+        db.flush()
         teams = {t.code: t.id for t in db.scalars(select(Team))}
         for _, name, _, _ in MATERIAL_TEAMS:
             team_id = db.scalar(select(Team.id).where(Team.name == name))
@@ -43,6 +48,7 @@ def demo(client):
                 "weight": 10,
                 "idempotency_key": f"demo-online-20260928:{index}:intake",
                 "notes": "演示数据｜业务分组验收",
+                "transfer_specification": "100 × 80 × 5 mm",
             },
         )
         assert response.status_code == 201, response.text

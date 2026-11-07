@@ -1,4 +1,4 @@
-import type { ChartPalette } from '@/composables/useChartPalette'
+import type { ChartPalette } from '@/types/chartPalette'
 import type { CustomSeriesOption, CustomSeriesRenderItemReturn, EChartsOption } from 'echarts'
 import type { SerialHistory, SerialHistoryEvent, SerialHistoryLot } from '@/types/teamBusiness'
 import { amountLabel, traceTime, traceTimestamp, type FlowInteraction } from './flowPreview'
@@ -47,7 +47,7 @@ function snapshotLots(history: SerialHistory): SerialHistoryLot[] {
       batch_no: event.batch_no,
       group_key: groupKey,
       received_at: event.at,
-      from_name: event.counterpart,
+      from_name: event.counterpart || '',
       quantity: event.quantity,
       weight: event.weight,
       on_hand_quantity: 0,

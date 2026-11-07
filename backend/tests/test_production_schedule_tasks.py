@@ -275,7 +275,13 @@ def test_partial_completed_outputs_count_but_unprocessed_dispatch_does_not(clien
         workshop=True,
         processing_status="partial",
         outputs=[
-            {"role": "produced", "quantity": 20, "weight": 2, "material_type": "semi_finished"},
+            {
+                "role": "produced",
+                "quantity": 20,
+                "weight": 2,
+                "material_type": "semi_finished",
+                "transfer_specification": "80 × 60 × 5 mm",
+            },
             {"role": "remaining", "quantity": 60, "weight": 6, "material_type": "semi_finished"},
         ],
     )

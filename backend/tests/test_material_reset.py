@@ -61,6 +61,16 @@ def database(monkeypatch):
             columns += [
                 Column("transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT"))
             ]
+        for column, target in {
+            "warehouse_receipt_documents": {"transfer_id": "material_transfers"},
+            "material_transfer_amendments": {
+                "transfer_id": "material_transfers",
+                "pending_transfer_id": "material_transfers",
+            },
+            "transfer_amendment_notices": {"amendment_id": "material_transfer_amendments"},
+            "transfer_amendment_notice_reads": {"notice_id": "transfer_amendment_notices"},
+        }.get(name, {}).items():
+            columns.append(Column(column, ForeignKey(f"{target}.id", ondelete="RESTRICT")))
         reference = {
             "production_schedules": "predecessor_id",
             "material_quantity_adjustments": "rework_of_id",
@@ -104,6 +114,13 @@ def database(monkeypatch):
         connection.execute(transfers.insert(), {"id": 2, "source_transfer_id": 1, "dispatch_id": 1})
         for name in ("material_losses", "material_transfer_events"):
             connection.execute(metadata.tables[name].insert(), {"id": 1, "transfer_id": 2})
+        for name, references in {
+            "warehouse_receipt_documents": {"transfer_id": 1},
+            "material_transfer_amendments": {"transfer_id": 2, "pending_transfer_id": 2},
+            "transfer_amendment_notices": {"amendment_id": 1},
+            "transfer_amendment_notice_reads": {"notice_id": 1},
+        }.items():
+            connection.execute(metadata.tables[name].update().values(**references))
         connection.execute(metadata.tables["material_transfers"].update().values(shared_group_id=1))
         connection.execute(metadata.tables["shared_material_members"].update().values(group_id=1))
         connection.execute(

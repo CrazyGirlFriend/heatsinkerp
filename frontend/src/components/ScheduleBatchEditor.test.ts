@@ -23,7 +23,7 @@ const schedule = {
   due_at: '2026-12-21T08:00:00Z',
   batches: [],
 } as unknown as ProductionSchedule
-async function render(task: Partial<ScheduleTask> = {}) {
+async function render(task: Partial<ScheduleTask> = {}, plan: ProductionSchedule = schedule) {
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue({
     ...routeFixture,
     source_data: { ...routeFixture.source_data, order_document: orderFixture },
@@ -45,7 +45,7 @@ async function render(task: Partial<ScheduleTask> = {}) {
   } as unknown as ScheduleTask)
   vi.spyOn(productionScheduleApi, 'saveBatches').mockResolvedValue(schedule)
   wrapper = mount(ScheduleBatchEditor, {
-    props: { schedule },
+    props: { schedule: plan },
     global: {
       stubs: {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
@@ -71,6 +71,35 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('team batch planner', () => {
+  it('sums decimal proposal weights numerically and submits numeric weights', async () => {
+    await render(
+      {},
+      {
+        ...schedule,
+        completion_basis: 'weight',
+        pending_batches: ['10.500000', '20.250000'].map((weight, index) => ({
+          id: null,
+          batch_number: index + 1,
+          due_at: '2026-12-21T08:00:00Z',
+          target_quantity: null,
+          target_weight: weight,
+          upstream_batch_ids: [],
+        })),
+      },
+    )
+    expect(wrapper.text()).toContain('30.75 kg')
+    await click('提交调度确认')
+    expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
+      expected_version: 7,
+      batches: [10.5, 20.25].map((weight, index) => ({
+        batch_number: index + 1,
+        due_at: '2026-12-21T16:00:00+08:00',
+        target_quantity: null,
+        target_weight: weight,
+        upstream_batch_ids: [],
+      })),
+    })
+  })
   it('previews and downloads the task original beside the team submission form', async () => {
     const download = vi.spyOn(productionScheduleApi, 'downloadOrder').mockResolvedValue(undefined)
     await render({ order_document: { ...orderFixture, filename: '调度订单原件.xlsx' } })

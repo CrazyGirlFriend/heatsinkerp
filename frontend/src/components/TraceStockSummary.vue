@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
@@ -137,19 +138,21 @@ const rows = computed(() =>
     <header class="stock-heading">
       <h2>当前正常料库存</h2>
       <div class="stock-unit" role="group" aria-label="库存单位">
-        <button
+        <AppButton
+          unstyled
           type="button"
           :aria-pressed="metric === 'quantity'"
           @click="emit('update:metric', 'quantity')"
         >
-          件数</button
-        ><button
+          件数</AppButton
+        ><AppButton
+          unstyled
           type="button"
           :aria-pressed="metric === 'weight'"
           @click="emit('update:metric', 'weight')"
         >
           重量
-        </button>
+        </AppButton>
       </div>
     </header>
     <div class="stock-rows">
@@ -175,7 +178,8 @@ const rows = computed(() =>
           :title="`${row.name}库存`"
         >
           <template #reference
-            ><button
+            ><AppButton
+              unstyled
               class="stock-value"
               :class="{ 'stock-value--shortage': row.amount[metric] < 0 }"
               type="button"
@@ -183,7 +187,7 @@ const rows = computed(() =>
             >
               <strong>{{ num(row.amount[metric]) }}</strong
               ><small>{{ unit }}</small>
-            </button></template
+            </AppButton></template
           >
           <div class="stock-breakdown">
             <div v-for="nature in row.amount.natures" :key="nature.name">
@@ -216,7 +220,8 @@ const rows = computed(() =>
         title="废料库存"
       >
         <template #reference
-          ><button
+          ><AppButton
+            unstyled
             type="button"
             class="stock-waste"
             :disabled="!stock.waste.length"
@@ -226,7 +231,7 @@ const rows = computed(() =>
             ><b
               >{{ available ? num(stock.scrap.weight) : '—' }} <small v-if="available">kg</small></b
             >
-          </button></template
+          </AppButton></template
         >
         <div class="stock-breakdown stock-waste-details">
           <section v-for="nature in stock.waste" :key="nature.name">

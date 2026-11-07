@@ -987,6 +987,7 @@ watch(
     />
   </AppDialog>
   <MaterialDispatchDrawer
+    v-if="showHistoryGroup"
     v-model="groupOpen"
     :dispatch-no="current?.dispatch_no || ''"
     :allow-print="allowPrint"

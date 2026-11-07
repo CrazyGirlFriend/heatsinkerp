@@ -81,6 +81,9 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
             item.source_transfer_id and item.stock_tracked and item.received_by_user_id
             for item in confirmed
         )
+        grinding = [item for item in confirmed if item.next_team_code == "FACTORY-GRIND"]
+        assert grinding
+        assert all(item.purpose_id and item.purpose_name == "研磨" for item in grinding)
         before = summary(db)
         rerun = seed_team_material_showcase(db, "")
         assert rerun["skipped"]

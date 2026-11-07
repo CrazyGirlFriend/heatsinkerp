@@ -12,20 +12,35 @@ from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
 from .models import User
+from .quality_schemas import (
+    InspectionCreate,
+    InspectionPageResponse,
+    InspectionRecordResponse,
+    InspectionSourcePageResponse,
+    InspectionSourceResponse,
+)
 
 router = APIRouter(prefix="/api/inspections", tags=["on-site inspection"])
 
 
-@router.get("/{inspection_id}/recheck-context")
+@router.get(
+    "/{inspection_id}/recheck-context",
+    response_model=InspectionSourceResponse,
+    response_model_exclude_unset=True,
+)
 def recheck_context(
     inspection_id: int, _: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return team_read_response(
-        db, lambda session: inspections.recheck_context(session, inspection_id)
+        db,
+        lambda session: inspections.recheck_context(session, inspection_id),
+        schema=InspectionSourceResponse,
     )
 
 
-@router.get("/sources")
+@router.get(
+    "/sources", response_model=InspectionSourcePageResponse, response_model_exclude_unset=True
+)
 def sources(
     team_id: int = Query(ge=1),
     kind: Literal["patrol", "inspection"] = "patrol",
@@ -42,10 +57,11 @@ def sources(
         lambda session: inspections.list_sources(
             session, team_id, query, page, page_size, kind, recheck_id, group_id
         ),
+        schema=InspectionSourcePageResponse,
     )
 
 
-@router.get("")
+@router.get("", response_model=InspectionPageResponse, response_model_exclude_unset=True)
 def records(
     kind: Literal["patrol", "inspection"] | None = None,
     scope: Literal["sample", "full"] | None = None,
@@ -79,12 +95,15 @@ def records(
             page=page,
             page_size=page_size,
         ),
+        schema=InspectionPageResponse,
     )
 
 
-@router.post("", status_code=201)
+@router.post(
+    "", status_code=201, response_model=InspectionRecordResponse, response_model_exclude_unset=True
+)
 def create(
-    payload: inspections.InspectionCreate,
+    payload: InspectionCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

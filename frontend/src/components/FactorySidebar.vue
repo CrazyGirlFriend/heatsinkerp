@@ -4,7 +4,7 @@ import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'elemen
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authState, currentUser, isAdmin, isTeamAccount } from '@/stores/auth'
-import { appPinia } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
 import { useSidebarStore } from '@/stores/sidebar'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import {

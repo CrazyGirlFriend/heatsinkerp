@@ -2,14 +2,10 @@
 
 from datetime import timezone
 
-from fastapi import Depends, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import get_current_user
 from .configure_material_teams import MATERIAL_TEAMS
-from .database import get_db
 from .inventory_age import stock_age_table
 from .material_analytics import (
     AGE_LABELS,
@@ -30,7 +26,6 @@ from .models import (
 from .record_filters import urgent_serials
 from .team_dashboard import stock_processing_totals
 
-router = APIRouter(prefix="/api/factory-overview", dependencies=[Depends(get_current_user)])
 mt = MaterialTransfer
 
 
@@ -525,8 +520,3 @@ def factory_overview(db: Session, days: int = 30) -> dict:
             for key, label in AGE_LABELS.items()
         ],
     }
-
-
-@router.get("")
-def overview_endpoint(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
-    return factory_overview(db, days)

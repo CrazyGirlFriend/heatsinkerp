@@ -10,7 +10,7 @@ import {
   type PasswordChangePayload,
   type UserRole,
 } from '@/services/adminApi'
-import { appPinia } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
 
 function localStorageValue(): Storage | null {
   try {

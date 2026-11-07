@@ -1,54 +1,13 @@
 import { httpRequest } from './httpClient'
 
-export interface InspectionSource {
-  source_transfer_id: number
-  team_id: number
-  serial_no: string
-  batch_no: string
-  material_name: string
-  specification: string | null
-  quantity: number
-  revision: number
-  hold_id: number | null
-  processing_status: string
-}
-export interface InspectionRecord {
+type Contract = import('@/types/generated/api').components['schemas']
+export type InspectionSource = Contract['InspectionSourceResponse']
+export type InspectionRecord = Omit<
+  Contract['InspectionRecordResponse'],
+  'process_step' | 'problems'
+> & {
   process_step?: import('@/types/processRoute').ProcessRouteContext | null
-  kind: 'patrol' | 'inspection'
-  scope: 'sample' | 'full'
-  methods: ('visual' | 'microscope')[]
-  items: ('appearance' | 'dimension' | 'weight')[]
-  dimension_result: string
-  weight_result: string
-  blocks_outbound: boolean
-  quality_issue_id: number | null
-  feedback_status: 'pending' | 'processing' | 'closed'
-  feedback_version: number
-  disposition: string
-  decision_notes: string
-  id: number
-  source_transfer_id: number
-  team_id: number
-  team_name: string
-  serial_no: string
-  batch_no: string
-  material_name: string
-  specification: string | null
-  inspector_employee_id: number
-  inspector_name: string
-  processing_record_id: number | null
-  processor_name: string | null
-  checked_at: string
-  batch_quantity: number
-  sample_quantity: number
-  passed_quantity: number
-  failed_quantity: number
-  problems?: { id: number; name: string }[]
-  status: 'pending' | 'released' | 'passed' | 'failed'
-  notes: string
-  parent_id: number | null
-  released_at: string | null
-  created_by: string
+  problems?: Contract['InspectionRecordResponse']['problems']
 }
 export interface InspectionCreate {
   kind: InspectionRecord['kind']

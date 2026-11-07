@@ -76,23 +76,23 @@ def test_mixed_batches_do_not_mark_all_material_processed(client, processing):
     assert change(client, s, lot, 20, workshop=True).status_code == 201
     other = receive(client, s, idempotency_key="another-intake")
     url = base(s, True)
-    group = client.get(url + "/inventory").json()["items"][0]
-    assert group["batch_count"] == 2
-    assert (
-        group["processing_registered_quantity"] == 20
-        and group["processing_unregistered_quantity"] == 1
-    )
-    assert (
-        group["processing_registered_batch_count"]
-        == group["processing_unregistered_batch_count"]
-        == 1
-    )
-    sources = client.get(url + "/processing-stock", params={"group_id": group["group_id"]}).json()
-    assert sources["total"] == 2
-    assert {row["transfer"]["id"]: row["processing_state"] for row in sources["items"]} == {
-        lot["id"]: "registered",
-        other["id"]: "unregistered",
-    }
+    groups = client.get(url + "/inventory").json()["items"]
+    assert len(groups) == 2
+    by_state = {group["processing_state"]: group for group in groups}
+    assert set(by_state) == {"registered", "unregistered"}
+    for state, source, quantity in [("registered", lot, 20), ("unregistered", other, 1)]:
+        group = by_state[state]
+        opposite = "unregistered" if state == "registered" else "registered"
+        assert group["batch_count"] == group[f"processing_{state}_batch_count"] == 1
+        assert group[f"processing_{state}_quantity"] == group["on_hand_quantity"] == quantity
+        assert group[f"processing_{opposite}_batch_count"] == 0
+        assert group[f"processing_{opposite}_quantity"] == 0
+        sources = client.get(
+            url + "/processing-stock", params={"group_id": group["group_id"]}
+        ).json()
+        assert sources["total"] == 1
+        assert sources["items"][0]["transfer"]["id"] == source["id"]
+        assert sources["items"][0]["processing_state"] == state
     sent = dispatch(
         client, s, [{"source_transfer_id": lot["id"], "quantity": 20, "weight": 100}], workshop=True
     ).json()
@@ -306,7 +306,8 @@ def test_unchanged_piece_count_can_register_partial_then_complete_processing(cli
     assert [row["processing_status"] for row in records] == ["complete", "partial"]
     assert all(row["processing_state"] == "complete" for row in records)
     original = client.get("/api/material-transfers/" + lot["batch_no"]).json()
-    assert original["quantity"] == 1 and original["transfer_specification"] is None
+    assert original["quantity"] == 1
+    assert original["transfer_specification"] == lot["transfer_specification"]
     assert any(
         event["changes"].get("processing_status", {}).get("after") == "complete"
         for event in original["history"]
@@ -350,7 +351,8 @@ def test_dispatch_inherits_processing_dimensions_and_allows_each_split_its_actua
     assert all(row["source_transfer_id"] == lot["id"] for row in outgoing.json()["items"])
     assert confirm(client, s, outgoing.json()).status_code == 200
     original = client.get("/api/material-transfers/" + lot["batch_no"]).json()
-    assert original["quantity"] == 1 and original["transfer_specification"] is None
+    assert original["quantity"] == 1
+    assert original["transfer_specification"] == lot["transfer_specification"]
 
 
 def test_progress_registration_rejects_unsupported_teams_and_invalid_progress(client, warehouse):

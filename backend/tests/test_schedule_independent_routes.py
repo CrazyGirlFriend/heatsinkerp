@@ -126,9 +126,13 @@ def test_selected_engineering_route_drives_outbound_and_all_processing_steps(
 def test_foreign_route_needs_explicit_order_association_and_documents_stay_required(
     client, warehouse, dispatcher
 ):
+    # Existing stock can predate the engineering entry policy; linking it still
+    # requires an explicit order association with this different engineering serial.
+    receipt = intake(client, warehouse, serial_no="INDEPENDENT-ORDER")
+    assert receipt.status_code == 201, receipt.text
+    origin = receipt.json()
     body = setup_order(client, warehouse)
     body["serial_no"] = "INDEPENDENT-ORDER"
-    origin = intake(client, warehouse, serial_no=body["serial_no"]).json()
     bound = client.post(
         f"/api/process-routes/{body['route_id']}/bind",
         json={"source_transfer_ids": [origin["id"]]},
@@ -215,25 +219,13 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
         client,
         warehouse,
         serial_no="",
+        quantity=1,
         weight=10,
-        shared_serials=[
-            dict(
-                serial_no=serial,
-                planned_quantity=50,
-                planned_weight=5,
-                planned_specification="按图",
-            )
-            for serial in ["A", "B"]
-        ],
     )
     assert receipt.status_code == 201, receipt.text
-    bound = client.post(
-        f"/api/process-routes/{route['id']}/bind",
-        json={"source_transfer_ids": [receipt.json()["id"]]},
-    )
-    assert bound.status_code == 200, bound.text
     person = client.post(URL + "/business-people", json={"name": "业务甲"}).json()["id"]
-    for serial, shared in [("A", True), ("INDEPENDENT-ORDER", False)]:
+    tasks = {}
+    for serial in ("A", "B", "INDEPENDENT-ORDER"):
         response = post(
             client,
             dispatcher,
@@ -248,5 +240,33 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
             order_file(serial),
         )
         assert response.status_code == 201, response.text
+        tasks[serial] = response.json()["id"]
+    sent = dispatch(
+        client,
+        warehouse,
+        [
+            {
+                "source_transfer_id": receipt.json()["id"],
+                "quantity": 1,
+                "weight": 10,
+                "shared_serials": [
+                    dict(
+                        serial_no=serial,
+                        planned_quantity=50,
+                        planned_weight=5,
+                        planned_specification="按图",
+                        process_route_id=route["id"],
+                        process_route_version=route["version"],
+                    )
+                    for serial in ("A", "B")
+                ],
+            }
+        ],
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["items"][0]["shared_unallocated"]
+    for serial, shared in [("A", True), ("B", True), ("INDEPENDENT-ORDER", False)]:
+        response = client.get(f"{URL}/tasks/{tasks[serial]}")
+        assert response.status_code == 200, response.text
         task = response.json()
         assert task["shared_source"] is shared

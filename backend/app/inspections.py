@@ -1,10 +1,8 @@
 """Patrol and QC inspection facts. No stock movements or automatic disposition."""
 
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import timezone
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import aliased
@@ -23,67 +21,9 @@ from .models import (
     utcnow,
 )
 from .models import MaterialInspection as Inspection
+from .quality_schemas import InspectionCreate as InspectionCreate
 from .record_filters import RecordFilters
 from .team_constants import INSPECTION_TEAM_CODE, PROCESSING_TEAM_CODES
-
-
-class InspectionCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source_transfer_id: int = Field(ge=1)
-    expected_revision: int = Field(ge=0)
-    inspector_employee_id: int = Field(ge=1)
-    checked_at: datetime
-    sample_quantity: int = Field(gt=0, le=2147483647)
-    failed_quantity: int = Field(ge=0, le=2147483647)
-    kind: Literal["patrol", "inspection"] = "patrol"
-    scope: Literal["sample", "full"] = "sample"
-    methods: list[Literal["visual", "microscope"]] = Field(min_length=1, max_length=2)
-    items: list[Literal["appearance", "dimension", "weight"]] = Field(min_length=1, max_length=3)
-    dimension_result: str = Field(default="", max_length=2000)
-    weight_result: str = Field(default="", max_length=2000)
-    involved_team_ids: list[int] = Field(default_factory=list, max_length=50)
-    problem_type_ids: list[int] = Field(default_factory=list, max_length=50)
-    notes: str = Field(default="", max_length=2000)
-    parent_id: int | None = Field(default=None, ge=1)
-    idempotency_key: str = Field(min_length=1, max_length=100)
-
-    @field_validator("idempotency_key")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("提交标识不能为空")
-        return value.strip()
-
-    @field_validator("checked_at")
-    @classmethod
-    def timestamp(cls, value):
-        if value.tzinfo is None:
-            raise ValueError("检查时间须带时区")
-        return value.astimezone(timezone.utc)
-
-    @model_validator(mode="after")
-    def counts(self):
-        if self.failed_quantity > self.sample_quantity:
-            raise ValueError("不合格件数不能超过检查件数")
-        if len(set(self.methods)) != len(self.methods) or len(set(self.items)) != len(self.items):
-            raise ValueError("检查手段和项目不能重复")
-        if len(set(self.involved_team_ids)) != len(self.involved_team_ids) or any(
-            i < 1 for i in self.involved_team_ids
-        ):
-            raise ValueError("问题涉及班组不能重复或无效")
-        if self.failed_quantity and not self.parent_id and not self.involved_team_ids:
-            raise ValueError("请选择问题涉及班组")
-        if not self.failed_quantity and self.involved_team_ids:
-            raise ValueError("没有不合格物料时无需指定问题班组")
-        if len(set(self.problem_type_ids)) != len(self.problem_type_ids) or any(
-            i < 1 for i in self.problem_type_ids
-        ):
-            raise ValueError("检验问题不能重复或无效")
-        if self.failed_quantity and not self.problem_type_ids:
-            raise ValueError("请选择检验问题")
-        if not self.failed_quantity and self.problem_type_ids:
-            raise ValueError("没有不合格物料时无需选择检验问题")
-        return self
 
 
 def hold_conditions():

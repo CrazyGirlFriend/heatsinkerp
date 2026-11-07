@@ -278,14 +278,15 @@ def test_group_outbound_loss_dates_confirmation_and_void_keep_balances(client, w
     )
 
 
-def test_warehouse_alias_and_authentication_remain_compatible(client, warehouse):
+def test_warehouse_alias_and_authentication_remain_compatible(client, warehouse, monkeypatch):
+    from app import warehouse_inventory
+
     s = warehouse
     intake(client, s)
+    now = warehouse_inventory.utcnow()
+    monkeypatch.setattr(warehouse_inventory, "utcnow", lambda: now)
     current = get_inventory(client, s["team"]["id"])
     legacy = client.get(f"/api/team-materials/{s['team']['id']}/warehouse-inventory").json()
-    assert datetime.fromisoformat(current.pop("as_of")) <= datetime.fromisoformat(
-        legacy.pop("as_of")
-    )
     assert current == legacy
     client.headers.pop("Authorization")
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory").status_code == 401
@@ -425,7 +426,8 @@ def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(client
     old = intake(client, s, idempotency_key="old", weight=10).json()
     recent = intake(client, s, idempotency_key="recent", weight=10).json()
     intake(client, s, idempotency_key="different", material_type="finished")
-    now = utcnow()
+    # MySQL DATETIME stores receipt times to the second.
+    now = utcnow().replace(microsecond=0)
     with SessionLocal() as db:
         db.get(MaterialTransfer, old["id"]).received_at = now - timedelta(days=10)
         db.get(MaterialTransfer, recent["id"]).received_at = now - timedelta(hours=2)

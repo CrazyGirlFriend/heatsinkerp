@@ -3,15 +3,13 @@
 from datetime import timedelta, timezone
 from typing import Literal
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter
-from .auth import actor_name, get_current_user
-from .database import get_db
+from .auth import actor_name
 from .material_stock import StockAmounts
 from .models import (
     AdminAuditEvent,
@@ -32,7 +30,6 @@ from .team_constants import WAREHOUSE_TEAM_CODE
 
 LEASE_SECONDS = 180
 DRAFT_SECONDS = 600
-router = AsyncAPIRouter(prefix="/api/warehouse-locations", tags=["warehouse management"])
 
 
 class LocationWrite(BaseModel):
@@ -454,7 +451,9 @@ def reserve(db, location_id, key, user, identity=None):
             same = location.reservation_key == key and location.reserved_by_user_id == user.id
             if leased(location) and not same:
                 raise HTTPException(409, "该仓位已被其他表单锁定，请重新选择空仓位")
-            now = utcnow()
+            # These lease columns store whole seconds in MySQL. Floor before
+            # returning a deadline so a reread cannot round it up on heartbeat.
+            now = utcnow().replace(microsecond=0)
             if same and location.reserved_deadline and location.reserved_deadline <= now:
                 raise HTTPException(409, "仓位已锁定满 10 分钟，请重新选择空仓位")
             if not same or location.reserved_deadline is None:
@@ -584,64 +583,37 @@ def save_location(db, payload, user, location_id=None):
         _db_conflict(exc)
 
 
-@router.get("")
 def catalog(
-    query: str | None = Query(default=None, max_length=80),
+    *,
+    query: str | None = None,
     state: Literal["occupied", "available", "pending", "draft", "disabled"] | None = None,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    page: int = 1,
+    page_size: int = 20,
+    user: User,
+    db: Session,
 ):
     require_manager(user)
     return list_locations(db, query=query, page=page, page_size=page_size, state=state)
 
 
-@router.post("", status_code=201)
-def create(
-    payload: LocationWrite, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def create(*, payload: LocationWrite, user: User, db: Session):
     require_manager(user)
     return save_location(db, payload, user)
 
 
-@router.patch("/{location_id}")
-def edit(
-    location_id: int,
-    payload: LocationWrite,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def edit(*, location_id: int, payload: LocationWrite, user: User, db: Session):
     require_manager(user)
     return save_location(db, payload, user, location_id)
 
 
-@router.post("/{location_id}/reservation")
-def claim(
-    location_id: int,
-    payload: LeaseRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def claim(*, location_id: int, payload: LeaseRequest, user: User, db: Session):
     return reserve(db, location_id, payload.key, user, material_identity(payload))
 
 
-@router.post("/{location_id}/placement")
-def assign(
-    location_id: int,
-    payload: PlacementWrite,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def assign(*, location_id: int, payload: PlacementWrite, user: User, db: Session):
     require_manager(user)
     return place_stock(db, location_id, payload, user)
 
 
-@router.delete("/{location_id}/reservation", status_code=204)
-def unclaim(
-    location_id: int,
-    payload: LeaseRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def unclaim(*, location_id: int, payload: LeaseRequest, user: User, db: Session):
     release(db, location_id, payload.key, user)

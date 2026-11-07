@@ -5,24 +5,22 @@ from dataclasses import replace
 from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import actor_name, require_admin
+from .auth import actor_name
 from .config import settings
-from .database import SessionLocal, get_db
-from .models import MainSystemConfiguration, User, utcnow
-
-router = APIRouter(
-    prefix="/api/main-system/configuration",
-    tags=["main system configuration"],
-    dependencies=[Depends(require_admin)],
+from .database import SessionLocal
+from .main_system_schemas import (
+    ConfigurationSave as ConfigurationSave,
 )
+from .main_system_schemas import (
+    ConfigurationTest as ConfigurationTest,
+)
+from .models import MainSystemConfiguration, User, utcnow
 
 
 def cipher():
@@ -110,34 +108,15 @@ def public_config(row):
     }
 
 
-class ConfigurationSave(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    enabled: bool = Field(strict=True)
-    base_url: str = Field(max_length=500)
-    token: str = Field(default="", max_length=4096, repr=False)
-    timeout_seconds: float = Field(ge=0.1, le=30, multiple_of=0.1)
-    expected_version: int = Field(ge=0)
-
-    @field_validator("base_url")
-    @classmethod
-    def clean_url(cls, value):
-        return value.strip().rstrip("/")
-
-
-@router.get("")
-def get_configuration(response: Response, db: Session = Depends(get_db)):
-    response.headers["Cache-Control"] = "no-store"
+def get_configuration(db: Session):
     return public_config(db.get(MainSystemConfiguration, 1))
 
 
-@router.put("")
 def save_configuration(
     payload: ConfigurationSave,
-    response: Response,
-    user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    user: User,
+    db: Session,
 ):
-    response.headers["Cache-Control"] = "no-store"
     validate_target(payload.base_url)
     encryptor = cipher()
     if payload.enabled and not payload.base_url:
@@ -178,19 +157,9 @@ def save_configuration(
         raise HTTPException(409, "配置已被更新，请重新加载后再保存") from None
 
 
-class ConfigurationTest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    serial_no: str = Field(min_length=1, max_length=80)
-    expected_version: int = Field(ge=0)
-
-
-@router.post("/test")
-async def test_configuration(
-    payload: ConfigurationTest, response: Response, db: AsyncSession = Depends(get_db)
-):
+async def test_configuration(payload: ConfigurationTest, db: AsyncSession):
     from . import main_system
 
-    response.headers["Cache-Control"] = "no-store"
     connection, serial_no = await db.run_sync(lambda session: prepare_test(session, payload))
     data = None
     try:

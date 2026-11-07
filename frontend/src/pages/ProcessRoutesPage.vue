@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { ElOption } from 'element-plus'
@@ -471,13 +472,14 @@ onBeforeUnmount(() => {
                   @before-enter="loadStepDetails(row.id)"
                 >
                   <template #reference>
-                    <button
+                    <AppButton
+                      unstyled
                       type="button"
                       class="route-step-node"
                       :aria-label="`工序 ${step.sequence_no} · ${step.name || '未命名工序'}`"
                     >
                       <FactoryNavIcon :name="stepIcon(step)" />
-                    </button>
+                    </AppButton>
                   </template>
                   <div class="route-path-heading">
                     <span>{{ step.name || '未命名工序' }}</span>
@@ -518,13 +520,14 @@ onBeforeUnmount(() => {
                   :width="360"
                 >
                   <template #reference>
-                    <button
+                    <AppButton
+                      unstyled
                       type="button"
                       class="route-path-more"
                       :aria-label="`另有 ${routeSteps(row).length - visibleStepCount} 道工序，查看完整路线`"
                     >
                       +{{ routeSteps(row).length - visibleStepCount }}
-                    </button>
+                    </AppButton>
                   </template>
                   <div class="route-path-heading">
                     <span>{{ row.serial_nos[0] }}</span>

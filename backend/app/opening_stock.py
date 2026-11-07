@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -10,16 +10,12 @@ from sqlalchemy.orm import Session
 
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import actor_name, get_current_user
+from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .database import get_db
 from .material_weight import sludge_measurement, validate_material_amounts
 from .models import MaterialTransfer, OpeningStockSubmission, Team, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SludgeMeasurement
 from .team_business import purpose_snapshot
-
-router = APIRouter(prefix="/api/team-materials", tags=["opening stock"])
 
 
 class OpeningLine(MaterialTransferDocumentFields, SludgeMeasurement):
@@ -73,10 +69,7 @@ def result(db, submission, user):
     }
 
 
-@router.get("/{team_id}/opening-stock")
-def state(
-    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def state(*, team_id: int, user: User, db: Session):
     team = stock.require_team(db, team_id)
     submission = db.scalar(
         select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id).limit(1)
@@ -118,13 +111,7 @@ def state(
     }
 
 
-@router.post("/{team_id}/opening-stock", status_code=201)
-def create(
-    payload: OpeningCreate,
-    team_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def create(*, payload: OpeningCreate, team_id: int, user: User, db: Session):
     stock.require_actor(user, team_id)
     request_hash = stock.fingerprint(payload)
     try:

@@ -16,6 +16,7 @@ const slot: WarehouseLocation = {
   version: 3,
   status: 'available',
   has_stock: false,
+  draft_locked: false,
   batches: [],
 }
 const row = {

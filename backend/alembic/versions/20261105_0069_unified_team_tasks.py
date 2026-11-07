@@ -20,16 +20,29 @@ PRODUCTION_CODES = (
 
 
 def upgrade():
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("team_processing_tasks")}
+    purpose_fk = any(
+        fk["constrained_columns"] == ["purpose_id"] and fk["referred_table"] == "team_purposes"
+        for fk in inspector.get_foreign_keys("team_processing_tasks")
+    )
+    purpose_unique = any(
+        constraint["column_names"] == ["purpose_id"]
+        for constraint in inspector.get_unique_constraints("team_processing_tasks")
+    )
     with op.batch_alter_table("team_processing_tasks") as batch:
-        batch.add_column(sa.Column("purpose_id", sa.Integer(), nullable=True))
-        batch.create_foreign_key(
-            "fk_processing_task_purpose",
-            "team_purposes",
-            ["purpose_id"],
-            ["id"],
-            ondelete="RESTRICT",
-        )
-        batch.create_unique_constraint("uq_processing_task_purpose", ["purpose_id"])
+        if "purpose_id" not in columns:
+            batch.add_column(sa.Column("purpose_id", sa.Integer(), nullable=True))
+        if not purpose_fk:
+            batch.create_foreign_key(
+                "fk_processing_task_purpose",
+                "team_purposes",
+                ["purpose_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+        if not purpose_unique:
+            batch.create_unique_constraint("uq_processing_task_purpose", ["purpose_id"])
     connection = op.get_bind()
     metadata = sa.MetaData()
     teams = sa.Table("teams", metadata, autoload_with=connection)
@@ -93,7 +106,29 @@ def upgrade():
 
 def downgrade():
     # Keep directory entries: handoffs or work records may reference them.
-    with op.batch_alter_table("team_processing_tasks") as batch:
-        batch.drop_constraint("uq_processing_task_purpose", type_="unique")
-        batch.drop_constraint("fk_processing_task_purpose", type_="foreignkey")
+    inspector = sa.inspect(op.get_bind())
+    purpose_fk = next(
+        fk
+        for fk in inspector.get_foreign_keys("team_processing_tasks")
+        if fk["constrained_columns"] == ["purpose_id"]
+    )
+    purpose_unique = next(
+        constraint
+        for constraint in inspector.get_unique_constraints("team_processing_tasks")
+        if constraint["column_names"] == ["purpose_id"]
+    )
+    with op.batch_alter_table(
+        "team_processing_tasks",
+        naming_convention={
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "uq": "uq_%(table_name)s_%(column_0_name)s",
+        },
+    ) as batch:
+        batch.drop_constraint(
+            purpose_unique["name"] or "uq_team_processing_tasks_purpose_id", type_="unique"
+        )
+        batch.drop_constraint(
+            purpose_fk["name"] or "fk_team_processing_tasks_purpose_id_team_purposes",
+            type_="foreignkey",
+        )
         batch.drop_column("purpose_id")

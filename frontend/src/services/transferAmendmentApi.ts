@@ -1,42 +1,16 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 
-export type TransferAmendmentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+type Contract = import('@/types/generated/api').components['schemas']
+export type TransferAmendmentStatus = Contract['TransferAmendmentResponse']['status']
 export const transferAmendmentStatusLabels: Record<TransferAmendmentStatus, string> = {
   pending: '待对方确认',
   approved: '已生效',
   rejected: '已拒绝',
   cancelled: '已撤回',
 }
-export interface TransferAmendmentValues {
-  quantity: number
-  weight: number
-  notes: string | null
-}
-export interface TransferAmendment {
-  id: number
-  batch_no: string
-  serial_no: string
-  status: TransferAmendmentStatus
-  reason: string
-  requester_team_id: number
-  requester_team_name: string
-  counterparty_team_id: number
-  counterparty_team_name: string
-  requested_by: string
-  created_at: string
-  resolved_at: string | null
-  resolved_by: string | null
-  response_reason: string | null
-  before: TransferAmendmentValues
-  after: TransferAmendmentValues
-  allowed_actions: ('approve' | 'reject' | 'cancel')[]
-}
-export interface TransferAmendmentList {
-  items: TransferAmendment[]
-  remaining_quantity: number
-  remaining_weight: number
-  editable: boolean
-}
+export type TransferAmendmentValues = Contract['AmendmentValuesResponse']
+export type TransferAmendment = Contract['TransferAmendmentResponse']
+export type TransferAmendmentList = Contract['TransferAmendmentListResponse']
 
 async function request<T>(path: string, options: HttpRequestOptions = {}) {
   try {

@@ -5,22 +5,16 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, Path, Query
 from pydantic import BeforeValidator, Field, model_validator
 from sqlalchemy import String, and_, case, cast, func, or_, select
-from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import get_current_user
 from .config import settings
-from .database import get_db
 from .inventory_age import stock_age_table
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .models import MaterialLoss, MaterialTransfer, utcnow
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
 from .serial_urgency import urgency_dict, urgency_map
 
-router = APIRouter(prefix="/api/team-materials", dependencies=[Depends(get_current_user)])
 Age = Literal["lt1", "1_3", "3_7", "ge7"]
 Days = Annotated[Literal[7, 30], BeforeValidator(int)]
 AGE_LABELS = {"lt1": "不足1天", "1_3": "1–3天", "3_7": "3–7天", "ge7": "7天及以上"}
@@ -620,22 +614,3 @@ def analytics(db, team_id, days=30, metric="weight"):
         ],
         "peers": peers,
     }
-
-
-@router.get("/{team_id}/serials")
-def serials_endpoint(
-    filters: Annotated[SerialFilters, Query()],
-    team_id: int = Path(ge=1),
-    db: Session = Depends(get_db),
-):
-    return list_serials(db, team_id, filters)
-
-
-@router.get("/{team_id}/analytics")
-def analytics_endpoint(
-    team_id: int = Path(ge=1),
-    days: Days = 30,
-    metric: Literal["quantity", "weight"] = "weight",
-    db: Session = Depends(get_db),
-):
-    return analytics(db, team_id, days, metric)

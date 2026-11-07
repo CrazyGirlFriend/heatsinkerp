@@ -616,12 +616,16 @@ function actionLabel(action: string) {
   )
 }
 watch(
-  () => [props.teamId, route.query.serial_no],
+  () => [props.teamId, route.query.serial_no, route.query.status],
   () => {
     if (props.detailOnly) return
     const serial = typeof route.query.serial_no === 'string' ? route.query.serial_no.trim() : ''
     query.value = serial
-    filters.value = serial ? { serial_no: serial } : {}
+    const status =
+      typeof route.query.status === 'string' && route.query.status in scheduleStatusLabels
+        ? (route.query.status as ScheduleStatus)
+        : undefined
+    filters.value = { ...(serial ? { serial_no: serial } : {}), ...(status ? { status } : {}) }
     page.value = 1
     closeDetail()
     void load()

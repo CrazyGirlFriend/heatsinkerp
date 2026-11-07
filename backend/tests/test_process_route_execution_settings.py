@@ -71,7 +71,12 @@ def test_route_without_presets_keeps_actual_task_and_business_registration(clien
     )
     payload = route_payload(client, s)
     task_id = payload["steps"][1]["processing_task_id"]
-    purpose_id = payload["steps"][1]["purpose_id"]
+    task = next(
+        item
+        for item in client.get(base(s, True) + "/processing-tasks").json()
+        if item["id"] == task_id
+    )
+    purpose_id = task["purpose_id"]
     payload["steps"][1].update(processing_task_id=None, purpose_id=None)
     payload = publish_payload(client, payload)
     assert payload["steps"][1]["processing_task_id"] is None

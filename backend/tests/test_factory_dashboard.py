@@ -240,6 +240,7 @@ def test_stock_axes_follow_configured_teams_and_effective_materials(client, ware
             "quantity": 1,
             "weight": 1,
             "idempotency_key": "axis-pending",
+            "transfer_specification": "100 × 80 × 5 mm",
         },
     )
     assert pending.status_code == 201, pending.text

@@ -4,7 +4,7 @@ import { useRouter, type RouteLocationRaw } from 'vue-router'
 import ElButton from '@/components/AppButton.vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { appPinia } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
 import { pageBackDestination } from '@/utils/navigation'
 
 const props = defineProps<{ fallback?: RouteLocationRaw }>()

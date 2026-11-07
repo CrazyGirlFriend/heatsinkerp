@@ -22,10 +22,14 @@ const slot: WarehouseLocation = {
   version: 3,
   status: 'available',
   has_stock: false,
+  draft_locked: false,
   batches: [],
 }
 const batch = (id: number, quantity = 4, weight = 1): WarehouseLocation['batches'][number] => ({
   id,
+  location_id: 1,
+  shared_group_id: null,
+  shared_unallocated: false,
   batch_no: `TL${id}`,
   serial_no: 'YS-007',
   material_name: '材料1',
@@ -49,6 +53,8 @@ const occupied = (id: number, batches = [batch(id)]): WarehouseLocation => ({
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({
+    page: 1,
+    page_size: 20,
     items: [slot, { ...slot, id: 2, name: 'A区-02', status: 'locked', draft_locked: true }],
     total: 2,
     team_id: 1,
@@ -100,6 +106,8 @@ describe('warehouse management', () => {
     await render()
     const source = wrapper.getComponent(TableExportButton).props('source')()!
     vi.mocked(warehouseLocationApi.list).mockImplementation(async (_query, page) => ({
+      page: page ?? 1,
+      page_size: 20,
       items:
         page === 1
           ? [occupied(1, [batch(1, 2, 0.000123), { ...batch(2, 100, 10), status: 'pending' }])]
@@ -121,6 +129,8 @@ describe('warehouse management', () => {
     }))
     vi.mocked(warehouseLocationApi.list).mockImplementation(
       async (_query, page = 1, size = 20) => ({
+        page: page ?? 1,
+        page_size: size,
         items: items.slice((page - 1) * size, page * size),
         total: items.length,
         team_id: 1,
@@ -142,7 +152,13 @@ describe('warehouse management', () => {
   })
   it('pages the warehouse table and keeps individual material details inside the popup', async () => {
     const items = Array.from({ length: 20 }, (_, index) => occupied(index + 1))
-    vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({ items, total: 21, team_id: 1 })
+    vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
+      items,
+      total: 21,
+      team_id: 1,
+    })
     await render()
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 20, undefined)
     expect(wrapper.findAll('.warehouse-location-link')).toHaveLength(20)
@@ -155,6 +171,8 @@ describe('warehouse management', () => {
     expect(wrapper.text()).toContain('YS-007')
     expect(wrapper.text()).toContain('2026-10-09 08:30')
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
       items: [occupied(21)],
       total: 21,
       team_id: 1,
@@ -172,7 +190,13 @@ describe('warehouse management', () => {
       { ...occupied(3, [batch(2), waiting]), draft_locked: true },
       { ...slot, id: 4, name: '停用仓', active: false, status: 'disabled' as const },
     ]
-    vi.mocked(warehouseLocationApi.list).mockResolvedValue({ items, total: 4, team_id: 1 })
+    vi.mocked(warehouseLocationApi.list).mockResolvedValue({
+      page: 1,
+      page_size: 20,
+      items,
+      total: 4,
+      team_id: 1,
+    })
     await render(true, true)
     const tableRows = wrapper.findAll('.warehouse-table .el-table__body tr')
     expect(tableRows[0]!.text()).toContain('1.234')
@@ -196,6 +220,8 @@ describe('warehouse management', () => {
   })
   it('selects separate received batches across slots and pages, including weight-only stock', async () => {
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
       items: [
         occupied(11, [batch(11, 8, 1.28), batch(12, 0, 1.234), batch(13, 0, 0)]),
         { ...slot, id: 14, name: '空仓位' },
@@ -218,6 +244,8 @@ describe('warehouse management', () => {
     })
     await click('关闭')
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
       items: [occupied(21, [batch(21, 2, 0.32)])],
       total: 21,
       team_id: 1,
@@ -236,6 +264,8 @@ describe('warehouse management', () => {
   })
   it('removes stock that left a refreshed slot and revokes controls when permissions change', async () => {
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
       items: [occupied(1)],
       total: 1,
       team_id: 1,
@@ -248,6 +278,8 @@ describe('warehouse management', () => {
     wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
     await flushPromises()
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
+      page: 1,
+      page_size: 20,
       items: [{ ...slot, name: 'A-1' }],
       total: 1,
       team_id: 1,
@@ -273,6 +305,8 @@ describe('warehouse management', () => {
   })
   it('allows renaming an occupied slot, disables deactivation and offers batch shortcuts', async () => {
     vi.mocked(warehouseLocationApi.list).mockResolvedValue({
+      page: 1,
+      page_size: 20,
       items: [occupied(1, [batch(8)])],
       total: 1,
       team_id: 1,
@@ -356,6 +390,8 @@ describe('warehouse management', () => {
     })
     vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [slot] })
     vi.mocked(warehouseLocationApi.list).mockResolvedValue({
+      page: 1,
+      page_size: 20,
       items: [
         occupied(1, [
           { ...batch(8, 70, 7), serial_no: 'S8', available_quantity: 80, available_weight: 8 },

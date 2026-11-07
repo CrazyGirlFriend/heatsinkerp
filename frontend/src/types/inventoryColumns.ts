@@ -1,5 +1,5 @@
 import { formatAmount as amount } from '@/utils/format'
-import type { SerialMetaField, SerialSummary } from './materialAnalytics'
+import type { SerialMetaField, SerialSummary } from './inventorySummary'
 import { formatDateTime } from '@/utils/format'
 
 const meta = (row: SerialSummary, key: SerialMetaField, multiple = '各批不同') =>

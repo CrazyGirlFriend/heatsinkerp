@@ -3,16 +3,13 @@
 from contextlib import contextmanager
 from decimal import Decimal
 
-from fastapi import Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from fastapi import HTTPException
 from sqlalchemy import JSON, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, lazyload
 
 from . import material_transfer_workflow as workflow
-from .async_api import AsyncAPIRouter
-from .auth import actor_name, get_current_user
-from .database import get_db
+from .auth import actor_name
 from .material_stock import available_locked
 from .material_weight import validate_material_amounts
 from .models import (
@@ -25,42 +22,8 @@ from .models import (
     User,
     utcnow,
 )
-
-router = AsyncAPIRouter(prefix="/api", tags=["transfer amendments"])
-
-
-class AmendmentCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    expected_version: int = Field(ge=1)
-    quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
-    notes: str | None = Field(default=None, max_length=2000)
-    reason: str = Field(min_length=1, max_length=2000)
-
-    @field_validator("reason")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("请填写修改原因")
-        return value.strip()
-
-    @model_validator(mode="after")
-    def nonempty(self):
-        if self.quantity == 0 and self.weight == 0:
-            raise ValueError("数量和重量不能同时为零")
-        return self
-
-
-class AmendmentReject(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    reason: str = Field(min_length=1, max_length=2000)
-
-    @field_validator("reason")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("请填写拒绝原因")
-        return value.strip()
+from .transfer_amendment_schemas import AmendmentCreate as AmendmentCreate
+from .transfer_amendment_schemas import AmendmentReject as AmendmentReject
 
 
 def eligible(transfer):
@@ -478,10 +441,7 @@ def resolve_amendment(db, amendment_id, decision, user, reason=None):
     return amendment_dict(db, row, user)
 
 
-@router.get("/material-transfers/{batch_no}/amendments")
-def list_amendments(
-    batch_no: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
+def list_amendments(*, batch_no: str, db: Session, user: User):
     transfer = db.scalar(
         select(MaterialTransfer).options(lazyload("*")).where(MaterialTransfer.batch_no == batch_no)
     )
@@ -506,44 +466,3 @@ def list_amendments(
             and not any(row.status == "pending" for row in rows)
         ),
     }
-
-
-@router.post("/material-transfers/{batch_no}/amendments", status_code=status.HTTP_201_CREATED)
-def post_amendment(
-    batch_no: str,
-    payload: AmendmentCreate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    return request_amendment(db, batch_no, payload, user)
-
-
-@router.get("/transfer-amendments/{amendment_id}")
-def read_amendment(
-    amendment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
-    return get_amendment(db, amendment_id, user)
-
-
-@router.post("/transfer-amendments/{amendment_id}/approve")
-def approve(
-    amendment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
-    return resolve_amendment(db, amendment_id, "approved", user)
-
-
-@router.post("/transfer-amendments/{amendment_id}/reject")
-def reject(
-    amendment_id: int,
-    payload: AmendmentReject,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    return resolve_amendment(db, amendment_id, "rejected", user, payload.reason)
-
-
-@router.post("/transfer-amendments/{amendment_id}/cancel")
-def cancel(
-    amendment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
-    return resolve_amendment(db, amendment_id, "cancelled", user)

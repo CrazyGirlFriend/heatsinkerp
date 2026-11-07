@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
@@ -185,7 +186,8 @@ onBeforeUnmount(() => {
       </div>
       <div class="selection-options" :class="{ 'is-loading': loading }">
         <div v-for="option in rows" :key="option.value" class="selection-row">
-          <button
+          <AppButton
+            unstyled
             v-if="!manage"
             type="button"
             class="selection-choice"
@@ -201,7 +203,7 @@ onBeforeUnmount(() => {
                 option.label
               }}</template></strong
             ><small>{{ option.description }}</small>
-          </button>
+          </AppButton>
           <span v-else class="selection-person"
             ><strong
               ><PersonName v-if="kind === 'people'" :name="option.label" /><template v-else>{{

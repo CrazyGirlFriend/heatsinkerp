@@ -457,7 +457,7 @@ def require_dispatch_documents(db, route, lot, serial):
 
 def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
     """Validate the serial's documents and preserve the reviewed route cursor."""
-    from .process_route_api import bind_lot
+    from .process_route_binding import bind_lot
 
     route_lot = lot
     if not serial:

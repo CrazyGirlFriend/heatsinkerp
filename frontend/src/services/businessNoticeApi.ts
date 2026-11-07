@@ -1,46 +1,12 @@
 import { httpRequest } from './httpClient'
 import type { ProcessRoute } from '@/types/processRoute'
-export type NoticeSource = 'schedule' | 'rework' | 'transfer'
-export interface BusinessNotice {
-  id: number
-  source: NoticeSource
-  kind:
-    | 'new'
-    | 'changed'
-    | 'cancelled'
-    | 'upstream'
-    | 'final_due'
-    | 'due_soon'
-    | 'overdue'
-    | 'requested'
-    | 'ready'
-    | 'review'
-    | 'returned'
-    | 'locked'
-    | 'unlocked'
-    | 'amendment_requested'
-    | 'amendment_approved'
-    | 'amendment_rejected'
-    | 'amendment_cancelled'
-  message: string
-  serial_no: string
-  batch_no: string | null
-  team_name: string
-  created_at: string
-  read_at: string | null
-  amendment_id?: number
-  amendment_status?: string
-  action_required?: boolean
-}
-export interface NoticeTarget {
-  href: string
-  amendment_id?: number
-  schedule_id?: number
-  event_id?: number | null
-  batch_id?: number | null
-  section?: 'problem' | 'steps' | 'plan-review' | 'amendment'
-  step_index?: number
-  route?: ProcessRoute
+import type { components } from '@/types/generated/api'
+
+export type BusinessNotice = components['schemas']['BusinessNoticeResponse']
+export type NoticeSource = BusinessNotice['source']
+// Route editors also accept local drafts; keep that view type at this boundary.
+export type NoticeTarget = Omit<components['schemas']['NoticeTargetResponse'], 'route'> & {
+  route?: ProcessRoute | null
 }
 export function parseNotice(value: unknown) {
   if (typeof value !== 'string') return null
@@ -49,12 +15,9 @@ export function parseNotice(value: unknown) {
 }
 export const businessNoticeApi = {
   list: (page = 1, unreadOnly = false, category = 'all') =>
-    httpRequest<{
-      items: BusinessNotice[]
-      total: number
-      unread: number
-      latest: Record<NoticeSource, number>
-    }>(`/business-notices?page=${page}&unread_only=${unreadOnly}&category=${category}`),
+    httpRequest<components['schemas']['BusinessNoticePageResponse']>(
+      `/business-notices?page=${page}&unread_only=${unreadOnly}&category=${category}`,
+    ),
   target: (source: NoticeSource, id: number) =>
     httpRequest<NoticeTarget>(`/business-notices/${source}/${id}/target`),
   read: (source: NoticeSource, id: number) =>

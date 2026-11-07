@@ -3,12 +3,12 @@ import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
-import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
 import WatermelonSearch from './watermelon/WatermelonSearch.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElLoading, ElTable, ElTableColumn } from 'element-plus'
+import { ElLoading, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -113,8 +113,10 @@ onBeforeUnmount(() => {
         >查询</component
       >
     </div>
-    <component
-      :is="watermelon ? WatermelonDataTable : ElTable"
+    <WorkspaceTable
+      :height="undefined"
+      :fill="false"
+      :embedded="false"
       v-loading="!watermelon && loading"
       :loading="watermelon ? loading : undefined"
       :data="items"
@@ -139,7 +141,7 @@ onBeforeUnmount(() => {
           ></template
         ></ElTableColumn
       >
-    </component>
+    </WorkspaceTable>
     <WorkspacePagination
       :current-page="page"
       :page-size="20"

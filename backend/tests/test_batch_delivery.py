@@ -166,6 +166,7 @@ def test_new_origin_date_and_voiding_remove_only_that_requirement(client, wareho
             "delivery_date": "2026-10-01",
             "delivery_quantity": 80,
             "idempotency_key": "new-date",
+            "transfer_specification": "100 × 80 × 5 mm",
         },
     )
     assert response.status_code == 201, response.text

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
@@ -137,7 +138,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
           @click="calendar?.selectDate('next-month')"
       /></template>
       <template #date-cell="{ data }"
-        ><button
+        ><AppButton
+          unstyled
           type="button"
           class="calendar-day"
           :class="{
@@ -150,7 +152,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
           @click.stop="pick(data.day)"
         >
           {{ Number(data.day.slice(-2)) }}
-        </button></template
+        </AppButton></template
       >
     </ElCalendar>
     <footer class="date-footer">

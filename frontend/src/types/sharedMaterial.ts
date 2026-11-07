@@ -1,20 +1,10 @@
-export interface SharedMaterialSerial {
-  process_route_id?: number
-  process_route_version?: number
-  serial_no: string
-  customer_code?: string | null
-  finished_specification?: string | null
-  delivery_date?: string | null
-  delivery_quantity?: number | null
-  planned_weight?: number | null
-  planned_quantity?: number | null
-  planned_specification?: string | null
-}
+import type { components } from './generated/api'
+export type SharedMaterialSerial = components['schemas']['SharedSerialResponse']
 export interface SharedMaterialFields {
   shared_group_id?: number | null
   shared_unallocated?: boolean
   shared_origin_batch_no?: string | null
-  shared_serials?: SharedMaterialSerial[]
+  shared_serials?: SharedMaterialSerial[] | null
 }
 export function sharedSerialLabel(item: SharedMaterialFields & { serial_no?: string }) {
   return item.shared_unallocated

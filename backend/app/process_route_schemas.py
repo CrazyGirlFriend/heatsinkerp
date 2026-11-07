@@ -54,3 +54,16 @@ class RouteDraftWrite(RouteWrite):
 
 class RouteIntakeWrite(RouteWrite):
     id: int = Field(ge=1)
+
+
+class BindWrite(BaseModel):
+    source_transfer_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class RevisionWrite(BaseModel):
+    version: int = Field(ge=1)
+    confirmed_imports: bool = False
+
+
+class ResumeWrite(BaseModel):
+    expected_revision: int = Field(ge=0)

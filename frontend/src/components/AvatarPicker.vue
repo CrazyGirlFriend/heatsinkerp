@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import { avatarPresets } from '@/config/avatars'
 import AccountAvatar from './AccountAvatar.vue'
 
@@ -11,7 +12,8 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
 <template>
   <div class="avatar-picker" role="group" aria-label="参考头像">
-    <button
+    <AppButton
+      unstyled
       v-for="(item, index) in avatarPresets"
       :key="item.key"
       type="button"
@@ -24,8 +26,9 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
     >
       <AccountAvatar :avatar-key="item.key" :size="40" />
       <span class="avatar-choice__check" aria-hidden="true">✓</span>
-    </button>
-    <button
+    </AppButton>
+    <AppButton
+      unstyled
       type="button"
       class="avatar-default"
       :aria-pressed="!modelValue"
@@ -33,7 +36,7 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
       @click="emit('update:modelValue', '')"
     >
       <AccountAvatar :name="name" :size="24" /> 使用姓名头像
-    </button>
+    </AppButton>
   </div>
 </template>
 

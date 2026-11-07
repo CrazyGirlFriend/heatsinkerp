@@ -196,12 +196,15 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   )
 })
 
-it('requires a task and its business, permits a different task on completed stock, and resets on another batch', async () => {
+it('requires a task, derives its business from the shared catalog and resets on another batch', async () => {
+  vi.mocked(teamMaterialApi.processingTasks).mockResolvedValue([
+    { id: 9, team_id: 2, name: '精磨', purpose_id: 3, active: true, version: 1 },
+  ])
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...(await teamMaterialApi.quantityContext(2, 10)),
     processing_status: 'complete',
     task_required: true,
-    purpose_id: 3,
+    purpose_id: null,
     completed_task_ids: [8],
     allowed_task_ids: [9],
   })
@@ -218,14 +221,9 @@ it('requires a task and its business, permits a different task on completed stoc
     )!
   expect(task.element.closest('.is-error')).not.toBeNull()
   task.vm.$emit('update:modelValue', 9)
-  const business = wrapper
-    .findAllComponents(ElSelect)
-    .find((item) => item.find('[aria-label="加工对应业务"]').exists())!
-  business.vm.$emit('update:modelValue', null)
-  await save()
-  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-  expect(business.element.closest('.is-error')).not.toBeNull()
-  business.vm.$emit('update:modelValue', 3)
+  await flushPromises()
+  expect(wrapper.find('[aria-label="加工对应业务"]').exists()).toBe(false)
+  expect(wrapper.getComponent(ProcessingTaskFields).props('purposeId')).toBe(3)
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
@@ -247,9 +245,7 @@ it('requires a task and its business, permits a different task on completed stoc
   expect(
     selects.find((item) => item.find('[aria-label="加工任务"]').exists())!.props('modelValue'),
   ).toBeNull()
-  expect(
-    selects.find((item) => item.find('[aria-label="加工对应业务"]').exists())!.props('modelValue'),
-  ).toBeNull()
+  expect(wrapper.getComponent(ProcessingTaskFields).props('purposeId')).toBeNull()
 })
 
 it('uses the engineered rework task while preserving the chosen original record', async () => {

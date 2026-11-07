@@ -86,6 +86,9 @@ const record = (): ProductionSchedule => ({
     {
       id: 20,
       batch_no: 'TL-转出',
+      schedule_batch_id: null,
+      source_transfer_id: 10,
+      counts_toward_delivery: false,
       quantity: 40,
       weight: 4,
       transferred_at: '2026-10-22T06:00:00Z',
@@ -322,7 +325,12 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.find('.live-refresh-notice').exists()).toBe(false)
   })
   it('expands the exact historical change after the destination opens', async () => {
-    vi.mocked(businessNoticeApi.target).mockResolvedValue({ href: '', schedule_id: 5, event_id: 9 })
+    vi.mocked(businessNoticeApi.target).mockResolvedValue({
+      href: '',
+      section: null,
+      schedule_id: 5,
+      event_id: 9,
+    })
     vi.mocked(productionScheduleApi.detail).mockResolvedValue({
       ...record(),
       history: [
@@ -505,6 +513,20 @@ describe('delivery schedule workbench', () => {
     expect(productionScheduleApi.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ serial_no: undefined, query: '823766' }),
     )
+  })
+  it('applies and clears the overdue scope when navigating from the team overview', async () => {
+    const router = await render()
+    await router.push('/team-workspaces/2?tab=delivery-schedule&status=overdue')
+    await flushPromises()
+    expect(productionScheduleApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ team_id: 2, status: 'overdue' }),
+    )
+    await router.push('/team-workspaces/2?tab=delivery-schedule&status=unknown')
+    await flushPromises()
+    expect(productionScheduleApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ team_id: 2 }),
+    )
+    expect(vi.mocked(productionScheduleApi.list).mock.lastCall?.[0]?.status).toBeUndefined()
   })
   it('lets the owning team adjust commitments without cancelling or changing the route', async () => {
     await render(false, true)

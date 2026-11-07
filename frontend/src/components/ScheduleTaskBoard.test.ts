@@ -5,7 +5,6 @@ import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
-import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -126,11 +125,6 @@ async function render(path = '/production-schedules') {
           emits: ['open-node', 'open-task', 'load-more'],
           template:
             '<div class="overview-stub"><slot/><slot name="view-actions"/><slot name="load-status"/></div>',
-        },
-        ProductionScheduleGantt: {
-          props: ['tasks', 'loading'],
-          emits: ['open-node', 'open-task'],
-          template: '<div class="gantt-stub"/>',
         },
         DeliverySchedules: {
           props: { detailOnly: Boolean },
@@ -373,7 +367,7 @@ describe('task scheduling board', () => {
     await render()
     const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
     expect(overview.props('tasks')).toEqual([task])
-    expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
+    expect(wrapper.findAllComponents({ name: 'VTableScheduleTimeline' })).toHaveLength(1)
     expect(wrapper.find('[aria-label="排期视图"]').exists()).toBe(false)
     expect(wrapper.getComponent(DeliverySchedules).props('detailOnly')).toBe(true)
     overview.vm.$emit('open-node', node(2))
@@ -429,7 +423,7 @@ describe('task scheduling board', () => {
     expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(false)
     expect(wrapper.get('.filter-count').text()).toBe('4')
     expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toEqual([task])
-    expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
+    expect(wrapper.findAllComponents({ name: 'VTableScheduleTimeline' })).toHaveLength(1)
     const data = wrapper.getComponent(TableExportButton).props('source')()!
     const exported = await data.load(new AbortController().signal, () => {})
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({

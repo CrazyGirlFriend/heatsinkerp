@@ -1,6 +1,6 @@
 # Watermelon Vue 组件
 
-业务页面统一使用这套 Vue 组件和系统明暗主题，不启动独立 React 前端。全厂总览暂时保留原页面与图表设计。
+业务页面统一使用这套 Vue 组件和系统明暗主题，不启动独立 React 前端。全厂总览沿用现有 Dashboard 组件与图表，使用同一业务主题。
 
 | 组件                              | 用途                                                                                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -33,7 +33,7 @@ DataTable 参考官方 DataTable 11：48px 表头、54px 基准行高、上下 1
 
 ## 工作台统一接入
 
-`App.vue` 通过 `workspaceAppearanceKey` 为业务路由提供 `watermelon`；进入 `factory-analysis` 时切回 `glass`，并移除根节点的主题类。`TeamWorkspaceShell` 继承这一设置，也支持显式 `appearance`。`useWorkspaceAppearance` 将外观提供给所有子组件，包含 Teleport 弹窗。组件单独挂载时沿用原默认值，避免测试、独立预览与应用路由耦合。
+`App.vue` 通过 `workspaceAppearanceKey` 为已登录业务路由（含 `factory-analysis`）提供 `watermelon`；访问验证与登录使用 `glass`。`TeamWorkspaceShell` 继承这一设置，也支持显式 `appearance`。`useWorkspaceAppearance` 将外观提供给所有子组件，包含 Teleport 弹窗。组件单独挂载时沿用原默认值，避免测试、独立预览与应用路由耦合。
 
 - `WorkspaceDataPanel`、`WorkspaceDataToolbar`、`WorkspaceTable`、`WorkspacePagination` 统一转接 Watermelon 数据卡片、工具栏、表格和分页。原来的字段、固定列、查询、翻页和统计插槽继续由业务页面提供。
 - 班组页头将当前位置作为视图切换入口，参考 Breadcrumb 6，复用 `WatermelonFilter` 的 `viewSwitch` 模式、浮层动画、键盘选择与待办数量；不再占用单独的页签行。单视图模块直接显示名称。`MaterialReceiptScanner` 沿用原接收人和扫码签收逻辑，统一使用主题颜色、40px 控件及 `WatermelonButton`。

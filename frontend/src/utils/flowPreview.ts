@@ -1,4 +1,4 @@
-import type { ChartPalette } from '@/composables/useChartPalette'
+import type { ChartPalette } from '@/types/chartPalette'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import type {
   EChartsOption,

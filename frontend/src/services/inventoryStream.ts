@@ -1,5 +1,5 @@
 import { API_BASE, authorizationValue, invalidateAccountSession } from './httpClient'
-import { notifySiteAccessRequired } from '@/stores/access'
+import { notifySiteAccessRequired } from './siteAccessEvents'
 import type { FactoryOverview } from '@/types/factoryOverview'
 import { reportDiagnostic, type DiagnosticCode } from './diagnostics'
 

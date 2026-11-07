@@ -12,7 +12,19 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
+from .dispatch_read_schemas import (
+    MaterialBatchesResponse,
+    MaterialDispatchPageResponse,
+    MaterialDispatchResponse,
+)
 from .models import User
+from .processing_read_schemas import (
+    ProcessingDailyResponse,
+    ProcessingRecordPageResponse,
+    QuantityAdjustmentContextResponse,
+    QuantityAdjustmentResponse,
+)
+from .read_schemas import PageResponse
 from .record_filters import RecordFilters
 from .schemas import (
     DIRECT_MATERIAL_TYPE_PATTERN,
@@ -20,11 +32,19 @@ from .schemas import (
     MaterialTransferResponse,
     WarehouseReceiptCreate,
 )
+from .stock_read_schemas import (
+    MaterialLossResponse,
+    ShipmentStockResponse,
+    StockBatchResponse,
+    StockPageResponse,
+    TeamMaterialOverviewResponse,
+)
+from .warehouse_location_schemas import WarehouseLocationPage
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
 
-@router.get("/{team_id}/inventory/{group_id}/shipment-stock")
+@router.get("/{team_id}/inventory/{group_id}/shipment-stock", response_model=ShipmentStockResponse)
 def shipment_stock(
     team_id: int = Path(ge=1),
     group_id: int = Path(ge=1),
@@ -36,7 +56,7 @@ def shipment_stock(
     return preview(db, team_id, group_id, user)
 
 
-@router.get("/{team_id}/processing-records")
+@router.get("/{team_id}/processing-records", response_model=ProcessingRecordPageResponse)
 def list_processing_records(
     processor_id: int | None = Query(default=None, ge=1),
     processing_task_id: int | None = Query(default=None, ge=1),
@@ -66,10 +86,11 @@ def list_processing_records(
             page=page,
             page_size=page_size,
         ),
+        schema=ProcessingRecordPageResponse,
     )
 
 
-@router.get("/{team_id}/processing-daily")
+@router.get("/{team_id}/processing-daily", response_model=PageResponse[ProcessingDailyResponse])
 def processing_daily_report(
     team_id: int = Path(ge=1),
     date_from: date | None = None,
@@ -105,10 +126,11 @@ def processing_daily_report(
             page=page,
             page_size=page_size,
         ),
+        schema=PageResponse[ProcessingDailyResponse],
     )
 
 
-@router.get("/{team_id}/processing-stock")
+@router.get("/{team_id}/processing-stock", response_model=PageResponse[StockBatchResponse])
 def processing_sources(
     team_id: int = Path(ge=1),
     group_id: int | None = Query(default=None, ge=1),
@@ -131,6 +153,7 @@ def processing_sources(
             page=page,
             page_size=page_size,
         ),
+        schema=PageResponse[StockBatchResponse],
     )
 
 
@@ -157,6 +180,7 @@ def list_serial_reallocations(
             page=page,
             page_size=page_size,
         ),
+        schema=MaterialTransferList,
     )
 
 
@@ -172,7 +196,12 @@ def reallocate_serial(
     return serial_reallocations.create(db, team_id, payload, user)
 
 
-@router.post("/{team_id}/quantity-adjustments", status_code=201)
+@router.post(
+    "/{team_id}/quantity-adjustments",
+    status_code=201,
+    response_model=QuantityAdjustmentResponse,
+    response_model_exclude_unset=True,
+)
 def change_quantity(
     payload: quantity_adjustments.AdjustmentCreate,
     team_id: int = Path(ge=1),
@@ -182,7 +211,11 @@ def change_quantity(
     return quantity_adjustments.create(db, team_id, payload, user)
 
 
-@router.get("/{team_id}/stock/{lot_id}/quantity-adjustments")
+@router.get(
+    "/{team_id}/stock/{lot_id}/quantity-adjustments",
+    response_model=QuantityAdjustmentContextResponse,
+    response_model_exclude_unset=True,
+)
 def quantity_context(
     team_id: int = Path(ge=1),
     lot_id: int = Path(ge=1),
@@ -192,7 +225,9 @@ def quantity_context(
     db: Session = Depends(get_db),
 ):
     return team_read_response(
-        db, lambda session: quantity_adjustments.context(session, team_id, lot_id, page, page_size)
+        db,
+        lambda session: quantity_adjustments.context(session, team_id, lot_id, page, page_size),
+        schema=QuantityAdjustmentContextResponse,
     )
 
 
@@ -231,7 +266,7 @@ def list_team_receipts(
     )
 
 
-@router.get("/{team_id}/overview")
+@router.get("/{team_id}/overview", response_model=TeamMaterialOverviewResponse)
 def overview(
     team_id: int = Path(ge=1),
     include_summary: bool = False,
@@ -239,11 +274,13 @@ def overview(
     db: Session = Depends(get_db),
 ):
     return team_read_response(
-        db, lambda session: stock.overview(session, team_id, include_summary=include_summary)
+        db,
+        lambda session: stock.overview(session, team_id, include_summary=include_summary),
+        schema=TeamMaterialOverviewResponse,
     )
 
 
-@router.get("/{team_id}/warehouse-locations")
+@router.get("/{team_id}/warehouse-locations", response_model=WarehouseLocationPage)
 def warehouse_locations(
     team_id: int = Path(ge=1),
     query: str | None = Query(default=None, max_length=80),
@@ -261,10 +298,11 @@ def warehouse_locations(
         lambda session: warehouse_receipts.locations(
             session, team_id, query=query, limit=limit, selected=selected, identity=identity
         ),
+        schema=WarehouseLocationPage,
     )
 
 
-@router.get("/{team_id}/stock")
+@router.get("/{team_id}/stock", response_model=StockPageResponse, response_model_exclude_unset=True)
 def list_stock(
     record_filters: RecordFilters = Depends(),
     team_id: int = Path(ge=1),
@@ -297,7 +335,7 @@ def list_stock(
     )
 
 
-@router.post("/{team_id}/losses", status_code=201)
+@router.post("/{team_id}/losses", status_code=201, response_model=MaterialLossResponse)
 def create_loss(
     payload: stock.LossCreate,
     team_id: int = Path(ge=1),
@@ -307,7 +345,7 @@ def create_loss(
     return stock.create_loss(db, team_id, payload, user)
 
 
-@router.get("/{team_id}/losses")
+@router.get("/{team_id}/losses", response_model=PageResponse[MaterialLossResponse])
 def list_losses(
     record_filters: RecordFilters = Depends(),
     team_id: int = Path(ge=1),
@@ -331,8 +369,18 @@ def list_losses(
     )
 
 
-@router.post("/{team_id}/dispatches", status_code=201)
-@router.post("/{team_id}/outbound-batches", status_code=201)
+@router.post(
+    "/{team_id}/dispatches",
+    status_code=201,
+    response_model=MaterialDispatchResponse | MaterialBatchesResponse,
+    response_model_exclude_unset=True,
+)
+@router.post(
+    "/{team_id}/outbound-batches",
+    status_code=201,
+    response_model=MaterialDispatchResponse | MaterialBatchesResponse,
+    response_model_exclude_unset=True,
+)
 def create_dispatch(
     payload: stock.DispatchCreate,
     team_id: int = Path(ge=1),
@@ -373,7 +421,11 @@ def list_outbound_batches(
     )
 
 
-@router.get("/{team_id}/dispatches")
+@router.get(
+    "/{team_id}/dispatches",
+    response_model=MaterialDispatchPageResponse,
+    response_model_exclude_unset=True,
+)
 def list_dispatches(
     record_filters: RecordFilters = Depends(),
     team_id: int = Path(ge=1),

@@ -1,76 +1,36 @@
-export interface ProcessRouteStep {
-  sequence_no: number
-  name: string
-  instructions: string
-  planned_days: string
-  planned_quantity: string
-  team_id: number | null
-  team_name?: string | null
+import type { components } from './generated/api'
+type Contract = components['schemas']
+type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
+// Editor drafts always initialize these optional import fields to null.
+export type ProcessRouteStep = Omit<
+  Contract['RouteStepResponse'],
+  'processing_task_id' | 'purpose_id'
+> & {
   processing_task_id: number | null
   purpose_id: number | null
-  serial_nos: string[]
-  split_here: boolean
-  source_row?: string | null
 }
-export interface ProcessRouteDrawing {
-  sha256?: string
-  id: number
-  filename: string
-  size_bytes: number
-}
-
-export interface RouteMaterialField {
-  value: string | number
-  label: string
-  source_row: string
-  source_label: string
-  source_kind?: 'word' | 'excel' | 'manual'
-  source_filename?: string
-  parsed_value?: string | number
-  alternative?: RouteMaterialField
-}
-
-export interface RouteOrderDocument {
-  filename: string
-  sheet: string
-  headers: string[]
-  values: string[]
-  display_values?: string[]
-  serial_no: string
-  receipt_fields: Record<string, RouteMaterialField>
-  warnings: string[]
-}
-
-export interface ReworkRouteRequest {
-  original_task_id?: number | null
-  original_schedule_id?: number | null
-  can_modify?: boolean
-  source_transfer_id: number
-  batch_no: string
-  team_id: number
-  team_name: string
-  quantity: number
-  weight: number
-  reason: string
-  rework_of_id: number
-  requesting_team_id?: number | null
-  requesting_team_name?: string | null
-  requested_by?: string | null
-  inspection_id?: number | null
-  inspection_kind?: 'patrol' | 'inspection' | null
-  inspector_name?: string | null
-  problem_names?: string[]
-  problem_notes?: string
-  dimension_result?: string
-  weight_result?: string
-  problem_teams?: { id: number; name: string }[]
-  execution_team_names?: string[]
-  round: number
-  resume_route_id: number | null
-  resume_step_index: number | null
-  resume_step_name?: string | null
-  resume_team_id: number
-}
+export type ProcessRouteDrawing = OptionalFields<Contract['RouteDrawingResponse'], 'sha256'>
+export type RouteMaterialField = Contract['RouteMaterialFieldResponse']
+export type RouteOrderDocument = Contract['RouteOrderDocumentResponse']
+export type ReworkRouteRequest = OptionalFields<
+  Contract['ReworkRequestResponse'],
+  | 'original_task_id'
+  | 'original_schedule_id'
+  | 'requesting_team_id'
+  | 'requesting_team_name'
+  | 'requested_by'
+  | 'inspection_id'
+  | 'inspection_kind'
+  | 'inspector_name'
+  | 'problem_names'
+  | 'problem_notes'
+  | 'dimension_result'
+  | 'weight_result'
+  | 'problem_teams'
+  | 'execution_team_names'
+  | 'resume_step_name'
+>
 export interface ProcessRoute {
   rework_progress?: ReworkProgress
   material_name?: string
@@ -112,27 +72,9 @@ export interface ProcessRoute {
   updated_at?: string | null
   published_at: string | null
 }
-export interface ReworkProgress {
-  quantity: number
-  completed_quantity: number
-  passed_quantity: number
-  state: 'awaiting_route' | 'processing' | 'awaiting_inspection' | 'passed' | 'failed'
-  inspections: {
-    id: number
-    batch_no: string
-    scope: 'sample' | 'full'
-    sample_quantity: number
-    failed_quantity: number
-    inspector_name: string
-    checked_at: string
-  }[]
-}
-export interface ReworkRound {
-  route_id: number
-  state: 'draft' | 'published'
-  engineering_employee_name: string | null
+export type ReworkProgress = Contract['ReworkProgressResponse']
+export type ReworkRound = Omit<Contract['ReworkRoundResponse'], 'request' | 'steps'> & {
   request: ReworkRouteRequest
-  progress: ReworkProgress
   steps: ProcessRouteStep[]
 }
 export const reworkProgressLabels: Record<ReworkProgress['state'], string> = {

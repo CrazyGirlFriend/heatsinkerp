@@ -6,17 +6,12 @@ an actual received lot; it also scopes drill-down and outbound source selection.
 
 from datetime import date, timedelta, timezone
 from types import SimpleNamespace
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import Depends, HTTPException, Path, Query
+from fastapi import HTTPException
 from pydantic import Field, model_validator
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .async_read_response import team_read_response
-from .auth import get_current_user
-from .database import get_db
 from .inventory_age import stock_age_table
 from .material_analytics import (
     META_FIELDS,
@@ -28,15 +23,13 @@ from .material_analytics import (
 )
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
-from .models import MaterialLoss, MaterialTransfer, Team, User, utcnow
+from .models import MaterialLoss, MaterialTransfer, Team, utcnow
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
-from .warehouse_receipts import require_warehouse
 
-router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
 WarehouseSearchField = Literal[
     SearchField,
@@ -118,23 +111,25 @@ class WarehouseInventoryFilters(SerialFilters):
         return self
 
 
-def origin_columns(include_team=False):
+def origin_columns(include_team=False, registered=None):
     manual = mt.entry_kind == "warehouse_receipt"
-    registered = registered_lots(None)
     # Keep this key in the shared grouping so list rows, source pickers and
     # drill-downs cannot combine processed lots with unprocessed ones.
+    joined = registered is not None
+    if not joined:
+        registered = registered_lots(None)
     processing_group = func.coalesce(
-        select(
-            func.coalesce(
-                registered.c.processing_status,
-                case((registered.c.latest_id.is_not(None), "registered"), else_="unregistered"),
-            )
-        )
-        .where(registered.c.lot_id == mt.id)
-        .correlate(mt)
-        .scalar_subquery(),
-        "unregistered",
+        registered.c.processing_status,
+        case((registered.c.latest_id.is_not(None), "registered"), else_="unregistered"),
     )
+    if not joined:
+        processing_group = func.coalesce(
+            select(processing_group)
+            .where(registered.c.lot_id == mt.id)
+            .correlate(mt)
+            .scalar_subquery(),
+            "unregistered",
+        )
     return {
         **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
@@ -173,7 +168,9 @@ def warehouse_groups(team_id, filters):
     registered = registered_lots(team_id)
     age = stock_age_table(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
-    origins = origin_columns(include_team=team_id is None)
+    # Group the joined processing columns directly. A correlated scalar subquery
+    # in GROUP BY is not recognized as deterministic by MySQL ONLY_FULL_GROUP_BY.
+    origins = origin_columns(include_team=team_id is None, registered=registered)
     moves = (
         select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at"))
         .where(
@@ -727,23 +724,6 @@ def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
     }
 
 
-@router.get("/{team_id}/inventory/{group_id}/pending-outbound")
-def pending_endpoint(
-    team_id: int = Path(ge=1),
-    group_id: int = Path(ge=1),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return team_read_response(
-        db,
-        lambda session: list_group_pending(
-            session, team_id, group_id, user, page=page, page_size=page_size
-        ),
-    )
-
-
 def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
     require_team(db, team_id)
     origins = origin_columns()
@@ -802,91 +782,4 @@ def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
     }
 
 
-@router.get("/{team_id}/inventory/{group_id}/movements")
-def movements_endpoint(
-    team_id: int = Path(ge=1),
-    group_id: int = Path(ge=1),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return team_read_response(
-        db,
-        lambda session: list_group_movements(
-            session, team_id, group_id, user, page=page, page_size=page_size
-        ),
-    )
-
-
-@router.get("/{team_id}/inventory")
-def inventory_endpoint(
-    filters: Annotated[WarehouseInventoryFilters, Query()],
-    team_id: int = Path(ge=1),
-    _: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return team_read_response(db, lambda session: list_inventory(session, team_id, filters))
-
-
-@router.get("/{team_id}/inventory/{group_id}/sources")
-def sources_endpoint(
-    record_filters: RecordFilters = Depends(),
-    team_id: int = Path(ge=1),
-    group_id: int = Path(ge=1),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    current_only: bool = False,
-    query: str | None = Query(default=None, max_length=160),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return list_group_sources(
-        db,
-        team_id,
-        group_id,
-        user,
-        page=page,
-        page_size=page_size,
-        current_only=current_only,
-        query=query,
-        record_filters=record_filters,
-    )
-
-
 # Keep published warehouse URLs scoped to the warehouse for existing clients.
-@router.get("/{team_id}/warehouse-inventory", include_in_schema=False)
-def legacy_inventory_endpoint(
-    filters: Annotated[WarehouseInventoryFilters, Query()],
-    team_id: int = Path(ge=1),
-    _: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    require_warehouse(require_team(db, team_id))
-    return list_inventory(db, team_id, filters)
-
-
-@router.get("/{team_id}/warehouse-inventory/{group_id}/sources", include_in_schema=False)
-def legacy_sources_endpoint(
-    record_filters: RecordFilters = Depends(),
-    team_id: int = Path(ge=1),
-    group_id: int = Path(ge=1),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    current_only: bool = False,
-    query: str | None = Query(default=None, max_length=160),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    require_warehouse(require_team(db, team_id))
-    return list_group_sources(
-        db,
-        team_id,
-        group_id,
-        user,
-        page=page,
-        page_size=page_size,
-        current_only=current_only,
-        query=query,
-        record_filters=record_filters,
-    )

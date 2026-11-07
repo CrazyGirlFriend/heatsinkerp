@@ -14,13 +14,22 @@ python3 -m venv .venv
 
 ```sh
 npm ci
+PYTHON=../.venv/bin/python npm run api:check
 npm run lint
 npm run format:check
 npm test -- --maxWorkers=1 --minWorkers=1
 npm run build
 ```
 
-CI 使用 Python 3.12 和 Node 24；`.github/workflows/quality.yml` 在推送和 PR 时运行上述检查，并验证空库迁移。CI 不执行部署、不连接生产数据库。
+CI 使用 Python 3.12 和 Node 24；`.github/workflows/quality.yml` 在推送和 PR 时运行上述检查，并验证空库迁移。独立 MySQL 8.4 作业使用临时数据库验证库存分组、并发扣料、幂等、回滚和仓位租约。CI 不执行部署、不连接生产数据库。
+
+### API 类型更新
+
+后端 Pydantic/OpenAPI 是生成类型的来源。修改 Schema 后，在 `frontend` 执行 `PYTHON=../.venv/bin/python npm run api:generate`，一并检查 `src/types/generated/api.d.ts` 的差异。不要直接编辑生成文件。CI 中 `api:check` 重新生成并比较，发现字段未同步即失败。
+
+导出脚本使用临时 SQLite 路径，不启动应用生命周期、不迁移业务库、不连接消息服务。业务 service 保留稳定调用入口；表单草稿和历史快照可以从生成类型派生有明确用途的视图类型，不能用 `any` 绕过契约错误。HTTP 返回 `JSONResponse` 的已建模读接口须在 `team_read_response(..., schema=...)` 中验证，避免绕过 FastAPI 的响应模型检查。
+
+`test_successful_json_responses_have_explicit_contracts` 检查所有正常 JSON 成功响应均有具体结构。文件下载与 SSE 按真实响应类型声明，不冒充 JSON；仅两个始终拒绝写入的历史兼容入口保留例外。
 
 ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 `frontend/src`，以及 ESLint 和格式检查脚本；`npm run format` 使用同一范围。Ruff 对整个 `backend/app`、`backend/tests` 和 `backend/alembic` 执行 `E4/E7/E9/F/I/B` 规则及格式检查，新文件自动纳入，不再维护文件白名单。测试跨模块导入的 pytest fixture 使用显式同名导出，避免被误删为未使用导入；ORM 关系的预加载访问保留为显式赋值。
 
@@ -48,8 +57,8 @@ ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 
 
 ## 物料维护清理
 
-`python -m app.reset_business_data` 默认只预览。它现在仅处理当前物料七表：转料、出库批次、损耗、物料事件、期初提交、加急状态和加急事件。旧工单、产品、账号、班组、用途、管理审计及编号计数器均保留。
+`python -m app.reset_business_data` 默认只预览。范围由 `RESET_TABLES` 显式列出，包括物料台账及其排期、余额、仓位占用、入库附件、修改申请与相关通知等依赖。旧工单、产品、账号、班组、用途、管理审计、工艺原件及编号计数器保持保护；工艺引用待清理数据时拒绝执行。
 
 实际执行必须同时提供 `--apply`、与目标完全一致的 `--confirm-database`、`--backup-file`、匹配文件的 `--backup-sha256` 和 `--maintenance-confirmed`。必须先停止业务写入并制作新备份；参数只确认操作者已完成维护准备，不能自动证明备份来自该库或足够新。
 
-脚本在单事务内检查未知外键依赖，保留外键约束，先删流转来源链的叶子，再删父记录；提交前校验七表归零并比对所有保留表的内容摘要。发现依赖、来源循环或保留数据变化即回滚。不会重置编号，也不会执行旧的全业务/工单清理。
+脚本在单事务内检查未知外键依赖，保留外键约束，先删关联子表与来源链叶子，再删父记录；提交前校验范围内表归零并比对所有保留表的内容摘要。发现未批准的依赖、来源循环或保留数据变化即回滚。不会重置编号，也不会执行旧的全业务/工单清理。

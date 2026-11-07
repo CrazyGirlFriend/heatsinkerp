@@ -1,8 +1,10 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type Method } from 'axios'
-import { notifySiteAccessRequired } from '@/stores/access'
+import { notifySiteAccessRequired } from './siteAccessEvents'
 import { reportDiagnostic, safeRequestId } from './diagnostics'
 
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+import { API_BASE } from './apiConfig'
+
+export { API_BASE } from './apiConfig'
 export const HTTP_AUTH_SESSION_STORAGE_KEY = 'heatsink-flow.auth-session.v1'
 
 type UnknownRecord = Record<string, unknown>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import ElTabs from '@/components/AppTabs.vue'
 import { computed, ref } from 'vue'
 import { ElTabPane } from 'element-plus'
@@ -63,7 +64,8 @@ function focusField(key: string) {
             <h4>自动带入字段 <span>点击字段定位表单</span></h4>
             <ul class="document-preview-fields">
               <li v-for="[key, field] in fields" :key="key" :data-field="key">
-                <button
+                <AppButton
+                  unstyled
                   type="button"
                   class="document-preview-field"
                   :class="{ 'document-preview-field--active': activeField === key }"
@@ -96,7 +98,7 @@ function focusField(key: string) {
                   <span class="document-preview-source"
                     >{{ field.source_label }} · {{ sourceLabel(field.source_row) }}</span
                   >
-                </button>
+                </AppButton>
               </li>
             </ul>
           </section>

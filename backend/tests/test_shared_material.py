@@ -319,6 +319,7 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
                 "quantity": 30,
                 "weight": 60.5,
                 "material_type": "finished",
+                "transfer_specification": "80 × 60 × 5 mm",
             },
             {
                 "role": "produced",
@@ -326,18 +327,21 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
                 "quantity": 20,
                 "weight": 39.9,
                 "material_type": "finished",
+                "transfer_specification": "60 × 40 × 5 mm",
             },
         ],
     )
     assert processed.status_code == 201, processed.text
     a = processed.json()["outputs"][0]
-    to_inspection = dispatch(
+    to_inspection_response = dispatch(
         client,
         s,
         [{"source_transfer_id": a["id"], "quantity": 30, "weight": 60.5}],
         workshop=True,
         next_team_id=inspection["id"],
-    ).json()["items"][0]
+    )
+    assert to_inspection_response.status_code == 201, to_inspection_response.text
+    to_inspection = to_inspection_response.json()["items"][0]
     assert to_inspection["shared_group_id"] == origin["shared_group_id"]
     assert (
         receipt_post(
@@ -400,6 +404,7 @@ def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, wareho
         "source_batch_no": "RAW-001",
         "idempotency_key": "warehouse-intake-1",
         "shared_serials": members,
+        "transfer_specification": created["transfer_specification"],
     }
     payload = WarehouseReceiptCreate.model_validate(body)
     legacy_hash = _creation_fingerprint(payload)

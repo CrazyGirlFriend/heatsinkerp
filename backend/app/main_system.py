@@ -6,57 +6,24 @@ import hashlib
 import json
 import socket
 from http.client import HTTPException as HTTPTransportError
-from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 
 from fastapi import HTTPException
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import ValidationError
 
 from .config import settings
-from .schemas import MaterialDocumentFields
-
-
-class MainSystemDocument(MaterialDocumentFields):
-    model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-        json_schema_extra={"required": list(MaterialDocumentFields.model_fields)},
-    )
-    material_name: str = Field(min_length=1, max_length=160)
-
-    @model_validator(mode="after")
-    def complete_snapshot(self):
-        # Missing keys are not the same as explicitly unknown (null) values.
-        if set(type(self).model_fields) != self.model_fields_set:
-            raise ValueError("all document keys must be present; use null for unknown values")
-        if not self.material_name:
-            raise ValueError("material_name cannot be blank")
-        return self
-
-
-class MainSystemSerial(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    schema_version: Literal["1.0"]
-    serial_no: str = Field(min_length=1, max_length=80, strict=True)
-    revision: str = Field(min_length=1, max_length=100, strict=True)
-    updated_at: AwareDatetime
-    active: bool = Field(strict=True)
-    document: MainSystemDocument
-
-    @model_validator(mode="after")
-    def nonblank_identity(self):
-        if self.serial_no != self.serial_no.strip() or not self.revision.strip():
-            raise ValueError(
-                "serial_no and revision must be nonblank; serial_no must not have outer spaces"
-            )
-        return self
-
-
-class MainSystemLookup(MainSystemSerial):
-    snapshot_hash: str
+from .main_system_schemas import (
+    MainSystemDocument as MainSystemDocument,
+)
+from .main_system_schemas import (
+    MainSystemLookup as MainSystemLookup,
+)
+from .main_system_schemas import (
+    MainSystemSerial as MainSystemSerial,
+)
 
 
 def snapshot_hash(record: MainSystemSerial) -> str:

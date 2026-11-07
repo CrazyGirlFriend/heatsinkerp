@@ -199,7 +199,13 @@ def test_predecessor_receipt_processing_split_and_return_visit_are_distinct(clie
         workshop=True,
         processing_status="complete",
         outputs=[
-            {"role": "produced", "quantity": 20, "weight": 95, "material_type": "semi_finished"},
+            {
+                "role": "produced",
+                "quantity": 20,
+                "weight": 95,
+                "material_type": "semi_finished",
+                "transfer_specification": "100 × 80 × 5 mm",
+            },
             {"role": "scrap", "quantity": 0, "weight": 5, "material_type": "scrap_chips"},
         ],
     )

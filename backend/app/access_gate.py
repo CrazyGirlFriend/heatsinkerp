@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import Settings
+from .read_schemas import ReadResponse
 
 ACCESS_COOKIE_NAME = "heatsink_site_access"
 ACCESS_TTL_SECONDS = 12 * 60 * 60
@@ -25,6 +26,18 @@ ACCESS_EXEMPT_PATHS = frozenset(
 )
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 MAX_UNLOCK_BODY_BYTES = 4096
+
+
+class AccessStatusResponse(ReadResponse):
+    enabled: bool
+    unlocked: bool
+
+
+def access_status_response(*, enabled: bool, unlocked: bool) -> JSONResponse:
+    return JSONResponse(
+        AccessStatusResponse(enabled=enabled, unlocked=unlocked).model_dump(),
+        headers=NO_STORE_HEADERS,
+    )
 
 
 class UnlockRateLimiter:
@@ -179,17 +192,14 @@ class SiteAccessMiddleware:
 def create_access_router(gate: SiteAccessGate) -> APIRouter:
     router = APIRouter(prefix="/api/access", tags=["site access"])
 
-    @router.get("/status")
+    @router.get("/status", response_model=AccessStatusResponse)
     async def access_status(request: Request) -> JSONResponse:
-        return JSONResponse(
-            {"enabled": gate.enabled, "unlocked": gate.is_unlocked(request)},
-            headers=NO_STORE_HEADERS,
-        )
+        return access_status_response(enabled=gate.enabled, unlocked=gate.is_unlocked(request))
 
-    @router.post("/unlock")
+    @router.post("/unlock", response_model=AccessStatusResponse)
     async def unlock(request: Request) -> JSONResponse:
         if not gate.enabled:
-            return JSONResponse({"enabled": False, "unlocked": True}, headers=NO_STORE_HEADERS)
+            return access_status_response(enabled=False, unlocked=True)
 
         client = request.client.host if request.client else "unknown"
         retry_after = gate.limiter.reserve(client)
@@ -223,7 +233,7 @@ def create_access_router(gate: SiteAccessGate) -> APIRouter:
             )
 
         gate.limiter.clear_client(client)
-        response = JSONResponse({"enabled": True, "unlocked": True}, headers=NO_STORE_HEADERS)
+        response = access_status_response(enabled=True, unlocked=True)
         response.set_cookie(
             ACCESS_COOKIE_NAME,
             gate.issue_cookie(),
@@ -235,12 +245,9 @@ def create_access_router(gate: SiteAccessGate) -> APIRouter:
         )
         return response
 
-    @router.post("/lock")
+    @router.post("/lock", response_model=AccessStatusResponse)
     async def lock() -> JSONResponse:
-        response = JSONResponse(
-            {"enabled": gate.enabled, "unlocked": not gate.enabled},
-            headers=NO_STORE_HEADERS,
-        )
+        response = access_status_response(enabled=gate.enabled, unlocked=not gate.enabled)
         response.delete_cookie(
             ACCESS_COOKIE_NAME,
             path="/",

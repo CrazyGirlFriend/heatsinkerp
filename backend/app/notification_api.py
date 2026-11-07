@@ -7,11 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import require_admin
 from .database import get_db
 from .models import NotificationOutbox, utcnow
+from .notice_schemas import NotificationStatusResponse
 
 router = APIRouter(prefix="/api/notifications", dependencies=[Depends(require_admin)])
 
 
-@router.get("/status")
+@router.get("/status", response_model=NotificationStatusResponse)
 async def notification_status(request: Request, db: AsyncSession = Depends(get_db)):
     pending, oldest = (
         await db.execute(

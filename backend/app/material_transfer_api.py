@@ -9,10 +9,13 @@ from sqlalchemy.orm import Session
 from . import material_transfer_workflow
 from .api_errors import not_found as _not_found
 from .async_api import AsyncAPIRouter as APIRouter
+from .async_read_response import team_read_response
 from .auth import get_current_user, require_admin
 from .database import get_db
+from .inventory_read_schemas import FactoryInventoryPageResponse
 from .material_transfer_query import TransferColumnFilters, search_predicate, team_scope_predicate
 from .models import MaterialTransfer, Team, User
+from .read_schemas import PageResponse
 from .record_filters import RecordFilters
 from .schemas import (
     DIRECT_MATERIAL_TYPE_PATTERN,
@@ -26,11 +29,22 @@ from .schemas import (
     MaterialTransferUpdate,
 )
 from .serial_inventory import StockFilters
+from .trace_read_schemas import (
+    MaterialSuggestionsResponse,
+    MaterialTraceResponse,
+    SerialInventoryBatchResponse,
+    SerialInventoryResponse,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
-@router.get("/material-input-suggestions", tags=["material transfers"])
+@router.get(
+    "/material-input-suggestions",
+    tags=["material transfers"],
+    response_model=MaterialSuggestionsResponse,
+    response_model_exclude_unset=True,
+)
 def material_input_suggestions(
     field: str = Query(
         pattern="^(serial_no|material_name|customer_code|product_code|part_no|external_source|outsourced_unit)$"
@@ -44,17 +58,28 @@ def material_input_suggestions(
     return input_suggestions(db, field, query, limit)
 
 
-@router.get("/serial-inventory/stock", dependencies=[Depends(require_admin)])
+@router.get(
+    "/serial-inventory/stock",
+    dependencies=[Depends(require_admin)],
+    response_model=FactoryInventoryPageResponse,
+    response_model_exclude_unset=True,
+)
 def get_all_serial_stock(
     filters: StockFilters = Query(),
     db: Session = Depends(get_db),
-) -> dict:
+):
     from .serial_inventory import all_stock
 
-    return all_stock(db, filters)
+    return team_read_response(
+        db, lambda session: all_stock(session, filters), schema=FactoryInventoryPageResponse
+    )
 
 
-@router.get("/serial-inventory", dependencies=[Depends(require_admin)])
+@router.get(
+    "/serial-inventory",
+    dependencies=[Depends(require_admin)],
+    response_model=SerialInventoryResponse,
+)
 def get_serial_inventory(
     serial_no: str = Query(min_length=1, max_length=80),
     db: Session = Depends(get_db),
@@ -64,7 +89,11 @@ def get_serial_inventory(
     return overview(db, serial_no)
 
 
-@router.get("/serial-inventory/batches", dependencies=[Depends(require_admin)])
+@router.get(
+    "/serial-inventory/batches",
+    dependencies=[Depends(require_admin)],
+    response_model=PageResponse[SerialInventoryBatchResponse],
+)
 def get_serial_inventory_batches(
     serial_no: str = Query(min_length=1, max_length=80),
     team_id: int = Query(ge=1),
@@ -91,7 +120,12 @@ def get_serial_inventory_batches(
     )
 
 
-@router.get("/material-trace", tags=["material transfers"])
+@router.get(
+    "/material-trace",
+    tags=["material transfers"],
+    response_model=MaterialTraceResponse,
+    response_model_exclude_unset=True,
+)
 def get_serial_trace(
     serial_no: str = Query(min_length=1, max_length=80),
     current_user: User = Depends(require_admin),

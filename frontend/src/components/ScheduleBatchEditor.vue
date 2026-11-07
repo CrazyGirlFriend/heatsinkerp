@@ -42,6 +42,8 @@ const utc = (value: string) => (value ? `${value}+08:00` : '')
 const rows = ref<Draft[]>(
   (props.schedule.pending_batches || props.schedule.batches || []).map((b) => ({
     ...b,
+    id: b.id ?? undefined,
+    target_weight: b.target_weight == null ? null : Number(b.target_weight),
     key: ++key,
     end: local(b.due_at),
     upstream_batch_ids: [...b.upstream_batch_ids],

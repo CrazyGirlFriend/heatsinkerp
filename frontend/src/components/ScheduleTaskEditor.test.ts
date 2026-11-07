@@ -625,7 +625,8 @@ it('focuses invalid planned and batch quantities in field order', async () => {
   expect(batchFeedback.focus).not.toHaveBeenCalled()
   plannedAmount().vm.$emit('update:modelValue', 100)
   await button('保存交期')
-  expect(wrapper.text()).toContain('请输入大于 0 的整数')
+  // Element Plus debounces error message visibility independently of focus.
+  await vi.waitFor(() => expect(wrapper.text()).toContain('请输入大于 0 的整数'))
   expect(batchFeedback.scroll).toHaveBeenCalledOnce()
   expect(batchFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()

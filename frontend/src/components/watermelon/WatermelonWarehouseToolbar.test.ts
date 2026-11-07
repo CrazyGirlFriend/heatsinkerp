@@ -44,7 +44,7 @@ describe('Watermelon warehouse controls', () => {
   it('applies a selected status to the existing warehouse request and resets it', async () => {
     const list = vi
       .spyOn(warehouseLocationApi, 'list')
-      .mockResolvedValue({ items: [], total: 0, team_id: 1 })
+      .mockResolvedValue({ page: 1, page_size: 20, items: [], total: 0, team_id: 1 })
     wrapper = mount(WarehouseManagement, {
       props: { canManage: true, teamId: 1 },
       global: { stubs: { WatermelonDialog: true } },
@@ -78,7 +78,13 @@ describe('Watermelon warehouse controls', () => {
   })
 
   it('validates the editor before saving through the existing warehouse API', async () => {
-    vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({ items: [], total: 0, team_id: 1 })
+    vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({
+      page: 1,
+      page_size: 20,
+      items: [],
+      total: 0,
+      team_id: 1,
+    })
     const save = vi.spyOn(warehouseLocationApi, 'save').mockRejectedValue(new Error('名称已存在'))
     wrapper = mount(WarehouseManagement, {
       props: { canManage: true, teamId: 1 },

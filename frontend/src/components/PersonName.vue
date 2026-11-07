@@ -12,7 +12,10 @@ const props = withDefaults(
 )
 const displayName = computed(() => props.name?.trim() || '—')
 const hasPerson = computed(
-  () => !['—', '-', '未登记', '未记录', '未指定', '待指定', '未选择', '未知'].includes(displayName.value),
+  () =>
+    !['—', '-', '未登记', '未记录', '未指定', '待指定', '未选择', '未知'].includes(
+      displayName.value,
+    ),
 )
 </script>
 

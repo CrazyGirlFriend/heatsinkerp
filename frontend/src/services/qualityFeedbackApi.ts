@@ -2,14 +2,8 @@ import { httpRequest } from './httpClient'
 import type { InspectionRecord } from './inspectionApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 
-export interface QualityReworkStock {
-  id: number
-  batch_no: string
-  serial_no: string
-  team_name: string
-  quantity: number
-  weight: number
-}
+type Contract = import('@/types/generated/api').components['schemas']
+export type QualityReworkStock = Contract['QualityReworkStockResponse']
 
 export const feedbackStates = { pending: '待处理', processing: '处理中', closed: '已结束' }
 export const dispositions = {
@@ -21,27 +15,12 @@ export const dispositions = {
   scrap: '报废',
   other: '其他处理',
 }
-export interface QualityFeedback extends InspectionRecord {
-  involved_teams: { team_id: number; name: string; replied: boolean }[]
-}
-export interface QualityFeedbackDetail extends QualityFeedback {
-  events: {
-    id: number
-    kind: 'reply' | 'decision'
-    team_id: number
-    team_name: string
-    actor: string
-    notes: string
-    occurred_at: string
-    details: {
-      disposition?: keyof typeof dispositions
-      status?: keyof typeof feedbackStates
-      released_legacy_hold?: boolean
-      involved_team_ids?: number[]
-    }
-  }[]
-  rechecks: InspectionRecord[]
-}
+export type QualityFeedback = InspectionRecord &
+  Pick<Contract['QualityFeedbackResponse'], 'involved_teams'>
+export type QualityFeedbackDetail = QualityFeedback &
+  Pick<Contract['QualityFeedbackDetailResponse'], 'events'> & {
+    rechecks: InspectionRecord[]
+  }
 export interface QualityFilters {
   problem_type_id?: number
   team_id?: number

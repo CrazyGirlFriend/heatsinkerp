@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import PersonName from './PersonName.vue'
 import { computed, useId } from 'vue'
@@ -21,7 +22,8 @@ const label = computed(() =>
     :width="280"
   >
     <template #reference>
-      <button
+      <AppButton
+        unstyled
         type="button"
         class="serial-urgency-badge"
         :class="{ 'is-urgent': urgency?.urgent }"
@@ -68,7 +70,7 @@ const label = computed(() =>
           </g>
         </svg>
         <span class="serial-urgency-badge__label">{{ urgency?.urgent ? '加急' : '普通' }}</span>
-      </button>
+      </AppButton>
     </template>
     <div v-if="!editable && urgency" class="urgency-detail">
       <strong>流水号加急</strong>

@@ -70,7 +70,7 @@ function warningLabel(warning: string) {
             <span v-if="field.source_kind === 'manual'">手工填写</span>
             <span
               v-else-if="readonly && field.source_kind === 'excel'"
-              :title="field.source_filename"
+              :title="field.source_filename || undefined"
             >
               订单表 · 自动填入
             </span>

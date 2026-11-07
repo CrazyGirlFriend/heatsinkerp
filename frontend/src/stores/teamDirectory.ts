@@ -2,7 +2,8 @@ import { readonly, ref, watch } from 'vue'
 import { defineStore, storeToRefs } from 'pinia'
 import { teamDirectoryApi } from '@/services/teamDirectoryApi'
 import type { Team } from '@/services/adminApi'
-import { appPinia, useAccessStore } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
+import { useAccessStore } from '@/stores/access'
 import { useAuthStore } from '@/stores/auth'
 
 export const useTeamDirectoryStore = defineStore('teamDirectory', () => {

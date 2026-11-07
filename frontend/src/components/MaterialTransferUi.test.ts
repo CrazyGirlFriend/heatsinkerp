@@ -34,8 +34,8 @@ describe('pure material transfer interface', () => {
     expect(listSource).toMatch(/<WorkspaceTable\s+v-else\b/)
     expect(listSource).not.toContain('height="100%"')
     expect(listSource).not.toContain('aria-label="扫码查询"')
-    expect(serialSource).toContain('各班组库存')
-    expect(serialSource).toContain('loadBatches')
+    expect(serialSource).toContain('aria-label="全厂库存明细"')
+    expect(serialSource).toContain('prop="team_name" label="所在班组"')
     for (const source of [listSource, serialSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
     }

@@ -1,13 +1,6 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useWatermelonAppearance } from './useWorkspaceAppearance'
-
-export interface ChartPalette {
-  surface: string
-  mutedSurface: string
-  text: string
-  muted: string
-  border: string
-}
+import type { ChartPalette } from '@/types/chartPalette'
 
 // Canvas renderers need resolved colors; CSS variables alone cannot theme their labels.
 export function useChartPalette() {

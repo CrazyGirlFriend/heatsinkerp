@@ -858,10 +858,7 @@ onBeforeUnmount(() => {
             >
           </div>
         </form>
-        <WorkspaceDataPanel
-          class="table-pane"
-          :aria-busy="loading"
-        >
+        <WorkspaceDataPanel class="table-pane" :aria-busy="loading">
           <ElSkeleton
             v-if="loading && !hasRows"
             class="table-skeleton"

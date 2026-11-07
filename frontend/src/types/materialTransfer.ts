@@ -1,6 +1,14 @@
 import type { SharedMaterialFields } from './sharedMaterial'
-import type { EntityId, TeamKind } from '@/services/adminApi'
-import type { MaterialLoss } from './teamMaterials'
+import type { EntityId, TeamKind } from './admin'
+import type { components } from './generated/api'
+
+export type MaterialLoss = Omit<
+  components['schemas']['MaterialLossResponse'],
+  'serial_no' | 'urgency'
+> & {
+  serial_no: string
+  urgency?: components['schemas']['UrgencyResponse']
+}
 
 export type MaterialTransferStatus = 'pending' | 'received' | 'voided' | 'dispatched'
 export type ExternalEntryKind = 'warehouse_outbound' | 'inspection_shipment'
@@ -175,8 +183,8 @@ export interface MaterialTransfer
   rework_route_ready?: boolean
   rework_pending?: boolean
   rework_count?: number
-  sent_processing_status?: import('./materialProcessing').ProcessingState | null
-  processing_role?: import('./materialProcessing').ProcessingRole | null
+  sent_processing_status?: import('./processingStatus').ProcessingState | null
+  processing_role?: import('./processingStatus').ProcessingRole | null
   external_destination?: string | null
   receipt_kind?: 'external' | 'return' | null
   external_source?: string | null
@@ -339,7 +347,7 @@ export function isExternalEntryKind(kind?: MaterialEntryKind | string): kind is 
 export function isExternalTransfer(transfer: Pick<MaterialTransfer, 'entry_kind'>): boolean {
   return isExternalEntryKind(transfer.entry_kind)
 }
-export function externalActionLabel(kind?: MaterialEntryKind): string {
+export function externalActionLabel(kind?: string): string {
   return kind === 'inspection_shipment' ? '发货' : '出库'
 }
 export function materialEntryLabel(kind?: MaterialEntryKind): string {
@@ -384,7 +392,7 @@ export function materialPurposeLabel(
 
 export function materialTransferStatusLabel(
   status: MaterialTransferStatus | string,
-  entryKind?: MaterialEntryKind,
+  entryKind?: string,
 ): string {
   if (entryKind === 'rework_split' && status === 'received') return '待返工处理'
   if (entryKind === 'processing_output' && status === 'received') return '已登记加工'

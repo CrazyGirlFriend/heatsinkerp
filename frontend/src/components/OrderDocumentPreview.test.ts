@@ -41,9 +41,7 @@ it('previews the uploaded original file and opens the same layout without rebuil
   expect(productionScheduleApi.previewOrder).toHaveBeenCalledWith(file, expect.any(AbortSignal))
   expect(productionScheduleApi.orderPreview).not.toHaveBeenCalled()
   expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
-  expect(wrapper.get('iframe').attributes('src')).toBe(
-    'blob:order-1#toolbar=0&navpanes=0&view=Fit',
-  )
+  expect(wrapper.get('iframe').attributes('src')).toBe('blob:order-1#toolbar=0&navpanes=0&view=Fit')
   expect(wrapper.find('table').exists()).toBe(false)
   await wrapper.get('button[aria-label="放大订单表"]').trigger('click')
   const viewer = wrapper.getComponent(DocumentViewer)

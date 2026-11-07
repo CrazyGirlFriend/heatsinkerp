@@ -356,6 +356,7 @@ describe('team material API contract', () => {
   it('requests current stock summaries only for the team dashboard', async () => {
     const summary = {
       as_of: '2026-11-07T00:00:00Z',
+      work_orders: { mode: 'processing', in_progress_count: 2, overdue_count: 1, periods: [] },
       current_stock: {
         serial_count: 2,
         unnumbered_batch_count: 1,
@@ -366,6 +367,7 @@ describe('team material API contract', () => {
     const result = await teamMaterialApi.overview(914, true)
     expect(requests[0]!.url).toBe('/team-materials/914/overview?include_summary=true')
     expect(result.current_stock).toEqual(summary.current_stock)
+    expect(result.work_orders).toEqual(summary.work_orders)
     expect(result.as_of).toBe(summary.as_of)
   })
   it('keeps stock filters and linked transfer identity, and rejects invalid team ids', async () => {

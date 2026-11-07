@@ -134,15 +134,15 @@ describe('application navigation shell', () => {
     expect(document.documentElement.classList.contains('wm-app')).toBe(false)
   })
 
-  it('applies the shared theme to business routes and restores the untouched overview', async () => {
+  it('applies the shared theme to business routes including the overview and removes it on unmount', async () => {
     const { wrapper, router } = await renderApp(false)
     expect(document.documentElement.classList.contains('wm-app')).toBe(true)
     expect(wrapper.find('.wm-app-shell').exists()).toBe(true)
     await router.push('/factory-analysis')
     await flushPromises()
-    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
-    expect(document.documentElement.classList.contains('wm-scope')).toBe(false)
-    expect(wrapper.find('.wm-app-shell').exists()).toBe(false)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(true)
+    expect(document.documentElement.classList.contains('wm-scope')).toBe(true)
+    expect(wrapper.find('.wm-app-shell').exists()).toBe(true)
     await router.push('/settings/accounts')
     await flushPromises()
     expect(document.documentElement.classList.contains('wm-app')).toBe(true)

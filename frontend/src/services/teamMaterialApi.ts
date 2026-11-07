@@ -372,6 +372,7 @@ export const teamMaterialApi = {
     return {
       team_id: teamId,
       as_of: typeof raw.as_of === 'string' ? raw.as_of : undefined,
+      work_orders: raw.work_orders as TeamMaterialOverview['work_orders'],
       ...(raw.current_stock
         ? { current_stock: raw.current_stock as TeamMaterialOverview['current_stock'] }
         : {}),

@@ -7,6 +7,7 @@ import {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, disposePinia } from 'pinia'
 
 interface AdapterReply {
   data: unknown
@@ -62,6 +63,24 @@ afterEach(() => {
 })
 
 describe('server-owned site access', () => {
+  it('locks active stores on transport expiry and releases disposed store subscriptions', async () => {
+    const { useAccessStore } = await import('./access')
+    const { notifySiteAccessRequired } = await import('@/services/siteAccessEvents')
+    const activePinia = createPinia()
+    const disposedPinia = createPinia()
+    try {
+      const active = useAccessStore(activePinia)
+      const disposed = useAccessStore(disposedPinia)
+      disposePinia(disposedPinia)
+      notifySiteAccessRequired()
+      expect(active.status).toBe('locked')
+      expect(active.canEnterSite).toBe(false)
+      expect(disposed.status).toBe('unknown')
+    } finally {
+      disposePinia(activePinia)
+    }
+  })
+
   it('stays closed before checking and ignores local storage bypass flags', async () => {
     localStorage.setItem('site-unlocked', 'true')
     const { access, adapter } = await loadAccess({ data: { enabled: true, unlocked: false } })

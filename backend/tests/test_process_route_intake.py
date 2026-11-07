@@ -42,7 +42,11 @@ def route_payload(client, setup, *, creator_headers=None):
             filename="工艺.docx",
             source_file=data,
             source_sha256=sha256(data).hexdigest(),
-            source_data={"tables": [["原件内容"]], "original_steps": [steps[0].model_dump()]},
+            source_data={
+                "tables": [[["原件内容"]]],
+                "issues": [],
+                "original_steps": [steps[0].model_dump()],
+            },
             serial_nos=["WAREHOUSE-001"],
             steps=[step.model_dump() for step in steps],
             created_by=owner["display_name"],
@@ -103,7 +107,7 @@ def test_intake_binds_published_route_once_and_preserves_original(client, wareho
         route = db.get(ProcessRoute, payload["id"])
         assert route.state == "published" and route.version == 2
         assert route.source_file == b"original document bytes"
-        assert route.source_data["tables"] == [["原件内容"]]
+        assert route.source_data["tables"] == [[["原件内容"]]]
         assert route.source_data["original_steps"][0]["team_name"] is None
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 1
         assert db.scalar(select(func.count(ProcessRoutePath.route_id))) == 4
@@ -297,7 +301,14 @@ def test_route_options_exposes_only_active_execution_vocabulary(client, warehous
     )
     response = client.get(URL + f"/options/{team_id}", headers=engineering["headers"])
     assert response.status_code == 200, response.text
-    assert response.json() == {"tasks": [task], "purposes": [purpose]}
+    options = response.json()
+    # Either directory entry creates the same selectable task for both workflows.
+    assert {item["name"] for item in options["tasks"]} == {"精轧", "轧制加工"}
+    assert {item["name"] for item in options["purposes"]} == {"精轧", "轧制加工"}
+    assert all(item["active"] for item in options["tasks"] + options["purposes"])
+    assert {item["purpose_id"] for item in options["tasks"]} == {task["purpose_id"], purpose["id"]}
+    assert {item["id"] for item in options["purposes"]} == {task["purpose_id"], purpose["id"]}
+    assert next(item for item in options["tasks"] if item["id"] == task["id"]) == task
     assert client.get(URL + f"/options/{team_id}").json() == response.json()
     assert (
         client.get(URL + f"/options/{team_id}", headers=warehouse["other_headers"]).status_code

@@ -4,12 +4,42 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import TeamDashboard from './TeamDashboard.vue'
 import DashboardMetric from './DashboardMetric.vue'
 import DashboardDonut from './DashboardDonut.vue'
+import DashboardDistribution from './DashboardDistribution.vue'
+import AppButton from './AppButton.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
 import { performanceFixture } from '@/testFixtures/factoryPerformance'
 import type { TeamMaterialOverview } from '@/types/teamMaterials'
 
 const overview = {
+  work_orders: {
+    mode: 'processing',
+    in_progress_count: 1,
+    overdue_count: 2,
+    periods: [
+      {
+        key: 'today',
+        date_from: '2026-11-07',
+        date_to: '2026-11-07',
+        processed_count: 2,
+        completed_count: 1,
+      },
+      {
+        key: 'week',
+        date_from: '2026-11-02',
+        date_to: '2026-11-07',
+        processed_count: 4,
+        completed_count: 2,
+      },
+      {
+        key: 'month',
+        date_from: '2026-11-01',
+        date_to: '2026-11-07',
+        processed_count: 6,
+        completed_count: 3,
+      },
+    ],
+  },
   totals: { on_hand_quantity: 125, on_hand_weight: 12.5 },
   material_types: [{ material_type: 'semi_finished', on_hand_quantity: 125, on_hand_weight: 12.5 }],
   pending_incoming: { count: 3, quantity: 30, weight: 3 },
@@ -44,8 +74,8 @@ it('separates complete, partial and legacy work, and drills into actual remainin
   const metrics = wrapper.findAllComponents(DashboardMetric)
   expect(metrics.map((item) => [item.props('label'), item.props('value')])).toEqual([
     ['在库流水号', 1],
-    ['待加工', 40],
-    ['已加工', 60],
+    ['今日在途工单', 1],
+    ['当前逾期工单', 2],
     ['待签收', 3],
   ])
   const donut = wrapper.findAllComponents(DashboardDonut)[0]!
@@ -62,11 +92,11 @@ it('separates complete, partial and legacy work, and drills into actual remainin
   ])
   metrics[2]!.vm.$emit('open')
   expect(wrapper.emitted('navigate')?.at(-1)).toEqual([
-    { tab: 'stock', availability: 'current', processing_state: 'complete' },
+    { tab: 'delivery-schedule', status: 'overdue' },
   ])
   wrapper.findAllComponents(WatermelonSegmented)[0]!.vm.$emit('update:modelValue', 'weight')
   await flushPromises()
-  expect(metrics[2]!.props()).toMatchObject({ value: 6, unit: 'kg' })
+  expect(metrics[1]!.props()).toMatchObject({ value: 1, unit: '单', static: true })
   expect(donut.props('rows').map((row) => row.value)).toEqual([4, 2, 6, 0, 0.5])
 })
 it('uses a team-scoped quality period for both chart and detail, and shows failures', async () => {
@@ -86,7 +116,7 @@ it('uses a team-scoped quality period for both chart and detail, and shows failu
     },
   ])
   vi.mocked(factoryPerformanceApi.get).mockRejectedValueOnce(new Error('unavailable'))
-  wrapper.findAllComponents(WatermelonSegmented)[1]!.vm.$emit('update:modelValue', '7')
+  wrapper.findAllComponents(WatermelonSegmented)[1]!.vm.$emit('update:modelValue', 'month')
   await flushPromises()
   expect(wrapper.text()).toContain('质量数据读取失败')
   expect(wrapper.findAllComponents(DashboardDonut)).toHaveLength(2)
@@ -95,16 +125,46 @@ it('shows warehouse balances instead of pretending warehouse stock has processin
   await render(false)
   expect(wrapper.findAllComponents(DashboardMetric).map((item) => item.props('label'))).toEqual([
     '在库流水号',
-    '在库数量',
-    '在库重量',
+    '待转出工单',
+    '当前逾期工单',
     '待签收',
   ])
   expect(wrapper.findAllComponents(DashboardDonut)).toHaveLength(2)
   expect(wrapper.text()).not.toContain('在库加工状态')
+  expect(wrapper.text()).toContain('本周收发工单')
+  expect(wrapper.text()).toContain('库房交期不考核')
 })
 it('does not present a failed inventory request as zero stock', async () => {
   await render()
   await wrapper.setProps({ overview: null, error: '库存读取失败' })
   expect(wrapper.findAllComponents(DashboardMetric)).toHaveLength(0)
   expect(wrapper.text()).toContain('库存读取失败')
+})
+it('shows all three calendar periods and carries the chosen period to work records and quality', async () => {
+  await render()
+  const distributions = wrapper.findAllComponents(DashboardDistribution)
+  expect(distributions.map((item) => item.props('rows').map((row) => row.value))).toEqual([
+    [1, 1],
+    [2, 2],
+    [3, 3],
+  ])
+  const records = wrapper
+    .findAllComponents(AppButton)
+    .filter((button) => button.text().includes('加工记录'))
+  await records[1]!.trigger('click')
+  expect(wrapper.emitted('navigate')?.at(-1)).toEqual([
+    { tab: 'processing', date_from: '2026-11-02', date_to: '2026-11-07' },
+  ])
+  expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith({
+    team_id: 2,
+    date_from: '2026-11-02',
+    date_to: '2026-11-07',
+  })
+  wrapper.findAllComponents(WatermelonSegmented)[1]!.vm.$emit('update:modelValue', 'today')
+  await flushPromises()
+  expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith({
+    team_id: 2,
+    date_from: '2026-11-07',
+    date_to: '2026-11-07',
+  })
 })

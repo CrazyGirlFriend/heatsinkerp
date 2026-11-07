@@ -31,7 +31,7 @@ def joint(client, warehouse):
             source_sha256="",
             serial_nos=["ORDER-B"],
             steps=deepcopy(original.steps),
-            source_data={"tables": []},
+            source_data={"tables": [], "issues": []},
             created_by=original.created_by,
             created_by_user_id=original.created_by_user_id,
         )

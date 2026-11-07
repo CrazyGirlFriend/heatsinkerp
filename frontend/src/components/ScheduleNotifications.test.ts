@@ -70,6 +70,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(businessNoticeApi.target).mockResolvedValue({
     href: '/team-workspaces/2?tab=delivery-schedule&schedule_id=12',
+    section: null,
     schedule_id: 12,
     batch_id: 2,
   })

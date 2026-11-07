@@ -1,18 +1,14 @@
-"""Administrative serial flags are independent of locked stock documents."""
+"""Serial urgency queries and a single versioned, audited write transaction."""
 
 from datetime import timezone
 
-from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import actor_name, get_current_user, require_admin
-from .database import get_db
+from .auth import actor_name
 from .models import MaterialTransfer, SerialUrgency, SerialUrgencyEvent, User, utcnow
-
-router = APIRouter(prefix="/api/serial-urgency", tags=["serial urgency"])
+from .serial_urgency_schemas import UrgencyUpdate
 
 
 def urgency_dict(row):
@@ -36,19 +32,7 @@ def urgency_map(db, serials):
     )
 
 
-class UrgencyUpdate(BaseModel):
-    serial_no: str = Field(min_length=1, max_length=80)
-    urgent: bool
-    reason: str | None = Field(default=None, max_length=500)
-    expected_version: int = Field(ge=0)
-
-
-@router.get("")
-def get_urgency(
-    serial_no: str = Query(min_length=1, max_length=80),
-    _: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_urgency(db: Session, serial_no: str):
     serial = serial_no.strip()
     if not db.scalar(
         select(MaterialTransfer.id).where(MaterialTransfer.serial_no == serial).limit(1)
@@ -57,10 +41,7 @@ def get_urgency(
     return urgency_dict(db.get(SerialUrgency, serial))
 
 
-@router.put("")
-def set_urgency(
-    payload: UrgencyUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)
-):
+def set_urgency(db: Session, payload: UrgencyUpdate, user: User):
     serial = payload.serial_no.strip()
     with db.begin():
         # Lock an existing serial origin, including first-time flags. No phantom

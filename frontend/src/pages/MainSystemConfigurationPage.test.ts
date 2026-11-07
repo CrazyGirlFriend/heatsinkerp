@@ -47,6 +47,8 @@ beforeEach(() => {
     message: '查询成功',
     tested_at: '2026-09-15T01:00:00Z',
     data: {
+      schema_version: '1.0',
+      snapshot_hash: 'a'.repeat(64),
       serial_no: 'A001',
       revision: '1',
       updated_at: '2026-09-15T01:00:00Z',

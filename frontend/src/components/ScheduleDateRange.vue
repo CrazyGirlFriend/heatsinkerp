@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
@@ -138,7 +139,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
     <div class="date-range-panel">
       <header class="date-range-heading"><strong>时间范围</strong></header>
       <div class="date-range-presets" aria-label="快捷时间范围">
-        <button
+        <AppButton
+          unstyled
           v-for="preset in presets"
           :key="preset.label"
           type="button"
@@ -146,10 +148,11 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
           @click="choosePreset(preset)"
         >
           {{ preset.label }}
-        </button>
+        </AppButton>
       </div>
       <div class="date-range-edges">
-        <button
+        <AppButton
+          unstyled
           v-for="(label, index) in ['开始日期', '结束日期']"
           :key="label"
           type="button"
@@ -159,30 +162,33 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
         >
           <small>{{ label }}</small>
           <span>{{ draft[index]?.replaceAll('-', '/') || '选择日期' }}</span>
-        </button>
+        </AppButton>
       </div>
       <ElCalendar ref="calendar" v-model="month" class="schedule-range-calendar">
         <template #header="{ date }">
-          <button
+          <AppButton
+            unstyled
             type="button"
             class="date-month-nav"
             aria-label="上个月"
             @click="calendar?.selectDate('prev-month')"
           >
             <ElIcon><ArrowLeft /></ElIcon>
-          </button>
+          </AppButton>
           <strong>{{ date }}</strong>
-          <button
+          <AppButton
+            unstyled
             type="button"
             class="date-month-nav"
             aria-label="下个月"
             @click="calendar?.selectDate('next-month')"
           >
             <ElIcon><ArrowRight /></ElIcon>
-          </button>
+          </AppButton>
         </template>
         <template #date-cell="{ data }">
-          <button
+          <AppButton
+            unstyled
             type="button"
             class="range-day"
             :class="{
@@ -200,7 +206,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
             @mouseleave="hovered = ''"
           >
             <span>{{ Number(data.day.slice(-2)) }}</span>
-          </button>
+          </AppButton>
         </template>
       </ElCalendar>
       <footer class="date-range-footer">

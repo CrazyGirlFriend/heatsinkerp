@@ -4,32 +4,32 @@ from fastapi import APIRouter
 
 from .admin_api import router as admin_router
 from .auth_api import router as public_router
-from .business_notices import router as business_notices_router
-from .factory_dashboard import router as dashboard_router
-from .factory_overview import router as factory_router
-from .factory_performance import router as performance_router
+from .business_notices_api import router as business_notices_router
+from .factory_dashboard_api import router as dashboard_router
+from .factory_overview_api import router as factory_router
+from .factory_performance_api import router as performance_router
 from .factory_stream import router as stream_router
 from .inspection_api import router as inspection_router
 from .main_system_api import router as main_system_router
-from .main_system_configuration import router as main_system_configuration_router
-from .material_analytics import router as analytics_router
+from .main_system_configuration_api import router as main_system_configuration_router
+from .material_analytics_api import router as analytics_router
 from .material_dispatch_api import router as dispatch_router
 from .material_stock_api import router as stock_router
 from .material_transfer_api import router as material_router
 from .notification_api import router as notification_router
-from .opening_stock import router as opening_stock_router
+from .opening_stock_api import router as opening_stock_router
 from .process_route_api import router as process_route_router
 from .production_schedule_api import router as production_schedule_router
 from .quality_feedback_api import router as quality_feedback_router
-from .rework_notices import router as rework_notices_router
-from .schedule_notices import router as schedule_notices_router
-from .serial_urgency import router as urgency_router
-from .team_business import router as team_business_router
+from .rework_notices_api import router as rework_notices_router
+from .schedule_notices_api import router as schedule_notices_router
+from .serial_urgency_api import router as urgency_router
+from .team_business_api import router as team_business_router
 from .team_serial_history import router as serial_history_router
-from .transfer_amendments import router as transfer_amendments_router
-from .warehouse_inventory import router as warehouse_inventory_router
-from .warehouse_locations import router as warehouse_locations_router
-from .warehouse_receipt_documents import router as warehouse_receipt_documents_router
+from .transfer_amendments_api import router as transfer_amendments_router
+from .warehouse_inventory_api import router as warehouse_inventory_router
+from .warehouse_locations_api import router as warehouse_locations_router
+from .warehouse_receipt_documents_api import router as warehouse_receipt_documents_router
 
 router = APIRouter()
 router.include_router(admin_router)

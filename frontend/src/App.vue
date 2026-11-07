@@ -14,7 +14,8 @@ import AccessPage from '@/pages/AccessPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stores/auth'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
-import { appPinia, canEnterSite } from '@/stores/access'
+import { appPinia } from '@/stores/pinia'
+import { canEnterSite } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
 import {
   resolveTeamWorkspaceSection,
@@ -37,9 +38,7 @@ const router = useRouter()
 const isAuthenticationPage = computed(() => ['login', 'access'].includes(String(route.name)))
 // The signed-in business shell, including the overview, uses the shared theme.
 const appearance = computed(() =>
-  !canEnterSite.value ||
-  !isAuthenticated.value ||
-  isAuthenticationPage.value
+  !canEnterSite.value || !isAuthenticated.value || isAuthenticationPage.value
     ? 'glass'
     : 'watermelon',
 )

@@ -4,10 +4,23 @@ from tempfile import TemporaryDirectory
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
 
 # Configuration must be in place before app.database creates its global engine.
 _test_database = TemporaryDirectory(prefix="heatsink-async-tests-")
-os.environ["DATABASE_URL"] = "sqlite:///" + _test_database.name + "/test.sqlite"
+_mysql_url = os.environ.get("HEATSINK_TEST_DATABASE_URL")
+if _mysql_url:
+    _url = make_url(_mysql_url)
+    if not (
+        os.environ.get("HEATSINK_ALLOW_DISPOSABLE_MYSQL") == "1"
+        and os.environ.get("APP_ENV") == "test"
+        and _url.drivername == "mysql+pymysql"
+        and _url.host in {"127.0.0.1", "localhost"}
+        and _url.database == "heatsink_refactor_qa"
+        and _url.username == "refactor_qa"
+    ):
+        raise RuntimeError("MySQL tests require the explicitly authorized disposable QA database")
+os.environ["DATABASE_URL"] = _mysql_url or "sqlite:///" + _test_database.name + "/test.sqlite"
 os.environ["AUTO_CREATE_TABLES"] = "true"
 
 from app.database import Base, engine  # noqa: E402

@@ -1,14 +1,12 @@
 """One team task directory shared by receiving and processing."""
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter as APIRouter
-from .auth import actor_name, get_current_user, require_admin
-from .database import get_db
+from .auth import actor_name
 from .material_stock import require_actor, require_team
 from .models import (
     InspectionProblemType,
@@ -21,8 +19,6 @@ from .models import (
     utcnow,
 )
 from .team_constants import INSPECTION_TEAM_CODE, PROCESSING_TEAM_CODES
-
-router = APIRouter(prefix="/api/team-materials", tags=["team business settings"])
 
 
 class DirectoryItemInput(BaseModel):
@@ -78,10 +74,7 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
     return {"purpose_id": row.id, "purpose_name": row.name}
 
 
-@router.get("/{team_id}/purposes")
-def list_purposes(
-    team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def list_purposes(*, team_id: int, _: User, db: Session):
     require_team(db, team_id)
     return [
         directory_item_dict(row)
@@ -205,31 +198,7 @@ def save_directory_item(
         raise HTTPException(409, f"本班组已存在同名{label}") from exc
 
 
-@router.post("/{team_id}/purposes", status_code=201)
-def create_purpose(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload)
-
-
-@router.patch("/{team_id}/purposes/{purpose_id}")
-def update_purpose(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    purpose_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, purpose_id)
-
-
-@router.get("/{team_id}/employees")
-def list_employees(
-    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def list_employees(*, team_id: int, user: User, db: Session):
     if user.role != "ADMIN":
         require_actor(user, team_id)
     require_team(db, team_id)
@@ -241,36 +210,12 @@ def list_employees(
     ]
 
 
-@router.post("/{team_id}/employees", status_code=201)
-def create_employee(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, employee=True)
-
-
-@router.patch("/{team_id}/employees/{employee_id}")
-def update_employee(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    employee_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, employee_id, employee=True)
-
-
 class OpeningAuthorization(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
 
 
-@router.get("/{team_id}/processing-tasks")
-def list_processing_tasks(
-    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def list_processing_tasks(*, team_id: int, user: User, db: Session):
     if user.role != "ADMIN":
         require_actor(user, team_id)
     require_team(db, team_id)
@@ -284,31 +229,7 @@ def list_processing_tasks(
     ]
 
 
-@router.post("/{team_id}/processing-tasks", status_code=201)
-def create_processing_task(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, processing_task=True)
-
-
-@router.patch("/{team_id}/processing-tasks/{task_id}")
-def update_processing_task(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    task_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, task_id, processing_task=True)
-
-
-@router.get("/{team_id}/inspection-problems")
-def list_inspection_problems(
-    team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def list_inspection_problems(*, team_id: int, _: User, db: Session):
     team = require_team(db, team_id)
     if team.code != INSPECTION_TEAM_CODE:
         raise HTTPException(422, "检验问题由检验班组统一维护")
@@ -322,34 +243,7 @@ def list_inspection_problems(
     ]
 
 
-@router.post("/{team_id}/inspection-problems", status_code=201)
-def create_inspection_problem(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, inspection_problem=True)
-
-
-@router.patch("/{team_id}/inspection-problems/{problem_id}")
-def update_inspection_problem(
-    payload: DirectoryItemInput,
-    team_id: int = Path(ge=1),
-    problem_id: int = Path(ge=1),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return save_directory_item(db, team_id, user, payload, problem_id, inspection_problem=True)
-
-
-@router.put("/{team_id}/opening-stock/authorization")
-def authorize_opening(
-    payload: OpeningAuthorization,
-    team_id: int = Path(ge=1),
-    user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
+def authorize_opening(*, payload: OpeningAuthorization, team_id: int, user: User, db: Session):
     with db.begin():
         team = db.scalar(
             select(Team)

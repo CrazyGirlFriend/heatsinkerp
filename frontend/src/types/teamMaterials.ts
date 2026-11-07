@@ -1,3 +1,5 @@
+import type { QuantityAdjustment, CreateProcessingOutput } from './processingContract'
+import type { components } from './generated/api'
 import type { SharedMaterialFields, SharedMaterialSerial } from './sharedMaterial'
 import {
   externalActionLabel,
@@ -32,6 +34,7 @@ export type MaterialBalance = Record<
     >
   > & { weight_difference?: number; max_weight_difference?: number }
 export interface TeamMaterialOverview {
+  work_orders?: components['schemas']['TeamWorkOrdersResponse'] | null
   team_id: number
   as_of?: string
   current_stock?: {
@@ -66,9 +69,9 @@ export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
   delivery_schedule?: import('./productionSchedule').InventoryScheduleSummary
   inspection_hold_id?: number | null
-  processing_state?: import('./materialProcessing').ProcessingState
+  processing_state?: import('./processingStatus').ProcessingState
   current_specification?: string | null
-  processing_role?: import('./materialProcessing').ProcessingRole | null
+  processing_role?: import('./processingStatus').ProcessingRole | null
   weight_root_transfer_id?: number
   sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
@@ -77,64 +80,11 @@ export interface StockBatch extends MaterialBalance {
   unassigned_quantity?: number
   unassigned_weight?: number
 }
-export interface QuantityAdjustment {
-  production_schedule_id?: number | null
-  process_route_id?: number | null
-  process_step_index?: number | null
-  process_step_name?: string | null
-  process_step_instructions?: string | null
-  processing_task_id?: number | null
-  processing_task_name?: string | null
-  purpose_id?: number | null
-  purpose_name?: string | null
-  work_kind?: 'initial' | 'rework'
-  rework_of_id?: number | null
-  rework_round?: number
-  id: number
-  source_transfer_id: number
-  before_quantity: number
-  after_quantity: number
-  delta_quantity: number
-  weight: number
-  reason: string
-  created_by: string
-  processor_employee_id?: number | null
-  processing_date?: string | null
-  processing_mode?: 'unit' | 'split' | null
-  input_quantity?: number | null
-  input_weight?: number | null
-  completed_quantity?: number | null
-  completed_weight?: number | null
-  scrap_quantity?: number | null
-  scrap_weight?: number | null
-  processor_name?: string | null
-  created_at: string
-  operation_kind?: 'processing' | 'outbound_clearance'
-  processing_status?: 'partial' | 'complete' | null
-  before_specification?: string | null
-  after_specification?: string | null
-  after_weight?: number
-  outputs?: ProcessingOutput[]
-}
-export interface CreateProcessingOutput extends SludgeMeasurement {
-  serial_no?: string | null
-  role: import('./materialProcessing').ProcessingRole
-  quantity: number
-  weight: number
-  material_type: MaterialType
-  transfer_specification?: string | null
-}
-export interface ProcessingOutput extends CreateProcessingOutput {
-  shared_unallocated?: boolean
-  id: number
-  batch_no: string
-  on_hand_quantity?: number
-  on_hand_weight?: number
-  in_transit_quantity?: number
-  in_transit_weight?: number
-  owned_quantity?: number
-  owned_weight?: number
-}
+export type {
+  QuantityAdjustment,
+  CreateProcessingOutput,
+  ProcessingOutput,
+} from './processingContract'
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
   purpose_id?: number | null
@@ -203,21 +153,7 @@ export interface CreateQuantityAdjustment {
   transfer_specification?: string | null
   outputs?: CreateProcessingOutput[]
 }
-export interface MaterialLoss {
-  urgency?: import('./recordFilters').SerialUrgency
-  id: number
-  loss_no: string
-  source_transfer_id: number
-  batch_no: string
-  serial_no: string
-  material_name: string | null
-  quantity: number
-  weight: number
-  reason: string
-  created_by: string
-  created_at: string
-  team_id: number
-}
+export type { MaterialLoss } from './materialTransfer'
 export type DispatchKind = 'transfer' | ExternalEntryKind
 export type DispatchStatus = 'pending' | 'partial' | 'received' | 'voided' | 'dispatched'
 export interface MaterialDispatch {

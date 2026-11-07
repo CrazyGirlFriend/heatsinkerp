@@ -2,16 +2,12 @@
 
 from datetime import timedelta
 
-from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
-from .database import get_db
 from .models import (
     ProductionSchedule as Plan,
 )
@@ -29,10 +25,9 @@ from .models import (
     User,
     utcnow,
 )
+from .notice_schemas import ScheduleNoticeReadAll as ReadAll
 from .production_schedules import LOCAL_ZONE, iso, progress_table
 from .team_constants import WAREHOUSE_TEAM_CODE
-
-router = AsyncAPIRouter(prefix="/api/schedule-notices", tags=["schedule notices"])
 
 
 def insert_once(db, model, values, key):
@@ -219,19 +214,12 @@ def refresh_deadlines(db, user, now=None):
                 add_notice(db, plan, kind, message, key, now)
 
 
-@router.post("/refresh", status_code=204)
-def refresh(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def refresh(*, user: User, db: Session):
     with db.begin():
         refresh_deadlines(db, user)
 
 
-@router.get("")
-def inbox(
-    page: int = Query(default=1, ge=1),
-    unread_only: bool = False,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def inbox(*, page: int = 1, unread_only: bool = False, user: User, db: Session):
     filters = scope(user)
     read = and_(Read.notice_id == Notice.id, Read.user_id == user.id)
     base = select(Notice.id).outerjoin(Read, read).where(*filters)
@@ -276,14 +264,7 @@ def inbox(
     )
 
 
-class ReadAll(BaseModel):
-    through_id: int = Field(ge=0)
-
-
-@router.post("/read-all", status_code=204)
-def read_all(
-    payload: ReadAll, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def read_all(*, payload: ReadAll, user: User, db: Session):
     with db.begin():
         filters = scope(user)
         cursor = 0
@@ -313,10 +294,7 @@ def read_all(
             )
 
 
-@router.post("/{notice_id}/read", status_code=204)
-def mark_read(
-    notice_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def mark_read(*, notice_id: int, user: User, db: Session):
     with db.begin():
         item = db.scalar(select(Notice.id).where(Notice.id == notice_id, *scope(user)))
         if item is None:

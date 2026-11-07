@@ -3,14 +3,10 @@
 from typing import Literal
 from urllib.parse import urlencode
 
-from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
 from sqlalchemy import and_, exists, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
-from .async_api import AsyncAPIRouter
-from .auth import get_current_user
-from .database import get_db
 from .models import (
     MaterialTransfer,
     MaterialTransferAmendment,
@@ -27,11 +23,11 @@ from .models import (
     User,
     utcnow,
 )
+from .notice_schemas import BusinessNoticeReadAll as ReadAll
+from .notice_schemas import NoticeSource as Source
 from .production_schedules import iso
 from .schedule_notices import insert_once
 
-router = AsyncAPIRouter(prefix="/api/business-notices", tags=["business notices"])
-Source = Literal["schedule", "rework", "transfer"]
 MODELS = {
     "schedule": (ScheduleNotice, ScheduleNoticeRead),
     "rework": (ReworkNotice, ReworkNoticeRead),
@@ -119,13 +115,13 @@ def schedule_message(notice, event):
     return ("上游：" if notice.kind == "upstream" else "") + "、".join(changes) + "已调整"
 
 
-@router.get("")
 def inbox(
-    page: int = Query(1, ge=1),
+    *,
+    page: int = 1,
     unread_only: bool = False,
     category: Literal["all", "schedule", "rework", "transfer", "pending"] = "all",
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User,
+    db: Session,
 ):
     queries = []
     latest = {}
@@ -282,13 +278,7 @@ def inbox(
     return dict(items=items, total=total, unread=unread, latest=latest)
 
 
-@router.get("/{source}/{notice_id}/target")
-def target(
-    source: Source,
-    notice_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def target(*, source: Source, notice_id: int, user: User, db: Session):
     notice = visible_notice(db, user, source, notice_id)
     if source == "transfer":
         amendment = db.get(MaterialTransferAmendment, notice.amendment_id)
@@ -303,7 +293,7 @@ def target(
         # The existing reader enforces draft access and resolves superseded instructions.
         from .rework_notices import notice_route
 
-        route = notice_route(notice_id, user, db)
+        route = notice_route(notice_id=notice_id, user=user, db=db)
         return dict(
             href=f"/process-routes?rework_notice={notice_id}",
             section="problem" if notice.kind == "requested" else "steps",
@@ -326,16 +316,7 @@ def target(
     )
 
 
-class ReadAll(BaseModel):
-    schedule: int = Field(ge=0)
-    rework: int = Field(ge=0)
-    transfer: int = Field(default=0, ge=0)
-
-
-@router.post("/read-all", status_code=204)
-def read_all(
-    payload: ReadAll, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def read_all(*, payload: ReadAll, user: User, db: Session):
     with db.begin():
         for source, (notice, receipt) in MODELS.items():
             filters = scope(user, notice)
@@ -366,13 +347,7 @@ def read_all(
                 )
 
 
-@router.post("/{source}/{notice_id}/read", status_code=204)
-def mark_read(
-    source: Source,
-    notice_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def mark_read(*, source: Source, notice_id: int, user: User, db: Session):
     with db.begin():
         notice = visible_notice(db, user, source, notice_id)
         insert_once(
