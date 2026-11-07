@@ -177,30 +177,36 @@ it('shows icon-only process nodes in order, including repeated teams', async () 
   expect(processRouteApi.drawing).not.toHaveBeenCalled()
 })
 
-it('shows six nodes and exposes the full route when more steps are present', async () => {
-  const response = await processRouteApi.list()
-  const steps = response.items[0]!.step_summary!
-  response.items[0]!.step_summary = [
-    ...steps,
-    ...steps.map((step) => ({ ...step, sequence_no: step.sequence_no + 4 })),
-  ]
-  await render()
-  expect(wrapper.findAll('.route-step-node')).toHaveLength(6)
-  expect(wrapper.get('.route-path-more').text()).toBe('+2')
-  expect(wrapper.get('.route-path-more').attributes('aria-label')).toBe(
-    '另有 2 道工序，查看完整路线',
-  )
-  expect(wrapper.findAll('.route-path-list li').map((item) => item.text())).toEqual([
-    '0库房',
-    '1退火',
-    '2研磨',
-    '3退火',
-    '4库房',
-    '5退火',
-    '6研磨',
-    '7退火',
-  ])
-})
+it.each([
+  { kind: 'normal', visible: 6, overflow: 2 },
+  { kind: 'rework', visible: 3, overflow: 5 },
+])(
+  'keeps the full $kind route accessible beyond $visible visible nodes',
+  async ({ kind, visible, overflow }) => {
+    const response = await processRouteApi.list()
+    const steps = response.items[0]!.step_summary!
+    response.items[0]!.step_summary = [
+      ...steps,
+      ...steps.map((step) => ({ ...step, sequence_no: step.sequence_no + 4 })),
+    ]
+    await render({ kind })
+    expect(wrapper.findAll('.route-step-node')).toHaveLength(visible)
+    expect(wrapper.get('.route-path-more').text()).toBe(`+${overflow}`)
+    expect(wrapper.get('.route-path-more').attributes('aria-label')).toBe(
+      `另有 ${overflow} 道工序，查看完整路线`,
+    )
+    expect(wrapper.findAll('.route-path-list li').map((item) => item.text())).toEqual([
+      '0库房',
+      '1退火',
+      '2研磨',
+      '3退火',
+      '4库房',
+      '5退火',
+      '6研磨',
+      '7退火',
+    ])
+  },
+)
 
 it('uses the assigned team icon for a custom operation name', async () => {
   const response = await processRouteApi.list()
@@ -542,7 +548,7 @@ it('separates pending rework with visible problems and teams, and opens manual a
   for (const text of ['尺寸超差', '巡检', '待制定', '待指定'])
     expect(wrapper.text()).toContain(text)
   expect(wrapper.get('.route-list tbody tr td').text()).toBe(pending.serial_nos[0])
-  expect(wrapper.get('.route-list tbody tr td:nth-child(2)').text()).toBe('待制定')
+  expect(wrapper.get('.route-list tbody tr td:nth-child(5)').text()).toBe('待制定')
   expect(wrapper.find('.route-step-node').exists()).toBe(false)
   expect(wrapper.get('.rework-problem').text()).toBe('尺寸超差')
   expect(wrapper.get('.rework-problem').attributes('title')).toBe('实测厚度偏大')
@@ -551,16 +557,16 @@ it('separates pending rework with visible problems and teams, and opens manual a
   ).toEqual(['研磨', '轧制'])
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',
+    '问题',
+    '工艺状态',
+    '处理进度',
     '返工概要',
     '轮次',
-    '问题',
     '提交班组',
     '问题来源',
     '涉及班组',
     '执行班组',
-    '工艺状态',
     '加工件数',
-    '处理进度',
     '工艺人员',
     '更新时间',
     '操作',

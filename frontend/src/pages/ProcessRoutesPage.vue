@@ -199,9 +199,12 @@ function stepIcon(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
   return code && code in teamIcons ? teamIcons[code as keyof typeof teamIcons] : 'flow'
 }
 const routeMedia = window.matchMedia?.('(max-width: 1100px)')
-const visibleStepCount = ref(routeMedia?.matches ? 4 : 6)
+const responsiveStepCount = ref(routeMedia?.matches ? 4 : 6)
+const visibleStepCount = computed(() =>
+  routeKind.value === 'rework' ? 3 : responsiveStepCount.value,
+)
 function resizeRouteSummary() {
-  visibleStepCount.value = routeMedia?.matches ? 4 : 6
+  responsiveStepCount.value = routeMedia?.matches ? 4 : 6
 }
 const stepDetails = ref<
   Record<number, { steps?: ProcessRouteStep[]; loading: boolean; error?: string }>
@@ -438,6 +441,43 @@ onBeforeUnmount(() => {
             >
           </template></ElTableColumn
         >
+        <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
+          <template #default="{ row }">
+            <div
+              class="rework-problem"
+              :title="row.rework_request?.problem_notes || row.rework_request?.reason"
+            >
+              <template v-if="row.rework_request?.problem_names?.length">
+                <span
+                  v-for="name in row.rework_request.problem_names"
+                  :key="name"
+                  class="rework-problem-name"
+                  >{{ name }}</span
+                >
+              </template>
+              <span v-else class="rework-problem-description">{{
+                row.rework_request?.reason || '未记录'
+              }}</span>
+            </div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn v-if="routeKind === 'rework'" label="工艺状态" width="82" align="center">
+          <template #default="{ row }"
+            ><ElTag
+              :type="row.state === 'published' ? 'success' : 'warning'"
+              class="route-rework-status"
+              :class="{ 'route-rework-ready': row.state === 'published' }"
+              >{{ row.state === 'published' ? '已制定' : '待制定' }}</ElTag
+            ></template
+          >
+        </ElTableColumn>
+        <ElTableColumn v-if="routeKind === 'rework'" label="处理进度" width="120" align="center"
+          ><template #default="{ row }">{{
+            row.rework_progress
+              ? reworkProgressLabels[row.rework_progress.state as ReworkProgress['state']]
+              : '—'
+          }}</template></ElTableColumn
+        >
         <ElTableColumn v-if="routeKind === 'normal'" label="材质" width="120">
           <template #default="{ row }">
             <span :class="{ 'route-empty': !row.material_name }">{{
@@ -447,7 +487,7 @@ onBeforeUnmount(() => {
         </ElTableColumn>
         <ElTableColumn
           :label="routeKind === 'rework' ? '返工概要' : '工序概要'"
-          min-width="300"
+          :min-width="routeKind === 'rework' ? 180 : 300"
           :show-overflow-tooltip="false"
         >
           <template #default="{ row }">
@@ -603,26 +643,6 @@ onBeforeUnmount(() => {
             >第 {{ row.rework_request?.round }} 轮</template
           ></ElTableColumn
         >
-        <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
-          <template #default="{ row }">
-            <div
-              class="rework-problem"
-              :title="row.rework_request?.problem_notes || row.rework_request?.reason"
-            >
-              <template v-if="row.rework_request?.problem_names?.length">
-                <span
-                  v-for="name in row.rework_request.problem_names"
-                  :key="name"
-                  class="rework-problem-name"
-                  >{{ name }}</span
-                >
-              </template>
-              <span v-else class="rework-problem-description">{{
-                row.rework_request?.reason || '未记录'
-              }}</span>
-            </div>
-          </template>
-        </ElTableColumn>
         <ElTableColumn v-if="routeKind === 'rework'" label="提交班组" width="100" align="center"
           ><template #default="{ row }"
             ><span :class="{ 'route-empty': !row.rework_request?.requesting_team_name }">{{
@@ -687,28 +707,11 @@ onBeforeUnmount(() => {
             <span v-else class="route-empty">待指定</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="工艺状态" width="82" align="center">
-          <template #default="{ row }"
-            ><ElTag
-              :type="row.state === 'published' ? 'success' : 'warning'"
-              class="route-rework-status"
-              :class="{ 'route-rework-ready': row.state === 'published' }"
-              >{{ row.state === 'published' ? '已制定' : '待制定' }}</ElTag
-            ></template
-          >
-        </ElTableColumn>
         <ElTableColumn v-if="routeKind === 'rework'" label="加工件数" width="100" align="right"
           ><template #default="{ row }"
             >{{ row.rework_progress?.completed_quantity ?? 0 }} /
             {{ row.rework_request?.quantity }}</template
           ></ElTableColumn
-        >
-        <ElTableColumn v-if="routeKind === 'rework'" label="处理进度" width="120" align="center"
-          ><template #default="{ row }">{{
-            row.rework_progress
-              ? reworkProgressLabels[row.rework_progress.state as ReworkProgress['state']]
-              : '—'
-          }}</template></ElTableColumn
         >
         <ElTableColumn
           label="工艺人员"
@@ -749,7 +752,7 @@ onBeforeUnmount(() => {
         <ElTableColumn
           v-if="canEdit"
           label="操作"
-          :width="routeKind === 'rework' ? 122 : undefined"
+          :width="routeKind === 'rework' ? 140 : undefined"
           :min-width="routeKind === 'normal' ? 120 : undefined"
           align="center"
           fixed="right"
