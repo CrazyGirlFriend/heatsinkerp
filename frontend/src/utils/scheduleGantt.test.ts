@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProductionSchedule, ScheduleBatch, ScheduleTask } from '@/types/productionSchedule'
 import {
   ganttDate,
+  ganttOpeningRange,
   ganttRange,
   ganttRowHeight,
   ganttDensity,
@@ -241,6 +242,34 @@ describe('VTable schedule adapter', () => {
   it('fits all saved batches and the final deadline, independent of today', () => {
     const records = scheduleGanttRecords([task([node(1)])])
     expect(ganttRange(records, Date.parse('2027-01-01'))).toEqual(['2026-11-02', '2026-11-05'])
+  })
+  it('opens seven days around the earliest handover with room for its label in factory time', () => {
+    const records = scheduleGanttRecords([
+      task([
+        node(1, {
+          team_name: '库房',
+          batches: [
+            batch(1, { planned_start_at: null, due_at: '2026-10-29T16:00:00Z' }),
+            batch(2, {
+              status: 'cancelled',
+              planned_start_at: null,
+              due_at: '2026-09-01T00:00:00Z',
+            }),
+          ],
+        }),
+        node(2),
+      ]),
+    ])
+    expect(ganttOpeningRange(records)).toEqual(['2026-10-29', '2026-11-04'])
+  })
+  it('does not use a final deadline as the opening handover when no operation is scheduled', () => {
+    expect(ganttOpeningRange([])).toBeUndefined()
+    expect(ganttOpeningRange(scheduleGanttRecords([task([])]))).toBeUndefined()
+    expect(
+      ganttOpeningRange(
+        scheduleGanttRecords([task([node(1, { planning_state: 'pending', batches: [] })])]),
+      ),
+    ).toBeUndefined()
   })
   it('keeps delivery and receipt totals separate and excludes cancelled batches', () => {
     const [record] = scheduleGanttRecords([

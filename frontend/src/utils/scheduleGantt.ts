@@ -175,6 +175,17 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
   })
 }
 
+export function ganttOpeningRange(records: ScheduleGanttRecord[]): [string, string] | undefined {
+  const starts = records
+    .flatMap(ganttLeaves)
+    .filter((leaf) => leaf.kind === 'batch' && leaf.startTime != null)
+    .map((leaf) => leaf.startTime!)
+  if (!starts.length) return
+  // Leave space for the first handover marker's left-aligned team label.
+  const start = Math.min(...starts) - BOARD_DAY
+  return [boardDate(start), boardDate(start + 6 * BOARD_DAY)]
+}
+
 export function ganttRange(records: ScheduleGanttRecord[], now: number): [string, string] {
   const times = records
     .flatMap(ganttLeaves)

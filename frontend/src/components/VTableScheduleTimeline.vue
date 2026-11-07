@@ -38,6 +38,7 @@ import {
   ganttBatchRelations,
   ganttDensity,
   ganttInlineBars,
+  ganttOpeningRange,
   ganttRange,
   ganttRowHeight,
   scheduleGanttRecords,
@@ -113,6 +114,7 @@ let renderedDensity = 1
 let lastWidth = 0
 let lastHeight = 0
 let taskIdentity = ''
+let initialRangePending = true
 const iconCache = new Map<string, string>()
 const teamSymbols: Record<string, InstanceType<typeof FactoryNavIcon>['$props']['name']> = {
   库房: 'warehouse',
@@ -299,10 +301,14 @@ function applyNativeScale(value: number) {
   gantt.updateDateRange(`${range.value[0]}T00:00:00.000`, `${range.value[1]}T23:59:59.999`)
   gantt.setMillisecondsPerPixel(scale)
 }
-function fit() {
-  range.value = ganttRange(records, now.value)
+function changeRange(value: [string, string]) {
+  initialRangePending = false
+  range.value = value
   fittedRange.value = true
-  millisecondsPerPixel.value = initialScale()
+  render(true)
+}
+function fit() {
+  changeRange(ganttRange(records, now.value))
 }
 function showOverview() {
   const previousDensity = renderedDensity
@@ -357,9 +363,11 @@ function cancelZoom() {
 }
 function shift(direction: number) {
   const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
-  range.value = range.value.map((date) =>
-    boardDate(Date.parse(`${date}T00:00:00+08:00`) + direction * days * BOARD_DAY),
-  ) as [string, string]
+  changeRange(
+    range.value.map((date) =>
+      boardDate(Date.parse(`${date}T00:00:00+08:00`) + direction * days * BOARD_DAY),
+    ) as [string, string],
+  )
 }
 function viewportRecords(top: number) {
   const height = host.value?.clientHeight || 900
@@ -1216,6 +1224,13 @@ watch(
   () => props.tasks,
   async (tasks, previous) => {
     records = scheduleGanttRecords(tasks)
+    if (initialRangePending) {
+      const openingRange = ganttOpeningRange(records)
+      if (openingRange) {
+        initialRangePending = false
+        range.value = openingRange
+      }
+    }
     const identity = tasks.map((task) => task.id).join(',')
     let resetScroll = false
     if (identity !== taskIdentity) {
@@ -1234,10 +1249,6 @@ watch(
   { immediate: true },
 )
 watch(() => [props.loading, props.loadingMore, props.hasMore, props.loadError], requestMoreIfNeeded)
-watch(range, () => {
-  fittedRange.value = true
-  render(true)
-})
 watch(zoom, () => {
   if (!editingZoom.value) zoomInput.value = String(Math.round(zoom.value * 100))
 })
@@ -1290,7 +1301,7 @@ onBeforeUnmount(() => {
         <slot />
       </div>
       <div class="gantt-controls">
-        <ScheduleDateRange v-model="range" compact />
+        <ScheduleDateRange :model-value="range" compact @update:model-value="changeRange" />
         <AppButton
           :disabled="fittedRange"
           :aria-label="`返回${overviewLabel}`"

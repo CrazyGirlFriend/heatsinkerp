@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     ref="page"
-    class="page factory-overview"
+    class="page factory-overview wm-dashboard-layout"
     @scroll.passive="syncSection"
     @wheel.passive="releaseAnchor"
     @touchstart.passive="releaseAnchor"

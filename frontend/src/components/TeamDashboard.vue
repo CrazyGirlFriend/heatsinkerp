@@ -222,7 +222,7 @@ const qualityRows = computed(() =>
 </script>
 
 <template>
-  <section class="team-dashboard" aria-label="班组概览">
+  <section class="team-dashboard wm-dashboard-layout" aria-label="班组概览">
     <DashboardToolbar :updated-at="overview?.as_of" :loading="loading">
       <WatermelonSegmented
         v-model="metric"

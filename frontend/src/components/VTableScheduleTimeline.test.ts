@@ -149,7 +149,7 @@ afterEach(() => {
   native.instances.length = 0
   vi.clearAllMocks()
 })
-it('starts with the current Monday-to-Sunday week at 67% and keeps it when data arrives', async () => {
+it('opens a seven-day range around the first handover at 67% without jumping on resize or refresh', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-06T10:00:00+08:00'))
   let resize: () => void = () => {}
   vi.stubGlobal(
@@ -171,20 +171,42 @@ it('starts with the current Monday-to-Sunday week at 67% and keeps it when data 
     props: { tasks: [], loading: true },
     global: { stubs: { AppPopover: true, AppButton: true, ScheduleDateRange: true } },
   })
+  const withWarehouse = {
+    ...task,
+    nodes: [
+      {
+        ...task.nodes[0]!,
+        id: 10,
+        sequence_no: 1,
+        team_name: '库房',
+        batches: [
+          {
+            ...task.nodes[0]!.batches![0]!,
+            id: 32,
+            planned_start_at: null,
+            due_at: '2026-10-29T16:00:00Z',
+          },
+        ],
+      },
+      ...task.nodes,
+    ],
+  }
   try {
     await flushPromises()
     const instance = native.instances[0]!
     expect(instance.options.minDate).toBe('2026-11-02T00:00:00.000')
     expect(instance.options.maxDate).toBe('2026-11-08T23:59:59.999')
     expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
-    await wrapper.setProps({ tasks: [task], loading: false })
+    await wrapper.setProps({ tasks: [withWarehouse], loading: false })
     await flushPromises()
+    expect(instance.options.minDate).toBe('2026-10-29T00:00:00.000')
+    expect(instance.options.maxDate).toBe('2026-11-04T23:59:59.999')
     Object.defineProperty(wrapper.get('.gantt-canvas').element, 'clientWidth', { value: 2000 })
     resize()
     await wrapper.setProps({ tasks: [{ ...task, id: 99 }] })
     await flushPromises()
-    expect(instance.options.minDate).toBe('2026-11-02T00:00:00.000')
-    expect(instance.options.maxDate).toBe('2026-11-08T23:59:59.999')
+    expect(instance.options.minDate).toBe('2026-10-29T00:00:00.000')
+    expect(instance.options.maxDate).toBe('2026-11-04T23:59:59.999')
     expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(720000 / 0.67)
     expect(instance.options.rowHeight).toBe(32)
     expect((wrapper.get('input[aria-label="缩放百分比"]').element as HTMLInputElement).value).toBe(
@@ -193,6 +215,36 @@ it('starts with the current Monday-to-Sunday week at 67% and keeps it when data 
   } finally {
     wrapper.unmount()
     clock.mockRestore()
+  }
+})
+it('preserves a manually selected period when the first data arrives and more rows load', async () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
+  const wrapper = mount(VTableScheduleTimeline, {
+    props: { tasks: [], loading: true },
+    global: { stubs: { AppPopover: true, AppButton: true, ScheduleDateRange: true } },
+  })
+  try {
+    await flushPromises()
+    wrapper
+      .findComponent(ScheduleDateRange)
+      .vm.$emit('update:modelValue', ['2026-12-01', '2026-12-31'])
+    await flushPromises()
+    const instance = native.instances[0]!
+    const scale = instance.getCurrentMillisecondsPerPixel()
+    await wrapper.setProps({ tasks: [task], loading: false })
+    await wrapper.setProps({ tasks: [task, { ...task, id: 99 }] })
+    await flushPromises()
+    expect(instance.options.minDate).toBe('2026-12-01T00:00:00.000')
+    expect(instance.options.maxDate).toBe('2026-12-31T23:59:59.999')
+    expect(instance.getCurrentMillisecondsPerPixel()).toBe(scale)
+  } finally {
+    wrapper.unmount()
   }
 })
 it('applies typed zoom on Enter or blur and keeps input, buttons and native wheel zoom in sync', async () => {

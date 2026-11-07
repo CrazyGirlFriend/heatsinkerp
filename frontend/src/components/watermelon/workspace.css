@@ -1,4 +1,9 @@
 /* Shared workbench skin. Business components keep their existing data and events. */
+.wm-dashboard-layout {
+  width: 100%;
+  max-width: 2240px;
+  margin-inline: auto;
+}
 .team-workspace--watermelon {
   --subtle: var(--wm-muted);
   --primary: var(--wm-primary);

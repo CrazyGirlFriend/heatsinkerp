@@ -80,6 +80,7 @@ onBeforeUnmount(() => {
   <AppDialog
     v-model="visible"
     title="选择工艺"
+    class="route-picker-dialog"
     width="min(1000px, 94vw)"
     append-to-body
     :close-on-click-modal="!busy"
@@ -114,14 +115,13 @@ onBeforeUnmount(() => {
       >
     </div>
     <WorkspaceTable
-      :height="undefined"
-      :fill="false"
+      height="100%"
+      fill
       :embedded="false"
       v-loading="!watermelon && loading"
       :loading="watermelon ? loading : undefined"
       :data="items"
       :class="watermelon ? '' : 'business-table'"
-      max-height="440"
       row-key="id"
     >
       <ElTableColumn label="流水号" min-width="260" align="center"
@@ -161,8 +161,15 @@ onBeforeUnmount(() => {
   </AppDialog>
 </template>
 <style scoped>
+:global(.route-picker-dialog .el-dialog__body) {
+  display: flex;
+  flex-direction: column;
+  height: min(584px, calc(100dvh - 220px));
+  overflow: hidden;
+}
 .route-picker-search {
   display: flex;
+  flex-shrink: 0;
   gap: 10px;
   margin-block: 12px 16px;
 }
@@ -171,9 +178,11 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 .wm-pagination {
+  flex-shrink: 0;
   margin-top: 16px;
 }
 .el-pagination {
+  flex-shrink: 0;
   justify-content: flex-end;
   margin-top: 16px;
 }

@@ -140,6 +140,9 @@ defineExpose({
     placement="bottom-end"
     :width="320"
     popper-class="inventory-columns-popover"
+    :popper-options="{
+      modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }],
+    }"
   >
     <template #reference
       ><ElButton

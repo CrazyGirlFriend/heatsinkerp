@@ -93,6 +93,7 @@ function select(index: number) {
 
 <style scoped>
 .dashboard-donut {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -101,10 +102,11 @@ function select(index: number) {
   padding-top: 10px;
 }
 .donut-graphic {
+  --donut-size: clamp(160px, 38cqw, 280px);
   position: relative;
-  width: 160px;
-  height: 160px;
-  flex: 0 0 160px;
+  width: var(--donut-size);
+  height: var(--donut-size);
+  flex: 0 0 var(--donut-size);
   margin: 0 auto;
 }
 .donut-graphic :deep(.ledger-chart-frame) {
@@ -121,7 +123,7 @@ function select(index: number) {
   pointer-events: none;
 }
 .donut-center strong {
-  font-size: 25px;
+  font-size: clamp(25px, 4.5cqw, 32px);
   letter-spacing: -0.6px;
   font-weight: 600;
   color: var(--wm-text);
