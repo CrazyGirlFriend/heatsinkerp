@@ -184,9 +184,28 @@ async function changed() {
   if (result) emit('count', result.pending_count)
 }
 watch(
-  () => [props.teamId, props.showAll],
+  () => [
+    props.teamId,
+    props.showAll,
+    route.query.status,
+    route.query.team_id,
+    route.query.date_from,
+    route.query.date_to,
+  ],
   () => {
-    applied.value = {}
+    const status = route.query.status
+    const teamId = Number(route.query.team_id)
+    const date = (value: unknown) =>
+      typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined
+    applied.value = {
+      status:
+        typeof status === 'string' && Object.hasOwn(feedbackStates, status)
+          ? (status as QualityFilters['status'])
+          : undefined,
+      team_id: props.showAll && Number.isInteger(teamId) && teamId > 0 ? teamId : undefined,
+      date_from: date(route.query.date_from),
+      date_to: date(route.query.date_to),
+    }
     query.value = ''
     page.value = 1
     selected.value = undefined

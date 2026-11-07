@@ -11,7 +11,11 @@ import {
   type InventoryColumnChoice,
 } from '@/types/inventoryColumns'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
-import { warehouseColumns, warehouseLegacyColumnKeys } from '@/types/teamInventory'
+import {
+  warehouseColumns,
+  warehouseLegacyColumnKeys,
+  warehousePreviousDefaults,
+} from '@/types/teamInventory'
 
 let wrapper: VueWrapper
 const key = 'heatsink.inventory-columns.v1:1:914'
@@ -40,6 +44,33 @@ function check(label: string, value: boolean) {
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it.each(['default', 'visibility', 'order'] as const)(
+    'updates the previous default preset while preserving custom %s preferences',
+    async (mode) => {
+      const previous = warehousePreviousDefaults.map((column) => ({ ...column }))
+      if (mode === 'visibility') previous.find((column) => column.key === 'source')!.visible = false
+      if (mode === 'order') previous.reverse()
+      localStorage.setItem(key, JSON.stringify(previous))
+      wrapper = mount(InventoryColumnSettings, {
+        props: {
+          storageKey: key,
+          columns: warehouseColumns,
+          previousDefaults: warehousePreviousDefaults,
+          legacyKeys: warehouseLegacyColumnKeys,
+        },
+        global: {
+          stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } },
+        },
+      })
+      await flushPromises()
+      expect(latest()).toEqual(
+        mode === 'default'
+          ? warehouseColumns.map((column) => ({ key: column.key, visible: column.defaultVisible }))
+          : previous,
+      )
+      expect(localStorage.getItem(key)).toBe(JSON.stringify(previous))
+    },
+  )
   it('anchors the first external open to the toolbar button', async () => {
     const anchor = document.createElement('button')
     document.body.appendChild(anchor)

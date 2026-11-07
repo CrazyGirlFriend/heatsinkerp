@@ -1,39 +1,44 @@
 <script setup lang="ts">
 import { formatAmount as format } from '@/utils/format'
 
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import LedgerChart from './LedgerChart.vue'
 import DashboardCard from './DashboardCard.vue'
-import AppDetailTable from './AppDetailTable.vue'
-import { useChartPalette } from '@/composables/useChartPalette'
+import DashboardDistribution from './DashboardDistribution.vue'
+import {
+  useDashboardChart,
+  dashboardBar,
+  dashboardLine,
+  dashboardColors,
+} from '@/composables/useDashboardChart'
 import { materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
 import type { Metric } from '@/types/materialAnalytics'
 import type { FactoryOverview, FactoryTeam, FactoryScene } from '@/types/factoryOverview'
-import { glassArea, glassFill, glassTooltip } from '@/utils/chartGlass'
 
 const props = withDefaults(
   defineProps<{ data: FactoryOverview; metric: Metric; scene?: FactoryScene; motion?: boolean }>(),
   { scene: 'overview', motion: true },
 )
 const emit = defineEmits<{ team: [team: FactoryTeam] }>()
-const chartsRoot = ref<HTMLElement>()
 const unit = computed(() => (props.metric === 'weight' ? 'kg' : '件'))
-const colors = computed(() => ['#58986f', '#79a9ce', '#c6a15c', '#a6afb6'])
-const palette = useChartPalette()
-const ink = computed(() => palette.value?.muted || '#64726a')
-const fontSize = computed(() => 12)
-
+const colors = computed(() => [
+  dashboardColors.primary,
+  dashboardColors.secondary,
+  dashboardColors.warning,
+  dashboardColors.danger,
+])
+const { palette, plot: basePlot } = useDashboardChart()
 const natureColors = [
-  '#58986f',
-  '#79a9ce',
-  '#c6a15c',
-  '#9c91b5',
-  '#86b2a4',
-  '#bd8979',
-  '#899baf',
-  '#aea68d',
-  '#86a5ad',
+  dashboardColors.primary,
+  dashboardColors.secondary,
+  dashboardColors.success,
+  dashboardColors.warning,
+  '#c18ace',
+  dashboardColors.danger,
+  dashboardColors.neutral,
+  '#9b976f',
+  '#56a8b9',
 ]
 const natureOrder = (key: string) => {
   const index = materialTypeOptions.findIndex((option) => option.value === key)
@@ -43,108 +48,28 @@ const materialTypes = computed(() =>
   props.data.material_types
     .filter((row) => row.quantity !== 0 || row.weight !== 0)
     .sort((a, b) => natureOrder(a.key) - natureOrder(b.key))
-    .map((row, index) => ({
+    .map((row) => ({
       ...row,
       name: row.key === 'unknown' ? '未填写性质' : materialTypeLabel(row.key),
-      color: natureColors[index % natureColors.length],
+      color: natureColors[natureOrder(row.key) % natureColors.length]!,
     })),
 )
-function natureTooltipPosition(
-  _point: number[],
-  _params: unknown,
-  _dom: unknown,
-  _rect: unknown,
-  size: { contentSize: number[]; viewSize: number[] },
-) {
-  const bounds = chartsRoot.value
-    ?.querySelector('.factory-chart--types .ledger-chart')
-    ?.getBoundingClientRect()
-  const width = size.contentSize[0]!,
-    height = size.contentSize[1]!
-  const left = (size.viewSize[0]! - width) / 2
-  // The narrow ring cannot contain its tooltip; place it above, within the viewport.
-  return bounds
-    ? [
-        Math.max(
-          8 - bounds.left,
-          Math.min(left, document.documentElement.clientWidth - bounds.left - width - 8),
-        ),
-        Math.max(8 - bounds.top, -height - 10),
-      ]
-    : [left, -height - 10]
-}
-const common = computed(() => ({
-  color: colors.value,
-  textStyle: {
-    fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif',
-    fontSize: fontSize.value,
-    color: ink.value,
-  },
-  tooltip: {
-    ...glassTooltip,
-    backgroundColor: palette.value?.surface,
-    borderColor: palette.value?.border,
-    textStyle: { color: palette.value?.text },
-    trigger: 'axis',
-    renderMode: 'html',
-    confine: true,
-    axisPointer: { lineStyle: { color: '#75978670', type: 'dashed' } },
-    valueFormatter: (value: number) => `${format(value)} ${unit.value}`,
-  },
-  legend: {
-    top: 0,
-    right: 0,
-    itemWidth: 9,
-    itemHeight: 9,
-    padding: [4, 8],
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-    borderWidth: 1,
-    borderRadius: 8,
-    textStyle: { fontSize: fontSize.value, color: ink.value },
-  },
-}))
 function plot(
   labels: string[],
   series: object[],
   horizontal = false,
   legend = true,
 ): EChartsCoreOption {
-  const category = {
-    type: 'category',
-    data: labels,
-    inverse: horizontal,
-    axisTick: { show: false },
-    axisLine: { show: false },
-    axisLabel: {
-      fontSize: fontSize.value,
-      color: ink.value,
-      hideOverlap: true,
-      ...(horizontal ? { width: 130, overflow: 'truncate' } : {}),
-    },
-  }
-  const numeric = {
-    type: 'value',
-    splitNumber: 3,
-    axisLabel: { fontSize: fontSize.value, color: ink.value },
-    splitLine: { lineStyle: { color: palette.value?.border || '#e4e4e7', type: 'dashed' } },
-  }
-  return {
-    ...common.value,
-    legend: { ...common.value.legend, show: legend },
-    grid: {
-      left: 8,
-      right: 10,
-      top: legend ? 34 : 12,
-      bottom: 8,
-      outerBoundsMode: 'same',
-      outerBoundsContain: 'axisLabel',
-    },
-    xAxis: horizontal ? numeric : category,
-    yAxis: horizontal ? category : numeric,
-    series,
-  }
+  return basePlot(labels, series, unit.value, horizontal, false, legend)
 }
+const distribution = computed(() =>
+  materialTypes.value.map((row) => ({
+    key: row.key,
+    label: row.name,
+    value: row[props.metric],
+    color: row.color,
+  })),
+)
 const cards = computed(() => {
   const d = props.data,
     metric = props.metric
@@ -155,31 +80,10 @@ const cards = computed(() => {
     stack?: string,
     color = colors.value[0]!,
   ) => ({
-    id: name,
-    name,
-    data,
-    type: 'bar',
+    ...dashboardBar(name, data, color),
     stack,
-    barMaxWidth: 22,
-    itemStyle: {
-      color: glassFill(color, !stack),
-      borderRadius: 4,
-      borderColor: '#ffffff8c',
-      borderWidth: 1,
-    },
-    emphasis: { focus: 'none', itemStyle: { shadowBlur: 8, shadowColor: `${color}33` } },
   })
-  const line = (name: string, data: number[], color: string) => ({
-    id: name,
-    name,
-    data,
-    type: 'line',
-    showSymbol: false,
-    smooth: false,
-    itemStyle: { color },
-    lineStyle: { color, width: 2.5, shadowBlur: 4, shadowColor: `${color}26`, shadowOffsetY: 2 },
-    areaStyle: { color: glassArea(color) },
-  })
+  const line = dashboardLine
   const rank = (key: 'material' | 'serial', title: string) => {
     const rows = d[`${key}_ranking`]?.[metric] || []
     const option = plot(
@@ -195,10 +99,8 @@ const cards = computed(() => {
           backgroundStyle: { color: palette.value?.mutedSurface || '#205c4808', borderRadius: 4 },
           itemStyle: {
             borderRadius: 4,
-            borderColor: '#ffffff8c',
-            borderWidth: 1,
             color: ({ dataIndex }: { dataIndex: number }) =>
-              glassFill(dataIndex === 0 ? '#4f8f68' : '#7fa58f', true),
+              dataIndex === 0 ? dashboardColors.primary : '#a2b5f5',
           },
           label: {
             show: true,
@@ -219,7 +121,8 @@ const cards = computed(() => {
       right: 84,
       top: 4,
       bottom: 4,
-      containLabel: true,
+      outerBoundsMode: 'same',
+      outerBoundsContain: 'axisLabel',
     }
     option.xAxis = { type: 'value', show: false }
     return { key: `${key}s`, title, hint: '全厂未转出库存 · 前8项', empty: !rows.length, option }
@@ -276,41 +179,7 @@ const cards = computed(() => {
       title: '物料类型分布',
       hint: '未转出库存构成',
       empty: !materialTypes.value.some((row) => row[metric] > 0),
-      option: {
-        ...common.value,
-        tooltip: {
-          ...common.value.tooltip,
-          trigger: 'item',
-          renderMode: 'html',
-          appendTo: 'body',
-          confine: false,
-          position: natureTooltipPosition,
-          className: 'factory-nature-tooltip',
-          textStyle: { fontSize: 12 },
-          padding: [8, 10],
-        },
-        legend: { show: false },
-        series: [
-          {
-            type: 'pie',
-            radius: ['55%', '86%'],
-            center: ['50%', '50%'],
-            label: { show: false },
-            itemStyle: {
-              borderColor: palette.value?.surface || '#ffffffd9',
-              borderWidth: 2,
-              borderRadius: 3,
-            },
-            data: materialTypes.value
-              .filter((row) => row[metric] >= 0)
-              .map((row) => ({
-                name: row.name,
-                value: row[metric],
-                itemStyle: { color: glassFill(row.color) },
-              })),
-          },
-        ],
-      },
+      option: {},
     },
     {
       key: 'waiting',
@@ -398,7 +267,7 @@ function pick(key: string, index: number) {
 }
 </script>
 <template>
-  <section ref="chartsRoot" class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
+  <section class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
     <DashboardCard
       v-for="card in cards"
       :key="card.key"
@@ -410,45 +279,24 @@ function pick(key: string, index: number) {
       <template #actions
         ><span class="chart-unit">{{ unit }}</span></template
       >
-      <div
-        class="factory-chart-content"
-        :class="{ 'nature-content': card.key === 'types' && materialTypes.length }"
-      >
+      <DashboardDistribution
+        v-if="card.key === 'types'"
+        :rows="distribution"
+        :unit="unit"
+        label="物料类型库存明细"
+        :motion="motion"
+      />
+      <div v-else class="factory-chart-content">
         <LedgerChart
           :option="card.option"
           :empty="card.empty"
           :label="`${card.title}，单位${unit}`"
           smooth-update
           :motion="motion"
+          :enter-duration="800"
+          :update-duration="400"
           @select="pick(card.key, $event.dataIndex)"
         />
-        <div
-          v-if="card.key === 'types' && materialTypes.length"
-          class="nature-table-scroll"
-          tabindex="0"
-          role="region"
-          aria-label="物料类型库存明细"
-        >
-          <AppDetailTable class="nature-table">
-            <thead>
-              <tr>
-                <th scope="col">性质</th>
-                <th scope="col">{{ metric === 'weight' ? '重量 (kg)' : '件数' }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in materialTypes" :key="row.key">
-                <th scope="row">
-                  <i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}
-                </th>
-                <td :class="{ 'nature-shortage': metric === 'weight' && row.weight < 0 }">
-                  {{ format(row[metric])
-                  }}<small v-if="metric === 'weight' && row.weight < 0"> 重量差异</small>
-                </td>
-              </tr>
-            </tbody>
-          </AppDetailTable>
-        </div>
       </div>
     </DashboardCard>
   </section>
@@ -463,7 +311,7 @@ function pick(key: string, index: number) {
 .factory-chart-content {
   display: flex;
   min-width: 0;
-  height: 250px;
+  height: 260px;
   gap: 16px;
 }
 .factory-chart-content > .ledger-chart-frame {
@@ -473,33 +321,6 @@ function pick(key: string, index: number) {
 .chart-unit {
   font-size: 12px;
   color: var(--wm-muted);
-}
-.nature-content > .ledger-chart-frame {
-  flex: 0 0 42%;
-}
-.nature-table-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
-}
-.nature-table :deep(th),
-.nature-table :deep(td) {
-  padding: 9px 8px;
-  text-align: right;
-  font-size: 12px;
-}
-.nature-table :deep(th:first-child) {
-  text-align: left;
-}
-.nature-table i {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 6px;
-}
-.nature-shortage {
-  color: var(--wm-danger-text);
 }
 @media (max-width: 1000px) {
   .factory-charts {

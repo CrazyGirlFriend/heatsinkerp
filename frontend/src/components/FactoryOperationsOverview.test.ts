@@ -5,6 +5,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import FactoryOperationsOverview from './FactoryOperationsOverview.vue'
 import LedgerChart from './LedgerChart.vue'
+import TeamProductionChart from './TeamProductionChart.vue'
+import AppSelect from './AppSelect.vue'
 import DashboardMetric from './DashboardMetric.vue'
 import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
@@ -42,7 +44,20 @@ beforeEach(() => {
         completed_quantity: 920,
         rework_quantity: 25,
       },
-      teams: [],
+      teams: [
+        {
+          ...performanceFixture().production.totals,
+          team_id: 2,
+          team_name: '轧制',
+          completed_quantity: 610,
+        },
+        {
+          ...performanceFixture().production.totals,
+          team_id: 3,
+          team_name: '研磨',
+          completed_quantity: 310,
+        },
+      ],
       trend: [
         {
           ...performanceFixture().production.totals,
@@ -87,7 +102,7 @@ async function click(label: string) {
     .trigger('click')
   await flushPromises()
 }
-it('uses all-current overdue counts and global piece-operations instead of one task’s production', async () => {
+it('shows each team’s production independently and filters or opens the selected team', async () => {
   const router = await render()
   expect(
     wrapper
@@ -96,12 +111,35 @@ it('uses all-current overdue counts and global piece-operations instead of one t
       .slice(2),
   ).toEqual([130, 80])
   await click('加工')
-  expect(wrapper.get('.operations-trend-summary').text()).toContain('正常加工 920 件次')
-  expect(wrapper.get('.operations-trend-summary').text()).not.toContain('110')
+  const chart = wrapper.getComponent(TeamProductionChart)
+  expect(chart.props('rows').map((row) => [row.team_name, row.completed_quantity])).toEqual([
+    ['轧制', 610],
+    ['研磨', 310],
+  ])
+  expect(wrapper.find('.operations-trend-summary').exists()).toBe(false)
+  wrapper.getComponent(AppSelect).vm.$emit('update:modelValue', 3)
+  await flushPromises()
+  expect(chart.props('rows').map((row) => row.team_name)).toEqual(['研磨'])
+  await wrapper.setProps({ metric: 'weight' })
+  expect(chart.props('metric')).toBe('weight')
+  chart.vm.$emit('select', 3)
+  await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/team-workspaces/3')
+  expect(router.currentRoute.value.query).toMatchObject({
+    tab: 'processing',
+    date_from: expect.any(String),
+    date_to: expect.any(String),
+  })
+  wrapper.getComponent(AppSelect).vm.$emit('update:modelValue', undefined)
+  await flushPromises()
+  expect(chart.props('rows')).toHaveLength(2)
   expect(factoryPerformanceApi.get).toHaveBeenCalledWith(
     expect.objectContaining({ include_activity: true }),
   )
-  wrapper.findAllComponents(LedgerChart)[0]!.vm.$emit('select', { dataIndex: 1, seriesIndex: 1 })
+  wrapper
+    .findAllComponents(LedgerChart)
+    .find((chart) => chart.props('label') === '各班组当前库存与待签收量')!
+    .vm.$emit('select', { dataIndex: 1, seriesIndex: 1 })
   await flushPromises()
   expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
   await click('查看长期滞留物料')

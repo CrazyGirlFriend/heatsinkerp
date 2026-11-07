@@ -62,9 +62,10 @@ function selection(label: string) {
 }
 
 describe('factory production and quality reporting', () => {
-  it('opens on all-team totals and exports every team instead of the most recent task', async () => {
+  it('opens with team comparison, selects a team’s own metrics and trend, and returns without combined totals', async () => {
     const data = performanceFixture()
     data.activity!.totals.completed_quantity = 720
+    data.teams.push({ id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', active: true })
     data.activity!.teams.push({
       ...data.activity!.teams[0]!,
       team_id: 3,
@@ -76,10 +77,44 @@ describe('factory production and quality reporting', () => {
     expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
       expect.objectContaining({ include_activity: true }),
     )
-    expect(wrapper.findAllComponents(AnimatedMetric)[0]!.props('value')).toBe(720)
+    expect(wrapper.findAllComponents(AnimatedMetric)).toHaveLength(0)
+    expect(
+      wrapper.findAllComponents(ElOption).map((option) => option.props('label')),
+    ).not.toContain('库房')
     expect(wrapper.getComponent(FactoryPerformanceCharts).props('aggregate')).toBe(true)
+    expect(wrapper.getComponent(FactoryPerformanceCharts).props('teamName')).toBeUndefined()
+    expect(wrapper.getComponent(TableExportButton).props('variants')!()).toEqual([])
     const rows = await loadExport(wrapper.getComponent(TableExportButton).props('source')())
     expect(rows.map((row) => row.name)).toEqual(['轧制', '研磨'])
+    const grind = data.activity!.teams[1]!
+    vi.mocked(factoryPerformanceApi.get).mockResolvedValueOnce({
+      ...data,
+      activity: { totals: grind, teams: [grind], trend: [{ ...grind, date: '2026-10-19' }] },
+    })
+    wrapper.getComponent(FactoryPerformanceCharts).vm.$emit('team', 3)
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ team_id: 3 }),
+    )
+    expect(wrapper.findAllComponents(AnimatedMetric)[0]!.props('value')).toBe(610)
+    expect(wrapper.getComponent(FactoryPerformanceCharts).props('teamName')).toBe('研磨')
+    expect(wrapper.getComponent(TableExportButton).props('variants')!()[0]?.title).toBe(
+      '研磨加工趋势',
+    )
+    expect(
+      (await loadExport(wrapper.getComponent(TableExportButton).props('source')())).map(
+        (row) => row.name,
+      ),
+    ).toEqual(['研磨'])
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '返回班组对比')!
+      .trigger('click')
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ team_id: undefined }),
+    )
+    expect(wrapper.findAllComponents(AnimatedMetric)).toHaveLength(0)
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '加工记录')!

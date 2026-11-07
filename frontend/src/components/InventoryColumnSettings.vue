@@ -16,6 +16,7 @@ const props = defineProps<{
   columns?: readonly { key: K; label: string; defaultVisible?: boolean }[]
   legacyKeys?: Record<string, readonly K[]>
   newVisibleKeys?: readonly K[]
+  previousDefaults?: readonly InventoryColumnChoice<K>[]
   description?: string
   choicesLabel?: string
   showTrigger?: boolean
@@ -82,7 +83,17 @@ watch(
     saved.value = defaults()
     if (key) {
       try {
-        saved.value = normalize(JSON.parse(localStorage.getItem(key) || 'null'))
+        const restored = normalize(JSON.parse(localStorage.getItem(key) || 'null'))
+        const previous = props.previousDefaults?.filter((column) =>
+          options.value.some((option) => option.key === column.key),
+        )
+        const unchangedPreset =
+          previous?.length === restored.length &&
+          previous.every(
+            (column, index) =>
+              column.key === restored[index]?.key && column.visible === restored[index]?.visible,
+          )
+        saved.value = unchangedPreset ? defaults() : restored
       } catch {
         /* Use defaults if storage is unavailable or invalid. */
       }

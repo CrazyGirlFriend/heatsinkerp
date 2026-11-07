@@ -74,6 +74,24 @@ official Watermelon Vue package. Warehouse filtering and saves use the existing 
   https://ui.watermelon.sh/block/notification-1
   https://registry.watermelon.sh/r/notification-1.json
 
+## Factory dashboard references
+
+Factory analysis adapts the following dashboard compositions to Vue and the existing ECharts
+renderer. These are visual adaptations, not installed React dashboards; all series use the
+local reporting APIs, and upstream sample data is not included.
+
+- Capitalio: metric sparklines, segmented allocation rail with striped fills, value/share
+  legends. Shared `DashboardMetric` and `DashboardDistribution` retain local units, signed
+  corrections, and business drill-down actions.
+  https://ui.watermelon.sh/dashboard/capitalio-dashboard
+- Medesk: grouped bars, rounded ends, sparse dashed grid and compact legends for production
+  comparisons. Quality percentages keep their material/inspection basis rather than being averaged.
+  https://ui.watermelon.sh/dashboard/medesk-dashboard
+- Library: paired time series with light area fills and a clean delivery donut. Shared
+  `useDashboardChart` supplies light/dark tooltips and chart primitives; `LedgerChart` provides
+  800ms entrance / 400ms data updates with reduced-motion support.
+  https://ui.watermelon.sh/dashboard/library-dashboard
+
 ## Upstream license
 
 MIT License

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatAmount as number } from '@/utils/format'
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElOption } from 'element-plus'
 import ElAlert from '@/components/AppAlert.vue'
@@ -37,13 +37,58 @@ const view = computed(() =>
         ? 'production'
         : 'overview',
 )
+const sections = [
+  { key: 'overview', label: '运行概览' },
+  { key: 'production', label: '生产完成' },
+  { key: 'quality', label: '检验与质量' },
+  { key: 'inventory', label: '库存与交接' },
+] as const
+type SectionKey = (typeof sections)[number]['key']
+const page = ref<HTMLElement>(),
+  heading = ref<HTMLElement>(),
+  activeSection = ref<SectionKey>(view.value)
+let anchoredSection: SectionKey | undefined = view.value === 'overview' ? undefined : view.value
+let sectionObserver: ResizeObserver | undefined
+function releaseAnchor() {
+  anchoredSection = undefined
+}
+function sectionElement(key: SectionKey) {
+  return page.value?.querySelector<HTMLElement>(`#factory-${key}`)
+}
+function scrollToSection(key: SectionKey, animate = true) {
+  const root = page.value,
+    section = sectionElement(key)
+  if (!root || !section) return
+  activeSection.value = key
+  root.scrollTo?.({
+    top:
+      root.scrollTop +
+      section.getBoundingClientRect().top -
+      root.getBoundingClientRect().top -
+      (heading.value?.offsetHeight || 0) -
+      32,
+    behavior: animate && motion.value ? 'smooth' : 'auto',
+  })
+}
+function navigateSection(key: SectionKey) {
+  anchoredSection = key
+  if (view.value === key) scrollToSection(key)
+  else preference({ view: key })
+}
+function syncSection() {
+  if (!page.value || !heading.value) return
+  const line = heading.value.getBoundingClientRect().bottom + 40
+  activeSection.value = sections.reduce<SectionKey>(
+    (current, section) =>
+      (sectionElement(section.key)?.getBoundingClientRect().top ?? Infinity) <= line
+        ? section.key
+        : current,
+    'overview',
+  )
+}
 const days = computed(() => {
   const value = typeof route.query.days === 'string' ? Number(route.query.days) : NaN
-  return Number.isInteger(value) && value >= 1 && value <= 365
-    ? value
-    : view.value === 'overview'
-      ? 7
-      : 30
+  return Number.isInteger(value) && value >= 1 && value <= 365 ? value : 7
 })
 const periodSelect = ref<{ blur: () => void }>()
 const customDays = ref<number | undefined>(days.value)
@@ -109,12 +154,15 @@ const metrics = computed(() => {
       key: 'inbound',
       label: `近${d.days}天入库`,
       value: d.period_totals.inbound[metric.value],
+      trend: d.trend.map((row) => row.inbound[metric.value]),
       hint: '库房已登记入库。',
     },
     {
       key: 'outbound',
       label: `近${d.days}天对外出库`,
       value: d.period_totals.outbound[metric.value] + d.period_totals.shipment[metric.value],
+      trend: d.trend.map((row) => row.outbound[metric.value] + row.shipment[metric.value]),
+      trendColor: '#9a83df',
       hint: `含库房对外出库和检验发货；检验发货 ${number(d.period_totals.shipment[metric.value])} ${unit.value}。`,
     },
   ]
@@ -208,143 +256,174 @@ function openBatch(row: FactoryRecentBatch) {
   void router.push(`/transfer-batches?batch_no=${encodeURIComponent(row.batch_no)}`)
 }
 watch(
-  [days, view],
-  ([nextDays], previous) => {
-    if (nextDays !== previous?.[0]) {
-      report.value = null
-      error.value = ''
-    }
-    if (view.value === 'inventory') void load()
-    else {
-      ++version
-      loading.value = false
-    }
+  days,
+  () => {
+    report.value = null
+    error.value = ''
+    void load()
   },
   { immediate: true },
 )
+watch(view, async (value) => {
+  anchoredSection = value
+  await nextTick()
+  scrollToSection(value)
+})
 watch(days, (value) => {
   customDays.value = value
 })
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('visibilitychange', syncVisibility)
   media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
   syncMotion()
   media?.addEventListener('change', syncMotion)
   timer = setInterval(() => {
-    if (view.value === 'inventory' && autoRefresh.value && !document.hidden && !loading.value)
-      void load()
+    if (autoRefresh.value && !document.hidden && !loading.value) void load()
   }, 60000)
+  await nextTick()
+  scrollToSection(view.value, false)
+  if (typeof ResizeObserver !== 'undefined') {
+    sectionObserver = new ResizeObserver(() => {
+      // Earlier sections grow as their reports arrive; retain the requested destination
+      // until the user starts browsing or interacting with the page.
+      if (anchoredSection) scrollToSection(anchoredSection, false)
+    })
+    page.value?.querySelectorAll('.factory-section').forEach((el) => sectionObserver!.observe(el))
+    if (heading.value) sectionObserver.observe(heading.value)
+  }
 })
 onBeforeUnmount(() => {
   ++version
+  sectionObserver?.disconnect()
   if (timer) clearInterval(timer)
   media?.removeEventListener('change', syncMotion)
   document.removeEventListener('visibilitychange', syncVisibility)
 })
 </script>
 <template>
-  <section class="page factory-overview">
-    <header class="factory-heading">
+  <section
+    ref="page"
+    class="page factory-overview"
+    @scroll.passive="syncSection"
+    @wheel.passive="releaseAnchor"
+    @touchstart.passive="releaseAnchor"
+    @pointerdown="releaseAnchor"
+    @keydown="releaseAnchor"
+  >
+    <header ref="heading" class="factory-heading">
       <div class="factory-heading-start page-heading-start">
         <PageBackButton />
         <div class="factory-heading-title">
           <h1>全厂数据分析</h1>
         </div>
       </div>
-      <WatermelonSegmented
-        label="统计视图"
-        :model-value="view"
-        :options="[
-          { value: 'overview', label: '运行概览' },
-          { value: 'production', label: '生产完成' },
-          { value: 'quality', label: '检验与质量' },
-          { value: 'inventory', label: '库存与交接' },
-        ]"
-        @update:model-value="preference({ view: $event })"
-      />
-    </header>
-    <DashboardToolbar
-      v-if="view === 'inventory'"
-      class="factory-controls"
-      :loading="loading"
-      :updated-at="report?.as_of"
-    >
-      <WatermelonSegmented
-        label="全厂统计单位"
-        :model-value="metric"
-        :options="[
-          { value: 'weight', label: '重量' },
-          { value: 'quantity', label: '件数' },
-        ]"
-        @update:model-value="preference({ metric: $event })"
-      />
-      <ElSelect
-        ref="periodSelect"
-        :model-value="days"
-        :teleported="false"
-        :fit-input-width="false"
-        size="small"
-        aria-label="全厂统计周期"
-        @update:model-value="preference({ days: String($event) })"
-        @visible-change="customDays = days"
-      >
-        <ElOption
-          v-for="value in periodOptions"
-          :key="value"
-          :value="value"
-          :label="`近${value}天`"
-        />
-        <template #footer
-          ><form class="factory-custom-period" @submit.prevent="applyCustomDays">
-            <label for="factory-custom-days">自定义天数</label>
-            <div>
-              <ElInputNumber
-                id="factory-custom-days"
-                v-model="customDays"
-                :min="1"
-                :max="365"
-                :precision="0"
-                :controls="false"
-                size="small"
-                placeholder="1–365"
-                aria-label="自定义统计天数"
-              /><span>天</span
-              ><ElButton
-                native-type="submit"
-                type="primary"
-                size="small"
-                :disabled="!validCustomDays"
-                >确定</ElButton
-              >
-            </div>
-          </form></template
+      <nav class="factory-section-nav" aria-label="分析分区定位">
+        <ElButton
+          v-for="section in sections"
+          :key="section.key"
+          text
+          :aria-controls="`factory-${section.key}`"
+          :aria-current="activeSection === section.key ? 'location' : undefined"
+          @click="navigateSection(section.key)"
+          >{{ section.label }}</ElButton
         >
-      </ElSelect>
-      <template #actions>
-        <TableExportButton
-          :source="exportSource"
-          :disabled="loading || !report || !!error"
-          :context="[days, metric].join('|')"
+      </nav>
+    </header>
+    <section id="factory-overview" class="factory-section" aria-labelledby="factory-overview-title">
+      <h2 id="factory-overview-title"><span>01</span>运行概览</h2>
+      <FactoryOperationsOverview
+        :days="days"
+        :metric="metric"
+        :motion="motion"
+        @preference="preference"
+      />
+    </section>
+    <section
+      id="factory-production"
+      class="factory-section"
+      aria-labelledby="factory-production-title"
+    >
+      <h2 id="factory-production-title"><span>02</span>生产完成</h2>
+      <FactoryPerformancePanel scene="production" :motion="motion" />
+    </section>
+    <section id="factory-quality" class="factory-section" aria-labelledby="factory-quality-title">
+      <h2 id="factory-quality-title"><span>03</span>检验与质量</h2>
+      <FactoryPerformancePanel scene="quality" :motion="motion" />
+    </section>
+    <section
+      id="factory-inventory"
+      class="factory-section"
+      aria-labelledby="factory-inventory-title"
+    >
+      <h2 id="factory-inventory-title"><span>04</span>库存与交接</h2>
+      <DashboardToolbar class="factory-controls" :loading="loading" :updated-at="report?.as_of">
+        <WatermelonSegmented
+          label="全厂统计单位"
+          :model-value="metric"
+          :options="[
+            { value: 'weight', label: '重量' },
+            { value: 'quantity', label: '件数' },
+          ]"
+          @update:model-value="preference({ metric: $event })"
         />
-        <ElSwitch
-          v-model="autoRefresh"
+        <ElSelect
+          ref="periodSelect"
+          :model-value="days"
+          :teleported="false"
+          :fit-input-width="false"
           size="small"
-          aria-label="每60秒自动刷新"
-          active-text="自动刷新"
-        />
-        <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
-      </template>
-    </DashboardToolbar>
+          aria-label="全厂统计周期"
+          @update:model-value="preference({ days: String($event) })"
+          @visible-change="customDays = days"
+        >
+          <ElOption
+            v-for="value in periodOptions"
+            :key="value"
+            :value="value"
+            :label="`近${value}天`"
+          />
+          <template #footer
+            ><form class="factory-custom-period" @submit.prevent="applyCustomDays">
+              <label for="factory-custom-days">自定义天数</label>
+              <div>
+                <ElInputNumber
+                  id="factory-custom-days"
+                  v-model="customDays"
+                  :min="1"
+                  :max="365"
+                  :precision="0"
+                  :controls="false"
+                  size="small"
+                  placeholder="1–365"
+                  aria-label="自定义统计天数"
+                /><span>天</span
+                ><ElButton
+                  native-type="submit"
+                  type="primary"
+                  size="small"
+                  :disabled="!validCustomDays"
+                  >确定</ElButton
+                >
+              </div>
+            </form></template
+          >
+        </ElSelect>
+        <template #actions>
+          <TableExportButton
+            :source="exportSource"
+            :disabled="loading || !report || !!error"
+            :context="[days, metric].join('|')"
+          />
+          <ElSwitch
+            v-model="autoRefresh"
+            size="small"
+            aria-label="每60秒自动刷新"
+            active-text="自动刷新"
+          />
+          <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
+        </template>
+      </DashboardToolbar>
 
-    <FactoryOperationsOverview
-      v-if="view === 'overview'"
-      :days="days"
-      :metric="metric"
-      :motion="motion"
-      @preference="preference"
-    />
-    <FactoryPerformancePanel v-else-if="view !== 'inventory'" :scene="view" :motion="motion" />
-    <template v-else>
       <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
       <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
       <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
@@ -357,6 +436,8 @@ onBeforeUnmount(() => {
             class="factory-metric"
             :label="item.label"
             :value="item.value"
+            :trend="item.trend"
+            :trend-color="item.trendColor"
             :unit="unit"
             :detail="item.detail"
             :help="item.hint"
@@ -387,26 +468,33 @@ onBeforeUnmount(() => {
           >
         </section>
       </template>
-    </template>
+    </section>
   </section>
 </template>
 <style scoped>
 .factory-overview {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
   padding: 20px 24px;
   color: var(--wm-text);
   background: transparent;
   overflow-y: auto;
 }
 .factory-heading {
+  position: sticky;
+  top: -16px;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-shrink: 0;
   flex-wrap: wrap;
+  margin: -16px -16px -8px;
+  padding: 12px 16px;
+  background: var(--wm-canvas);
+  border-bottom: 1px solid var(--wm-border);
 }
 .factory-heading h1 {
   margin: 0;
@@ -416,6 +504,46 @@ onBeforeUnmount(() => {
 }
 .factory-heading-start {
   margin-right: auto;
+}
+.factory-section-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+.factory-section-nav .el-button {
+  margin: 0;
+  color: var(--wm-muted);
+}
+.factory-section-nav .el-button[aria-current='location'] {
+  color: var(--wm-text);
+  background: var(--wm-bg);
+  box-shadow: inset 0 0 0 1px var(--wm-border);
+}
+.factory-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.factory-section + .factory-section {
+  padding-top: 28px;
+  border-top: 1px solid var(--wm-border);
+}
+.factory-section > h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.factory-section > h2 > span {
+  color: var(--wm-muted);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 .factory-controls :deep(.dashboard-toolbar__filters > .el-select) {
   width: 130px;
@@ -467,6 +595,9 @@ onBeforeUnmount(() => {
   }
   .factory-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .factory-section-nav {
+    width: 100%;
   }
 }
 </style>

@@ -163,7 +163,7 @@ export const warehouseColumns = [
     key: 'process_route',
     label: '当前工艺工序',
     width: 180,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) =>
       row.process_route ? `${row.process_route.sequence_no} · ${row.process_route.step_name}` : '—',
   },
@@ -178,7 +178,7 @@ export const warehouseColumns = [
     key: 'rework',
     label: '返工属性',
     width: 130,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) =>
       row.process_route?.route_kind === 'rework'
         ? '返工中'
@@ -192,7 +192,7 @@ export const warehouseColumns = [
     key: 'processing_role',
     label: '加工分类',
     width: 110,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) =>
       row.processing_role ? processingRoleLabels[row.processing_role] : '—',
   },
@@ -207,10 +207,10 @@ export const warehouseColumns = [
     key: 'purpose_name',
     label: '加工任务',
     width: 150,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) => row.purpose_name || '—',
   },
-  { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
+  { key: 'source', label: '来源', width: 120, defaultVisible: false, format: warehouseSourceLabel },
   {
     key: 'owned_quantity',
     label: '含待确认件数',
@@ -231,14 +231,14 @@ export const warehouseColumns = [
     key: 'delivery_due_at',
     label: '要求交货时间',
     width: 180,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) => inventoryScheduleDue(row.delivery_schedule),
   },
   {
     key: 'delivery_schedule_status',
     label: '排期状态',
     width: 125,
-    defaultVisible: true,
+    defaultVisible: false,
     format: (row: TeamInventoryRow) => inventoryScheduleLabel(row.delivery_schedule),
   },
   {
@@ -253,7 +253,7 @@ export const warehouseColumns = [
     key: 'stock_status',
     label: '库存状态',
     width: 150,
-    defaultVisible: true,
+    defaultVisible: false,
     format: inventoryStockStatus,
   },
   {
@@ -325,6 +325,22 @@ export const warehouseColumns = [
     })),
 ] as const
 export type WarehouseColumnKey = (typeof warehouseColumns)[number]['key']
+// Only an untouched legacy preset is replaced; individually chosen columns retain their order.
+export const warehousePreviousDefaults = warehouseColumns.map((column) => ({
+  key: column.key,
+  visible:
+    column.defaultVisible ||
+    [
+      'process_route',
+      'rework',
+      'processing_role',
+      'purpose_name',
+      'source',
+      'delivery_due_at',
+      'delivery_schedule_status',
+      'stock_status',
+    ].includes(column.key),
+}))
 export const warehouseLegacyColumnKeys = {
   material_type: ['material_type', 'processing_role', 'transfer_specification'],
   stock_balance: ['on_hand_quantity', 'on_hand_weight'],

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
+import { ElOption } from 'element-plus'
 import {
   IconArrowRight,
   IconBox,
@@ -14,13 +15,21 @@ import {
 import type { EChartsCoreOption } from 'echarts/core'
 import AppAlert from './AppAlert.vue'
 import AppButton from './AppButton.vue'
+import AppSelect from './AppSelect.vue'
 import DashboardCard from './DashboardCard.vue'
 import DashboardToolbar from './DashboardToolbar.vue'
 import DashboardMetric from './DashboardMetric.vue'
+import DashboardDistribution from './DashboardDistribution.vue'
 import LedgerChart from './LedgerChart.vue'
+import TeamProductionChart from './TeamProductionChart.vue'
 import StatePanel from './StatePanel.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
-import { useChartPalette } from '@/composables/useChartPalette'
+import {
+  useDashboardChart,
+  dashboardBar,
+  dashboardLine,
+  dashboardColors,
+} from '@/composables/useDashboardChart'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -40,9 +49,21 @@ const loading = ref(false),
   errors = ref<string[]>([]),
   updated = ref('')
 const trendView = ref('movement')
+const productionTeamId = ref<number>()
+const productionTeams = computed(() => performance.value?.activity?.teams || [])
+const visibleProductionTeams = computed(() =>
+  productionTeamId.value
+    ? productionTeams.value.filter((team) => team.team_id === productionTeamId.value)
+    : productionTeams.value,
+)
 let generation = 0
-const palette = useChartPalette()
-const colors = ['#299d85', '#6c8fe7', '#d59a39', '#de6a70']
+const { palette, tooltip, plot } = useDashboardChart()
+const colors = [
+  dashboardColors.primary,
+  dashboardColors.secondary,
+  dashboardColors.warning,
+  dashboardColors.danger,
+]
 const unit = computed(() => (props.metric === 'weight' ? 'kg' : '件'))
 const period = computed(() => `近 ${props.days} 天`)
 const periodOptions = computed(() =>
@@ -50,8 +71,18 @@ const periodOptions = computed(() =>
     .sort((a, b) => a - b)
     .map((value) => ({ value: String(value), label: `${value} 天` })),
 )
-const maxAge = computed(() =>
-  Math.max(1, ...(stock.value?.stock_age.map((row) => row[props.metric]) || [])),
+const ageDistribution = computed(() =>
+  (stock.value?.stock_age || []).map((row, i) => ({
+    key: row.key,
+    label: row.label || row.key,
+    value: row[props.metric],
+    color: [
+      dashboardColors.primary,
+      dashboardColors.secondary,
+      dashboardColors.warning,
+      dashboardColors.danger,
+    ][i % 4]!,
+  })),
 )
 const teamRows = computed(() => stock.value?.teams.filter((team) => team.id != null) || [])
 const stockWarning = computed(() => {
@@ -120,6 +151,18 @@ function teamInventory(index: number, pending = false) {
       path: `/team-workspaces/${team.id}`,
       query: { tab: pending ? 'pending' : 'stock' },
     })
+}
+function openProduction(teamId: number) {
+  void router.push({
+    path: `/team-workspaces/${teamId}`,
+    query: {
+      tab: 'processing',
+      date_from: dayjs(factoryToday())
+        .subtract(props.days - 1, 'day')
+        .format('YYYY-MM-DD'),
+      date_to: factoryToday(),
+    },
+  })
 }
 function stockAge(key: string) {
   const ranges: Record<string, Record<string, string>> = {
@@ -200,76 +243,25 @@ const metrics = computed(() => [
     open: () => schedule(),
   },
 ])
-const common = computed(() => ({
-  textStyle: {
-    fontFamily: 'HeatSink Inter, PingFang SC, sans-serif',
-    color: palette.value?.text || '#18181b',
-  },
-  tooltip: {
-    trigger: 'axis',
-    confine: true,
-    backgroundColor: palette.value?.surface || '#fff',
-    borderColor: palette.value?.border || '#e4e4e7',
-    textStyle: { color: palette.value?.text || '#18181b', fontSize: 12 },
-  },
-  grid: {
-    top: 32,
-    right: 35,
-    bottom: 12,
-    left: 4,
-    outerBoundsMode: 'same',
-    outerBoundsContain: 'axisLabel',
-  },
-  legend: {
-    top: 0,
-    right: 0,
-    itemWidth: 8,
-    itemHeight: 8,
-    icon: 'circle',
-    textStyle: { color: palette.value?.muted || '#71717a', fontSize: 11 },
-  },
-}))
-const valueAxis = computed(() => ({
-  type: 'value',
-  splitNumber: 4,
-  axisLabel: { color: palette.value?.muted, fontSize: 10 },
-  splitLine: { lineStyle: { color: palette.value?.border, type: 'dashed' } },
-}))
-const stockOption = computed<EChartsCoreOption>(() => ({
-  ...common.value,
-  xAxis: valueAxis.value,
-  yAxis: {
-    type: 'category',
-    inverse: true,
-    data: teamRows.value.map((team) => team.name),
-    axisLine: { show: false },
-    axisTick: { show: false },
-    axisLabel: { color: palette.value?.text, fontSize: 12, margin: 14 },
-  },
-  series: [
-    {
-      name: '在库',
-      type: 'bar',
-      barMaxWidth: 10,
-      itemStyle: { color: colors[0], borderRadius: [0, 3, 3, 0] },
-      label: {
-        show: true,
-        position: 'right',
-        color: palette.value?.text,
-        fontSize: 11,
-        formatter: (p: { value: number }) => number(p.value),
-      },
-      data: teamRows.value.map((team) => team.balance?.[`on_hand_${props.metric}`] ?? 0),
-    },
-    {
-      name: '待签收',
-      type: 'bar',
-      barMaxWidth: 5,
-      itemStyle: { color: colors[2], borderRadius: [0, 3, 3, 0] },
-      data: teamRows.value.map((team) => team.pending_incoming?.[props.metric] ?? 0),
-    },
-  ],
-}))
+const stockOption = computed<EChartsCoreOption>(() =>
+  plot(
+    teamRows.value.map((team) => team.name),
+    [
+      dashboardBar(
+        '在库',
+        teamRows.value.map((team) => team.balance?.[`on_hand_${props.metric}`] ?? null),
+        colors[0]!,
+      ),
+      dashboardBar(
+        '待签收',
+        teamRows.value.map((team) => team.pending_incoming?.[props.metric] ?? 0),
+        colors[2]!,
+      ),
+    ],
+    unit.value,
+    true,
+  ),
+)
 const deliveryValues = computed(() =>
   delivery.value
     ? [
@@ -280,17 +272,17 @@ const deliveryValues = computed(() =>
     : [],
 )
 const deliveryLabels = ['按时完成', '逾期完成', '逾期未交完']
-const deliveryColors = [colors[0], colors[2], colors[3]]
+const deliveryColors = [dashboardColors.success, colors[2], colors[3]]
 const deliveryOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { ...common.value.tooltip, trigger: 'item', formatter: '{b}：{c} 个节点' },
+  tooltip: { ...tooltip.value, trigger: 'item', formatter: '{b}：{c} 个节点' },
   series: [
     {
       type: 'pie',
-      radius: ['72%', '91%'],
+      radius: ['74%', '94%'],
       center: ['50%', '50%'],
       label: { show: false },
       emphasis: { scaleSize: 4 },
-      itemStyle: { borderRadius: 4, borderWidth: 3, borderColor: palette.value?.surface || '#fff' },
+      itemStyle: { borderRadius: 4, borderWidth: 2, borderColor: palette.value?.surface || '#fff' },
       data: deliveryValues.value.map((value, i) => ({
         value,
         name: deliveryLabels[i],
@@ -300,63 +292,17 @@ const deliveryOption = computed<EChartsCoreOption>(() => ({
   ],
 }))
 const trendOption = computed<EChartsCoreOption>(() => {
-  const movement = trendView.value === 'movement'
-  const labels = movement
-    ? stock.value?.trend.map((row) => row.key.slice(5)) || []
-    : performance.value?.activity?.trend.map((row) => row.date.slice(5)) || []
-  const values = movement
-    ? [
-        stock.value?.trend.map((row) => row.inbound[props.metric]) || [],
-        stock.value?.trend.map((row) => row.outbound[props.metric] + row.shipment[props.metric]) ||
-          [],
-      ]
-    : [
-        performance.value?.activity?.trend.map((row) => row.completed_quantity) || [],
-        performance.value?.activity?.trend.map((row) => row.rework_quantity) || [],
-      ]
-  return {
-    ...common.value,
-    grid: { ...common.value.grid, right: 12 },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: labels,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: palette.value?.muted, fontSize: 10, hideOverlap: true },
-    },
-    yAxis: valueAxis.value,
-    series: values.map((data, i) => ({
-      name: (movement ? ['入库', '对外出库'] : ['正常加工', '返工'])[i],
-      type: 'line',
-      smooth: 0.2,
-      symbol: 'circle',
-      symbolSize: 6,
-      showSymbol: labels.length <= 7,
-      lineStyle: { width: 2.5 },
-      itemStyle: { color: colors[i] },
-      areaStyle: i
-        ? undefined
-        : {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: '#299d8526' },
-                { offset: 1, color: '#299d8500' },
-              ],
-            },
-          },
-      data,
-    })),
-  }
+  const labels = stock.value?.trend.map((row) => row.key.slice(5)) || []
+  const values = [
+    stock.value?.trend.map((row) => row.inbound[props.metric]) || [],
+    stock.value?.trend.map((row) => row.outbound[props.metric] + row.shipment[props.metric]) || [],
+  ]
+  return plot(
+    labels,
+    values.map((data, i) => dashboardLine(['入库', '对外出库'][i]!, data, colors[i]!, i === 0)),
+    unit.value,
+  )
 })
-const trendAvailable = computed(() =>
-  trendView.value === 'movement' ? !!stock.value : !!performance.value?.activity,
-)
 const qcTeam = computed(() => performance.value?.teams.find((team) => team.code === 'FACTORY-QC'))
 function quality() {
   if (qcTeam.value)
@@ -410,28 +356,78 @@ function quality() {
     </div>
     <div class="operations-main">
       <DashboardCard
-        title="物料在哪些班组"
-        :subtitle="`当前库存 · ${unit}`"
-        help="显示各班组未转出的物料与待签收量。点击柱条进入对应班组；停用班组的已有库存仍保留。"
+        :title="trendView === 'movement' ? '物料收发趋势' : '各班组加工完成量'"
+        :subtitle="`${period} · ${trendView === 'production' && metric === 'quantity' ? '件次' : unit}`"
+        :help="
+          trendView === 'movement'
+            ? '入库仅统计库房登记，对外出库包含库房对外出库与检验发货；内部交接不计为新增产量。'
+            : '各班组分别统计实际加工登记，正常加工与返工分开。点击柱条查看该班组加工记录。'
+        "
       >
-        <template #actions
-          ><AppButton link @click="inventory()">库存明细<IconArrowRight :size="15" /></AppButton
-        ></template>
-        <div class="operations-stock-chart">
-          <LedgerChart
-            v-if="stock"
-            :option="stockOption"
+        <template #actions>
+          <AppSelect
+            v-if="trendView === 'production'"
+            v-model="productionTeamId"
+            class="operations-team-select"
+            aria-label="概览加工班组"
+            placeholder="全部班组"
+            clearable
+          >
+            <ElOption
+              v-for="team in productionTeams"
+              :key="team.team_id"
+              :label="team.team_name"
+              :value="team.team_id"
+            />
+          </AppSelect>
+          <WatermelonSegmented
+            v-model="trendView"
+            label="趋势内容"
+            :options="[
+              { value: 'movement', label: '收发' },
+              { value: 'production', label: '加工' },
+            ]"
+        /></template>
+        <div
+          class="operations-trend"
+          :class="{ 'operations-trend--teams': trendView === 'production' }"
+        >
+          <TeamProductionChart
+            v-if="trendView === 'production' && performance?.activity"
+            :rows="visibleProductionTeams"
+            :metric="metric"
             :motion="motion"
-            label="各班组当前库存与待签收量"
-            :empty="!teamRows.length"
-            @select="teamInventory($event.dataIndex, $event.seriesIndex === 1)"
+            @select="openProduction"
+          />
+          <LedgerChart
+            v-else-if="trendView === 'movement' && stock"
+            :option="trendOption"
+            smooth-update
+            :enter-duration="800"
+            :update-duration="400"
+            :motion="motion"
+            label="每日入库与对外出库"
           /><StatePanel
             v-else
             :state="loading ? 'loading' : 'error'"
-            title="库存数据未读取"
+            title="趋势数据未读取"
             @retry="load()"
           />
         </div>
+        <template v-if="trendView === 'movement' && stock" #footer
+          ><div class="operations-trend-summary">
+            <span
+              >入库 <strong>{{ number(stock.period_totals.inbound[metric]) }}</strong>
+              {{ unit }}</span
+            ><span
+              >对外出库
+              <strong>{{
+                number(stock.period_totals.outbound[metric] + stock.period_totals.shipment[metric])
+              }}</strong>
+              {{ unit }}</span
+            >
+          </div>
+        </template>
       </DashboardCard>
       <DashboardCard
         title="交期与待办"
@@ -444,7 +440,14 @@ function quality() {
         <template v-if="delivery">
           <div class="operations-delivery">
             <div class="operations-donut">
-              <LedgerChart :option="deliveryOption" label="交期履约构成" :motion="motion" />
+              <LedgerChart
+                :option="deliveryOption"
+                smooth-update
+                :enter-duration="800"
+                :update-duration="400"
+                label="交期履约构成"
+                :motion="motion"
+              />
               <div>
                 <strong>{{ number(delivery.assessed_count) }}</strong
                 ><span>已考核节点</span>
@@ -486,60 +489,31 @@ function quality() {
     </div>
     <div class="operations-lower">
       <DashboardCard
-        :title="trendView === 'movement' ? '物料收发趋势' : '加工登记趋势'"
-        :subtitle="`${period} · ${trendView === 'movement' ? unit : '件次'}`"
-        :help="
-          trendView === 'movement'
-            ? '入库仅统计库房登记，对外出库包含库房对外出库与检验发货；内部交接不计为新增产量。'
-            : '正常加工与返工分别累计实际登记的完成件次。同一件物料在不同班组加工会分别计次，不代表全厂成品产量。'
-        "
+        title="物料在哪些班组"
+        :subtitle="`当前库存 · ${unit}`"
+        help="显示各班组未转出的物料与待签收量。点击柱条进入对应班组；停用班组的已有库存仍保留。"
       >
         <template #actions
-          ><WatermelonSegmented
-            v-model="trendView"
-            label="趋势内容"
-            :options="[
-              { value: 'movement', label: '收发' },
-              { value: 'production', label: '加工' },
-            ]"
-        /></template>
-        <div class="operations-trend">
+          ><AppButton link @click="inventory()">库存明细<IconArrowRight :size="15" /></AppButton
+        ></template>
+        <div class="operations-stock-chart">
           <LedgerChart
-            v-if="trendAvailable"
-            :option="trendOption"
+            v-if="stock"
+            :option="stockOption"
+            smooth-update
+            :enter-duration="800"
+            :update-duration="400"
             :motion="motion"
-            :label="trendView === 'movement' ? '每日入库与对外出库' : '每日正常加工与返工件次'"
+            label="各班组当前库存与待签收量"
+            :empty="!teamRows.length"
+            @select="teamInventory($event.dataIndex, $event.seriesIndex === 1)"
           /><StatePanel
             v-else
             :state="loading ? 'loading' : 'error'"
-            title="趋势数据未读取"
+            title="库存数据未读取"
             @retry="load()"
           />
         </div>
-        <template #footer
-          ><div class="operations-trend-summary" v-if="trendView === 'movement' && stock">
-            <span
-              >入库 <strong>{{ number(stock.period_totals.inbound[metric]) }}</strong>
-              {{ unit }}</span
-            ><span
-              >对外出库
-              <strong>{{
-                number(stock.period_totals.outbound[metric] + stock.period_totals.shipment[metric])
-              }}</strong>
-              {{ unit }}</span
-            >
-          </div>
-          <div class="operations-trend-summary" v-else-if="performance?.activity">
-            <span
-              >正常加工
-              <strong>{{ number(performance.activity.totals.completed_quantity) }}</strong>
-              件次</span
-            ><span
-              >返工
-              <strong>{{ number(performance.activity.totals.rework_quantity) }}</strong> 件次</span
-            >
-          </div></template
-        >
       </DashboardCard>
       <DashboardCard
         title="库存滞留"
@@ -547,26 +521,15 @@ function quality() {
         help="从本班组接收物料的时刻起算，加工、拆批和同班组转投不重新计时。"
       >
         <template #actions><IconClock :size="18" class="operations-muted" /></template>
-        <div v-if="stock" class="operations-age">
-          <button
-            v-for="(row, i) in stock.stock_age"
-            :key="row.key"
-            type="button"
-            @click="stockAge(row.key)"
-          >
-            <span>{{ row.label }}</span
-            ><strong>{{ number(row[metric]) }}</strong>
-            <div>
-              <i
-                :style="{
-                  width: `${(Math.max(0, row[metric]) / maxAge) * 100}%`,
-                  background: i === stock.stock_age.length - 1 ? colors[2] : colors[0],
-                }"
-              />
-            </div>
-          </button>
-          <p v-if="!stock.stock_age.length" class="operations-empty">暂无在库物料</p>
-        </div>
+        <DashboardDistribution
+          v-if="stock"
+          :rows="ageDistribution"
+          :unit="unit"
+          label="库存滞留分布"
+          selectable
+          :motion="motion"
+          @select="stockAge"
+        />
         <StatePanel
           v-else
           :state="loading ? 'loading' : 'error'"
@@ -654,11 +617,11 @@ function quality() {
 }
 .operations-main {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: 1.4fr 1fr;
   gap: 16px;
 }
 .operations-stock-chart {
-  height: 240px;
+  height: 280px;
   display: flex;
 }
 .operations-main > :deep(.dashboard-card) {
@@ -670,9 +633,15 @@ function quality() {
   gap: 16px;
 }
 .operations-trend {
-  height: 184px;
+  height: 254px;
   display: flex;
   padding-top: 8px;
+}
+.operations-trend--teams {
+  height: auto;
+}
+.operations-team-select {
+  width: 136px;
 }
 .operations-delivery {
   display: flex;
@@ -681,8 +650,8 @@ function quality() {
   padding-bottom: 8px;
 }
 .operations-donut {
-  width: 112px;
-  height: 112px;
+  width: 128px;
+  height: 128px;
   position: relative;
   display: flex;
   flex-shrink: 0;
@@ -772,40 +741,6 @@ function quality() {
 }
 .operations-due-dot.today {
   background: var(--wm-warning-text);
-}
-.operations-age {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  padding-top: 9px;
-}
-.operations-age button {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--wm-text);
-  text-align: left;
-  font-size: 12px;
-  cursor: pointer;
-}
-.operations-age button:hover > span {
-  text-decoration: underline;
-}
-.operations-age button > div {
-  grid-column: 1 / -1;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--wm-hover);
-  overflow: hidden;
-}
-.operations-age i {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  transition: width 350ms ease;
 }
 .operations-quality-total {
   display: flex;
@@ -923,9 +858,6 @@ function quality() {
   .operations-overview--motion .dashboard-card,
   .operations-overview--motion .operations-metrics > * {
     animation: none;
-  }
-  .operations-age i {
-    transition: none;
   }
 }
 </style>

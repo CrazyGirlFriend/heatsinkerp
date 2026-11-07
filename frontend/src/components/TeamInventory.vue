@@ -44,6 +44,7 @@ import {
 import {
   warehouseColumns,
   warehouseLegacyColumnKeys,
+  warehousePreviousDefaults,
   warehouseSearchColumns,
   warehouseSearchKind,
   warehouseSerialColumn,
@@ -292,13 +293,14 @@ const columns = computed(() =>
       width:
         (
           {
-            material_name: 140,
-            material_type: props.processing ? 120 : 110,
-            purpose_name: props.processing ? 95 : 120,
-            source: props.processing ? 85 : 120,
+            material_name: 120,
+            material_type: 110,
+            transfer_specification: 155,
+            purpose_name: 120,
+            source: 120,
             on_hand_quantity: 110,
             on_hand_weight: 120,
-            stock_status: props.processing ? 135 : 110,
+            stock_status: 135,
           } as Partial<Record<WarehouseColumnKey, number>>
         )[column.key] || column.width,
       format: (row: TeamInventoryRow) =>
@@ -1137,7 +1139,7 @@ onBeforeUnmount(() => {
         <InventoryColumnSettings
           ref="columnSettings"
           :key="`${teamId}:${Boolean(processing)}`"
-          :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
+          :previous-defaults="warehousePreviousDefaults"
           :show-trigger="false"
           :storage-key="storageKey"
           :description="
@@ -1207,7 +1209,7 @@ onBeforeUnmount(() => {
         :label="column.label"
         :min-width="column.width"
         :fixed="
-          warehouse && ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
+          ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
             ? 'left'
             : undefined
         "
@@ -1366,7 +1368,10 @@ onBeforeUnmount(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="rows.some((row) => row.delivery_schedule?.count)"
+        v-if="
+          visibleColumns.some((column) => column.key === 'delivery_due_at') &&
+          rows.some((row) => row.delivery_schedule?.count)
+        "
         type="expand"
         width="1"
         class-name="inventory-schedule-toggle"
@@ -1453,7 +1458,17 @@ onBeforeUnmount(() => {
         ></ElTableColumn
       >
     </WorkspaceTable>
-    <div v-if="scheduleError && !error" class="inventory-schedule-error" role="status">
+    <div
+      v-if="
+        scheduleError &&
+        !error &&
+        visibleColumns.some((column) =>
+          ['delivery_due_at', 'delivery_schedule_status'].includes(column.key),
+        )
+      "
+      class="inventory-schedule-error"
+      role="status"
+    >
       <span>{{ scheduleError }}</span
       ><ElButton link type="primary" :loading="scheduleLoading" @click="loadSchedules()"
         >重试排期</ElButton

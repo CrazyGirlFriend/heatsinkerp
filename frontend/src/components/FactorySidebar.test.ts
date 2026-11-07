@@ -312,12 +312,14 @@ describe('three-level team navigation', () => {
         .filter((item) => !item.props('disabled'))
         .map((item) => item.props('index')),
     ).toEqual([
+      'team-8:overview',
       'team-8:inventory',
       'team-8:movement',
       'team-8:delivery',
       'team-8:quality',
       'team-8:warehouse',
       'team-8:settings',
+      'team-7:overview',
       'team-7:inventory',
       'team-7:movement',
       'team-7:delivery',

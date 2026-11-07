@@ -209,6 +209,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
         StockSourcePicker: true,
         DeliverySchedules: true,
         TeamAnalyticsCharts: true,
+        TeamDashboard: true,
         SerialMaterialDrawer: true,
         LedgerChart: true,
         MaterialDispatchDrawer: true,
@@ -229,6 +230,24 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it('opens the shared team dashboard and carries its selected state into inventory', async () => {
+    const router = await render('/team-workspaces/914?tab=dashboard')
+    expect(teamMaterialApi.overview).toHaveBeenCalledWith(914, true)
+    const dashboard = wrapper.findComponent({ name: 'TeamDashboard' })
+    expect(dashboard.props()).toMatchObject({ teamId: 914, processing: true })
+    dashboard.vm.$emit('navigate', {
+      tab: 'stock',
+      availability: 'current',
+      processing_state: 'partial',
+    })
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({
+      tab: 'stock',
+      availability: 'current',
+      processing_state: 'partial',
+    })
+    expect(dashboard.exists()).toBe(false)
+  })
   it.each(['production', 'warehouse', 'administrator', 'foreign-qc', 'inactive-qc'])(
     'does not expose rework submission for %s',
     async (account) => {
@@ -769,7 +788,7 @@ describe('team workspace material ledger', () => {
     }
   })
   it.each(teamWorkspaceProfiles)(
-    'uses the same pending-inclusive stock for $name',
+    'uses actual remaining stock and keeps pending outbound separate for $name',
     async (profile) => {
       const previous = state.directory.items
       state.directory.items = [
@@ -786,12 +805,12 @@ describe('team workspace material ledger', () => {
           warehouseFixture({
             owned_quantity: 100,
             owned_weight: 10,
-            on_hand_quantity: 0,
-            on_hand_weight: 0,
-            available_quantity: 0,
-            available_weight: 0,
-            in_transit_quantity: 100,
-            in_transit_weight: 10,
+            on_hand_quantity: 70,
+            on_hand_weight: 7,
+            available_quantity: 70,
+            available_weight: 7,
+            in_transit_quantity: 30,
+            in_transit_weight: 3,
           }),
         ],
         total: 1,
@@ -802,14 +821,14 @@ describe('team workspace material ledger', () => {
         await render('/team-workspaces/914?tab=stock')
         expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
           914,
-          expect.objectContaining({ availability: 'owned' }),
+          expect.objectContaining({ availability: 'current' }),
         )
         expect(
           wrapper
             .get('.warehouse-table')
             .findAll('.inventory-balance')
             .map((cell) => cell.text()),
-        ).toEqual(['100', '10'])
+        ).toEqual(['70', '7'])
         expect(
           wrapper
             .get('.inventory-row-actions')
@@ -817,9 +836,6 @@ describe('team workspace material ledger', () => {
             .some((button) => button.text() === '出库'),
         ).toBe(true)
         expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
-        expect(wrapper.get('.warehouse-table').text()).toContain(
-          profile.code !== 'FACTORY-WAREHOUSE' ? '已转出 · 待签收' : '全部待签收',
-        )
       } finally {
         state.directory.items = previous
       }
@@ -1070,7 +1086,7 @@ describe('team workspace material ledger', () => {
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
       914,
       expect.objectContaining({
-        availability: 'owned',
+        availability: 'current',
         query: 'AL',
         date_from: '2026-09-12',
         urgent_only: true,
@@ -1618,7 +1634,7 @@ describe('team workspace material ledger', () => {
         inventoryCalls,
       )
       expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(Number(id), {
-        availability: 'owned',
+        availability: 'current',
         page: 1,
         page_size: 10,
       })

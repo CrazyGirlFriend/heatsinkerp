@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { computed, type Component } from 'vue'
 import AnimatedMetric from './AnimatedMetric.vue'
 import StatisticHelp from './StatisticHelp.vue'
-defineProps<{
+const props = defineProps<{
   label: string
   value: number | null
   unit: string
@@ -13,8 +13,21 @@ defineProps<{
   static?: boolean
   motion: boolean
   precision?: number
+  trend?: number[]
+  trendColor?: string
 }>()
 defineEmits<{ open: [] }>()
+const sparkline = computed(() => {
+  if (!props.trend || props.trend.length < 2) return ''
+  const min = Math.min(0, ...props.trend),
+    max = Math.max(1, ...props.trend)
+  return props.trend
+    .map(
+      (value, index) =>
+        `${2 + (index / (props.trend!.length - 1)) * 92},${34 - ((value - min) / (max - min)) * 30}`,
+    )
+    .join(' ')
+})
 </script>
 <template>
   <article class="dashboard-metric" :class="`dashboard-metric--${tone || 'info'}`">
@@ -22,17 +35,37 @@ defineEmits<{ open: [] }>()
       <component :is="icon" v-if="icon" :size="18" /><span>{{ label }}</span
       ><StatisticHelp v-if="help" :label="`${label}统计说明`">{{ help }}</StatisticHelp>
     </div>
-    <component
-      :is="static ? 'div' : 'button'"
-      class="dashboard-metric__value"
-      :type="static ? undefined : 'button'"
-      :aria-label="static ? label : `查看${label}`"
-      @click="!static && $emit('open')"
-    >
-      <strong
-        ><AnimatedMetric :value="value" :animate="motion" :precision="precision ?? 0" /></strong
-      ><span>{{ unit }}</span>
-    </component>
+    <div class="dashboard-metric__reading">
+      <component
+        :is="static ? 'div' : 'button'"
+        class="dashboard-metric__value"
+        :type="static ? undefined : 'button'"
+        :aria-label="static ? label : `查看${label}`"
+        @click="!static && $emit('open')"
+      >
+        <strong
+          ><AnimatedMetric :value="value" :animate="motion" :precision="precision ?? 0" /></strong
+        ><span>{{ unit }}</span>
+      </component>
+      <svg
+        v-if="sparkline"
+        class="dashboard-metric__spark"
+        :class="{ 'is-animated': motion }"
+        viewBox="0 0 96 38"
+        aria-hidden="true"
+        :style="{ color: trendColor || '#6285ed' }"
+      >
+        <polygon :points="`2,37 ${sparkline} 94,37`" fill="currentColor" opacity="0.1" />
+        <polyline
+          :points="sparkline"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </div>
     <p v-if="detail">{{ detail }}</p>
   </article>
 </template>
@@ -69,12 +102,45 @@ defineEmits<{ open: [] }>()
 .dashboard-metric__value {
   display: flex;
   align-items: baseline;
+  flex-shrink: 0;
+  white-space: nowrap;
   gap: 8px;
   border: 0;
   padding: 4px 0;
   background: transparent;
   color: var(--wm-text);
   cursor: pointer;
+}
+.dashboard-metric__reading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dashboard-metric__spark {
+  width: 72px;
+  min-width: 24px;
+  max-width: 28%;
+  flex-shrink: 1;
+  overflow: visible;
+}
+.dashboard-metric__spark.is-animated {
+  animation: metric-trend-enter 700ms ease-out;
+}
+@keyframes metric-trend-enter {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-metric__spark.is-animated {
+    animation: none;
+  }
 }
 button.dashboard-metric__value:hover strong {
   text-decoration: underline;

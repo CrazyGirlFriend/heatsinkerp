@@ -20,6 +20,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 async function render(path = '/', inventory = true) {
@@ -53,19 +54,72 @@ async function click(label: string) {
   await flushPromises()
 }
 describe('factory dashboard', () => {
-  it('opens the operations overview and keeps detailed analysis tabs available', async () => {
-    await render('/', false)
+  it('keeps all four sections mounted and navigates without resetting their data', async () => {
+    const router = await render('/', false)
+    const root = wrapper.get('.factory-overview').element
+    const scrollTo = vi.fn()
+    Object.defineProperty(root, 'scrollTo', { value: scrollTo, configurable: true })
     expect(wrapper.getComponent(FactoryOperationsOverview).props('days')).toBe(7)
-    expect(factoryOverviewApi.get).not.toHaveBeenCalled()
+    expect(wrapper.findAll('.factory-section > h2').map((heading) => heading.text())).toEqual([
+      '01运行概览',
+      '02生产完成',
+      '03检验与质量',
+      '04库存与交接',
+    ])
+    const panels = wrapper.findAllComponents(FactoryPerformancePanel)
+    expect(panels.map((panel) => panel.props('scene'))).toEqual(['production', 'quality'])
+    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
     await click('检验与质量')
-    expect(wrapper.getComponent(FactoryPerformancePanel).props('scene')).toBe('quality')
-    expect(factoryOverviewApi.get).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.query.view).toBe('quality')
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }))
+    expect(wrapper.get('[aria-current="location"]').text()).toBe('检验与质量')
     await click('库存与交接')
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
     expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('all')
     await click('生产完成')
+    expect(wrapper.findAllComponents(FactoryPerformancePanel).map((panel) => panel.vm)).toEqual(
+      panels.map((panel) => panel.vm),
+    )
+    expect(wrapper.getComponent(FactoryOperationsOverview).props('days')).toBe(7)
     await vi.advanceTimersByTimeAsync(60000)
-    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
+    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
+  })
+  it('locates legacy analysis links and follows the current section while scrolling', async () => {
+    await render('/?view=quality', false)
+    expect(wrapper.get('[aria-current="location"]').text()).toBe('检验与质量')
+    for (const [index, section] of wrapper.findAll('.factory-section').entries()) {
+      vi.spyOn(section.element, 'getBoundingClientRect').mockReturnValue({
+        top: index * 500 - 520,
+      } as DOMRect)
+    }
+    await wrapper.get('.factory-overview').trigger('scroll')
+    expect(wrapper.get('[aria-current="location"]').text()).toBe('生产完成')
+    expect(wrapper.findAll('.factory-section')).toHaveLength(4)
+  })
+  it('keeps a linked section aligned while reports load, then releases it when browsing', async () => {
+    let resize!: ResizeObserverCallback
+    const disconnect = vi.fn()
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resize = callback
+        }
+        observe = vi.fn()
+        disconnect = disconnect
+      },
+    )
+    await render('/?view=quality', false)
+    const scrollTo = vi.fn()
+    Object.defineProperty(wrapper.element, 'scrollTo', { value: scrollTo, configurable: true })
+    resize([], {} as ResizeObserver)
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }))
+    scrollTo.mockClear()
+    await wrapper.trigger('wheel')
+    resize([], {} as ResizeObserver)
+    expect(scrollTo).not.toHaveBeenCalled()
+    wrapper.unmount()
+    expect(disconnect).toHaveBeenCalled()
   })
   it('exports the displayed analysis, unit and period with readable material type names', async () => {
     vi.mocked(factoryOverviewApi.get).mockImplementation(async (days) => ({
@@ -141,9 +195,9 @@ describe('factory dashboard', () => {
   })
   it('discards cached inventory when changing the period from another analysis view', async () => {
     const router = await render('/?days=7')
+    vi.mocked(factoryOverviewApi.get).mockRejectedValueOnce(new Error('offline'))
     await router.push('/?view=overview&days=30')
     await flushPromises()
-    vi.mocked(factoryOverviewApi.get).mockRejectedValueOnce(new Error('offline'))
     await router.push('/?view=inventory&days=30')
     await flushPromises()
     expect(wrapper.findComponent(FactoryOverviewCharts).exists()).toBe(false)
@@ -180,7 +234,7 @@ describe('factory dashboard', () => {
   })
   it('does not submit an empty custom period and falls back safely for invalid bookmarks', async () => {
     const router = await render('/?days=366')
-    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(30)
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(7)
     wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', undefined)
     await flushPromises()
     expect(wrapper.get('.factory-custom-period button').attributes('disabled')).toBeDefined()
@@ -190,7 +244,7 @@ describe('factory dashboard', () => {
     for (const value of ['0', '-1', '3.5', 'invalid', '5&days=7']) {
       await router.push(`/?days=${value}&view=inventory`)
       await flushPromises()
-      expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(30)
+      expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(7)
     }
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
   })

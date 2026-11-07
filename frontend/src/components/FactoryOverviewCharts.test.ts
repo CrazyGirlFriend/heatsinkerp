@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import FactoryOverviewCharts from './FactoryOverviewCharts.vue'
 import LedgerChart from './LedgerChart.vue'
 import DashboardCard from './DashboardCard.vue'
+import DashboardDistribution from './DashboardDistribution.vue'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
 
 describe('factory analysis charts', () => {
@@ -14,7 +15,7 @@ describe('factory analysis charts', () => {
     })
     try {
       const charts = wrapper.findAllComponents(LedgerChart)
-      expect(charts).toHaveLength(3)
+      expect(charts).toHaveLength(2)
       expect(charts[0]!.props('option').series).toEqual([
         expect.objectContaining({ name: '未转出库存', data: Array(8).fill(2.8) }),
       ])
@@ -62,7 +63,7 @@ describe('factory analysis charts', () => {
       wrapper.unmount()
     }
   })
-  it('switches the single nature value column together with the chart unit', async () => {
+  it('keeps material values and shares in sync with the selected unit and exposes corrections', async () => {
     const data = factoryFixture()
     data.material_types = [
       { key: 'finished', quantity: 1200, weight: 345.678 },
@@ -74,43 +75,36 @@ describe('factory analysis charts', () => {
       global: { stubs: { LedgerChart: true } },
     })
     try {
-      const card = wrapper.get('.factory-chart--types')
-      expect(card.get('h2').text()).toBe('物料类型分布')
-      expect(card.text()).not.toContain('重量占比')
-      const headers = () => card.findAll('thead th').map((cell) => cell.text())
-      expect(headers()).toEqual(['性质', '重量 (kg)'])
+      const distribution = wrapper.getComponent(DashboardDistribution)
       const values = () =>
-        card.findAll('tbody tr').map((row) => row.findAll('th, td').map((cell) => cell.text()))
+        distribution
+          .findAll('.distribution-row')
+          .map((row) => [
+            row.get('.distribution-label').text(),
+            row.get('strong').text().replace(/\s+/g, ' '),
+          ])
       const expected = [
-        ['成品', '345.678'],
-        ['废泥', '8.5'],
-        ['未填写性质', '0'],
+        ['成品', '345.678 kg'],
+        ['废泥', '8.5 kg'],
+        ['未填写性质', '0 kg'],
       ]
       expect(values()).toEqual(expected)
-      const chart = wrapper.findAllComponents(LedgerChart)[2]!
-      expect(chart.props('option').tooltip).toMatchObject({
-        renderMode: 'html',
-        appendTo: 'body',
-        confine: false,
-        position: expect.any(Function),
-      })
-      expect(chart.props('option')).toMatchObject({
-        series: [{ data: [{ value: 345.678 }, { value: 8.5 }, { value: 0 }] }],
-      })
+      expect(distribution.props('rows').map((row) => row.value)).toEqual([345.678, 8.5, 0])
       await wrapper.setProps({ metric: 'quantity' })
-      expect(chart.props('option')).toMatchObject({
-        series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }],
-      })
-      expect(headers()).toEqual(['性质', '件数'])
       expect(values()).toEqual([
-        ['成品', '1,200'],
-        ['废泥', '0'],
-        ['未填写性质', '2'],
+        ['成品', '1,200 件'],
+        ['废泥', '0 件'],
+        ['未填写性质', '2 件'],
       ])
-      expect(card.text()).not.toContain('件数占比')
+      expect(distribution.get('.distribution-total').text()).toContain('1,202')
       await wrapper.setProps({ metric: 'weight' })
-      expect(headers()).toEqual(['性质', '重量 (kg)'])
       expect(values()).toEqual(expected)
+      await wrapper.setProps({
+        data: { ...data, material_types: [{ key: 'finished', quantity: 1, weight: -2 }] },
+      })
+      expect(distribution.get('.has-correction').text()).toContain('-2 kg')
+      expect(distribution.get('.has-correction').text()).toContain('数据差异')
+      expect(distribution.get('.distribution-track i').attributes('style')).toContain('width: 0%')
     } finally {
       wrapper.unmount()
     }

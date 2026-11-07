@@ -34,6 +34,17 @@ export type MaterialBalance = Record<
 export interface TeamMaterialOverview {
   team_id: number
   as_of?: string
+  current_stock?: {
+    serial_count: number
+    unnumbered_batch_count: number
+    processing: {
+      state:
+        'unregistered' | 'partial' | 'complete' | 'registered' | 'not_required' | 'not_applicable'
+      batch_count: number
+      quantity: number
+      weight: number
+    }[]
+  }
   totals: MaterialBalance
   materials: (MaterialBalance & { material_name: string | null })[]
   material_types?: (MaterialBalance & { material_type: MaterialType | null })[]

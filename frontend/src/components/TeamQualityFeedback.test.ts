@@ -8,7 +8,8 @@ import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import TableExportButton from './TableExportButton.vue'
 import { qualityFeedbackApi, type QualityFeedback } from '@/services/qualityFeedbackApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+const route = vi.hoisted(() => ({ query: {} as Record<string, string> }))
+vi.mock('vue-router', () => ({ useRoute: () => route }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
     items: [
@@ -39,6 +40,7 @@ const record = {
 } as QualityFeedback
 let wrapper: VueWrapper
 beforeEach(() => {
+  route.query = {}
   vi.spyOn(qualityFeedbackApi, 'records').mockResolvedValue({
     items: [record],
     total: 1,
@@ -47,6 +49,18 @@ beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([
     { id: 11, team_id: 8, name: '目录改名后', active: false, version: 2 },
   ])
+})
+it('keeps the overview quality period and status when opening the list or exporting', async () => {
+  route.query = { status: 'pending', team_id: '2', date_from: '2026-10-09', date_to: '2026-11-07' }
+  await render()
+  const filters = { status: 'pending', team_id: 2, date_from: '2026-10-09', date_to: '2026-11-07' }
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(expect.objectContaining(filters))
+  await wrapper.setProps({ teamId: 8, showAll: true })
+  await flushPromises()
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(expect.objectContaining(filters))
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  await source.load(new AbortController().signal, vi.fn())
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(expect.objectContaining(filters))
 })
 afterEach(() => {
   wrapper?.unmount()

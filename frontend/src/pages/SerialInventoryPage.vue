@@ -149,6 +149,7 @@ const columns = [
     .filter(
       (c) =>
         ![
+          'process_route',
           'delivery_due_at',
           'delivery_schedule_status',
           'processing_role',

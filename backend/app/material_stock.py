@@ -1120,7 +1120,7 @@ def list_stock(
     }
 
 
-def overview(db, team_id):
+def overview(db, team_id, include_summary=False):
     team = require_team(db, team_id)
     stock = stock_table(team_id)
     materials = (
@@ -1170,7 +1170,13 @@ def overview(db, team_id):
         )
         or 0
     )
+    summary = {}
+    if include_summary:
+        from .team_dashboard import current_stock_summary
+
+        summary["current_stock"] = current_stock_summary(db, team, stock)
     return {
+        **summary,
         "team_id": team_id,
         "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
         "totals": balance_dict(totals),

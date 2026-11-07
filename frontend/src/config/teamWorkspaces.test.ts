@@ -61,7 +61,7 @@ describe('shared workspace navigation', () => {
       )
     }
     expect(teamWorkspaceModulesFor(false, false, true, true).map((module) => module.label)).toEqual(
-      ['库存', '收发', '加工', '交期', '质量'],
+      ['概览', '库存', '收发', '加工', '交期', '质量'],
     )
     expect(teamWorkspaceModulesFor(true, true, true).map((module) => module.value)).not.toContain(
       'processing',
@@ -84,6 +84,7 @@ describe('shared workspace navigation', () => {
   })
   it('offers receipt records to every team while keeping warehouse management scoped', () => {
     expect(teamWorkspaceSectionsFor(false).map((item) => item.label)).toEqual([
+      '概览',
       '库存明细',
       '交货排期',
       '来料待签收',
@@ -133,6 +134,9 @@ describe('shared workspace navigation', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false)).toBe('stock')
   })
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
+    expect(resolveTeamWorkspaceSection({ tab: 'dashboard' }, false)).toBe('dashboard')
+    expect(resolveTeamWorkspaceSection({ tab: 'dashboard' }, true)).toBe('dashboard')
+    expect(teamWorkspaceSectionPath(7, 'dashboard')).toBe('/team-workspaces/7?tab=dashboard')
     expect(resolveTeamWorkspaceSection({ tab: 'overview' }, false)).toBe('history')
     expect(resolveTeamWorkspaceSection({ tab: 'materials' }, false)).toBe('stock')
     expect(resolveTeamWorkspaceSection({ tab: 'material-types' }, false)).toBe('stock')

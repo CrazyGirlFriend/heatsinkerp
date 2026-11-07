@@ -21,6 +21,7 @@ import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import TeamDashboard from '@/components/TeamDashboard.vue'
 import InspectionRegistrationDialog from '@/components/InspectionRegistrationDialog.vue'
 import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
 import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
@@ -965,8 +966,9 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
   const id = teamId.value
   const currentTab = tab.value
   const params = listParams()
-  const balanceRequest = teamMaterialApi
-    .overview(id)
+  const balanceRequest = (
+    currentTab === 'dashboard' ? teamMaterialApi.overview(id, true) : teamMaterialApi.overview(id)
+  )
     .then((result) => {
       if (current === version) {
         overview.value = result
@@ -1202,6 +1204,17 @@ onBeforeUnmount(() => {
           :business-only="auth.isAdmin"
           @changed="businessChanged"
           @stocked="openingStocked"
+        />
+        <TeamDashboard
+          v-else-if="tab === 'dashboard'"
+          :key="teamId"
+          :team-id="teamId"
+          :processing="hasProcessing"
+          :overview="overview"
+          :loading="loading"
+          :error="overviewError"
+          @refresh="loadView()"
+          @navigate="router.push({ path: route.path, query: $event })"
         />
         <WarehouseManagement
           v-else-if="tab === 'warehouse'"

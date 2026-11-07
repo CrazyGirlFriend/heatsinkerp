@@ -9,7 +9,9 @@ import ElSelect from './AppSelect.vue'
 import ElSwitch from './AppSwitch.vue'
 import DashboardToolbar from './DashboardToolbar.vue'
 import DashboardMetric from './DashboardMetric.vue'
-import DashboardCard from './DashboardCard.vue'
+import AppDisclosure from './AppDisclosure.vue'
+import { dashboardColors } from '@/composables/useDashboardChart'
+import { isProcessingTeamCode } from '@/config/materialRules'
 import AppDetailTable from './AppDetailTable.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { Refresh } from '@element-plus/icons-vue'
@@ -100,19 +102,47 @@ const qualityTotal = computed<QualityMetrics>(() => {
 const cards = computed(() => {
   if (!report.value) return []
   if (props.scene === 'production') {
+    if (aggregate.value && !teamId.value) return []
     const total = aggregate.value ? report.value.activity?.totals : report.value.production.totals
     if (!total || (!aggregate.value && !productionScope.value)) return []
     const precision = metric.value === 'quantity' ? 0 : 3
+    const trend =
+      (aggregate.value ? report.value.activity?.trend : report.value.production.trend) || []
     return [
       {
         label: '正常加工完成',
         value: total[`completed_${metric.value}`],
+        trend: trend.map((row) => row[`completed_${metric.value}`]),
+        detail: `${periodLabel.value}完成量`,
         unit: unit.value,
         precision,
       },
-      { label: '返工完成', value: total[`rework_${metric.value}`], unit: unit.value, precision },
-      { label: '正常加工登记', value: total.initial_record_count, unit: '笔', precision: 0 },
-      { label: '返工登记', value: total.rework_record_count, unit: '笔', precision: 0 },
+      {
+        label: '返工完成',
+        value: total[`rework_${metric.value}`],
+        unit: unit.value,
+        precision,
+        trend: trend.map((row) => row[`rework_${metric.value}`]),
+        trendColor: dashboardColors.warning,
+        detail: `${periodLabel.value}返工量`,
+      },
+      {
+        label: '正常加工登记',
+        value: total.initial_record_count,
+        unit: '笔',
+        precision: 0,
+        trend: trend.map((row) => row.initial_record_count),
+        detail: `${periodLabel.value}登记数`,
+      },
+      {
+        label: '返工登记',
+        value: total.rework_record_count,
+        unit: '笔',
+        precision: 0,
+        trend: trend.map((row) => row.rework_record_count),
+        trendColor: dashboardColors.warning,
+        detail: `${periodLabel.value}登记数`,
+      },
     ]
   }
   const total = qualityTotal.value
@@ -136,6 +166,11 @@ const qualityWorkspace = computed(() =>
   teams.value.find((team) => team.active && team.code === 'FACTORY-QC'),
 )
 const selectedTeam = computed(() => teams.value.find((team) => team.id === teamId.value))
+const selectableTeams = computed(() =>
+  props.scene === 'production'
+    ? teams.value.filter((team) => isProcessingTeamCode(team.code))
+    : teams.value,
+)
 const exportContext = computed(() =>
   [
     props.scene,
@@ -329,7 +364,7 @@ function activityExport(daily = false) {
     ? data.trend.map((row) => ({ ...row, name: row.date }))
     : data.teams.map((row) => ({ ...row, name: row.team_name }))
   return tableExportSource(
-    daily ? '全厂加工趋势' : '班组加工完成',
+    daily ? `${selectedTeam.value?.name}加工趋势` : '班组加工完成',
     rows.length,
     [
       { key: 'name', label: daily ? '日期' : '班组', value: (row) => row.name },
@@ -351,7 +386,8 @@ function exportSource() {
   return props.scene === 'production' ? productionExport() : qualityExport()
 }
 function exportVariants() {
-  if (aggregate.value) return [activityExport(true)].filter((source) => source !== null)
+  if (aggregate.value)
+    return teamId.value ? [activityExport(true)].filter((source) => source !== null) : []
   const sources =
     props.scene === 'production' ? [productionExport(true)] : [qualityExport(true), issuesExport()]
   return sources.filter((source) => source !== null)
@@ -411,7 +447,7 @@ onBeforeUnmount(() => {
         aria-label="统计班组"
       >
         <ElOption
-          v-for="team in teams"
+          v-for="team in selectableTeams"
           :key="team.id"
           :value="team.id"
           :label="team.name + (team.active ? '' : '（停用）')"
@@ -466,7 +502,7 @@ onBeforeUnmount(() => {
         v-model="productionView"
         label="生产统计范围"
         :options="[
-          { value: 'all', label: '班组汇总' },
+          { value: 'all', label: '班组对比' },
           { value: 'task', label: '流水号任务' },
         ]"
       />
@@ -508,6 +544,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="performance-view-controls">
         <WatermelonSegmented
+          v-if="!aggregate || teamId"
           label="统计周期"
           :model-value="period"
           :options="[
@@ -535,7 +572,7 @@ onBeforeUnmount(() => {
       <ElAlert v-if="error" :title="error" type="warning" :closable="false" />
       <div class="performance-scope">
         <span
-          >{{ scene === 'quality' ? basisLabel : '按实际加工日期统计' }} · {{ periodLabel }} ·
+          >{{ scene === 'quality' ? basisLabel : '按实际加工日期统计' }} ·
           {{
             scene === 'production'
               ? aggregate
@@ -544,11 +581,14 @@ onBeforeUnmount(() => {
               : selectedTeam?.name || '全部班组'
           }}</span
         >
+        <ElButton v-if="aggregate && teamId" link @click="teamId = undefined"
+          >返回班组对比</ElButton
+        >
         <StatisticHelp label="统计说明">
           {{
             scene === 'production'
               ? aggregate
-                ? '按实际加工登记汇总各班组件次，同一物料经过多道工序会分别计次，不等于成品产量。'
+                ? '按实际加工日期分别统计各班组，正常加工与返工分开。选择班组查看它的完成量和趋势。'
                 : '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
                   (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
               : '按材质统计：合格率 = 合格件次 ÷ 实际受检件次；未检不计合格。周一至周日为一周，月按自然月，周期仅计算筛选日期内的记录。'
@@ -635,117 +675,138 @@ onBeforeUnmount(() => {
         :metric="metric"
         :basis="basis"
         :aggregate="aggregate"
+        :team-name="aggregate ? selectedTeam?.name : undefined"
         :motion="motion && !error"
+        @team="teamId = $event"
       />
-      <DashboardCard v-if="aggregate" title="班组加工明细" :subtitle="serialFilter || '全部流水号'">
-        <div class="performance-table-scroll">
+      <AppDisclosure class="performance-details">
+        <template #summary>{{
+          aggregate ? '班组加工明细' : scene === 'production' ? '流水号加工明细' : '班组检验明细'
+        }}</template>
+        <template v-if="aggregate">
+          <div class="performance-table-scroll">
+            <AppDetailTable class="performance-table">
+              <thead>
+                <tr>
+                  <th>班组</th>
+                  <th>正常加工 (件次)</th>
+                  <th>正常加工 (kg)</th>
+                  <th>返工 (件次)</th>
+                  <th>返工 (kg)</th>
+                  <th>加工登记</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in report.activity?.teams || []" :key="row.team_id">
+                  <th scope="row">{{ row.team_name }}</th>
+                  <td>{{ formatAmount(row.completed_quantity) }}</td>
+                  <td>{{ formatAmount(row.completed_weight) }}</td>
+                  <td>{{ formatAmount(row.rework_quantity) }}</td>
+                  <td>{{ formatAmount(row.rework_weight) }}</td>
+                  <td>{{ row.record_count }}</td>
+                  <td><ElButton link @click="openProcessing(row.team_id)">加工记录</ElButton></td>
+                </tr>
+              </tbody>
+            </AppDetailTable>
+          </div>
+        </template>
+        <div v-else class="performance-table-wrap">
           <AppDetailTable class="performance-table">
-            <thead>
+            <caption>
+              {{
+                scene === 'production'
+                  ? '当前流水号 · 按业务、任务和工序查看'
+                  : `受检明细 · ${basisLabel}`
+              }}
+            </caption>
+            <thead v-if="scene === 'production'">
               <tr>
-                <th>班组</th>
-                <th>正常加工 (件次)</th>
-                <th>正常加工 (kg)</th>
-                <th>返工 (件次)</th>
-                <th>返工 (kg)</th>
-                <th>加工登记</th>
-                <th>操作</th>
+                <th scope="col">班组</th>
+                <th scope="col">流水号</th>
+                <th scope="col">材质</th>
+                <th scope="col">业务</th>
+                <th scope="col">加工任务</th>
+                <th scope="col">工艺工序</th>
+                <th scope="col">正常加工 (件次)</th>
+                <th scope="col">正常加工重量 (kg)</th>
+                <th scope="col">返工 (件次)</th>
+                <th scope="col">返工重量 (kg)</th>
+                <th scope="col">加工登记</th>
+                <th scope="col">操作</th>
               </tr>
             </thead>
-            <tbody>
-              <tr v-for="row in report.activity?.teams || []" :key="row.team_id">
+            <thead v-else>
+              <tr>
+                <th scope="col">受检班组</th>
+                <th scope="col">材质</th>
+                <th scope="col">受检 (件次)</th>
+                <th scope="col">合格 (件次)</th>
+                <th scope="col">不合格 (件次)</th>
+                <th scope="col">合格率</th>
+                <th scope="col">检查记录</th>
+              </tr>
+            </thead>
+            <tbody v-if="scene === 'production'">
+              <tr
+                v-for="row in report.production.scopes"
+                :key="row.scope_id"
+                :class="{ 'is-current-scope': row.scope_id === productionScope?.scope_id }"
+              >
                 <th scope="row">{{ row.team_name }}</th>
+                <td>{{ row.serial_no }}</td>
+                <td>{{ row.material_name || '未填写材质' }}</td>
+                <td>{{ row.purpose_name || '未指定任务' }}</td>
+                <td>{{ row.processing_task_name || '历史未登记任务' }}</td>
+                <td>{{ row.process_step_name || '—' }}</td>
                 <td>{{ formatAmount(row.completed_quantity) }}</td>
                 <td>{{ formatAmount(row.completed_weight) }}</td>
                 <td>{{ formatAmount(row.rework_quantity) }}</td>
                 <td>{{ formatAmount(row.rework_weight) }}</td>
-                <td>{{ row.record_count }}</td>
-                <td><ElButton link @click="openProcessing(row.team_id)">加工记录</ElButton></td>
+                <td>{{ formatAmount(row.record_count) }} 笔</td>
+                <td>
+                  <ElButton link type="primary" @click="selectWork(row.scope_id)"
+                    >查看趋势</ElButton
+                  >
+                </td>
+              </tr>
+              <tr v-if="!report.production.scopes.length">
+                <td colspan="12">当前范围没有加工记录</td>
+              </tr>
+            </tbody>
+            <tbody v-else>
+              <tr
+                v-for="row in qualityRows"
+                :key="JSON.stringify([row.team_id, row.material_name])"
+              >
+                <th scope="row">{{ row.team_name }}</th>
+                <td>{{ row.material_name || '未填写材质' }}</td>
+                <td>{{ formatAmount(row.checked_quantity) }}</td>
+                <td>{{ formatAmount(row.passed_quantity) }}</td>
+                <td>{{ formatAmount(row.failed_quantity) }}</td>
+                <td>{{ row.pass_rate == null ? '—' : `${row.pass_rate.toFixed(2)}%` }}</td>
+                <td>{{ row.record_count }} 笔</td>
+              </tr>
+              <tr v-if="!qualityRows.length">
+                <td colspan="7">当前筛选条件下没有检查记录</td>
               </tr>
             </tbody>
           </AppDetailTable>
         </div>
-      </DashboardCard>
-      <div v-else class="performance-table-wrap">
-        <AppDetailTable class="performance-table">
-          <caption>
-            {{
-              scene === 'production'
-                ? '当前流水号 · 按业务、任务和工序查看'
-                : `受检明细 · ${basisLabel}`
-            }}
-          </caption>
-          <thead v-if="scene === 'production'">
-            <tr>
-              <th scope="col">班组</th>
-              <th scope="col">流水号</th>
-              <th scope="col">材质</th>
-              <th scope="col">业务</th>
-              <th scope="col">加工任务</th>
-              <th scope="col">工艺工序</th>
-              <th scope="col">正常加工 (件次)</th>
-              <th scope="col">正常加工重量 (kg)</th>
-              <th scope="col">返工 (件次)</th>
-              <th scope="col">返工重量 (kg)</th>
-              <th scope="col">加工登记</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <thead v-else>
-            <tr>
-              <th scope="col">受检班组</th>
-              <th scope="col">材质</th>
-              <th scope="col">受检 (件次)</th>
-              <th scope="col">合格 (件次)</th>
-              <th scope="col">不合格 (件次)</th>
-              <th scope="col">合格率</th>
-              <th scope="col">检查记录</th>
-            </tr>
-          </thead>
-          <tbody v-if="scene === 'production'">
-            <tr
-              v-for="row in report.production.scopes"
-              :key="row.scope_id"
-              :class="{ 'is-current-scope': row.scope_id === productionScope?.scope_id }"
-            >
-              <th scope="row">{{ row.team_name }}</th>
-              <td>{{ row.serial_no }}</td>
-              <td>{{ row.material_name || '未填写材质' }}</td>
-              <td>{{ row.purpose_name || '未指定任务' }}</td>
-              <td>{{ row.processing_task_name || '历史未登记任务' }}</td>
-              <td>{{ row.process_step_name || '—' }}</td>
-              <td>{{ formatAmount(row.completed_quantity) }}</td>
-              <td>{{ formatAmount(row.completed_weight) }}</td>
-              <td>{{ formatAmount(row.rework_quantity) }}</td>
-              <td>{{ formatAmount(row.rework_weight) }}</td>
-              <td>{{ formatAmount(row.record_count) }} 笔</td>
-              <td>
-                <ElButton link type="primary" @click="selectWork(row.scope_id)">查看趋势</ElButton>
-              </td>
-            </tr>
-            <tr v-if="!report.production.scopes.length">
-              <td colspan="12">当前范围没有加工记录</td>
-            </tr>
-          </tbody>
-          <tbody v-else>
-            <tr v-for="row in qualityRows" :key="JSON.stringify([row.team_id, row.material_name])">
-              <th scope="row">{{ row.team_name }}</th>
-              <td>{{ row.material_name || '未填写材质' }}</td>
-              <td>{{ formatAmount(row.checked_quantity) }}</td>
-              <td>{{ formatAmount(row.passed_quantity) }}</td>
-              <td>{{ formatAmount(row.failed_quantity) }}</td>
-              <td>{{ row.pass_rate == null ? '—' : `${row.pass_rate.toFixed(2)}%` }}</td>
-              <td>{{ row.record_count }} 笔</td>
-            </tr>
-            <tr v-if="!qualityRows.length">
-              <td colspan="7">当前筛选条件下没有检查记录</td>
-            </tr>
-          </tbody>
-        </AppDetailTable>
-      </div>
+      </AppDisclosure>
     </template>
   </section>
 </template>
 <style scoped>
+.performance-details {
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
+  background: var(--wm-bg);
+  padding: 6px 20px;
+}
+.performance-details :deep(.app-disclosure-trigger) {
+  min-height: 44px;
+}
 .factory-performance {
   display: grid;
   gap: 16px;

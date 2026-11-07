@@ -74,6 +74,7 @@ def test_reused_totals_preserve_scrap_decimal_precision_and_legacy_boundaries(cl
         json={
             "next_team_id": warehouse["team"]["id"],
             "serial_no": "LEGACY-SUMMARY",
+            "transfer_specification": "20×10×2 mm",
             "material_type": "finished",
             "quantity": 100,
             "weight": 10,

@@ -3,6 +3,7 @@ import type { Team } from '@/services/adminApi'
 import type { LocationQuery } from 'vue-router'
 
 export const teamWorkspaceSections = [
+  { value: 'dashboard', label: '概览' },
   { value: 'process-routes', label: '工艺记录' },
   { value: 'stock', label: '库存明细' },
   { value: 'delivery-schedule', label: '交货排期' },
@@ -24,6 +25,7 @@ export const teamWorkspaceSections = [
 export type TeamWorkspaceSection = (typeof teamWorkspaceSections)[number]['value']
 
 export const teamWorkspaceModules = [
+  { value: 'overview', label: '概览', sections: ['dashboard'] },
   {
     value: 'inventory',
     label: '库存',

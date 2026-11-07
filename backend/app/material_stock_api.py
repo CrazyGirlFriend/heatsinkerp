@@ -233,9 +233,14 @@ def list_team_receipts(
 
 @router.get("/{team_id}/overview")
 def overview(
-    team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)
+    team_id: int = Path(ge=1),
+    include_summary: bool = False,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return team_read_response(db, lambda session: stock.overview(session, team_id))
+    return team_read_response(
+        db, lambda session: stock.overview(session, team_id, include_summary=include_summary)
+    )
 
 
 @router.get("/{team_id}/warehouse-locations")

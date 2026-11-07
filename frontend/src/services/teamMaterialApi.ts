@@ -364,11 +364,17 @@ export const teamMaterialApi = {
   serials(teamId: number, params: SerialParams = {}) {
     return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params))
   },
-  async overview(teamId: number): Promise<TeamMaterialOverview> {
-    const raw = record(await request(path(teamId, 'overview')))
+  async overview(teamId: number, includeSummary = false): Promise<TeamMaterialOverview> {
+    const raw = record(
+      await request(path(teamId, 'overview', includeSummary ? { include_summary: true } : {})),
+    )
     const pending = record(raw.pending_incoming)
     return {
       team_id: teamId,
+      as_of: typeof raw.as_of === 'string' ? raw.as_of : undefined,
+      ...(raw.current_stock
+        ? { current_stock: raw.current_stock as TeamMaterialOverview['current_stock'] }
+        : {}),
       totals: balance(raw.totals),
       materials: Array.isArray(raw.materials)
         ? raw.materials.map((item) => ({
