@@ -14,6 +14,23 @@ withDefaults(
   }>(),
   { fill: false, embedded: false },
 )
+
+function handleTableWheel(event: WheelEvent) {
+  if (event.ctrlKey || !(event.target instanceof Element)) return
+  const table = event.currentTarget as HTMLElement
+  if (event.target.closest('.el-table') !== table) return
+  const overHeader = event.target.closest('.el-table__header-wrapper, .el-table__footer-wrapper')
+  const delta = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX
+  if (!delta || (!overHeader && !event.shiftKey)) return
+
+  // Element Plus forwards header wheels to body-wrapper, but the scrollbar wrap owns scrolling.
+  const wrap = table.querySelector<HTMLElement>('.el-table__body-wrapper .el-scrollbar__wrap')
+  if (!wrap || wrap.scrollWidth <= wrap.clientWidth) return
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? wrap.clientWidth : 1
+  event.preventDefault()
+  event.stopPropagation()
+  wrap.scrollLeft += delta * unit
+}
 </script>
 
 <template>
@@ -32,7 +49,9 @@ withDefaults(
     :empty-text="loading ? '加载中…' : '暂无数据'"
     flexible
     show-overflow-tooltip
+    scrollbar-always-on
     v-bind="$attrs"
+    @wheel.capture="handleTableWheel"
   >
     <slot />
     <template #empty

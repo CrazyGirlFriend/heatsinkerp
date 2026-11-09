@@ -119,7 +119,8 @@
   min-height: 0;
   overflow: hidden;
 }
-.team-workspace.team-workspace--reading .team-material-content:has(> .serial-history) {
+.team-workspace.team-workspace--reading
+  .team-material-content:has(> :is(.serial-history, .team-dashboard)) {
   overflow: auto;
 }
 .team-workspace.team-workspace--warehouse:has(.warehouse-grid) {
