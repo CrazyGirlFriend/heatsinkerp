@@ -41,10 +41,15 @@ import {
   type InspectionRecord,
 } from '@/services/inspectionApi'
 import { materialRequestKey } from '@/utils/materialStock'
+import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import { formatDateTime } from '@/utils/format'
-const props = defineProps<{ issueId: number }>()
+const props = defineProps<{ issueId: number; noticeKey?: string }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 const visible = ref(true)
+const dialogOpened = ref(false)
+const noticeHeading = ref<HTMLElement>()
+let openedNotice = ''
+let stopNoticeFocus: (() => void) | undefined
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const detail = ref<QualityFeedbackDetail>(),
@@ -93,7 +98,10 @@ async function load() {
     const row = await qualityFeedbackApi.detail(props.issueId)
     if (token === generation) assign(row)
   } catch (e) {
-    if (token === generation) error.value = e instanceof Error ? e.message : '质量反馈读取失败'
+    if (token === generation) {
+      error.value = e instanceof Error ? e.message : '质量反馈读取失败'
+      if (props.noticeKey) noticeFailed(props.noticeKey, e)
+    }
   } finally {
     if (token === generation) loading.value = false
   }
@@ -152,6 +160,24 @@ watch(reworkOpen, (open) => {
   if (!open) reworkContext.value = undefined
 })
 watch(
+  [dialogOpened, noticeHeading, detail, () => props.noticeKey],
+  () => {
+    if (
+      !dialogOpened.value ||
+      !noticeHeading.value ||
+      detail.value?.id !== props.issueId ||
+      !props.noticeKey ||
+      props.noticeKey === openedNotice
+    )
+      return
+    stopNoticeFocus?.()
+    stopNoticeFocus = focusNoticeTarget(noticeHeading.value)
+    openedNotice = props.noticeKey
+    noticeOpened(props.noticeKey)
+  },
+  { flush: 'post' },
+)
+watch(
   () => props.issueId,
   () => {
     detail.value = undefined
@@ -165,6 +191,7 @@ watch(
 )
 onBeforeUnmount(() => {
   ++generation
+  stopNoticeFocus?.()
 })
 </script>
 <template>
@@ -179,6 +206,7 @@ onBeforeUnmount(() => {
     :close-on-press-escape="!busy"
     :show-close="!busy"
     @closed="emit('close')"
+    @opened="dialogOpened = true"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <FormWorkspace v-if="detail">
@@ -199,7 +227,7 @@ onBeforeUnmount(() => {
           ]"
         />
       </template>
-      <div class="quality-detail-heading">
+      <div ref="noticeHeading" class="quality-detail-heading">
         <strong>{{ detail.serial_no }} · {{ detail.material_name }}</strong
         ><ElTag>{{ feedbackStates[detail.feedback_status] }}</ElTag
         ><span>{{ detail.batch_no }}</span

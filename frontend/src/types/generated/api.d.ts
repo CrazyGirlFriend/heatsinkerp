@@ -2950,6 +2950,11 @@ export interface components {
     }
     /** BusinessNoticeReadAll */
     BusinessNoticeReadAll: {
+      /**
+       * Quality
+       * @default 0
+       */
+      quality: number
       /** Rework */
       rework: number
       /** Schedule */
@@ -2996,6 +3001,7 @@ export interface components {
             | 'amendment_rejected'
             | 'amendment_cancelled'
           )
+        | 'quality_reported'
       /** Message */
       message: string
       /** Read At */
@@ -3006,7 +3012,7 @@ export interface components {
        * Source
        * @enum {string}
        */
-      source: 'schedule' | 'rework' | 'transfer'
+      source: 'schedule' | 'rework' | 'transfer' | 'quality'
       /** Team Name */
       team_name: string
     }
@@ -5337,6 +5343,8 @@ export interface components {
     }
     /** NoticeCursorsResponse */
     NoticeCursorsResponse: {
+      /** Quality */
+      quality: number
       /** Rework */
       rework: number
       /** Schedule */
@@ -5363,7 +5371,7 @@ export interface components {
       /** Schedule Id */
       schedule_id?: number | null
       /** Section */
-      section: ('problem' | 'steps' | 'plan-review' | 'amendment') | null
+      section: ('problem' | 'steps' | 'plan-review' | 'amendment' | 'quality') | null
       /** Step Index */
       step_index?: number | null
     }
@@ -10418,7 +10426,7 @@ export interface operations {
   inbox_api_business_notices_get: {
     parameters: {
       query?: {
-        category?: 'all' | 'schedule' | 'rework' | 'transfer' | 'pending'
+        category?: 'all' | 'schedule' | 'rework' | 'transfer' | 'quality' | 'pending'
         page?: number
         unread_only?: boolean
       }
@@ -10454,7 +10462,7 @@ export interface operations {
       header?: never
       path: {
         notice_id: number
-        source: 'schedule' | 'rework' | 'transfer'
+        source: 'schedule' | 'rework' | 'transfer' | 'quality'
       }
       cookie?: never
     }
@@ -10484,7 +10492,7 @@ export interface operations {
       header?: never
       path: {
         notice_id: number
-        source: 'schedule' | 'rework' | 'transfer'
+        source: 'schedule' | 'rework' | 'transfer' | 'quality'
       }
       cookie?: never
     }

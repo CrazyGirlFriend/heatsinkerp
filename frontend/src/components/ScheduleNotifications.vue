@@ -15,8 +15,7 @@ import {
   DocumentChecked,
   Back,
 } from '@element-plus/icons-vue'
-import { ElIcon, ElOption } from 'element-plus'
-import AppSelect from './AppSelect.vue'
+import { ElIcon } from 'element-plus'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDrawer from './AppDrawer.vue'
@@ -39,7 +38,7 @@ const visible = ref(false),
 const page = ref(1),
   total = ref(0),
   unread = ref(0),
-  latestId = ref({ schedule: 0, rework: 0, transfer: 0 }),
+  latestId = ref({ schedule: 0, rework: 0, transfer: 0, quality: 0 }),
   error = ref('')
 const items = ref<BusinessNotice[]>([])
 const selected = ref<BusinessNotice | null>(null)
@@ -54,7 +53,15 @@ const views = computed(() => [
   { value: 'unread', label: '未读', count: unread.value, disabled: opening.value },
   { value: 'pending', label: '待处理', disabled: opening.value },
 ])
+const sources = computed(() => [
+  { value: 'all', label: '全部', disabled: opening.value },
+  { value: 'quality', label: '质量', disabled: opening.value },
+  { value: 'rework', label: '返工', disabled: opening.value },
+  { value: 'schedule', label: '交期', disabled: opening.value },
+  { value: 'transfer', label: '转料', disabled: opening.value },
+])
 const labels: Record<BusinessNotice['kind'], string> = {
+  quality_reported: '质量问题',
   amendment_requested: '转料修改申请',
   amendment_approved: '修改已生效',
   amendment_rejected: '修改已拒绝',
@@ -255,22 +262,8 @@ onBeforeUnmount(() => {
     :close-on-press-escape="!reviewBusy"
   >
     <div v-show="!selected" class="inbox-controls">
-      <WatermelonSegmented v-model="view" class="inbox-tabs" label="消息筛选" :options="views" />
-      <div class="inbox-toolbar">
-        <AppSelect
-          v-if="view !== 'pending'"
-          v-model="source"
-          class="inbox-source"
-          aria-label="通知类型"
-          :disabled="opening"
-        >
-          <ElOption label="全部类型" value="all" />
-          <ElOption label="返工" value="rework" />
-          <ElOption label="转料" value="transfer" />
-          <ElOption label="排期" value="schedule" />
-        </AppSelect>
-        <span v-else class="inbox-pending-label">需要你处理</span>
-        <span class="inbox-total">{{ total }} 条</span>
+      <div class="inbox-state-row">
+        <WatermelonSegmented v-model="view" class="inbox-tabs" label="消息筛选" :options="views" />
         <ElButton
           :icon="Refresh"
           :disabled="opening"
@@ -279,6 +272,17 @@ onBeforeUnmount(() => {
           :loading="loading"
           @click="load"
         />
+      </div>
+      <div class="inbox-toolbar">
+        <WatermelonSegmented
+          v-if="view !== 'pending'"
+          v-model="source"
+          class="inbox-sources"
+          label="通知类型"
+          :options="sources"
+        />
+        <span v-else class="inbox-pending-label">需要你处理</span>
+        <span class="inbox-total">{{ total }} 条</span>
       </div>
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
@@ -298,6 +302,7 @@ onBeforeUnmount(() => {
             class="inbox-item"
             :class="{ 'is-unread': !item.read_at }"
             :data-kind="item.kind"
+            :data-source="item.source"
             :disabled="opening || loading || reviewBusy"
             :aria-label="`打开 ${item.serial_no} ${labels[item.kind]}，${item.team_name}，${item.message}${item.read_at ? '' : '，未读'}`"
             @click="selectNotice(item)"
@@ -305,7 +310,7 @@ onBeforeUnmount(() => {
             <span class="inbox-symbol" aria-hidden="true">
               <ElIcon>
                 <RefreshLeft v-if="item.source === 'rework'" />
-                <Warning v-else-if="item.kind === 'overdue'" />
+                <Warning v-else-if="item.source === 'quality' || item.kind === 'overdue'" />
                 <DocumentChecked v-else-if="item.source === 'transfer'" />
                 <Calendar v-else />
               </ElIcon>
@@ -459,8 +464,23 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin-top: 14px;
 }
-.inbox-source {
-  width: 140px;
+.inbox-state-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inbox-state-row .inbox-tabs {
+  flex: 1;
+  width: auto;
+}
+.inbox-sources {
+  flex: 1;
+}
+.inbox-sources :deep(button) {
+  flex: 1;
+  padding: 0 8px;
+  font-size: 12px;
+  min-height: 30px;
 }
 .inbox-total {
   margin-left: auto;
@@ -472,7 +492,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--wm-muted, #71717a);
 }
-.inbox-toolbar .el-button {
+.inbox-state-row .el-button {
   margin: 0;
   width: 36px;
   min-height: 36px;
@@ -534,6 +554,11 @@ onBeforeUnmount(() => {
   border-color: transparent;
   background: var(--wm-danger-bg, #fcefed);
   color: var(--wm-danger-text, #ae3935);
+}
+.inbox-item[data-source='quality'] .inbox-symbol {
+  background: var(--wm-warning-bg, #fff7e6);
+  color: var(--wm-warning-text, #a16413);
+  border-color: transparent;
 }
 .inbox-unread-dot {
   position: absolute;

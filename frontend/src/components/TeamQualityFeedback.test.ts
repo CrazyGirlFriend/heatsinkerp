@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import TeamQualityFeedback from './TeamQualityFeedback.vue'
+import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import TableExportButton from './TableExportButton.vue'
@@ -81,6 +82,14 @@ async function render() {
   })
   await flushPromises()
 }
+it('opens the exact issue from a quality notification and passes its navigation key', async () => {
+  route.query = { issue: '42', business_notice: 'quality:8', notice: 'quality-landing' }
+  await render()
+  expect(wrapper.getComponent(QualityFeedbackDetail).props()).toMatchObject({
+    issueId: 42,
+    noticeKey: 'quality-landing',
+  })
+})
 it('clears the larger page while a smaller page is loading and after a failed request', async () => {
   const items = Array.from({ length: 23 }, (_, index) => ({ ...record, id: index + 1 }))
   const response = (size: number) => ({ items: items.slice(0, size), total: 23, pending_count: 23 })

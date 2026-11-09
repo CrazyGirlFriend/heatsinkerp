@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute } from 'vue-router'
+import { parseNotice } from '@/services/businessNoticeApi'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -31,6 +32,13 @@ const props = defineProps<{ teamId: number; showAll?: boolean }>()
 const emit = defineEmits<{ count: [value: number] }>()
 const route = useRoute(),
   directory = useTeamDirectoryStore()
+const noticeKey = computed(() =>
+  parseNotice(route.query.business_notice)?.source === 'quality' &&
+  typeof route.query.notice === 'string' &&
+  selected.value === Number(route.query.issue)
+    ? route.query.notice
+    : undefined,
+)
 const rows = ref<QualityFeedback[]>([]),
   total = ref(0),
   page = ref(1),
@@ -214,8 +222,8 @@ watch(
   { immediate: true },
 )
 watch(
-  () => route.query.issue,
-  (value) => {
+  () => [route.query.issue, route.query.notice],
+  ([value]) => {
     const id = Number(value)
     if (Number.isInteger(id) && id > 0) selected.value = id
   },
@@ -354,6 +362,7 @@ onBeforeUnmount(() => {
     <QualityFeedbackDetail
       v-if="selected"
       :issue-id="selected"
+      :notice-key="noticeKey"
       @close="selected = undefined"
       @changed="changed"
     />

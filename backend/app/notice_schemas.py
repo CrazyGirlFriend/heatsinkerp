@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from .process_route_read_schemas import ProcessRouteDetailResponse
 from .read_schemas import PageResponse, ReadResponse
 
-NoticeSource = Literal["schedule", "rework", "transfer"]
+NoticeSource = Literal["schedule", "rework", "transfer", "quality"]
 ScheduleNoticeKind = Literal[
     "new",
     "changed",
@@ -31,6 +31,7 @@ class BusinessNoticeReadAll(BaseModel):
     schedule: int = Field(ge=0)
     rework: int = Field(ge=0)
     transfer: int = Field(default=0, ge=0)
+    quality: int = Field(default=0, ge=0)
 
 
 class ScheduleNoticeReadAll(BaseModel):
@@ -48,7 +49,7 @@ class NoticeMessageResponse(ReadResponse):
 
 class BusinessNoticeResponse(NoticeMessageResponse):
     source: NoticeSource
-    kind: ScheduleNoticeKind | ReworkNoticeKind | TransferNoticeKind
+    kind: ScheduleNoticeKind | ReworkNoticeKind | TransferNoticeKind | Literal["quality_reported"]
     batch_no: str | None
     amendment_id: int | None = None
     amendment_status: Literal["pending", "approved", "rejected", "cancelled"] | None = None
@@ -59,6 +60,7 @@ class NoticeCursorsResponse(ReadResponse):
     schedule: int
     rework: int
     transfer: int
+    quality: int
 
 
 class BusinessNoticePageResponse(ReadResponse):
@@ -70,7 +72,7 @@ class BusinessNoticePageResponse(ReadResponse):
 
 class NoticeTargetResponse(ReadResponse):
     href: str
-    section: Literal["problem", "steps", "plan-review", "amendment"] | None
+    section: Literal["problem", "steps", "plan-review", "amendment", "quality"] | None
     amendment_id: int | None = None
     schedule_id: int | None = None
     event_id: int | None = None

@@ -30,7 +30,7 @@ router = AsyncAPIRouter(prefix="/api/business-notices", tags=["business notices"
 def inbox(
     page: int = Query(1, ge=1),
     unread_only: bool = False,
-    category: Literal["all", "schedule", "rework", "transfer", "pending"] = "all",
+    category: Literal["all", "schedule", "rework", "transfer", "quality", "pending"] = "all",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

@@ -41,8 +41,8 @@ def test_unified_scopes_independent_receipts(client, warehouse):
     team, headers = rework(client, s)
     plan(client, s, workshop=True)
     admin = inbox(client)
-    assert {n["source"] for n in admin["items"]} == {"schedule", "rework"}
-    assert admin["total"] == admin["unread"] == 2
+    assert {n["source"] for n in admin["items"]} == {"schedule", "rework", "quality"}
+    assert admin["total"] == admin["unread"] == 3
     own = inbox(client, headers)
     assert own["total"] == 1 and own["items"][0]["source"] == "rework"
     n = own["items"][0]
@@ -55,7 +55,7 @@ def test_unified_scopes_independent_receipts(client, warehouse):
     for _ in range(2):
         assert client.post(path + "/read", headers=headers).status_code == 204
     assert inbox(client, headers)["unread"] == 0
-    assert inbox(client)["unread"] == 2
+    assert inbox(client)["unread"] == 3
     _, other = _leader(client, "other-engineer", team)
     assert inbox(client, other)["unread"] == 1
     assert inbox(client, category="rework")["total"] == 1
@@ -82,9 +82,9 @@ def test_pagination_and_read_all_watermarks(client, warehouse):
                 )
             )
     first, second = inbox(client), inbox(client, page=2)
-    assert first["total"] == 25 and len(first["items"]) == 20 and len(second["items"]) == 5
+    assert first["total"] == 26 and len(first["items"]) == 20 and len(second["items"]) == 6
     keys = [(n["source"], n["id"]) for n in first["items"] + second["items"]]
-    assert len(set(keys)) == 25
+    assert len(set(keys)) == 26
     plan(client, s, workshop=True)
     assert client.post(INBOX + "/read-all", json=first["latest"]).status_code == 204
     assert inbox(client, unread_only=True)["total"] == 1

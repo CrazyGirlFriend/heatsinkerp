@@ -1235,6 +1235,34 @@ class InspectionFeedbackTeam(Base):
     )
 
 
+class QualityNotice(Base):
+    __tablename__ = "quality_notices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    inspection_id: Mapped[int] = mapped_column(
+        ForeignKey("material_inspections.id", ondelete="RESTRICT"), nullable=False
+    )
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_qn_team_id", "team_id", "id"),)
+
+
+class QualityNoticeRead(Base):
+    __tablename__ = "quality_notice_reads"
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    notice_id: Mapped[int] = mapped_column(
+        ForeignKey("quality_notices.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_qnr_notice", "notice_id"),)
+
+
 class InspectionFeedbackEvent(Base):
     __tablename__ = "inspection_feedback_events"
     __table_args__ = (Index("ix_feedback_event_issue", "inspection_id", "id"),)

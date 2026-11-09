@@ -4,6 +4,8 @@ import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElInput, ElSelect } from 'element-plus'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
+import AppDialog from './AppDialog.vue'
+import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import QualityReworkRequest from './QualityReworkRequest.vue'
 import {
@@ -11,6 +13,11 @@ import {
   type QualityFeedbackDetail as Detail,
 } from '@/services/qualityFeedbackApi'
 const state = vi.hoisted(() => ({ auth: {} as Record<string, unknown> }))
+vi.mock('@/utils/noticeFocus', () => ({
+  focusNoticeTarget: vi.fn(() => vi.fn()),
+  noticeOpened: vi.fn(),
+  noticeFailed: vi.fn(),
+}))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
@@ -61,6 +68,7 @@ const record: Detail = {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.clearAllMocks()
   state.auth = reactive({
     isTeamAccount: true,
     currentUser: { team_id: 2, active: true },
@@ -78,9 +86,9 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render() {
+async function render(noticeKey?: string) {
   wrapper = mount(QualityFeedbackDetail, {
-    props: { issueId: 1 },
+    props: { issueId: 1, noticeKey },
     global: {
       stubs: {
         SerialRouteAttachments: true,
@@ -94,6 +102,26 @@ async function render() {
   await flushPromises()
 }
 const button = (text: string) => wrapper.findAll('button').find((b) => b.text() === text)
+it('highlights the loaded quality issue after the dialog opens and acknowledges the message', async () => {
+  await render('quality-open')
+  expect(noticeOpened).not.toHaveBeenCalled()
+  wrapper.getComponent(AppDialog).vm.$emit('opened')
+  await flushPromises()
+  expect(focusNoticeTarget).toHaveBeenCalledWith(wrapper.get('.quality-detail-heading').element)
+  expect(noticeOpened).toHaveBeenCalledWith('quality-open')
+  await wrapper.setProps({ noticeKey: 'quality-reopen' })
+  await flushPromises()
+  expect(noticeOpened).toHaveBeenLastCalledWith('quality-reopen')
+})
+it('keeps a failed quality message unread and reports the destination error', async () => {
+  vi.mocked(qualityFeedbackApi.detail).mockRejectedValueOnce(new Error('当前班组无权查看'))
+  await render('quality-failed')
+  wrapper.getComponent(AppDialog).vm.$emit('opened')
+  await flushPromises()
+  expect(noticeFailed).toHaveBeenCalledWith('quality-failed', expect.any(Error))
+  expect(noticeOpened).not.toHaveBeenCalled()
+  expect(focusNoticeTarget).not.toHaveBeenCalled()
+})
 it('lets an involved team reply but does not expose QC decisions', async () => {
   await render()
   expect(button('保存处理意见')).toBeUndefined()

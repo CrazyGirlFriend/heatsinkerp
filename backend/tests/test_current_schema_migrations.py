@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, inspect
             ["shared_material_groups", "shared_material_members"],
         ),
         ("20261105_0069_unified_team_tasks.py", ["team_processing_tasks"]),
+        ("20261109_0070_quality_notices.py", ["quality_notices", "quality_notice_reads"]),
     ],
 )
 def test_upgrade_accepts_current_metadata_without_duplicate_constraints(filename, tables):

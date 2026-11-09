@@ -10,7 +10,7 @@ export type NoticeTarget = Omit<components['schemas']['NoticeTargetResponse'], '
 }
 export function parseNotice(value: unknown) {
   if (typeof value !== 'string') return null
-  const match = /^(schedule|rework|transfer):([1-9]\d*)$/.exec(value)
+  const match = /^(schedule|rework|transfer|quality):([1-9]\d*)$/.exec(value)
   return match ? { source: match[1] as NoticeSource, id: Number(match[2]) } : null
 }
 export const businessNoticeApi = {

@@ -316,6 +316,10 @@ def create(db, payload, user):
                     ]
                 )
             db.flush()
+            if payload.failed_quantity and not parent:
+                from .quality_notices import notify_involved_teams
+
+                notify_involved_teams(db, row)
             db.add(
                 MaterialTransferEvent(
                     transfer_id=lot.id,

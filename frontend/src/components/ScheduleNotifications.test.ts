@@ -3,7 +3,6 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElPagination } from 'element-plus'
-import AppSelect from './AppSelect.vue'
 import ScheduleNotifications from './ScheduleNotifications.vue'
 import { scheduleNoticeApi } from '@/services/scheduleNoticeApi'
 import { businessNoticeApi, type BusinessNotice } from '@/services/businessNoticeApi'
@@ -31,7 +30,7 @@ const result = {
   items: [notice],
   total: 1,
   unread: 1,
-  latest: { schedule: 8, rework: 3, transfer: 0 },
+  latest: { schedule: 8, rework: 3, transfer: 0, quality: 0 },
 }
 const wrappers: ReturnType<typeof mount>[] = []
 async function setup() {
@@ -82,6 +81,47 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 describe('schedule inbox', () => {
+  it('shows quality as a visible category and opens the selected issue before marking read', async () => {
+    vi.mocked(businessNoticeApi.list).mockResolvedValue({
+      ...result,
+      items: [
+        { ...notice, source: 'quality', kind: 'quality_reported', message: '不合格 2 件 · 划伤' },
+      ],
+      latest: { ...result.latest, quality: 8 },
+    })
+    vi.mocked(businessNoticeApi.target).mockResolvedValue({
+      href: '/team-workspaces/2?tab=quality-feedback&issue=42',
+      section: 'quality',
+    })
+    const { wrapper, router } = await setup()
+    await wrapper.get('.notice-trigger').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.inbox-sources button').map((button) => button.text())).toEqual([
+      '全部',
+      '质量',
+      '返工',
+      '交期',
+      '转料',
+    ])
+    await wrapper
+      .findAll('.inbox-sources button')
+      .find((button) => button.text() === '质量')!
+      .trigger('click')
+    await flushPromises()
+    expect(businessNoticeApi.list).toHaveBeenLastCalledWith(1, false, 'quality')
+    expect(wrapper.get('.inbox-kind').text()).toBe('质量问题')
+    await wrapper.get('.inbox-item').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({
+      tab: 'quality-feedback',
+      issue: '42',
+      business_notice: 'quality:8',
+    })
+    expect(businessNoticeApi.read).not.toHaveBeenCalled()
+    noticeOpened(String(router.currentRoute.value.query.notice))
+    await flushPromises()
+    expect(businessNoticeApi.read).toHaveBeenCalledWith('quality', 8)
+  })
   it('opens the business directly and marks read only when the destination confirms it opened', async () => {
     const { wrapper, router } = await setup()
     expect(wrapper.get('.notice-trigger').attributes('aria-label')).toContain('1 条未读')
@@ -120,7 +160,12 @@ describe('schedule inbox', () => {
       .find((b) => b.text() === '全部标为已读')!
       .trigger('click')
     await flushPromises()
-    expect(businessNoticeApi.readAll).toHaveBeenCalledWith({ schedule: 8, rework: 3, transfer: 0 })
+    expect(businessNoticeApi.readAll).toHaveBeenCalledWith({
+      schedule: 8,
+      rework: 3,
+      transfer: 0,
+      quality: 0,
+    })
   })
   it('opens a whole message row and distinguishes matching IDs from different sources', async () => {
     vi.mocked(businessNoticeApi.list).mockResolvedValue({
@@ -172,7 +217,10 @@ describe('schedule inbox', () => {
     const { wrapper, router } = await setup()
     await wrapper.get('.notice-trigger').trigger('click')
     await flushPromises()
-    wrapper.getComponent(AppSelect).vm.$emit('update:modelValue', 'rework')
+    await wrapper
+      .findAll('.inbox-sources button')
+      .find((button) => button.text() === '返工')!
+      .trigger('click')
     await flushPromises()
     expect(businessNoticeApi.list).toHaveBeenLastCalledWith(1, false, 'rework')
     await wrapper.get('.inbox-item').trigger('click')
@@ -229,7 +277,7 @@ describe('schedule inbox', () => {
       .trigger('click')
     await flushPromises()
     expect(businessNoticeApi.list).toHaveBeenLastCalledWith(1, false, 'pending')
-    expect(wrapper.findComponent(AppSelect).exists()).toBe(false)
+    expect(wrapper.find('.inbox-sources').exists()).toBe(false)
     expect(businessNoticeApi.target).not.toHaveBeenCalled()
     expect(businessNoticeApi.read).not.toHaveBeenCalled()
   })
@@ -277,7 +325,10 @@ describe('schedule inbox', () => {
     const { wrapper } = await setup()
     await wrapper.get('.notice-trigger').trigger('click')
     await flushPromises()
-    wrapper.getComponent(AppSelect).vm.$emit('update:modelValue', 'rework')
+    await wrapper
+      .findAll('.inbox-sources button')
+      .find((button) => button.text() === '返工')!
+      .trigger('click')
     await flushPromises()
     wrapper.getComponent(ElPagination).vm.$emit('update:current-page', 2)
     await flushPromises()

@@ -388,6 +388,10 @@ def write(db, issue_id, payload, user, *, decision=False):
                     )
                 )
                 db.flush()
+                if decision:
+                    from .quality_notices import notify_involved_teams
+
+                    notify_involved_teams(db, row)
         return detail(db, issue_id, user)
     except (IntegrityError, OperationalError) as exc:
         db.rollback()

@@ -8,11 +8,16 @@ from sqlalchemy import and_, exists, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from .models import (
+    InspectionFeedbackEvent,
+    InspectionFeedbackTeam,
+    MaterialInspection,
     MaterialTransfer,
     MaterialTransferAmendment,
     ProcessRoute,
     ProductionSchedule,
     ProductionScheduleEvent,
+    QualityNotice,
+    QualityNoticeRead,
     ReworkNotice,
     ReworkNoticeRead,
     ScheduleNotice,
@@ -32,6 +37,7 @@ MODELS = {
     "schedule": (ScheduleNotice, ScheduleNoticeRead),
     "rework": (ReworkNotice, ReworkNoticeRead),
     "transfer": (TransferAmendmentNotice, TransferAmendmentNoticeRead),
+    "quality": (QualityNotice, QualityNoticeRead),
 }
 
 
@@ -39,7 +45,15 @@ def scope(user, notice):
     if user.role == "ADMIN":
         return []
     if user.role == "TEAM" and user.team_id:
-        return [notice.team_id == user.team_id]
+        filters = [notice.team_id == user.team_id]
+        if notice is QualityNotice:
+            filters.append(
+                exists().where(
+                    InspectionFeedbackTeam.inspection_id == notice.inspection_id,
+                    InspectionFeedbackTeam.team_id == user.team_id,
+                )
+            )
+        return filters
     raise HTTPException(403, "仅班组长和系统管理员可查看消息")
 
 
@@ -119,7 +133,7 @@ def inbox(
     *,
     page: int = 1,
     unread_only: bool = False,
-    category: Literal["all", "schedule", "rework", "transfer", "pending"] = "all",
+    category: Literal["all", "schedule", "rework", "transfer", "quality", "pending"] = "all",
     user: User,
     db: Session,
 ):
@@ -129,6 +143,18 @@ def inbox(
         filters = scope(user, notice)
         latest[source] = db.scalar(select(func.max(notice.id)).where(*filters)) or 0
         action_required = literal(False)
+        if source == "quality" and user.role == "TEAM" and user.team_id:
+            action_required = and_(
+                exists().where(
+                    MaterialInspection.id == notice.inspection_id,
+                    MaterialInspection.feedback_status != "closed",
+                ),
+                ~exists().where(
+                    InspectionFeedbackEvent.inspection_id == notice.inspection_id,
+                    InspectionFeedbackEvent.team_id == user.team_id,
+                    InspectionFeedbackEvent.kind == "reply",
+                ),
+            )
         if source == "transfer" and user.role == "TEAM" and user.team_id:
             action_required = and_(
                 notice.kind == "amendment_requested",
@@ -217,6 +243,14 @@ def inbox(
             )
         )
     }
+    issues = {
+        issue.id: issue
+        for issue in db.scalars(
+            select(MaterialInspection).where(
+                MaterialInspection.id.in_([n.inspection_id for n in notices["quality"].values()])
+            )
+        )
+    }
     lots = {
         lot.id: lot
         for lot in db.scalars(
@@ -224,6 +258,7 @@ def inbox(
                 MaterialTransfer.id.in_(
                     [r.rework_source_transfer_id for r in routes.values()]
                     + [a.transfer_id for a in amendments.values()]
+                    + [issue.source_transfer_id for issue in issues.values()]
                 )
             )
         )
@@ -250,6 +285,12 @@ def inbox(
             serial = route.serial_nos[0] if route.serial_nos else ""
             message = route.request_reason
             batch_no = lot.batch_no
+        elif source == "quality":
+            lot = lots[issues[notice.inspection_id].source_transfer_id]
+            serial = lot.serial_no
+            message = notice.message
+            batch_no = lot.batch_no
+            amendment_info = dict(action_required=bool(action_required))
         else:
             amendment = amendments[notice.amendment_id]
             lot = lots[amendment.transfer_id]
@@ -280,6 +321,20 @@ def inbox(
 
 def target(*, source: Source, notice_id: int, user: User, db: Session):
     notice = visible_notice(db, user, source, notice_id)
+    if source == "quality":
+        from .quality_feedback import issue
+
+        record = issue(db, notice.inspection_id, user)
+        team = db.get(Team, notice.team_id)
+        workspace_id = (
+            record.inspection_team_id
+            if team.kind in ("engineering", "dispatch", "business")
+            else notice.team_id
+        )
+        return dict(
+            href=f"/team-workspaces/{workspace_id}?tab=quality-feedback&issue={notice.inspection_id}",
+            section="quality",
+        )
     if source == "transfer":
         amendment = db.get(MaterialTransferAmendment, notice.amendment_id)
         transfer = db.get(MaterialTransfer, amendment.transfer_id)
