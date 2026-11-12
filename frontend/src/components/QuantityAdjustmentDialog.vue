@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import {
+  processingParameterErrors,
+  processingParameterPayload,
+  type ProcessingParameters,
+} from '@/config/processingParameters'
+import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
 import StatePanel from './StatePanel.vue'
 import AppDetailTable from './AppDetailTable.vue'
 import ElAlert from '@/components/AppAlert.vue'
@@ -7,7 +14,7 @@ import ElSelect from '@/components/AppSelect.vue'
 import ElSwitch from '@/components/AppSwitch.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
-import PersonName from './PersonName.vue'
+import ProcessingPeople from './ProcessingPeople.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
@@ -33,6 +40,8 @@ import ElButton from '@/components/AppButton.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingDurationInput from './ProcessingDurationInput.vue'
+import { formatProcessingMinutes, validProcessingMinutes } from '@/utils/processingDuration'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import ProcessExecutionPanel from './ProcessExecutionPanel.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -117,7 +126,17 @@ type OutputDraft = {
   specification: string
   specificationValid: boolean
 }
-const employee = ref<TeamEmployee | null>(null)
+const employees = ref<TeamEmployee[]>([])
+const processingMinutes = ref<number>()
+const parameters = ref<ProcessingParameters>({})
+const parameterFields = computed(() => processingParameterFields(snapshot.value?.parameter_fields))
+const parameterErrors = computed(() =>
+  processingParameterErrors(
+    parameters.value,
+    snapshot.value?.parameter_fields || [],
+    processingMinutes.value,
+  ),
+)
 const processingDate = ref(factoryToday())
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
@@ -142,8 +161,8 @@ const structured = computed(() => props.processing && !!snapshot.value?.processi
 const unitProcessing = computed(
   () => structured.value && snapshot.value?.processing_mode === 'unit',
 )
-watch(employee, (value) => {
-  processorName.value = value?.name || ''
+watch(employees, (value) => {
+  processorName.value = value[0]?.name || ''
 })
 const detailed = ref(false),
   outputs = ref<OutputDraft[]>([])
@@ -362,7 +381,11 @@ async function save() {
   if (
     (props.processing && (!taskFieldsValid.value || scheduleMissing.value)) ||
     (structured.value &&
-      (!employee.value || !processingDate.value || processingDate.value > factoryToday())) ||
+      (!employees.value.length ||
+        !processingDate.value ||
+        processingDate.value > factoryToday())) ||
+    !validProcessingMinutes(processingMinutes.value) ||
+    (structured.value && Object.keys(parameterErrors.value).length > 0) ||
     (structured.value &&
       !unitProcessing.value &&
       (!Number.isSafeInteger(inputQuantity.value) ||
@@ -421,7 +444,10 @@ async function save() {
       : {}),
     ...(structured.value
       ? {
-          processor_employee_id: employee.value!.id,
+          processor_employee_id: employees.value[0]!.id,
+          processor_employee_ids: employees.value.map((person) => person.id),
+          processing_minutes: processingMinutes.value ?? null,
+          ...processingParameterPayload(parameters.value, snapshot.value.parameter_fields),
           processing_date: processingDate.value,
           processing_mode: snapshot.value.processing_mode,
           ...(unitProcessing.value
@@ -478,7 +504,9 @@ watch(
     page.value = 1
     quantity.value = undefined
     processorName.value = ''
-    employee.value = null
+    employees.value = []
+    processingMinutes.value = undefined
+    parameters.value = {}
     taskId.value = purposeId.value = originalRecordId.value = null
     taskFieldsValid.value = true
     processingDate.value = factoryToday()
@@ -765,10 +793,11 @@ onBeforeUnmount(() => {
               >
                 <TeamEmployeeInput
                   v-if="structured"
-                  v-model="employee"
+                  v-model:people="employees"
+                  multiple
                   :team-id="teamId"
                   label="加工人"
-                  :invalid="submitted && !employee"
+                  :invalid="submitted && !employees.length"
                 />
                 <ProcessingPersonInput
                   v-else
@@ -777,6 +806,21 @@ onBeforeUnmount(() => {
                   :invalid="
                     submitted && (!processorName.trim() || processorName.trim().length > 80)
                   "
+                />
+              </ElFormItem>
+              <ElFormItem
+                v-if="structured"
+                label="加工时长（选填）"
+                :error="
+                  submitted && !validProcessingMinutes(processingMinutes)
+                    ? '请填写大于零的加工时长'
+                    : undefined
+                "
+              >
+                <ProcessingDurationInput
+                  v-model="processingMinutes"
+                  :invalid="submitted && !validProcessingMinutes(processingMinutes)"
+                  :disabled="saving"
                 />
               </ElFormItem>
               <ElFormItem
@@ -789,14 +833,22 @@ onBeforeUnmount(() => {
                   label="加工后实际尺寸"
                   @validity-change="specificationValid = $event"
               /></ElFormItem>
+              <ProcessingParameterFields
+                v-if="structured"
+                v-model="parameters"
+                :fields="snapshot.parameter_fields"
+                :total-minutes="processingMinutes"
+                :submitted="submitted"
+                :disabled="saving"
+              />
               <ElFormItem
-                label="加工说明（选填）"
+                label="备注（选填）"
                 class="form-field--full"
                 :class="{ 'is-error': submitted && reason.trim().length > 2000 }"
                 ><ElInput
                   v-model="reason"
                   type="textarea"
-                  aria-label="加工说明"
+                  aria-label="备注"
                   :rows="2"
                   maxlength="2000"
                   show-word-limit
@@ -1039,8 +1091,9 @@ onBeforeUnmount(() => {
             </ElTableColumn>
             <ElTableColumn label="加工人" min-width="110" align="center">
               <template #default="{ row }"
-                ><PersonName
-                  :name="
+                ><ProcessingPeople
+                  :people="row.operation_kind === 'outbound_clearance' ? [] : row.processors"
+                  :fallback="
                     row.operation_kind === 'outbound_clearance'
                       ? '—'
                       : row.processor_name || '未登记'
@@ -1070,7 +1123,24 @@ onBeforeUnmount(() => {
                 >{{ row.before_quantity }} → {{ row.after_quantity }} 件</template
               ></ElTableColumn
             >
-            <ElTableColumn prop="reason" label="加工说明" min-width="220" align="center" />
+            <ElTableColumn prop="processing_minutes" label="加工时长" min-width="140">
+              <template #default="{ row }">{{
+                formatProcessingMinutes(row.processing_minutes)
+              }}</template>
+            </ElTableColumn>
+            <ElTableColumn
+              v-for="field in parameterFields"
+              :key="field.key"
+              :prop="field.key"
+              :label="field.label"
+              min-width="140"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">{{
+                formatProcessingParameter(field.key, row)
+              }}</template>
+            </ElTableColumn>
+            <ElTableColumn prop="reason" label="备注" min-width="220" align="center" />
             <ElTableColumn v-if="processing" label="加工性质" min-width="130"
               ><template #default="{ row }">{{
                 row.work_kind === 'rework' ? `返工第 ${row.rework_round} 次` : '首次加工'
@@ -1184,6 +1254,9 @@ onBeforeUnmount(() => {
 }
 .processing-work-order {
   min-width: 0;
+}
+.processing-registration-form {
+  container: form-fields / inline-size;
 }
 .processing-workspace .process-execution-panel {
   position: sticky;

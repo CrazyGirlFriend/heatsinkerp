@@ -15,11 +15,17 @@ const props = withDefaults(
     disabled?: boolean
     invalid?: boolean
     loading?: boolean
+    multiple?: boolean
   }>(),
   { disabled: undefined },
 )
 const emit = defineEmits<{ openChange: [boolean] }>()
 const name = defineModel<string>({ required: true })
+const selectedNames = defineModel<string[]>('selectedNames', { default: () => [] })
+const draftNames = ref<string[]>([])
+const selected = (person: string) =>
+  props.multiple ? draftNames.value.includes(person) : person === name.value
+const displayName = computed(() => (props.multiple ? selectedNames.value.join('、') : name.value))
 const isDisabled = useFormDisabled()
 const opened = ref(false)
 const query = ref('')
@@ -30,7 +36,10 @@ const matches = computed(() => {
   return (props.options || []).filter((person) => person.toLocaleLowerCase().includes(term))
 })
 watch(opened, (value) => {
-  if (value) query.value = ''
+  if (value) {
+    query.value = ''
+    draftNames.value = [...selectedNames.value]
+  }
   emit('openChange', value)
 })
 watch(isDisabled, (value) => {
@@ -41,7 +50,19 @@ function close() {
 }
 function choose(person: string) {
   if (isDisabled.value || props.loading) return
+  if (props.multiple) {
+    draftNames.value = !person
+      ? []
+      : selected(person)
+        ? draftNames.value.filter((item) => item !== person)
+        : [...draftNames.value, person]
+    return
+  }
   name.value = person
+  close()
+}
+function confirm() {
+  selectedNames.value = draftNames.value.filter((person) => props.options?.includes(person))
   close()
 }
 </script>
@@ -60,8 +81,13 @@ function choose(person: string) {
       :aria-invalid="invalid || undefined"
       @click="opened = true"
     >
-      <span :key="name" class="person-value" :class="{ 'is-placeholder': !name }"
-        ><PersonName v-if="name" :name="name" /><template v-else>{{
+      <span
+        :key="displayName"
+        class="person-value"
+        :class="{ 'is-placeholder': !displayName }"
+        :title="displayName"
+        ><template v-if="multiple && selectedNames.length">{{ displayName }}</template
+        ><PersonName v-else-if="name" :name="name" /><template v-else>{{
           `请选择${label || '加工人'}`
         }}</template></span
       >
@@ -86,7 +112,13 @@ function choose(person: string) {
         <header class="person-panel-header">
           <strong>本班组员工</strong>
           <span class="person-count">{{ matches.length }} 人</span>
-          <ElButton v-if="name" link type="primary" :disabled="loading" @click="choose('')"
+          <span v-if="multiple" class="person-count">已选 {{ draftNames.length }} 人</span>
+          <ElButton
+            v-if="multiple ? draftNames.length : name"
+            link
+            type="primary"
+            :disabled="loading"
+            @click="choose('')"
             >清除选择</ElButton
           >
         </header>
@@ -107,21 +139,24 @@ function choose(person: string) {
             :key="person"
             native-type="button"
             class="person-choice"
-            :class="{ 'is-selected': person === name }"
-            :aria-pressed="person === name"
+            :class="{ 'is-selected': selected(person) }"
+            :aria-pressed="selected(person)"
             :title="person"
             @click="choose(person)"
           >
             <PersonName :name="person" />
-            <ElIcon v-if="person === name"><Check /></ElIcon>
+            <ElIcon v-if="selected(person)"><Check /></ElIcon>
           </ElButton>
         </div>
         <p v-else class="person-empty" role="status">
-          {{ options?.length ? '未找到匹配的员工' : '请先在班组设置中添加员工' }}
+          {{ options?.length ? '未找到匹配的员工' : '请先在班组管理中添加员工' }}
         </p>
       </section>
       <template #footer>
         <ElButton @click="close">取消</ElButton>
+        <ElButton v-if="multiple" type="primary" :disabled="isDisabled || loading" @click="confirm"
+          >确定</ElButton
+        >
       </template>
     </AppDialog>
   </div>

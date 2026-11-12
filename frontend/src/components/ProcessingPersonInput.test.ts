@@ -59,7 +59,7 @@ describe('processing employee picker', () => {
 
   it('distinguishes an empty roster from a search with no matches', async () => {
     await render('', [])
-    expect(wrapper.get('[role="status"]').text()).toBe('请先在班组设置中添加员工')
+    expect(wrapper.get('[role="status"]').text()).toBe('请先在班组管理中添加员工')
     await wrapper.setProps({ options: people })
     await wrapper.get('input[aria-label="搜索加工人"]').setValue('未登记的人')
     expect(wrapper.get('[role="status"]').text()).toBe('未找到匹配的员工')
@@ -96,4 +96,29 @@ describe('processing employee picker', () => {
     expect(wrapper.getComponent(ElDialog).props('modelValue')).toBe(false)
     expect(wrapper.getComponent(ProcessingPersonInput).emitted('update:modelValue')).toBeUndefined()
   })
+})
+
+it('keeps a multi-person draft through search and commits only on confirmation', async () => {
+  await render('', people)
+  await wrapper.setProps({ multiple: true, selectedNames: ['李师傅'] })
+  await wrapper.get('.person-panel').trigger('keydown', { key: 'Escape' })
+  await open()
+  await wrapper.get('input[aria-label="搜索加工人"]').setValue('王')
+  await wrapper.get('.person-choice').trigger('click')
+  expect(wrapper.emitted('update:selectedNames')).toBeUndefined()
+  expect(wrapper.getComponent(ElDialog).props('modelValue')).toBe(true)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '取消')!
+    .trigger('click')
+  await open()
+  expect(wrapper.get('.person-choice[aria-pressed="true"]').text()).toBe('李师傅')
+  await wrapper.get('input[aria-label="搜索加工人"]').setValue('王')
+  await wrapper.get('.person-choice').trigger('click')
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '确定')!
+    .trigger('click')
+  expect(wrapper.emitted('update:selectedNames')).toEqual([[['李师傅', '王师傅']]])
+  expect(wrapper.getComponent(ElDialog).props('modelValue')).toBe(false)
 })

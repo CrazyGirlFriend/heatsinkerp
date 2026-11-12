@@ -48,6 +48,9 @@ const canEdit = computed(
     (auth.isAdmin ||
       (auth.isTeamAccount && String(auth.currentUser?.team_id) === String(team.value?.id))),
 )
+const managingTeam = computed(
+  () => location.query.tab === 'settings' && canEdit.value && !!team.value,
+)
 const routeKind = ref<'normal' | 'rework'>(location.query.kind === 'rework' ? 'rework' : 'normal')
 const reworkScope = ref<'open' | 'ended' | 'all'>('open')
 function changeReworkScope() {
@@ -99,8 +102,7 @@ const items = ref<ProcessRoute[]>([]),
   error = ref(''),
   selected = ref<ProcessRoute | null>(null),
   editing = ref(false),
-  creating = ref(false),
-  settingsOpen = ref(false)
+  creating = ref(false)
 function create() {
   if (!canEdit.value) return
   newMenuOpen.value = false
@@ -125,6 +127,7 @@ watch(
   { flush: 'sync' },
 )
 async function load() {
+  if (managingTeam.value) return
   const request = ++generation
   loading.value = true
   error.value = ''
@@ -309,9 +312,19 @@ watch(
   () => location.query.kind,
   (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
 )
+watch(managingTeam, (managing) => {
+  closeEditor()
+  closeDrawing()
+  newMenuOpen.value = false
+  if (managing) {
+    ++generation
+    loading.value = false
+    error.value = ''
+  } else void load()
+})
 useLiveRefresh(load, {
   teamId: () => (team.value ? Number(team.value.id) : undefined),
-  busy: () => loading.value || !!selected.value || creating.value,
+  busy: () => managingTeam.value || loading.value || !!selected.value || creating.value,
 })
 onMounted(() => {
   routeMedia?.addEventListener('change', resizeRouteSummary)
@@ -330,13 +343,21 @@ onBeforeUnmount(() => {
   <TeamWorkspaceShell
     class="process-workspace"
     title="工艺"
-    model-value="process-routes"
+    :model-value="managingTeam ? 'settings' : 'process-routes'"
     engineering
-    :settings="canEdit && !!team"
-    @settings="settingsOpen = true"
   >
+    <TeamBusinessDialog
+      v-if="managingTeam && team"
+      :model-value="true"
+      inline
+      :team-id="Number(team.id)"
+      :team-name="team.name"
+      business-only
+      employees-only
+      :processing-tasks="false"
+    />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <WorkspaceDataPanel class="workspace-data-panel">
+    <WorkspaceDataPanel v-if="!managingTeam" class="workspace-data-panel">
       <WorkspaceDataToolbar
         v-model="query"
         :loading="loading"
@@ -798,15 +819,6 @@ onBeforeUnmount(() => {
         @opened="focusReworkNotice"
         @close="closeEditor"
         @saved="load"
-      />
-      <TeamBusinessDialog
-        v-if="team && canEdit"
-        v-model="settingsOpen"
-        :team-id="Number(team.id)"
-        :team-name="team.name"
-        business-only
-        employees-only
-        :processing-tasks="false"
       />
     </template>
   </TeamWorkspaceShell>

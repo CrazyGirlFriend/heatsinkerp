@@ -17,6 +17,7 @@ export interface TableExportSource {
   title: string
   total: number
   fields: ExportField[]
+  workbook?: (rows: Record<string, ExportValue>[]) => Promise<Blob>
   load: (
     signal: AbortSignal,
     progress: (loaded: number, total: number) => void,

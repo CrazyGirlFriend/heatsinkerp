@@ -2,6 +2,12 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { ref } from 'vue'
+import {
+  workspaceAppearanceKey,
+  type WorkspaceAppearance,
+} from '@/composables/useWorkspaceAppearance'
+import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import { ElPagination, ElPopover } from 'element-plus'
 import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
@@ -10,13 +16,13 @@ import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
-const state = vi.hoisted(() => ({ admin: true }))
+const state = vi.hoisted(() => ({ admin: true, teamId: 2, active: true, authError: '' }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     isAdmin: state.admin,
     isTeamAccount: !state.admin,
-    currentUser: { id: 1, active: true, team_id: 2 },
-    currentUserError: '',
+    currentUser: { id: 1, active: state.active, team_id: state.teamId },
+    currentUserError: state.authError,
   }),
 }))
 vi.mock('@/stores/teamDirectory', () => ({
@@ -35,6 +41,9 @@ vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span 
 let wrapper: VueWrapper
 beforeEach(() => {
   state.admin = true
+  state.teamId = 2
+  state.active = true
+  state.authError = ''
   vi.stubGlobal(
     'URL',
     class extends URL {
@@ -75,7 +84,10 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
-async function render(query: Record<string, string> = {}) {
+async function render(
+  query: Record<string, string> = {},
+  appearance: WorkspaceAppearance = 'glass',
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/process-routes', component: ProcessRoutesPage }],
@@ -85,6 +97,7 @@ async function render(query: Record<string, string> = {}) {
   wrapper = mount(ProcessRoutesPage, {
     global: {
       plugins: [router],
+      provide: { [workspaceAppearanceKey as symbol]: ref(appearance) },
       directives: { loading: () => {} },
       stubs: {
         TeamBusinessDialog: true,
@@ -98,6 +111,41 @@ async function render(query: Record<string, string> = {}) {
   await flushPromises()
   return router
 }
+it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-error'])(
+  'opens the engineering personnel page only for an authorized %s account in the current theme',
+  async (account) => {
+    state.admin = account === 'administrator'
+    state.teamId = account === 'other-team' ? 2 : 9
+    state.active = account !== 'inactive'
+    state.authError = account === 'permission-error' ? '权限读取失败' : ''
+    const router = await render({ tab: 'settings' }, 'watermelon')
+    const allowed = ['administrator', 'engineering'].includes(account)
+    expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(allowed)
+    if (allowed) {
+      expect(wrapper.get('h1').text()).toBe('班组管理')
+      expect(wrapper.getComponent(TeamBusinessDialog).props()).toMatchObject({
+        teamId: 9,
+        modelValue: true,
+        inline: true,
+        employeesOnly: true,
+        businessOnly: true,
+        processingTasks: false,
+      })
+      expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(false)
+      expect(processRouteApi.list).not.toHaveBeenCalled()
+      await router.push('/process-routes')
+      await flushPromises()
+      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
+      expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(true)
+      expect(processRouteApi.list).toHaveBeenCalled()
+      await router.back()
+      await flushPromises()
+      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(true)
+    } else {
+      expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(true)
+    }
+  },
+)
 it('removes the previous twenty-row page immediately when requesting ten rows', async () => {
   const items = Array.from({ length: 23 }, (_, index) => ({ ...routeFixture, id: index + 1 }))
   const response = (size: number) => ({

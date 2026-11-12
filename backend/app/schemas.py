@@ -56,6 +56,15 @@ class ProcessingQuantity(BaseModel):
     expected_revision: int = Field(ge=0)
     processor_name: str = Field(min_length=1, max_length=80)
     processor_employee_id: int | None = Field(default=None, ge=1)
+    processor_employee_ids: list[int] | None = Field(default=None, min_length=1, max_length=50)
+    processing_minutes: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    furnace_no: str | None = Field(default=None, max_length=80)
+    temperature_requirement: str | None = Field(default=None, max_length=160)
+    actual_temperature_c: Decimal | None = Field(
+        default=None, ge=Decimal("-273.15"), le=Decimal("99999.99"), max_digits=7, decimal_places=2
+    )
+    holding_minutes: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    machine_no: str | None = Field(default=None, max_length=80)
     processing_task_id: int | None = Field(default=None, ge=1)
     purpose_id: int | None = Field(default=None, ge=1)
     processing_date: date | None = None
@@ -69,6 +78,36 @@ class ProcessingQuantity(BaseModel):
     processing_status: Literal["partial", "complete"] | None = None
     transfer_specification: str | None = Field(default=None, max_length=240)
     outputs: list[ProcessingOutput] | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("processor_employee_ids")
+    @classmethod
+    def validate_participants(cls, value):
+        if value is not None:
+            if any(employee_id <= 0 for employee_id in value) or len(set(value)) != len(value):
+                raise ValueError("加工人员不能重复，且必须是有效员工")
+            return sorted(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_primary_processor(self):
+        if (
+            self.holding_minutes is not None
+            and self.processing_minutes is not None
+            and self.holding_minutes > self.processing_minutes
+        ):
+            raise ValueError("保温时长不能超过本次加工时长")
+        if (
+            self.processor_employee_ids is not None
+            and self.processor_employee_id is not None
+            and self.processor_employee_id not in self.processor_employee_ids
+        ):
+            raise ValueError("加工人必须包含在参与人员中")
+        return self
+
+    @field_validator("furnace_no", "temperature_requirement", "machine_no")
+    @classmethod
+    def normalize_processing_parameter(cls, value):
+        return value.strip() or None if value is not None else None
 
     @field_validator("processor_name", mode="before")
     @classmethod

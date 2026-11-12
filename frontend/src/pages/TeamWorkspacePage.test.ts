@@ -147,6 +147,7 @@ beforeEach(() => {
     page_size: 10,
   })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
     items: [source(), source(11)],
     total: 2,
@@ -310,8 +311,18 @@ describe('team workspace material ledger', () => {
       expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
       if (allowed) {
         expect(wrapper.getComponent(TeamBusinessDialog).props('inline')).toBe(true)
-        expect(wrapper.text()).toContain('班组员工')
+        expect(wrapper.text()).toContain('人员管理')
+        expect(wrapper.text()).toContain('加工任务')
+        expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('人员管理')
+        await wrapper.get('#tab-tasks').trigger('click')
+        await flushPromises()
+        expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('加工任务')
+        expect(wrapper.find('[aria-label="新增任务名称"]').exists()).toBe(true)
         expect(wrapper.find('.team-settings-page .el-dialog').exists()).toBe(false)
+        await wrapper.get('#tab-production').trigger('click')
+        await flushPromises()
+        expect(wrapper.getComponent(TeamProcessingRecords).props('management')).toBe(true)
+        expect(wrapper.getComponent(TeamProcessingRecords).props('teamCode')).toBe('FACTORY-ROLL')
       }
     },
   )
@@ -661,6 +672,16 @@ describe('team workspace material ledger', () => {
         expect.objectContaining({ source_ids: '10' }),
       )
       expect(wrapper.getComponent(MaterialStockActionDialog).props('sources')).toEqual([source(10)])
+    })
+    it('dispatches from production registration within team management', async () => {
+      await render('/team-workspaces/914?tab=settings&management_tab=production')
+      dispatch()
+      await flushPromises()
+      expect(wrapper.getComponent(MaterialStockActionDialog).props()).toMatchObject({
+        modelValue: true,
+        mode: 'dispatch',
+        sources: [source(42)],
+      })
     })
     it.each(['exhausted', 'quality-hold', 'rework', 'unprocessed'])(
       'does not open dispatch for %s stock',

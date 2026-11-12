@@ -196,7 +196,7 @@ it('explains missing problem setup and does not accept a failed check without co
   await flushPromises()
   choosePerson()
   await button('保存巡检').trigger('click')
-  expect(wrapper.text()).toContain('请检验班组长在“班组设置 → 检验问题”中配置')
+  expect(wrapper.text()).toContain('请检验班组长在“班组管理 → 检验问题”中配置')
   expect(inspectionApi.create).not.toHaveBeenCalled()
 })
 

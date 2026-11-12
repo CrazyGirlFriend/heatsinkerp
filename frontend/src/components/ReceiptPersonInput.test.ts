@@ -50,7 +50,7 @@ describe('receiving employee roster', () => {
     expect(wrapper.props()).toMatchObject({ modelValue: null })
     await wrapper.get('button[aria-label="接收人"]').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('请先在班组设置中添加员工')
+    expect(wrapper.text()).toContain('请先在班组管理中添加员工')
   })
   it('discards stale responses for an earlier team', async () => {
     let resolve!: (people: TeamEmployee[]) => void

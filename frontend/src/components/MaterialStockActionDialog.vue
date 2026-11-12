@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import {
+  processingParameterErrors,
+  processingParameterPayload,
+  type ProcessingParameters,
+} from '@/config/processingParameters'
+
 import AppDisclosure from './AppDisclosure.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -33,6 +40,8 @@ import SludgeWeightFields from './SludgeWeightFields.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingDurationInput from './ProcessingDurationInput.vue'
+import { validProcessingMinutes } from '@/utils/processingDuration'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { factoryToday, formatDateTime } from '@/utils/format'
@@ -187,7 +196,9 @@ const processing = reactive<
       original?: number
       revision?: number
       reason: string
-      employee?: TeamEmployee | null
+      employees: TeamEmployee[]
+      parameters: ProcessingParameters
+      minutes?: number
       date?: string
       structured?: boolean
       processorName: string
@@ -419,6 +430,8 @@ async function loadProcessing(source: StockBatch) {
     reason: '',
     processorName: '',
     processorOptions: [],
+    employees: [],
+    parameters: {},
     loading: false,
     error: '',
   }
@@ -455,11 +468,11 @@ async function loadProcessing(source: StockBatch) {
     if (current === generation) draft.loading = false
   }
 }
-function selectProcessor(sourceId: number, person: TeamEmployee | null) {
+function selectProcessor(sourceId: number, people: TeamEmployee[]) {
   const draft = processing[sourceId]
   if (draft) {
-    draft.employee = person
-    draft.processorName = person?.name || ''
+    draft.employees = people
+    draft.processorName = people[0]?.name || ''
   }
 }
 function openQuantity(source: StockBatch) {
@@ -615,7 +628,19 @@ const validation = useDialogValidation(() => {
         draft.quantity! > 2147483647
       )
         add('processingQuantity', '请填写有效非负整数')
-      if (draft.structured && !draft.employee) add('processorName', '请选择加工人')
+      if (draft.structured && !draft.employees.length) add('processorName', '请选择加工人')
+      if (
+        draft.structured &&
+        Object.keys(
+          processingParameterErrors(
+            draft.parameters,
+            draft.context?.parameter_fields || [],
+            draft.minutes,
+          ),
+        ).length
+      )
+        add('processingParameters', '请检查加工参数')
+      if (!validProcessingMinutes(draft.minutes)) add('processingMinutes', '请填写大于零的加工时长')
       if (draft.structured && (!draft.date || draft.date > factoryToday()))
         add('processingDate', '请填写实际加工日期')
       if (processingTeam.value && !draft.status) add('processingStatus', '请选择加工进度')
@@ -908,7 +933,10 @@ async function submit() {
         : {}),
       ...(draft.structured
         ? {
-            processor_employee_id: draft.employee!.id,
+            processor_employee_id: draft.employees[0]!.id,
+            processor_employee_ids: draft.employees.map((person) => person.id),
+            processing_minutes: draft.minutes ?? null,
+            ...processingParameterPayload(draft.parameters, draft.context?.parameter_fields),
             processing_mode: 'split' as const,
             processing_date: draft.date!,
             input_quantity: draft.original!,
@@ -1430,11 +1458,12 @@ watch(
                 <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
                   <TeamEmployeeInput
                     v-if="processing[Number(line.source.transfer.id)]!.structured"
-                    :model-value="processing[Number(line.source.transfer.id)]!.employee || null"
+                    :people="processing[Number(line.source.transfer.id)]!.employees"
+                    multiple
                     :team-id="teamId"
                     label="加工人"
                     :invalid="!!lineError(line, 'processorName')"
-                    @update:model-value="selectProcessor(Number(line.source.transfer.id), $event)"
+                    @update:people="selectProcessor(Number(line.source.transfer.id), $event)"
                   />
                   <ProcessingPersonInput
                     v-else
@@ -1456,9 +1485,31 @@ watch(
                     :max="factoryToday()"
                   />
                 </ElFormItem>
-                <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"
+                <ElFormItem
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  label="加工时长（选填）"
+                  :error="lineError(line, 'processingMinutes')"
+                >
+                  <ProcessingDurationInput
+                    v-model="processing[Number(line.source.transfer.id)]!.minutes"
+                    :disabled="saving"
+                    :invalid="!!lineError(line, 'processingMinutes')"
+                  />
+                </ElFormItem>
+                <ProcessingParameterFields
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  v-model="processing[Number(line.source.transfer.id)]!.parameters"
+                  :fields="processing[Number(line.source.transfer.id)]!.context?.parameter_fields"
+                  :total-minutes="processing[Number(line.source.transfer.id)]!.minutes"
+                  :submitted="!!lineError(line, 'processingParameters')"
+                  :disabled="saving"
+                />
+                <ElFormItem label="备注（选填）" :error="lineError(line, 'processingReason')"
                   ><ElInput
                     v-model="processing[Number(line.source.transfer.id)]!.reason"
+                    type="textarea"
+                    :rows="2"
+                    aria-label="加工备注"
                     maxlength="2000"
                     placeholder="例如：1 块切成 20 件"
                 /></ElFormItem>

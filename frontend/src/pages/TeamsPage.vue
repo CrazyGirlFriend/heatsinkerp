@@ -470,7 +470,7 @@ onMounted(() => void loadTeams())
                     businessOpen = true
                   }
                 "
-                >班组设置</ElButton
+                >{{ row.kind === 'engineering' ? '人员管理' : '人员与任务' }}</ElButton
               >
               <RouterLink v-if="row.kind === 'business'" to="/business-people">人员管理</RouterLink>
               <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))"
@@ -527,6 +527,7 @@ onMounted(() => void loadTeams())
       v-model="businessOpen"
       :team-id="Number(businessTeam.id)"
       :team-name="businessTeam.name"
+      initial-tab="employees"
       :processing-tasks="!isWarehouse(businessTeam) && businessTeam.kind !== 'engineering'"
       :employees-only="businessTeam.kind === 'engineering'"
       business-only

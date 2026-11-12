@@ -484,7 +484,7 @@ onBeforeUnmount(() => {
               <ElButton link type="primary" @click="loadProblems">重新读取</ElButton>
             </div>
             <p v-else-if="!problemsLoading && !problems.length" class="inspection-problem-note">
-              暂无启用的检验问题，请检验班组长在“班组设置 → 检验问题”中配置。
+              暂无启用的检验问题，请检验班组长在“班组管理 → 检验问题”中配置。
             </p>
           </ElFormItem>
           <ElFormItem

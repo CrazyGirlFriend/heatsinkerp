@@ -237,7 +237,7 @@ onBeforeUnmount(() => ++generation)
       />
     </ElSelect>
     <small v-if="!loading && !tasks.length && !rework" class="dialog-field-hint">
-      可先在<ElButton link type="primary" @click="settingsOpen = true">班组设置</ElButton
+      可先在<ElButton link type="primary" @click="settingsOpen = true">班组管理</ElButton
       >维护加工任务。
     </small>
     <small

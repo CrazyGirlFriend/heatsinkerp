@@ -71,7 +71,9 @@ async function exportFile() {
     })
     task.signal.throwIfAborted()
     if (!rows.length) throw new Error('当前筛选没有记录可导出。')
-    const blob = await createExportWorkbook(fields, rows)
+    const blob = selectedSource.workbook
+      ? await selectedSource.workbook(rows)
+      : await createExportWorkbook(fields, rows)
     task.signal.throwIfAborted()
     downloadExportWorkbook(blob, selectedSource.title)
     emit('close')
@@ -119,7 +121,8 @@ onBeforeUnmount(cancel)
         <strong>{{ activeSource.title }}</strong
         ><span>当前筛选 · 全部 {{ total.toLocaleString('zh-CN') }} 条</span>
       </div>
-      <div class="export-fields-heading">
+      <p v-if="activeSource.workbook" class="export-scope">按原表样式导出；未登记的项目留空。</p>
+      <div v-else class="export-fields-heading">
         <strong>选择字段</strong
         ><ElCheckbox
           :model-value="allSelected"
@@ -130,6 +133,7 @@ onBeforeUnmount(cancel)
         >
       </div>
       <ElCheckboxGroup
+        v-if="!activeSource.workbook"
         v-model="selected"
         class="export-fields"
         aria-label="导出字段"
@@ -148,7 +152,8 @@ onBeforeUnmount(cancel)
       <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </template>
     <template #footer
-      ><span class="export-selected">已选 {{ selected.length }} 项</span
+      ><span v-if="!activeSource?.workbook" class="export-selected"
+        >已选 {{ selected.length }} 项</span
       ><ElButton @click="close">{{ busy ? '取消导出' : '取消' }}</ElButton
       ><ElButton
         class="action-warm"

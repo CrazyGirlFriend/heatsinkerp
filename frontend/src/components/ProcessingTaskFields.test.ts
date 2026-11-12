@@ -231,7 +231,7 @@ it('keeps task settings mounted while its visible state closes', async () => {
   await render(context())
   await wrapper
     .findAll('button')
-    .find((button) => button.text() === '班组设置')!
+    .find((button) => button.text() === '班组管理')!
     .trigger('click')
   const settings = wrapper.getComponent(TeamBusinessDialog)
   expect(settings.props('modelValue')).toBe(true)

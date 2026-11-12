@@ -1,3 +1,4 @@
+import type { ProcessingParameters } from '@/config/processingParameters'
 import type { QuantityAdjustment, CreateProcessingOutput } from './processingContract'
 import type { components } from './generated/api'
 import type { SharedMaterialFields, SharedMaterialSerial } from './sharedMaterial'
@@ -87,6 +88,7 @@ export type {
 } from './processingContract'
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
+  parameter_fields?: string[]
   purpose_id?: number | null
   production_schedule_id?: number | null
   production_schedule_locked?: boolean
@@ -131,7 +133,7 @@ export interface QuantityAdjustmentContext
   rework_pending?: boolean
   rework_count?: number
 }
-export interface CreateQuantityAdjustment {
+export interface CreateQuantityAdjustment extends ProcessingParameters {
   production_schedule_id?: number | null
   processing_task_id?: number | null
   purpose_id?: number | null
@@ -142,6 +144,8 @@ export interface CreateQuantityAdjustment {
   expected_revision: number
   processor_name: string
   processor_employee_id?: number
+  processor_employee_ids?: number[]
+  processing_minutes?: number | null
   processing_date?: string
   processing_mode?: 'unit' | 'split'
   input_quantity?: number

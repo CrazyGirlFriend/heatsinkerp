@@ -708,6 +708,16 @@ class MaterialQuantityAdjustment(Base):
     processor_employee_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_employees.id", ondelete="RESTRICT")
     )
+    processor_group_key: Mapped[str | None] = mapped_column(String(1024))
+    processing_minutes: Mapped[int | None] = mapped_column(Integer)
+    furnace_no: Mapped[str | None] = mapped_column(String(80))
+    temperature_requirement: Mapped[str | None] = mapped_column(String(160))
+    actual_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+    holding_minutes: Mapped[int | None] = mapped_column(Integer)
+    machine_no: Mapped[str | None] = mapped_column(String(80))
+    participants: Mapped[list[ProcessingParticipant]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="ProcessingParticipant.employee_id"
+    )
     processing_date: Mapped[date | None] = mapped_column(Date)
     processing_mode: Mapped[str | None] = mapped_column(String(16))
     processing_task_id: Mapped[int | None] = mapped_column(
@@ -748,6 +758,19 @@ class MaterialQuantityAdjustment(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class ProcessingParticipant(Base):
+    """People participating in one production fact, without duplicating its output."""
+
+    __tablename__ = "processing_participants"
+    processing_id: Mapped[int] = mapped_column(
+        ForeignKey("material_quantity_adjustments.id", ondelete="CASCADE"), primary_key=True
+    )
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("team_employees.id", ondelete="RESTRICT"), primary_key=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
 
 
 class MaterialTransferEvent(Base):

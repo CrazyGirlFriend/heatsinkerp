@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
+
 import ElSelect from '@/components/AppSelect.vue'
-import PersonName from './PersonName.vue'
+import ProcessingPeople from './ProcessingPeople.vue'
+import { formatProcessingMinutes } from '@/utils/processingDuration'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
@@ -33,9 +36,12 @@ import {
   processingRoleLabels,
 } from '@/types/materialProcessing'
 import { formatDateTime } from '@/utils/format'
+import { createProductionWorkbook, productionTemplates } from '@/utils/productionWorkbook'
 
 const props = defineProps<{
   teamId: number
+  teamCode?: string
+  management?: boolean
   canWrite?: boolean
   fullscreen?: boolean
   refreshKey?: unknown
@@ -85,6 +91,9 @@ const rows = ref<ProcessingRecord[]>([]),
   error = ref('')
 const detailOpen = ref(false),
   sourceId = ref<number | null>(null)
+const parameterKeys = ref<string[]>([])
+const parameterFields = computed(() => processingParameterFields(parameterKeys.value))
+const parameterColumns = computed(() => parameterFields.value.filter((field) => field.column))
 let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => props.teamId,
@@ -122,7 +131,8 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
   void router.replace({
     path: route.path,
     query: {
-      tab: 'processing',
+      tab: props.management ? 'settings' : 'processing',
+      management_tab: props.management ? 'production' : undefined,
       work_kind: (applyFilters ? workKind.value : text('work_kind')) || undefined,
       processing_task_id: applyFilters
         ? taskId.value || undefined
@@ -155,6 +165,7 @@ async function load(background = false) {
   if (!background) {
     loading.value = true
     rows.value = []
+    parameterKeys.value = []
     summary.value = null
   }
   error.value = ''
@@ -171,6 +182,7 @@ async function load(background = false) {
       return
     }
     rows.value = result.items
+    parameterKeys.value = result.parameter_fields || []
     total.value = result.total
     summary.value = result.summary || null
     processors.value = result.processors || []
@@ -232,7 +244,8 @@ function exportSource() {
       {
         key: 'processor_employee_id',
         label: '员工编号',
-        value: (row) => row.processor_employee_id,
+        value: (row) =>
+          row.processors?.map((person) => person.id).join('、') || row.processor_employee_id,
       },
       { key: 'before_quantity', label: '加工前件数', value: (row) => row.before_quantity },
       { key: 'after_quantity', label: '加工后件数', value: (row) => row.after_quantity },
@@ -271,8 +284,26 @@ function exportSource() {
         value: (row) => processingStateLabels[row.processing_state],
       },
       { key: 'processor_name', label: '加工人', value: (row) => row.processor_name || '未登记' },
-      { key: 'reason', label: '加工说明', value: (row) => row.reason },
+      {
+        key: 'processing_minutes',
+        label: '加工时长（分钟）',
+        value: (row) => row.processing_minutes,
+      },
+      ...parameterFields.value.map((field) => ({
+        key: field.key,
+        label: field.key === 'holding_minutes' ? '保温时长（分钟）' : field.label,
+        value: (row: ProcessingRecord) => row[field.key],
+      })),
+      { key: 'reason', label: '备注', value: (row) => row.reason },
       { key: 'batch_no', label: '来源批次号', value: (row) => row.batch_no },
+      ...(['quantity', 'weight'] as const).map((unit) => ({
+        key: `remaining_${unit}`,
+        label: unit === 'quantity' ? '本次余料件数' : '本次余料重量 (kg)',
+        value: (row: ProcessingRecord) =>
+          row.outputs
+            ?.filter((output) => output.role === 'remaining')
+            .reduce((sum, output) => sum + output[unit], 0),
+      })),
     ],
     (signal, progress) =>
       loadExportPages(
@@ -284,6 +315,16 @@ function exportSource() {
   )
 }
 const dailyColumns = [
+  {
+    key: 'processing_minutes',
+    label: '已填加工时长（分钟）',
+    value: (r: ProcessingDailyRow) => r.processing_minutes,
+  },
+  {
+    key: 'duration_record_count',
+    label: '已填时长笔数',
+    value: (r: ProcessingDailyRow) => r.duration_record_count,
+  },
   {
     key: 'processing_task_name',
     label: '加工任务',
@@ -318,7 +359,8 @@ const dailyColumns = [
   {
     key: 'processor_employee_id',
     label: '员工编号',
-    value: (r: ProcessingDailyRow) => r.processor_employee_id,
+    value: (r: ProcessingDailyRow) =>
+      r.processors?.map((person) => person.id).join('、') || r.processor_employee_id,
   },
   {
     key: 'processing_mode',
@@ -366,8 +408,14 @@ function exportVariants() {
   const id = props.teamId,
     params = filters()
   return [
+    ...productionTemplates(props.teamCode).map((template) => ({
+      ...exportSource(),
+      title: template.label,
+      workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
+        createProductionWorkbook(template.key, rows),
+    })),
     tableExportSource(
-      '按加工人和任务汇总',
+      '按参与人员和任务汇总',
       summary.value.daily_group_count ?? summary.value.employee_day_count,
       dailyColumns,
       (signal, progress) =>
@@ -439,7 +487,7 @@ onBeforeUnmount(() => {
       v-model="query"
       :loading="loading"
       search-label="加工记录搜索"
-      placeholder="流水号、批次号、加工人或加工说明"
+      placeholder="流水号、批次号、加工人或备注"
       @search="apply()"
       @refresh="load()"
     >
@@ -516,6 +564,10 @@ onBeforeUnmount(() => {
         <template #default="{ row }">
           <section class="processing-record-detail" :aria-label="`加工记录 #${row.id} 工艺详情`">
             <dl>
+              <div v-for="field in parameterFields" :key="field.key">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatProcessingParameter(field.key, row) }}</dd>
+              </div>
               <div>
                 <dt>工艺工序</dt>
                 <dd>{{ row.process_step_name || '历史未登记' }}</dd>
@@ -564,8 +616,23 @@ onBeforeUnmount(() => {
         show-overflow-tooltip
       >
         <template #default="{ row }"
-          ><PersonName :name="row.processor_name || '未登记'"
+          ><ProcessingPeople :people="row.processors" :fallback="row.processor_name"
         /></template>
+      </ElTableColumn>
+      <ElTableColumn
+        v-for="field in parameterColumns"
+        :key="field.key"
+        :prop="field.key"
+        :label="field.label"
+        min-width="140"
+        show-overflow-tooltip
+      >
+        <template #default="{ row }">{{ formatProcessingParameter(field.key, row) }}</template>
+      </ElTableColumn>
+      <ElTableColumn prop="processing_minutes" label="加工时长" min-width="140">
+        <template #default="{ row }">{{
+          formatProcessingMinutes(row.processing_minutes)
+        }}</template>
       </ElTableColumn>
       <ElTableColumn label="工艺工序" min-width="160" align="center"
         ><template #default="{ row }">
@@ -653,7 +720,7 @@ onBeforeUnmount(() => {
         min-width="180"
         show-overflow-tooltip
       />
-      <ElTableColumn prop="reason" label="加工说明" min-width="170" show-overflow-tooltip />
+      <ElTableColumn prop="reason" label="备注" min-width="170" show-overflow-tooltip />
       <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >
@@ -696,6 +763,10 @@ onBeforeUnmount(() => {
           <span
             >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
             {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
+          >
+          <span v-if="summary.duration_record_count"
+            >已填时长 <strong>{{ formatProcessingMinutes(summary.processing_minutes) }}</strong> ·
+            {{ summary.duration_record_count }}/{{ summary.record_count }} 笔</span
           >
           <span class="summary-note"
             >{{ summary.record_count }} 笔有效加工 · 按实际加工日期 ·

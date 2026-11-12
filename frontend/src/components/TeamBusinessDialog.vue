@@ -15,7 +15,17 @@ import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDi
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  onBeforeUnmount,
+  reactive,
+  ref,
+  watch,
+  useSlots,
+} from 'vue'
 import { ElForm, ElOption, ElTabPane } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
@@ -67,6 +77,7 @@ const SettingsPage = defineComponent({
       ])
   },
 })
+const slots = useSlots()
 const auth = useAuthStore()
 const tab = ref('purposes'),
   loading = ref(false),
@@ -192,7 +203,7 @@ async function load() {
     problems.value = problemOptions
     opening.value = state
   } catch (e) {
-    if (current === epoch) error.value = e instanceof Error ? e.message : '班组设置加载失败'
+    if (current === epoch) error.value = e instanceof Error ? e.message : '班组管理加载失败'
   } finally {
     if (current === epoch) loading.value = false
   }
@@ -351,7 +362,7 @@ async function submitOpening() {
   <component
     :is="inline ? SettingsPage : AppDialog"
     :model-value="modelValue"
-    :title="teamName ? `${teamName} · 班组设置` : '班组设置'"
+    :title="teamName ? `${teamName} · 班组管理` : '班组管理'"
     top="16px"
     :width="businessOnly ? 'min(760px, 94vw)' : 'min(1180px, 96vw)'"
     :close-on-click-modal="!saving"
@@ -366,19 +377,26 @@ async function submitOpening() {
         label="接收任务"
         :disabled="saving"
       />
-      <ElTabPane name="employees" label="班组员工" :disabled="saving" />
+      <ElTabPane name="employees" label="人员管理" :disabled="saving" />
       <ElTabPane
         v-if="processingTasks && canManage && !employeesOnly"
         name="tasks"
         label="加工任务"
         :disabled="saving"
       />
+      <ElTabPane
+        v-if="slots.production && inline"
+        name="production"
+        label="产量登记"
+        :disabled="saving"
+      />
       <ElTabPane v-if="canManageProblems" name="problems" label="检验问题" :disabled="saving" />
       <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
     </ElTabs>
-    <FormWorkspace>
+    <slot v-if="tab === 'production' && slots.production" name="production" />
+    <FormWorkspace v-else>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-      <StatePanel v-if="loading" state="loading" title="正在读取班组设置" compact />
+      <StatePanel v-if="loading" state="loading" title="正在读取班组管理" compact />
       <section
         v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
         ref="purposeSettings"
@@ -607,6 +625,14 @@ async function submitOpening() {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+:deep(.team-settings-page__content:has(> .processing-records)) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+:deep(.team-settings-page__content > .el-tabs) {
+  flex-shrink: 0;
 }
 :deep(.team-settings-page__footer) {
   display: flex;

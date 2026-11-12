@@ -11,7 +11,13 @@ from .material_transfer_workflow import _utc
 from .material_weight import WEIGHT_ONLY_TYPES
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialStockBalance as Balance
-from .models import MaterialTransfer, MaterialTransferEvent, TeamEmployee, utcnow
+from .models import (
+    MaterialTransfer,
+    MaterialTransferEvent,
+    ProcessingParticipant,
+    TeamEmployee,
+    utcnow,
+)
 from .processing_registration import METRICS, prepare
 from .schemas import ProcessingQuantity
 from .team_constants import SPLITTING_TEAM_CODES
@@ -81,6 +87,11 @@ class AdjustmentCreate(ProcessingQuantity):
 
 
 def record_dict(row):
+    from .processing_parameters import parameter_snapshot
+
+    participants = [{"id": person.employee_id, "name": person.name} for person in row.participants]
+    if not participants and row.processor_employee_id:
+        participants = [{"id": row.processor_employee_id, "name": row.processor_name}]
     return {
         "id": row.id,
         "source_transfer_id": row.source_transfer_id,
@@ -94,8 +105,12 @@ def record_dict(row):
         "delta_quantity": row.after_quantity - row.before_quantity,
         "weight": float(row.weight_snapshot),
         "reason": row.reason,
-        "processor_name": row.processor_name,
+        "processor_name": "、".join(person["name"] for person in participants if person["name"])
+        or row.processor_name,
         "processor_employee_id": row.processor_employee_id,
+        "processors": participants,
+        "processing_minutes": row.processing_minutes,
+        **parameter_snapshot(row),
         "processing_task_id": row.processing_task_id,
         "processing_task_name": row.processing_task_name,
         "purpose_id": row.purpose_id,
@@ -152,6 +167,7 @@ def processor_options(db, team_id):
 
 
 def context(db, team_id, lot_id, page=1, page_size=10):
+    from .processing_parameters import parameter_fields
     from .processing_statistics import weight_differences
 
     lot = db.execute(
@@ -276,6 +292,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         "weight": float(balance.on_hand_weight),
         "processing_status": progress,
         "processor_options": processor_options(db, team_id),
+        "parameter_fields": parameter_fields(stock.require_team(db, team_id).code),
         "processing_mode": "split"
         if stock.require_team(db, team_id).code in SPLITTING_TEAM_CODES
         else "unit",
@@ -315,6 +332,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     if hold and payload.work_kind != "rework":
         raise HTTPException(409, "本批巡检不合格，请登记返工；处理后须由检验班组复检放行")
     team = require_processing_team(db, lot.next_team_id)
+    from .processing_parameters import recorded_parameters
+
+    parameters = recorded_parameters(payload, team.code)
     if lot.material_type in WEIGHT_ONLY_TYPES:
         raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
     balance = db.scalar(
@@ -375,20 +395,27 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     # count is permitted only while a measured weight remains.
     if payload.quantity == 0 and balance.on_hand_weight == 0 and balance.on_hand_quantity > 0:
         raise HTTPException(422, "无重量物料清零请登记丢失或出库")
-    employee = db.scalar(
-        select(TeamEmployee)
-        .where(
-            TeamEmployee.team_id == lot.next_team_id,
-            TeamEmployee.id == payload.processor_employee_id
-            if payload.processor_employee_id is not None
-            else TeamEmployee.name == payload.processor_name,
-            TeamEmployee.active.is_(True),
-        )
-        .with_for_update()
-        .execution_options(populate_existing=True)
+    employee_ids = payload.processor_employee_ids or (
+        [payload.processor_employee_id] if payload.processor_employee_id else None
     )
-    if employee is None:
-        raise HTTPException(422, "请选择本班组启用的加工人；员工名单可在班组设置中维护")
+    employees = list(
+        db.scalars(
+            select(TeamEmployee)
+            .where(
+                TeamEmployee.team_id == lot.next_team_id,
+                TeamEmployee.id.in_(employee_ids)
+                if employee_ids is not None
+                else TeamEmployee.name == payload.processor_name,
+                TeamEmployee.active.is_(True),
+            )
+            .order_by(TeamEmployee.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    )
+    if not employees or (employee_ids is not None and len(employees) != len(employee_ids)):
+        raise HTTPException(422, "请选择本班组启用的加工人员；员工名单可在班组管理中维护")
+    employee = employees[0]
     now = utcnow()
     # Preserve the source snapshot before children debit its current balance.
     before_quantity, before_weight, revision = (
@@ -425,6 +452,12 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         after_quantity=payload.quantity,
         processor_name=employee.name,
         processor_employee_id=employee.id,
+        processor_group_key=",".join(str(person.id) for person in employees),
+        participants=[
+            ProcessingParticipant(employee_id=person.id, name=person.name) for person in employees
+        ],
+        processing_minutes=payload.processing_minutes,
+        **parameters,
         **task_fields,
         **production,
         work_kind=payload.work_kind,

@@ -29,6 +29,11 @@ class ProcessingOutputResponse(ReadResponse):
     owned_weight: float | None = None
 
 
+class ProcessingPersonResponse(ReadResponse):
+    id: int
+    name: str | None
+
+
 class QuantityAdjustmentResponse(ReadResponse):
     id: int
     source_transfer_id: int
@@ -44,6 +49,13 @@ class QuantityAdjustmentResponse(ReadResponse):
     reason: str
     processor_name: str | None
     processor_employee_id: int | None
+    processors: list[ProcessingPersonResponse]
+    processing_minutes: int | None
+    furnace_no: str | None
+    temperature_requirement: str | None
+    actual_temperature_c: float | None
+    holding_minutes: int | None
+    machine_no: str | None
     processing_task_id: int | None
     processing_task_name: str | None
     purpose_id: int | None
@@ -90,6 +102,7 @@ class ReworkInspectionReference(ReadResponse):
 class QuantityAdjustmentContextResponse(
     PageResponse[QuantityAdjustmentResponse], SharedMaterialResponse
 ):
+    parameter_fields: list[str]
     rework_inspections: list[ReworkInspectionReference]
     process_route: RouteExecutionContextResponse | None
     processing_schedules: list[ScheduleResponse]
@@ -160,6 +173,9 @@ class ProcessingDailyResponse(RecordedWorkMetricsResponse):
     processing_date: str
     processor_employee_id: int
     processor_name: str
+    processors: list[ProcessingPersonResponse]
+    processing_minutes: int | None
+    duration_record_count: int
     processing_mode: Literal["unit", "split"]
     process_route_id: int | None
     process_step_index: int | None
@@ -171,6 +187,8 @@ class ProcessingDailyResponse(RecordedWorkMetricsResponse):
 
 
 class ProcessingSummaryResponse(RecordedWorkMetricsResponse):
+    processing_minutes: int | None
+    duration_record_count: int
     employee_day_count: int
     daily_group_count: int
     unreported_count: int
@@ -182,6 +200,7 @@ class ProcessingFilterOptionResponse(ReadResponse):
 
 
 class ProcessingRecordPageResponse(PageResponse[ProcessingRecordResponse]):
+    parameter_fields: list[str]
     summary: ProcessingSummaryResponse
     processors: list[ProcessingFilterOptionResponse]
     processing_tasks: list[ProcessingFilterOptionResponse]

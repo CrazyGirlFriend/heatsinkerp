@@ -49,6 +49,14 @@ const activeGroup = computed(() =>
           : 'teams',
 )
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
+const engineeringTeam = computed(() =>
+  teamDirectory.items.find(
+    (team) => team.active && team.code === 'FACTORY-PROCESS' && team.kind === 'engineering',
+  ),
+)
+const canManageEngineering = computed(
+  () => engineeringTeam.value && capabilities(engineeringTeam.value)[5],
+)
 function capabilities(team: Team) {
   const warehouse = team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
   const manageSettings =
@@ -79,7 +87,11 @@ const activeIndex = computed(() => {
   if (currentTeam.value && currentSection.value)
     return `team-${currentTeam.value.id}:${teamWorkspaceModuleFor(currentSection.value)?.value}`
   if (route.path === '/process-routes')
-    return route.query.kind === 'rework' ? 'engineering:rework' : 'engineering:normal'
+    return route.query.tab === 'settings' && canManageEngineering.value
+      ? 'engineering:settings'
+      : route.query.kind === 'rework'
+        ? 'engineering:rework'
+        : 'engineering:normal'
   return route.path
 })
 const routeGroups = computed(() => [
@@ -344,6 +356,15 @@ const materialLinks = computed(() => [
               :aria-label="kind === 'normal' ? '正常工艺' : '返工工艺'"
               :aria-current="activeIndex === `engineering:${kind}` ? 'page' : undefined"
               >{{ kind === 'normal' ? '正常工艺' : '返工工艺' }}</ElMenuItem
+            >
+            <ElMenuItem
+              v-if="canManageEngineering"
+              index="engineering:settings"
+              :route="{ path: '/process-routes', query: { tab: 'settings' } }"
+              class="factory-nav__workspace-link"
+              aria-label="工艺 / 班组管理"
+              :aria-current="activeIndex === 'engineering:settings' ? 'page' : undefined"
+              >班组管理</ElMenuItem
             >
           </ElSubMenu>
           <ElMenuItem

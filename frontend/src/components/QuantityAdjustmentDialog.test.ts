@@ -5,6 +5,8 @@ import { ElInputNumber, ElSelect, ElSwitch } from 'element-plus'
 import WeightInput from './WeightInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingDurationInput from './ProcessingDurationInput.vue'
+import ProcessingParameterFields from './ProcessingParameterFields.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -517,7 +519,7 @@ describe('processing piece adjustment', () => {
     await click('保存件数')
     expect(
       wrapper
-        .get('textarea[aria-label="加工说明"]')
+        .get('textarea[aria-label="备注"]')
         .element.closest('.el-form-item')!
         .classList.contains('is-error'),
     ).toBe(true)
@@ -602,6 +604,7 @@ it('reworks completed stock with a required employee and the original record, wi
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...context(),
     processing_mode: 'unit',
+    parameter_fields: ['furnace_no', 'actual_temperature_c', 'holding_minutes'],
     processing_status: 'complete',
     rework_route_id: 9,
     rework_route_ready: true,
@@ -641,13 +644,23 @@ it('reworks completed stock with a required employee and the original record, wi
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
   const employee = wrapper.getComponent(TeamEmployeeInput)
   expect(employee.props('invalid')).toBe(true)
-  employee.vm.$emit('update:modelValue', {
-    id: 7,
-    name: '李师傅',
-    active: true,
-    team_id: 2,
-    version: 1,
+  employee.vm.$emit('update:people', [
+    {
+      id: 7,
+      name: '李师傅',
+      active: true,
+      team_id: 2,
+      version: 1,
+    },
+    { id: 8, name: '王师傅', active: true, team_id: 2, version: 1 },
+  ])
+  wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', 95)
+  wrapper.getComponent(ProcessingParameterFields).vm.$emit('update:modelValue', {
+    furnace_no: '02炉',
+    actual_temperature_c: 925.5,
+    holding_minutes: 60,
   })
+  await wrapper.get('textarea[aria-label="备注"]').setValue('共同返工')
   await flushPromises()
   expect(employee.props('invalid')).toBe(false)
   await click('保存返工登记')
@@ -657,6 +670,12 @@ it('reworks completed stock with a required employee and the original record, wi
       work_kind: 'rework',
       rework_of_id: 8,
       processor_employee_id: 7,
+      processor_employee_ids: [7, 8],
+      processing_minutes: 95,
+      furnace_no: '02炉',
+      actual_temperature_c: 925.5,
+      holding_minutes: 60,
+      reason: '共同返工',
       processor_name: '李师傅',
       completed_quantity: 10,
       completed_weight: 100,

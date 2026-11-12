@@ -2690,20 +2690,30 @@ export interface components {
     }
     /** AdjustmentCreate */
     AdjustmentCreate: {
+      /** Actual Temperature C */
+      actual_temperature_c?: number | string | null
       /** Completed Quantity */
       completed_quantity?: number | null
       /** Completed Weight */
       completed_weight?: number | string | null
       /** Expected Revision */
       expected_revision: number
+      /** Furnace No */
+      furnace_no?: string | null
+      /** Holding Minutes */
+      holding_minutes?: number | null
       /** Idempotency Key */
       idempotency_key: string
       /** Input Quantity */
       input_quantity?: number | null
+      /** Machine No */
+      machine_no?: string | null
       /** Outputs */
       outputs?: components['schemas']['ProcessingOutput'][] | null
       /** Processing Date */
       processing_date?: string | null
+      /** Processing Minutes */
+      processing_minutes?: number | null
       /** Processing Mode */
       processing_mode?: ('unit' | 'split') | null
       /** Processing Status */
@@ -2712,6 +2722,8 @@ export interface components {
       processing_task_id?: number | null
       /** Processor Employee Id */
       processor_employee_id?: number | null
+      /** Processor Employee Ids */
+      processor_employee_ids?: number[] | null
       /** Processor Name */
       processor_name: string
       /** Production Schedule Id */
@@ -2729,6 +2741,8 @@ export interface components {
       rework_of_id?: number | null
       /** Source Transfer Id */
       source_transfer_id: number
+      /** Temperature Requirement */
+      temperature_requirement?: string | null
       /** Transfer Specification */
       transfer_specification?: string | null
       /**
@@ -5820,6 +5834,8 @@ export interface components {
       completed_quantity: number
       /** Completed Weight */
       completed_weight: number
+      /** Duration Record Count */
+      duration_record_count: number
       /** Input Quantity */
       input_quantity: number
       /** Input Weight */
@@ -5832,6 +5848,8 @@ export interface components {
       process_step_name: string | null
       /** Processing Date */
       processing_date: string
+      /** Processing Minutes */
+      processing_minutes: number | null
       /**
        * Processing Mode
        * @enum {string}
@@ -5845,6 +5863,8 @@ export interface components {
       processor_employee_id: number
       /** Processor Name */
       processor_name: string
+      /** Processors */
+      processors: components['schemas']['ProcessingPersonResponse'][]
       /** Purpose Id */
       purpose_id: number | null
       /** Purpose Name */
@@ -5942,20 +5962,37 @@ export interface components {
       /** Weight */
       weight: number
     }
+    /** ProcessingPersonResponse */
+    ProcessingPersonResponse: {
+      /** Id */
+      id: number
+      /** Name */
+      name: string | null
+    }
     /** ProcessingQuantity */
     ProcessingQuantity: {
+      /** Actual Temperature C */
+      actual_temperature_c?: number | string | null
       /** Completed Quantity */
       completed_quantity?: number | null
       /** Completed Weight */
       completed_weight?: number | string | null
       /** Expected Revision */
       expected_revision: number
+      /** Furnace No */
+      furnace_no?: string | null
+      /** Holding Minutes */
+      holding_minutes?: number | null
       /** Input Quantity */
       input_quantity?: number | null
+      /** Machine No */
+      machine_no?: string | null
       /** Outputs */
       outputs?: components['schemas']['ProcessingOutput'][] | null
       /** Processing Date */
       processing_date?: string | null
+      /** Processing Minutes */
+      processing_minutes?: number | null
       /** Processing Mode */
       processing_mode?: ('unit' | 'split') | null
       /** Processing Status */
@@ -5964,6 +6001,8 @@ export interface components {
       processing_task_id?: number | null
       /** Processor Employee Id */
       processor_employee_id?: number | null
+      /** Processor Employee Ids */
+      processor_employee_ids?: number[] | null
       /** Processor Name */
       processor_name: string
       /** Production Schedule Id */
@@ -5981,6 +6020,8 @@ export interface components {
       rework_of_id?: number | null
       /** Source Transfer Id */
       source_transfer_id: number
+      /** Temperature Requirement */
+      temperature_requirement?: string | null
       /** Transfer Specification */
       transfer_specification?: string | null
       /**
@@ -6003,6 +6044,8 @@ export interface components {
       page: number
       /** Page Size */
       page_size: number
+      /** Parameter Fields */
+      parameter_fields: string[]
       /** Processing Tasks */
       processing_tasks: components['schemas']['ProcessingFilterOptionResponse'][]
       /** Processors */
@@ -6013,6 +6056,8 @@ export interface components {
     }
     /** ProcessingRecordResponse */
     ProcessingRecordResponse: {
+      /** Actual Temperature C */
+      actual_temperature_c: number | null
       /** After Quantity */
       after_quantity: number
       /** After Specification */
@@ -6038,6 +6083,10 @@ export interface components {
       created_by: string
       /** Delta Quantity */
       delta_quantity: number
+      /** Furnace No */
+      furnace_no: string | null
+      /** Holding Minutes */
+      holding_minutes: number | null
       /** Id */
       id: number
       /** In Transit Quantity */
@@ -6048,6 +6097,8 @@ export interface components {
       input_quantity: number | null
       /** Input Weight */
       input_weight: number | null
+      /** Machine No */
+      machine_no: string | null
       /** Material Name */
       material_name: string | null
       /** Material Type */
@@ -6077,6 +6128,8 @@ export interface components {
       process_step_name: string | null
       /** Processing Date */
       processing_date: string | null
+      /** Processing Minutes */
+      processing_minutes: number | null
       /** Processing Mode */
       processing_mode: ('unit' | 'split') | null
       /**
@@ -6102,6 +6155,8 @@ export interface components {
       processor_employee_id: number | null
       /** Processor Name */
       processor_name: string | null
+      /** Processors */
+      processors: components['schemas']['ProcessingPersonResponse'][]
       /** Production Schedule Id */
       production_schedule_id: number | null
       /** Purpose Id */
@@ -6130,6 +6185,8 @@ export interface components {
       shared_unallocated: boolean
       /** Source Transfer Id */
       source_transfer_id: number
+      /** Temperature Requirement */
+      temperature_requirement: string | null
       /** Weight */
       weight: number
       /**
@@ -6146,12 +6203,16 @@ export interface components {
       completed_weight: number
       /** Daily Group Count */
       daily_group_count: number
+      /** Duration Record Count */
+      duration_record_count: number
       /** Employee Day Count */
       employee_day_count: number
       /** Input Quantity */
       input_quantity: number
       /** Input Weight */
       input_weight: number
+      /** Processing Minutes */
+      processing_minutes: number | null
       /** Record Count */
       record_count: number
       /** Rework Quantity */
@@ -6724,6 +6785,8 @@ export interface components {
       page: number
       /** Page Size */
       page_size: number
+      /** Parameter Fields */
+      parameter_fields: string[]
       process_route: components['schemas']['RouteExecutionContextResponse'] | null
       /**
        * Processing Mode
@@ -6791,6 +6854,8 @@ export interface components {
     }
     /** QuantityAdjustmentResponse */
     QuantityAdjustmentResponse: {
+      /** Actual Temperature C */
+      actual_temperature_c: number | null
       /** After Quantity */
       after_quantity: number
       /** After Specification */
@@ -6814,12 +6879,18 @@ export interface components {
       created_by: string
       /** Delta Quantity */
       delta_quantity: number
+      /** Furnace No */
+      furnace_no: string | null
+      /** Holding Minutes */
+      holding_minutes: number | null
       /** Id */
       id: number
       /** Input Quantity */
       input_quantity: number | null
       /** Input Weight */
       input_weight: number | null
+      /** Machine No */
+      machine_no: string | null
       /**
        * Operation Kind
        * @enum {string}
@@ -6837,6 +6908,8 @@ export interface components {
       process_step_name: string | null
       /** Processing Date */
       processing_date: string | null
+      /** Processing Minutes */
+      processing_minutes: number | null
       /** Processing Mode */
       processing_mode: ('unit' | 'split') | null
       /** Processing Status */
@@ -6849,6 +6922,8 @@ export interface components {
       processor_employee_id: number | null
       /** Processor Name */
       processor_name: string | null
+      /** Processors */
+      processors: components['schemas']['ProcessingPersonResponse'][]
       /** Production Schedule Id */
       production_schedule_id: number | null
       /** Purpose Id */
@@ -6867,6 +6942,8 @@ export interface components {
       scrap_weight: number | null
       /** Source Transfer Id */
       source_transfer_id: number
+      /** Temperature Requirement */
+      temperature_requirement: string | null
       /** Weight */
       weight: number
       /**

@@ -20,7 +20,7 @@ export const teamWorkspaceSections = [
   { value: 'material-types', label: '类型库存' },
   { value: 'history', label: '收发历史' },
   { value: 'warehouse', label: '仓库管理' },
-  { value: 'settings', label: '班组设置' },
+  { value: 'settings', label: '班组管理' },
 ] as const
 export type TeamWorkspaceSection = (typeof teamWorkspaceSections)[number]['value']
 
@@ -44,7 +44,7 @@ export const teamWorkspaceModules = [
     sections: ['inspection-results', 'quality-feedback', 'inspections'],
   },
   { value: 'warehouse', label: '仓库管理', sections: ['warehouse'] },
-  { value: 'settings', label: '班组设置', sections: ['settings'] },
+  { value: 'settings', label: '班组管理', sections: ['settings'] },
 ] as const
 
 export function teamWorkspaceModuleFor(section: string) {

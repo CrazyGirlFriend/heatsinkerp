@@ -10,8 +10,10 @@ const props = defineProps<{
   label: string
   disabled?: boolean
   invalid?: boolean
+  multiple?: boolean
 }>()
-const person = defineModel<TeamEmployee | null>({ required: true })
+const person = defineModel<TeamEmployee | null>({ default: null })
+const people = defineModel<TeamEmployee[]>('people', { default: () => [] })
 const emit = defineEmits<{ openChange: [boolean] }>()
 const employees = ref<TeamEmployee[]>([])
 const loading = ref(false)
@@ -23,6 +25,12 @@ const name = computed({
     person.value = employees.value.find((item) => item.name === value) || null
   },
 })
+const selectedNames = computed({
+  get: () => people.value.map((person) => person.name),
+  set: (names: string[]) => {
+    people.value = employees.value.filter((person) => names.includes(person.name))
+  },
+})
 async function load() {
   const token = ++request
   loading.value = true
@@ -31,6 +39,9 @@ async function load() {
     const result = await teamMaterialApi.employees(props.teamId)
     if (token !== request) return
     employees.value = result.filter((item) => item.active)
+    people.value = people.value.flatMap(
+      (person) => employees.value.find((item) => item.id === person.id) || [],
+    )
     if (person.value)
       person.value = employees.value.find((item) => item.id === person.value?.id) || null
   } catch (reason) {
@@ -48,7 +59,10 @@ watch(
   () => props.teamId,
   (_team, previousTeam) => {
     employees.value = []
-    if (previousTeam !== undefined) person.value = null
+    if (previousTeam !== undefined) {
+      person.value = null
+      people.value = []
+    }
     void load()
   },
   { immediate: true },
@@ -62,6 +76,8 @@ onBeforeUnmount(() => {
   <div class="team-employee">
     <ProcessingPersonInput
       v-model="name"
+      v-model:selected-names="selectedNames"
+      :multiple="multiple"
       :label="label"
       :options="employees.map((person) => person.name)"
       :disabled="disabled || !!error"

@@ -738,7 +738,7 @@ async function dispatchProcessing(record: ProcessingRecord) {
   if (
     !canWrite.value ||
     !hasProcessing.value ||
-    tab.value !== 'processing' ||
+    !['processing', 'settings'].includes(tab.value) ||
     openingDispatch.value
   )
     return
@@ -1131,12 +1131,26 @@ onBeforeUnmount(() => {
           @update:model-value="!$event && selectSection('stock')"
           :team-id="teamId"
           :team-name="title"
+          :initial-tab="route.query.management_tab === 'production' ? 'production' : 'employees'"
           :processing-tasks="hasProcessing"
           :inspection-problems="team?.code === 'FACTORY-QC'"
           :business-only="auth.isAdmin"
           @changed="businessChanged"
           @stocked="openingStocked"
-        />
+        >
+          <template v-if="hasProcessing" #production>
+            <TeamProcessingRecords
+              :team-id="teamId"
+              :team-code="team?.code"
+              management
+              :can-write="canWrite"
+              :refresh-key="overview"
+              :dispatching-record-id="processingDispatch?.recordId"
+              @register="openProcessing()"
+              @dispatch="dispatchProcessing"
+            />
+          </template>
+        </TeamBusinessDialog>
         <TeamDashboard
           v-else-if="tab === 'dashboard'"
           :key="teamId"
@@ -1195,6 +1209,7 @@ onBeforeUnmount(() => {
           v-else-if="tab === 'processing'"
           :key="teamId"
           :team-id="teamId"
+          :team-code="team?.code"
           :can-write="canWrite"
           :fullscreen="fullscreen"
           :refresh-key="overview"

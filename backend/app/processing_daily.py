@@ -3,8 +3,10 @@
 from sqlalchemy import func, select
 
 from .models import MaterialQuantityAdjustment as Work
+from .models import TeamEmployee
 from .processing_records import production_groups, record_conditions, require_processing_team
 from .processing_registration import SUMMARY_METRICS
+from .quantity_adjustments import record_dict
 from .record_filters import RecordFilters
 
 
@@ -37,24 +39,47 @@ def list_daily(
     )
     statement = production_groups(conditions)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    rows = db.execute(
-        statement.order_by(
-            Work.processing_date.desc(),
-            Work.processor_employee_id,
-            Work.processing_mode,
-            Work.processing_task_id,
-            Work.processing_task_name,
-            Work.purpose_id,
-            Work.purpose_name,
-            Work.process_route_id,
-            Work.process_step_index,
+    rows = (
+        db.execute(
+            statement.order_by(
+                Work.processing_date.desc(),
+                Work.processor_employee_id,
+                func.min(Work.id),
+                Work.processing_mode,
+                Work.processing_task_id,
+                Work.processing_task_name,
+                Work.purpose_id,
+                Work.purpose_name,
+                Work.process_route_id,
+                Work.process_step_index,
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).mappings()
+        .mappings()
+        .all()
+    )
+    work = {
+        row.id: row
+        for row in db.scalars(
+            select(Work).where(Work.id.in_([row["representative_id"] for row in rows]))
+        )
+    }
+    people = {key: record_dict(record)["processors"] for key, record in work.items()}
+    ids = {person["id"] for group in people.values() for person in group}
+    names = dict(
+        db.execute(select(TeamEmployee.id, TeamEmployee.name).where(TeamEmployee.id.in_(ids))).all()
+    )
+    for group in people.values():
+        for person in group:
+            person["name"] = names.get(person["id"], person["name"])
     items = [
         {
-            **dict(row),
+            **{key: value for key, value in row.items() if key != "representative_id"},
+            "processors": people[row["representative_id"]],
+            "processor_name": "、".join(
+                person["name"] or "" for person in people[row["representative_id"]]
+            ),
             "team_id": team.id,
             "team_name": team.name,
             "processing_date": row["processing_date"].isoformat(),

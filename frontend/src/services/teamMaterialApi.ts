@@ -239,6 +239,7 @@ export const teamMaterialApi = {
   ) {
     return request<
       MaterialPage<ProcessingRecord> & {
+        parameter_fields?: string[]
         summary?: ProcessingRecordSummary
         processors?: { id: number; name: string }[]
         processing_tasks?: { id: number; name: string }[]

@@ -1,14 +1,16 @@
 """Read audited processing counts without rewriting received material batches."""
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy.orm import aliased
 
 from . import material_stock as stock
 from .material_transfer_workflow import _utc, material_transfer_dict, material_transfer_list_options
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialTransfer as Transfer
-from .models import ProcessRoutePath, TeamEmployee, utcnow
+from .models import ProcessingParticipant, ProcessRoutePath, TeamEmployee, utcnow
 from .process_route_paths import path_serial
+from .processing_parameters import parameter_fields
 from .processing_registration import METRICS, SUMMARY_METRICS
 from .processing_statistics import weight_difference_table
 from .quantity_adjustments import record_dict
@@ -426,7 +428,17 @@ def record_conditions(
     if filters.urgent_only:
         conditions.append(Transfer.serial_no.in_(urgent_serials()))
     if processor_id:
-        conditions.append(Adjustment.processor_employee_id == processor_id)
+        conditions.append(
+            or_(
+                Adjustment.processor_employee_id == processor_id,
+                select(ProcessingParticipant.processing_id)
+                .where(
+                    ProcessingParticipant.processing_id == Adjustment.id,
+                    ProcessingParticipant.employee_id == processor_id,
+                )
+                .exists(),
+            )
+        )
     if processing_task_id:
         conditions.append(Adjustment.processing_task_id == processing_task_id)
     if purpose_id:
@@ -434,20 +446,35 @@ def record_conditions(
     if work_date:
         conditions.append(Adjustment.processing_date == work_date)
     if query and query.strip():
+        participant_employee = aliased(TeamEmployee)
+        participant_match = (
+            select(ProcessingParticipant.processing_id)
+            .join(
+                participant_employee, participant_employee.id == ProcessingParticipant.employee_id
+            )
+            .where(
+                ProcessingParticipant.processing_id == Adjustment.id,
+                stock.literal_query(query, [ProcessingParticipant.name, participant_employee.name]),
+            )
+            .exists()
+        )
         conditions.append(
-            stock.literal_query(
-                query,
-                [
-                    Transfer.serial_no,
-                    Transfer.batch_no,
-                    Transfer.material_name,
-                    Adjustment.processor_name,
-                    TeamEmployee.name,
-                    Adjustment.reason,
-                    Adjustment.processing_task_name,
-                    Adjustment.process_step_name,
-                    Adjustment.purpose_name,
-                ],
+            or_(
+                participant_match,
+                stock.literal_query(
+                    query,
+                    [
+                        Transfer.serial_no,
+                        Transfer.batch_no,
+                        Transfer.material_name,
+                        Adjustment.processor_name,
+                        TeamEmployee.name,
+                        Adjustment.reason,
+                        Adjustment.processing_task_name,
+                        Adjustment.process_step_name,
+                        Adjustment.purpose_name,
+                    ],
+                ),
             )
         )
     return conditions
@@ -459,6 +486,9 @@ def production_groups(conditions):
         select(
             Adjustment.processing_date,
             Adjustment.processor_employee_id,
+            func.min(Adjustment.id).label("representative_id"),
+            func.sum(Adjustment.processing_minutes).label("processing_minutes"),
+            func.count(Adjustment.processing_minutes).label("duration_record_count"),
             func.coalesce(TeamEmployee.name, func.max(Adjustment.processor_name)).label(
                 "processor_name"
             ),
@@ -500,6 +530,9 @@ def production_groups(conditions):
             Adjustment.processor_employee_id.is_not(None),
         )
         .group_by(
+            func.coalesce(
+                Adjustment.processor_group_key, cast(Adjustment.processor_employee_id, String(1024))
+            ),
             Adjustment.processing_date,
             Adjustment.processor_employee_id,
             TeamEmployee.name,
@@ -512,6 +545,18 @@ def production_groups(conditions):
             Adjustment.purpose_id,
             Adjustment.purpose_name,
         )
+    )
+
+
+def participant_pairs():
+    return (
+        select(
+            Adjustment.id.label("processing_id"),
+            Adjustment.processor_employee_id.label("employee_id"),
+        )
+        .where(Adjustment.processor_employee_id.is_not(None))
+        .union(select(ProcessingParticipant.processing_id, ProcessingParticipant.employee_id))
+        .subquery()
     )
 
 
@@ -529,7 +574,7 @@ def list_records(
     page=1,
     page_size=20,
 ):
-    require_processing_team(db, team_id)
+    team = require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
     conditions = record_conditions(
@@ -567,8 +612,19 @@ def list_records(
     )
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     groups = production_groups(conditions).subquery()
+    people = participant_pairs()
     employee_days = (
-        select(groups.c.processing_date, groups.c.processor_employee_id).distinct().subquery()
+        select(Adjustment.processing_date, people.c.employee_id)
+        .join(Transfer, Transfer.id == Adjustment.source_transfer_id)
+        .outerjoin(TeamEmployee, TeamEmployee.id == Adjustment.processor_employee_id)
+        .join(people, people.c.processing_id == Adjustment.id)
+        .where(
+            *conditions,
+            Adjustment.processing_date.is_not(None),
+            Adjustment.completed_quantity.is_not(None),
+        )
+        .distinct()
+        .subquery()
     )
     totals = (
         db.execute(
@@ -578,6 +634,10 @@ def list_records(
                 .scalar_subquery()
                 .label("employee_day_count"),
                 func.count().label("daily_group_count"),
+                func.sum(groups.c.processing_minutes).label("processing_minutes"),
+                func.coalesce(func.sum(groups.c.duration_record_count), 0).label(
+                    "duration_record_count"
+                ),
                 func.coalesce(func.sum(groups.c.record_count), 0).label("record_count"),
                 *(func.coalesce(func.sum(groups.c[key]), 0).label(key) for key in SUMMARY_METRICS),
             )
@@ -586,19 +646,22 @@ def list_records(
         .one()
     )
     summary = {
-        key: float(value) if key.endswith("weight") else int(value) for key, value in totals.items()
+        key: None if value is None else float(value) if key.endswith("weight") else int(value)
+        for key, value in totals.items()
     }
     summary["unreported_count"] = total - summary["record_count"]
     processors = (
         db.execute(
             select(
-                Adjustment.processor_employee_id.label("id"),
+                people.c.employee_id.label("id"),
                 func.coalesce(TeamEmployee.name, func.max(Adjustment.processor_name)).label("name"),
             )
-            .outerjoin(TeamEmployee, TeamEmployee.id == Adjustment.processor_employee_id)
-            .where(Adjustment.team_id == team_id, Adjustment.processor_employee_id.is_not(None))
-            .group_by(Adjustment.processor_employee_id, TeamEmployee.name)
-            .order_by(Adjustment.processor_employee_id)
+            .select_from(Adjustment)
+            .join(people, people.c.processing_id == Adjustment.id)
+            .outerjoin(TeamEmployee, TeamEmployee.id == people.c.employee_id)
+            .where(Adjustment.team_id == team_id)
+            .group_by(people.c.employee_id, TeamEmployee.name)
+            .order_by(people.c.employee_id)
         )
         .mappings()
         .all()
@@ -702,6 +765,7 @@ def list_records(
 
     return {
         "items": annotate_groups(db, items),
+        "parameter_fields": parameter_fields(team.code),
         "total": total,
         "summary": summary,
         "processors": [dict(person) for person in processors],

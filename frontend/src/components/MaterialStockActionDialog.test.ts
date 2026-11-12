@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import ProcessingParameterFields from './ProcessingParameterFields.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, reactive } from 'vue'
@@ -602,6 +603,7 @@ describe('source batch dispatch and loss drafts', () => {
       weight: 10,
       revision: 7,
       processing_mode: 'split',
+      parameter_fields: ['machine_no'],
       task_required: true,
       allowed_task_ids: [9],
       as_of: '',
@@ -623,13 +625,15 @@ describe('source batch dispatch and loss drafts', () => {
       .findAllComponents(TeamEmployeeInput)
       .find((item) => item.props('label') === '加工人')!
     expect(picker.props('invalid')).toBe(true)
-    picker.vm.$emit('update:modelValue', {
-      id: 22,
-      team_id: 2,
-      name: '发送王师傅',
-      active: true,
-      version: 1,
-    })
+    picker.vm.$emit('update:people', [
+      {
+        id: 22,
+        team_id: 2,
+        name: '发送王师傅',
+        active: true,
+        version: 1,
+      },
+    ])
     await flushPromises()
     await wrapper.get('input[aria-label="实际加工日期"]').setValue('')
     await submit()
@@ -641,6 +645,9 @@ describe('source batch dispatch and loss drafts', () => {
       .findAllComponents(ElSelect)
       .find((item) => item.find('[aria-label="加工任务"]').exists())!
     expect(task.element.closest('.is-error')).not.toBeNull()
+    wrapper
+      .getComponent(ProcessingParameterFields)
+      .vm.$emit('update:modelValue', { machine_no: 'ROLL-02' })
     task.vm.$emit('update:modelValue', 9)
     await flushPromises()
     await submit()
@@ -652,6 +659,7 @@ describe('source batch dispatch and loss drafts', () => {
         quantity: 100,
         expected_revision: 7,
         processor_employee_id: 22,
+        machine_no: 'ROLL-02',
         processing_task_id: 9,
         processor_name: '发送王师傅',
         processing_mode: 'split',

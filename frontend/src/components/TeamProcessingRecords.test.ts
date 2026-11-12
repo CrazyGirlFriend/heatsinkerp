@@ -537,3 +537,52 @@ it('separates rework totals and exports rework identity alongside initial produc
   const exported = await source.load(new AbortController().signal, () => {})
   expect(exported[0]).toMatchObject({ work_kind: '返工', rework_of_id: 9, rework_round: 3 })
 })
+
+it('shows team parameters and preserves them in detail exports without adding unrelated columns', async () => {
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    items: [
+      {
+        ...record(),
+        furnace_no: '02炉',
+        actual_temperature_c: 0,
+        temperature_requirement: '900–950 °C',
+        holding_minutes: 60,
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 10,
+    parameter_fields: [
+      'furnace_no',
+      'temperature_requirement',
+      'actual_temperature_c',
+      'holding_minutes',
+    ],
+  })
+  await render()
+  const headers = wrapper.findAll('th').map((th) => th.text())
+  expect(headers).toContain('炉号')
+  expect(headers).toContain('实际温度（°C）')
+  expect(headers).not.toContain('机台号')
+  expect(headers).not.toContain('保温时长')
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  const rows = await source.load(new AbortController().signal, () => {})
+  expect(rows[0]).toMatchObject({
+    furnace_no: '02炉',
+    actual_temperature_c: 0,
+    temperature_requirement: '900–950 °C',
+    holding_minutes: 60,
+  })
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+    parameter_fields: ['machine_no'],
+  })
+  await wrapper.setProps({ teamId: 6 })
+  await flushPromises()
+  const nextHeaders = wrapper.findAll('th').map((th) => th.text())
+  expect(nextHeaders).toContain('机台号')
+  expect(nextHeaders).not.toContain('炉号')
+})

@@ -79,7 +79,10 @@ def prepare(lot, balance, latest, payload, team_code, *, today: date):
         return payload, {}
     if payload.processing_mode != ("split" if splitting else "unit"):
         raise ProcessingRuleError(422, "加工方式与本班组不符，请刷新后重试")
-    if not payload.processor_employee_id or not payload.processing_date:
+    if (
+        not (payload.processor_employee_id or payload.processor_employee_ids)
+        or not payload.processing_date
+    ):
         raise ProcessingRuleError(422, "请选择加工人并填写实际加工日期")
     if payload.processing_date > today:
         raise ProcessingRuleError(422, "实际加工日期不能晚于今天")

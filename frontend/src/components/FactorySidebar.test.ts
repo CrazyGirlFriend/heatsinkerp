@@ -77,6 +77,30 @@ afterEach(() => {
 })
 
 describe('three-level team navigation', () => {
+  it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-error'])(
+    'exposes the engineering management menu for the permitted %s account',
+    async (account) => {
+      signIn(account === 'administrator' ? 'ADMIN' : 'TEAM')
+      if (account !== 'administrator' && account !== 'other-team')
+        authState.session!.user.team_id = 9
+      if (account === 'inactive') authState.session!.user.active = false
+      if (account === 'permission-error') authState.currentUserError = '权限读取失败'
+      useTeamDirectoryStore(appPinia).items = [
+        { id: 9, code: 'FACTORY-PROCESS', name: '工艺', kind: 'engineering', active: true },
+      ]
+      const { wrapper, router } = await renderSidebar('/process-routes')
+      const allowed = ['administrator', 'engineering'].includes(account)
+      expect(wrapper.find('[aria-label="工艺 / 班组管理"]').exists()).toBe(allowed)
+      if (!allowed) return
+      await wrapper.get('[aria-label="工艺 / 班组管理"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.fullPath).toBe('/process-routes?tab=settings')
+      expect(wrapper.get('[aria-current=page]').text()).toBe('班组管理')
+      await router.back()
+      await flushPromises()
+      expect(wrapper.get('[aria-current=page]').text()).toBe('正常工艺')
+    },
+  )
   it.each(['ADMIN', 'TEAM'] as const)(
     'opens permitted team settings from the third-level menu for %s',
     async (role) => {
@@ -86,17 +110,17 @@ describe('three-level team navigation', () => {
         { id: 3, code: 'FACTORY-GRIND', name: '研磨', kind: 'production', active: true },
       ]
       const { wrapper, router } = await renderSidebar('/team-workspaces/2')
-      expect(wrapper.find('[aria-label="研磨 / 班组设置"]').exists()).toBe(role === 'ADMIN')
-      await wrapper.get('[aria-label="轧制 / 班组设置"]').trigger('click')
+      expect(wrapper.find('[aria-label="研磨 / 班组管理"]').exists()).toBe(role === 'ADMIN')
+      await wrapper.get('[aria-label="轧制 / 班组管理"]').trigger('click')
       await flushPromises()
       expect(router.currentRoute.value.query.tab).toBe('settings')
-      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 班组设置')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 班组管理')
       await router.back()
       await flushPromises()
       expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 库存')
       authState.currentUserError = '权限读取失败'
       await flushPromises()
-      expect(wrapper.find('[aria-label="轧制 / 班组设置"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="轧制 / 班组管理"]').exists()).toBe(false)
     },
   )
 
