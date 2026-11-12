@@ -15,7 +15,8 @@ RUN sed -i "s|http://deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PYPI_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir --index-url "${PYPI_INDEX_URL}" -r requirements.txt
 
 COPY app ./app
 COPY alembic.ini ./alembic.ini

@@ -37,6 +37,7 @@ SSH 和 SCP 都显式指定同一把私钥，并启用 `IdentitiesOnly=yes`；�
 - `/opt/heatsinkrep/.env`、`current` 和现有四个健康服务已经存在，数据卷仍为 `heatsinkrep_mysql_data` / `heatsinkrep_rabbitmq_data`。
 - 服务器须能取得基础镜像、npm 和 PyPI 依赖，并有足够构建/备份磁盘与内存。镜像源沿用服务器 `.env` 中的配置；构建失败时旧服务仍运行，不自动安装软件或改镜像源。
 - 后端系统依赖默认沿用线上已验证的清华 Debian 镜像；可在服务器 `.env` 中用 `DEBIAN_MIRROR` 指定其他镜像（如 `https://deb.debian.org`）。镜像只改变下载地址，继续验证 Debian 软件包签名。
+- Python 依赖同样沿用线上已验证的清华 PyPI 镜像，可用 `PYPI_INDEX_URL` 覆盖（官方源为 `https://pypi.org/simple`）；仍按 `backend/requirements.txt` 中的版本安装。
 - 在维护窗口执行，告知使用者会短暂停用；先完成本地业务测试和数据库迁移演练。脚本的健康检查不代替业务验收、压力测试或备份恢复演练。
 
 ## 实际执行顺序
