@@ -10,12 +10,6 @@ const templates = import.meta.glob('../assets/productionTemplates/*.xlsx', {
   import: 'default',
 })
 export function productionTemplates(code?: string) {
-  if (code === 'FACTORY-QC')
-    return [
-      { key: code, label: '检验产量表' },
-      { key: 'QC-SANDBLAST', label: '喷砂产量表' },
-      { key: 'QC-DEBURR', label: '去毛刺产量表' },
-    ]
   const definition = definitions[code as keyof typeof definitions]
   return definition ? [{ key: code!, label: definition.label }] : []
 }
@@ -151,18 +145,6 @@ function values(
   ]
     .filter(Boolean)
     .join('；')
-  if (key === 'QC-SANDBLAST' || key === 'QC-DEBURR')
-    return {
-      A: r.processing_date,
-      B: r.serial_no,
-      C: r.material_name,
-      G: continuation ? null : r.completed_quantity,
-      H: inspection?.passed_quantity,
-      I: hours,
-      J: r.processing_task_name,
-      K: r.processor_name,
-      [key === 'QC-SANDBLAST' ? 'P' : 'N']: qualityNote,
-    }
   return {
     A: r.processing_date,
     B: r.serial_no,
@@ -198,9 +180,8 @@ export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
     String(a.processing_date || '').localeCompare(String(b.processing_date || '')),
   )
   const data = sorted.flatMap((record) => {
-    const inspections: Inspection[] = ['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'].includes(key)
-      ? JSON.parse(String(record.report_inspections || '[]'))
-      : []
+    const inspections: Inspection[] =
+      key === 'FACTORY-QC' ? JSON.parse(String(record.report_inspections || '[]')) : []
     // Keep rechecks separate; they are observations of the same pieces, not new production.
     return inspections.length
       ? inspections.map((inspection, index) => values(key, record, inspection, index > 0))
@@ -245,8 +226,6 @@ export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
       'FACTORY-WIRE': 'T',
       'FACTORY-ENGRAVE': 'X',
       'FACTORY-QC': 'AQ',
-      'QC-SANDBLAST': 'I',
-      'QC-DEBURR': 'I',
     }
     const durationCell = sheet.getCell(`${durationColumn[key]}${first + index}`)
     durationCell.style = {

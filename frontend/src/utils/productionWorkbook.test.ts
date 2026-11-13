@@ -182,14 +182,13 @@ it('extends the original data row without duplicating crew output or retaining h
   expect(sheet.pageSetup.printArea).toBe('A1:Z4')
 })
 
-it('offers all three inspection templates and rejects unknown templates', async () => {
-  expect(productionTemplates('FACTORY-QC').map((t) => t.key)).toEqual([
-    'FACTORY-QC',
-    'QC-SANDBLAST',
-    'QC-DEBURR',
-  ])
+it('offers one inspection template and rejects removed standalone categories', async () => {
+  expect(productionTemplates('FACTORY-QC')).toEqual([{ key: 'FACTORY-QC', label: '检验产量表' }])
   expect(productionTemplates('FACTORY-WAREHOUSE')).toEqual([])
-  await expect(createProductionWorkbook('unknown', [])).rejects.toThrow('尚未配置')
+  for (const key of ['unknown', 'QC-SANDBLAST', 'QC-DEBURR']) {
+    expect(productionTemplates(key)).toEqual([])
+    await expect(createProductionWorkbook(key, [])).rejects.toThrow('尚未配置')
+  }
 })
 
 it('reports template loading errors', async () => {
@@ -200,25 +199,62 @@ it('reports template loading errors', async () => {
   await expect(createProductionWorkbook('FACTORY-ROLL', [])).rejects.toThrow('读取失败')
 })
 
-it('updates the report month without retaining the original November heading', async () => {
-  const blob = await createProductionWorkbook('QC-SANDBLAST', [{ processing_date: '2026-12-01' }])
+it('keeps all inspection categories in one original sheet with their own quantities, crew and hours', async () => {
+  const tasks = ['检验', '喷砂', '去毛刺', '显微镜修毛刺']
+  const blob = await createProductionWorkbook(
+    'FACTORY-QC',
+    tasks.map((processing_task_name, index) => ({
+      serial_no: '691236-50',
+      processing_date: '2026-11-13',
+      processing_task_name,
+      completed_quantity: 123 + index,
+      processing_minutes: 60 + index * 30,
+      processor_name: `人员${index + 1}、共同加工人`,
+      reason: `任务备注${index + 1}`,
+      report_inspections: JSON.stringify(index === 0 ? [check({ disposition: 'scrap' })] : []),
+    })),
+  )
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(await blob.arrayBuffer())
-  expect(workbook.worksheets[0]!.getCell('A1').text).toBe('喷砂12月产量')
+  expect(workbook.worksheets).toHaveLength(1)
+  const sheet = workbook.worksheets[0]!
+  expect(sheet.getCell('AP2').text.trim()).toBe('加工类别')
+  expect(sheet.rowCount).toBe(7)
+  for (const [index, task] of tasks.entries()) {
+    const row = index + 4
+    expect(sheet.getCell(`B${row}`).text).toBe('691236-50')
+    expect(sheet.getCell(`AP${row}`).text).toBe(task)
+    expect(sheet.getCell(`G${row}`).value).toBe(123 + index)
+    expect(sheet.getCell(`AQ${row}`).value).toBe(1 + index * 0.5)
+    expect(sheet.getCell(`AR${row}`).text).toBe(`人员${index + 1}、共同加工人`)
+    expect(sheet.getCell(`AS${row}`).text).toContain(`任务备注${index + 1}`)
+    expect(sheet.getCell(`H${row}`).value).toBe(index === 0 ? 12 : null)
+    expect(sheet.getCell(`I${row}`).value).toBe(index === 0 ? 10 : null)
+    expect(sheet.getCell(`K${row}`).value).toBe(index === 0 ? 2 : null)
+  }
 })
 
-it.each(['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'])(
+it('updates the report month without retaining the original November heading', async () => {
+  const blob = await createProductionWorkbook('FACTORY-QC', [{ processing_date: '2026-12-01' }])
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(await blob.arrayBuffer())
+  expect(workbook.worksheets[0]!.getCell('A1').text).toBe('检验12月产量')
+})
+
+it.each(['检验', '喷砂', '去毛刺'])(
   '%s exports the actual batch quantity without inventing a quality result',
-  async (key) => {
-    const sheet = await exported(key, { completed_quantity: 123, finished_quantity: 4008 })
+  async (processing_task_name) => {
+    const sheet = await exported('FACTORY-QC', {
+      processing_task_name,
+      completed_quantity: 123,
+      finished_quantity: 4008,
+    })
     expect(sheet.getCell('G4').value).toBe(123)
     expect(sheet.getCell('H4').value).toBeNull()
-    const note = key === 'FACTORY-QC' ? 'AS' : key === 'QC-SANDBLAST' ? 'P' : 'N'
-    expect(sheet.getCell(`${note}4`).text).toContain('未登记检验结果')
-    if (key === 'FACTORY-QC') {
-      expect(sheet.getCell('I4').value).toBeNull()
-      expect(sheet.getCell('K4').value).toBeNull()
-    }
+    expect(sheet.getCell('AS4').text).toContain('未登记检验结果')
+    expect(sheet.getCell('I4').value).toBeNull()
+    expect(sheet.getCell('K4').value).toBeNull()
+    expect(sheet.getCell('AP4').text).toBe(processing_task_name)
   },
 )
 
@@ -249,22 +285,25 @@ it.each(['scrap', 'rework'] as const)(
   },
 )
 
-it.each(['QC-SANDBLAST', 'QC-DEBURR'])(
+it.each(['喷砂', '去毛刺'])(
   '%s uses passed pieces from the linked check and keeps a true zero',
-  async (key) => {
-    const sheet = await exported(key, {
+  async (processing_task_name) => {
+    const sheet = await exported('FACTORY-QC', {
+      processing_task_name,
       completed_quantity: 123,
       report_inspections: JSON.stringify([check({ passed_quantity: 0, failed_quantity: 12 })]),
     })
     expect(sheet.getCell('G4').value).toBe(123)
-    expect(sheet.getCell('H4').value).toBe(0)
+    expect(sheet.getCell('H4').value).toBe(12)
+    expect(sheet.getCell('I4').value).toBe(0)
   },
 )
 
-it.each(['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'])(
+it.each(['检验', '喷砂', '去毛刺'])(
   '%s lists rechecks without counting production and duration twice',
-  async (key) => {
-    const sheet = await exported(key, {
+  async (processing_task_name) => {
+    const sheet = await exported('FACTORY-QC', {
+      processing_task_name,
       processing_date: '2026-11-12',
       batch_no: 'LOT-71',
       completed_quantity: 123,
@@ -280,23 +319,20 @@ it.each(['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'])(
         }),
       ]),
     })
-    const note = key === 'FACTORY-QC' ? 'AS' : key === 'QC-SANDBLAST' ? 'P' : 'N'
-    const duration = key === 'FACTORY-QC' ? 'AQ' : 'I'
     expect(sheet.getCell('A4').text).toBe('2026-11-12')
     expect(sheet.getCell('A5').text).toBe('2026-11-12')
     expect(sheet.getCell('G4').value).toBe(123)
     expect(sheet.getCell('G5').value).toBeNull()
-    expect(sheet.getCell(`${duration}4`).value).toBe(1.5)
-    expect(sheet.getCell(`${duration}5`).value).toBeNull()
-    expect(sheet.getCell(`${note}5`).text).toContain('复检 #72（原检查 #71）')
-    expect(sheet.getCell(`${note}5`).text).toContain('2026-11-13 09:30，检验员甲')
-    expect(sheet.getCell(`${note}5`).text).not.toContain('本次加工完成')
+    expect(sheet.getCell('AQ4').value).toBe(1.5)
+    expect(sheet.getCell('AQ5').value).toBeNull()
+    expect(sheet.getCell('AS5').text).toContain('复检 #72（原检查 #71）')
+    expect(sheet.getCell('AS5').text).toContain('2026-11-13 09:30，检验员甲')
+    expect(sheet.getCell('AS5').text).not.toContain('本次加工完成')
+    expect(sheet.getCell('AP5').text).toBe(processing_task_name)
     expect(sheet.rowCount).toBe(5)
-    if (key === 'FACTORY-QC') {
-      expect(sheet.getCell('I5').value).toBe(12)
-      expect(sheet.getCell('K5').value).toBe(0)
-      expect(sheet.getCell('AF5').value).toBe(0)
-    }
+    expect(sheet.getCell('I5').value).toBe(12)
+    expect(sheet.getCell('K5').value).toBe(0)
+    expect(sheet.getCell('AF5').value).toBe(0)
   },
 )
 

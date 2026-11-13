@@ -587,7 +587,7 @@ it('shows team parameters and preserves them in detail exports without adding un
   expect(nextHeaders).not.toContain('炉号')
 })
 
-it('carries linked inspection facts into original templates without exposing JSON as an export column', async () => {
+it('exports all inspection tasks through one original template without exposing internal JSON as a column', async () => {
   const result = await teamMaterialApi.processingRecords(5)
   const inspections: NonNullable<ProcessingRecord['report_inspections']> = [
     {
@@ -609,15 +609,14 @@ it('carries linked inspection facts into original templates without exposing JSO
   ]
   vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
     ...result,
-    total: 1,
-    items: [
-      {
-        ...record(),
-        finished_quantity: 4008,
-        completed_quantity: 123,
-        report_inspections: inspections,
-      },
-    ],
+    total: 3,
+    items: ['检验', '喷砂', '去毛刺'].map((processing_task_name, index) => ({
+      ...record(index + 1),
+      processing_task_name,
+      finished_quantity: 4008,
+      completed_quantity: 123 + index,
+      report_inspections: index === 0 ? inspections : [],
+    })),
   })
   await render()
   await wrapper.setProps({ teamCode: 'FACTORY-QC' })
@@ -625,14 +624,12 @@ it('carries linked inspection facts into original templates without exposing JSO
   const detail = button.props('source')()!
   expect(detail.fields.some((field) => field.key === 'report_inspections')).toBe(false)
   const templates = button.props('variants')!().filter((source) => source.workbook)
-  expect(templates.map((source) => source.title)).toEqual([
-    '检验产量表',
-    '喷砂产量表',
-    '去毛刺产量表',
-  ])
-  for (const template of templates) {
-    const rows = await template.load(new AbortController().signal, () => {})
-    expect(rows[0]).toMatchObject({ finished_quantity: 4008, completed_quantity: 123 })
-    expect(JSON.parse(String(rows[0]!.report_inspections))).toEqual(inspections)
-  }
+  expect(templates.map((source) => source.title)).toEqual(['检验产量表'])
+  const rows = await templates[0]!.load(new AbortController().signal, () => {})
+  expect(rows).toHaveLength(3)
+  expect(rows.map((row) => row.processing_task_name)).toEqual(['检验', '喷砂', '去毛刺'])
+  expect(rows.map((row) => row.completed_quantity)).toEqual([123, 124, 125])
+  expect(rows[0]).toMatchObject({ finished_quantity: 4008, completed_quantity: 123 })
+  expect(JSON.parse(String(rows[0]!.report_inspections))).toEqual(inspections)
+  for (const row of rows.slice(1)) expect(JSON.parse(String(row.report_inspections))).toEqual([])
 })

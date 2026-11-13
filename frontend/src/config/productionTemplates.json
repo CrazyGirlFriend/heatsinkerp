@@ -34,17 +34,5 @@
     "label": "检验产量表",
     "firstDataRow": 4,
     "lastColumn": "AS"
-  },
-  "QC-SANDBLAST": {
-    "source": "喷砂产量表.xlsx",
-    "label": "喷砂产量表",
-    "firstDataRow": 4,
-    "lastColumn": "P"
-  },
-  "QC-DEBURR": {
-    "source": "去毛刺产量表.xlsx",
-    "label": "去毛刺产量表",
-    "firstDataRow": 4,
-    "lastColumn": "O"
   }
 }

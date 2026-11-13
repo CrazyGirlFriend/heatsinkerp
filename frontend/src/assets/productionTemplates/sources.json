@@ -22,13 +22,5 @@
   "FACTORY-QC": {
     "source": "检验产量表.xlsx",
     "sha256": "4a956bd94094a8ce3295de4ff6c60cf9df53ec76b9de862b458576bad3b83116"
-  },
-  "QC-SANDBLAST": {
-    "source": "喷砂产量表.xlsx",
-    "sha256": "5944006146086b95e68232b8d7a4cfba0ecde10547afd2bbf7443f30b1c2d2e7"
-  },
-  "QC-DEBURR": {
-    "source": "去毛刺产量表.xlsx",
-    "sha256": "76be6e224b56f2df7d008b092b44503a7ee3568bb9b91f0435b3cabc2ed6121f"
   }
 }
