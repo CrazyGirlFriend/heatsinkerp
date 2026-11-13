@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from .process_route_read_schemas import RouteExecutionContextResponse
+from .quality_schemas import Disposition
 from .read_schemas import PageResponse, ReadResponse, SharedMaterialResponse
 from .schedule_read_schemas import ScheduleResponse
 from .stock_read_schemas import ProcessingState
@@ -138,6 +139,23 @@ class QuantityAdjustmentContextResponse(
     as_of: datetime
 
 
+class ProcessingInspectionResponse(ReadResponse):
+    id: int
+    source_transfer_id: int
+    checked_at: datetime
+    inspector_name: str
+    batch_quantity: int
+    sample_quantity: int
+    passed_quantity: int
+    failed_quantity: int
+    kind: Literal["patrol", "inspection"]
+    scope: Literal["sample", "full"]
+    parent_id: int | None
+    disposition: Disposition
+    problem_names: list[str]
+    notes: str
+
+
 class ProcessingRecordResponse(QuantityAdjustmentResponse, SharedMaterialResponse):
     serial_no: str
     batch_no: str
@@ -150,6 +168,8 @@ class ProcessingRecordResponse(QuantityAdjustmentResponse, SharedMaterialRespons
     owned_quantity: int
     owned_weight: float
     processing_state: ProcessingState
+    finished_quantity: int | None
+    report_inspections: list[ProcessingInspectionResponse]
 
 
 class RecordedWorkMetricsResponse(ReadResponse):

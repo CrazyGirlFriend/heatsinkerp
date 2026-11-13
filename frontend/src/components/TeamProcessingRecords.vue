@@ -196,7 +196,7 @@ async function load(background = false) {
     if (current === generation) loading.value = false
   }
 }
-function exportSource() {
+function exportSource(originalTemplate = false) {
   const id = props.teamId,
     params = filters()
   return tableExportSource(
@@ -209,6 +209,16 @@ function exportSource() {
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
+      { key: 'finished_quantity', label: '订单数量', value: (row) => row.finished_quantity },
+      ...(originalTemplate
+        ? [
+            {
+              key: 'report_inspections',
+              label: '关联检查记录',
+              value: (row: ProcessingRecord) => JSON.stringify(row.report_inspections || []),
+            },
+          ]
+        : []),
 
       {
         key: 'processing_task_name',
@@ -409,7 +419,7 @@ function exportVariants() {
     params = filters()
   return [
     ...productionTemplates(props.teamCode).map((template) => ({
-      ...exportSource(),
+      ...exportSource(true),
       title: template.label,
       workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
         createProductionWorkbook(template.key, rows),

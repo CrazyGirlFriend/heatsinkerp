@@ -586,3 +586,53 @@ it('shows team parameters and preserves them in detail exports without adding un
   expect(nextHeaders).toContain('机台号')
   expect(nextHeaders).not.toContain('炉号')
 })
+
+it('carries linked inspection facts into original templates without exposing JSON as an export column', async () => {
+  const result = await teamMaterialApi.processingRecords(5)
+  const inspections: NonNullable<ProcessingRecord['report_inspections']> = [
+    {
+      id: 71,
+      source_transfer_id: 10,
+      checked_at: '2026-11-13T01:30:00Z',
+      inspector_name: '检验员甲',
+      batch_quantity: 123,
+      sample_quantity: 12,
+      passed_quantity: 10,
+      failed_quantity: 2,
+      kind: 'inspection',
+      scope: 'sample',
+      parent_id: null,
+      disposition: 'pending',
+      problem_names: ['划伤'],
+      notes: '',
+    },
+  ]
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    ...result,
+    total: 1,
+    items: [
+      {
+        ...record(),
+        finished_quantity: 4008,
+        completed_quantity: 123,
+        report_inspections: inspections,
+      },
+    ],
+  })
+  await render()
+  await wrapper.setProps({ teamCode: 'FACTORY-QC' })
+  const button = wrapper.getComponent(TableExportButton)
+  const detail = button.props('source')()!
+  expect(detail.fields.some((field) => field.key === 'report_inspections')).toBe(false)
+  const templates = button.props('variants')!().filter((source) => source.workbook)
+  expect(templates.map((source) => source.title)).toEqual([
+    '检验产量表',
+    '喷砂产量表',
+    '去毛刺产量表',
+  ])
+  for (const template of templates) {
+    const rows = await template.load(new AbortController().signal, () => {})
+    expect(rows[0]).toMatchObject({ finished_quantity: 4008, completed_quantity: 123 })
+    expect(JSON.parse(String(rows[0]!.report_inspections))).toEqual(inspections)
+  }
+})

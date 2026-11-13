@@ -1,8 +1,14 @@
-import type { CellObject, SheetData } from 'write-excel-file/universal'
-import type { ExportValue } from './tableExport'
+import { assertExportSize, type ExportValue } from './tableExport'
+import { formatDateTime } from './format'
+import type { ProcessingRecord } from '../types/materialProcessing'
+import definitions from '../config/productionTemplates.json'
 
 type ExportRow = Record<string, ExportValue>
-const templates = import.meta.glob('../config/productionTemplates/*.json', { import: 'default' })
+type Inspection = NonNullable<ProcessingRecord['report_inspections']>[number]
+const templates = import.meta.glob('../assets/productionTemplates/*.xlsx', {
+  query: '?url',
+  import: 'default',
+})
 export function productionTemplates(code?: string) {
   if (code === 'FACTORY-QC')
     return [
@@ -10,19 +16,20 @@ export function productionTemplates(code?: string) {
       { key: 'QC-SANDBLAST', label: '喷砂产量表' },
       { key: 'QC-DEBURR', label: '去毛刺产量表' },
     ]
-  const label: Record<string, string> = {
-    'FACTORY-ROLL': '轧制产量表',
-    'FACTORY-ANNEAL': '退火模压产量表',
-    'FACTORY-GRIND': '研磨产量表',
-    'FACTORY-WIRE': '线切割产量表',
-    'FACTORY-ENGRAVE': '雕刻产量表',
-  }
-  return code && label[code] ? [{ key: code, label: label[code] }] : []
+  const definition = definitions[code as keyof typeof definitions]
+  return definition ? [{ key: code!, label: definition.label }] : []
 }
 
-function values(key: string, r: ExportRow): Record<string, ExportValue> {
+function values(
+  key: string,
+  r: ExportRow,
+  inspection?: Inspection,
+  continuation = false,
+): Record<string, ExportValue> {
   const hours =
-    typeof r.processing_minutes === 'number' ? Number((r.processing_minutes / 60).toFixed(4)) : null
+    !continuation && typeof r.processing_minutes === 'number'
+      ? Number((r.processing_minutes / 60).toFixed(4))
+      : null
   const people = String(r.processor_name || '').split('、')
   const note = [r.work_kind === '返工' ? `返工第 ${r.rework_round} 次` : '', r.reason]
     .filter(Boolean)
@@ -35,6 +42,7 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       A: r.processing_date,
       B: r.serial_no,
       D: r.material_name,
+      E: r.finished_quantity,
       F: r.processing_task_name,
       H: r.after_specification,
       I: r.completed_quantity,
@@ -42,9 +50,14 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       K: remaining,
       L: r.scrap_weight,
       M: hours,
-      N: r.processor_name,
-      S: note,
-      T: r.machine_no,
+      // The original columns distinguish primary/secondary roles, which we do not record.
+      S: [
+        note,
+        r.processor_name && `加工人员：${r.processor_name}`,
+        r.machine_no && `机床：${r.machine_no}`,
+      ]
+        .filter(Boolean)
+        .join('；'),
     }
   if (key === 'FACTORY-ANNEAL')
     return {
@@ -59,9 +72,13 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       L: r.actual_temperature_c,
       M: hours,
       N: r.furnace_no,
-      R: note,
-      S: r.temperature_requirement,
-      T: typeof r.holding_minutes === 'number' ? Number((r.holding_minutes / 60).toFixed(4)) : null,
+      R: [
+        note,
+        r.temperature_requirement && `温度要求：${r.temperature_requirement}`,
+        r.holding_minutes != null && `保温：${r.holding_minutes} 分钟`,
+      ]
+        .filter(Boolean)
+        .join('；'),
     }
   if (key === 'FACTORY-GRIND')
     return {
@@ -70,6 +87,7 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       C: r.serial_no,
       D: r.material_name,
       J: r.processing_task_name,
+      K: r.finished_quantity,
       L: r.completed_quantity,
       M: r.completed_weight,
       Q: hours,
@@ -83,13 +101,14 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       A: r.processing_date,
       B: r.serial_no,
       C: r.material_name,
+      H: r.finished_quantity,
       I: r.completed_quantity,
       J: r.completed_weight,
       M: remaining,
       N: r.scrap_weight,
       P: r.processing_task_name,
       S: r.machine_no,
-      T: hours,
+      T: r.processing_minutes,
       U: people[0],
       V: people[1],
       W: people.slice(2).join('、'),
@@ -101,6 +120,7 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       B: r.serial_no,
       C: r.material_name,
       D: r.after_specification,
+      E: r.finished_quantity,
       H: r.completed_quantity,
       I: r.completed_weight,
       J: r.scrap_quantity,
@@ -113,69 +133,130 @@ function values(key: string, r: ExportRow): Record<string, ExportValue> {
       W: note,
       X: hours,
     }
+  const qualityNote = [
+    note,
+    r.batch_no && `批次：${r.batch_no}`,
+    !continuation && r.completed_quantity != null && `本次加工完成 ${r.completed_quantity} 件`,
+    inspection
+      ? `${inspection.parent_id ? `复检 #${inspection.id}（原检查 #${inspection.parent_id}）` : `检查 #${inspection.id}`}：${formatDateTime(inspection.checked_at)}，${inspection.inspector_name}`
+      : '未登记检验结果',
+    inspection &&
+      `${inspection.scope === 'full' ? '全检' : '抽检'} ${inspection.sample_quantity} 件，不合格 ${inspection.failed_quantity} 件`,
+    inspection?.failed_quantity
+      ? `处理：${({ pending: '待处理', rework: '返工', shipment: '发货', transfer: '转出', reallocate: '转投', scrap: '判废', other: '其他' } as const)[inspection.disposition]}`
+      : '',
+    inspection?.problem_names.length &&
+      `问题：${inspection.problem_names.join('、')}（未登记分类数量）`,
+    inspection?.notes,
+  ]
+    .filter(Boolean)
+    .join('；')
   if (key === 'QC-SANDBLAST' || key === 'QC-DEBURR')
     return {
       A: r.processing_date,
       B: r.serial_no,
       C: r.material_name,
+      G: continuation ? null : r.completed_quantity,
+      H: inspection?.passed_quantity,
       I: hours,
       J: r.processing_task_name,
       K: r.processor_name,
-      [key === 'QC-SANDBLAST' ? 'P' : 'N']: note,
+      [key === 'QC-SANDBLAST' ? 'P' : 'N']: qualityNote,
     }
   return {
     A: r.processing_date,
     B: r.serial_no,
     C: r.material_name,
+    G: continuation ? null : r.completed_quantity,
+    H: inspection?.sample_quantity,
+    I: inspection?.passed_quantity,
+    K:
+      inspection?.disposition === 'scrap'
+        ? inspection.failed_quantity
+        : inspection?.failed_quantity === 0
+          ? 0
+          : null,
+    AF:
+      inspection?.disposition === 'rework'
+        ? inspection.failed_quantity
+        : inspection?.failed_quantity === 0
+          ? 0
+          : null,
     AP: r.processing_task_name,
     AQ: hours,
     AR: r.processor_name,
-    AS: note,
+    AS: qualityNote,
   }
-}
-
-function columnIndex(column: string) {
-  return [...column].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1
 }
 
 export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
-  const load = templates[`../config/productionTemplates/${key}.json`]
-  if (!load) throw new Error('本班组尚未配置产量表样式')
-  const template = (await load()) as {
-    title: string
-    headers: SheetData
-    widths: number[]
-    bodyStyle: CellObject
-  }
-  const data: SheetData = template.headers.map((row) =>
-    row.map((cell) => (cell ? { ...(cell as CellObject), type: String } : null)),
-  )
-  for (const r of [...rows].sort((a, b) =>
+  const load = templates[`../assets/productionTemplates/${key}.xlsx`]
+  const definition = definitions[key as keyof typeof definitions]
+  if (!load || !definition) throw new Error('本班组尚未配置产量表模板')
+  assertExportSize(rows.length)
+  const sorted = [...rows].sort((a, b) =>
     String(a.processing_date || '').localeCompare(String(b.processing_date || '')),
-  )) {
-    const row: (CellObject | null)[] = template.widths.map(() => ({
-      ...template.bodyStyle,
-      value: '',
-      type: String,
-      height: 28,
-    }))
-    for (const [column, value] of Object.entries(values(key, r)))
-      row[columnIndex(column)] = {
-        ...row[columnIndex(column)],
-        value: value ?? '',
-        type: typeof value === 'number' ? Number : String,
-        ...(typeof value === 'number' ? { format: '#,##0.######' } : {}),
-      }
-    if (key === 'FACTORY-ROLL') {
-      row[13]!.columnSpan = 2
-      row[14] = null
-    }
-    data.push(row)
+  )
+  const data = sorted.flatMap((record) => {
+    const inspections: Inspection[] = ['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'].includes(key)
+      ? JSON.parse(String(record.report_inspections || '[]'))
+      : []
+    // Keep rechecks separate; they are observations of the same pieces, not new production.
+    return inspections.length
+      ? inspections.map((inspection, index) => values(key, record, inspection, index > 0))
+      : [values(key, record)]
+  })
+  assertExportSize(data.length)
+  const response = await fetch((await load()) as string)
+  if (!response.ok) throw new Error('产量表模板读取失败，请重试')
+  const { default: ExcelJS } = await import('exceljs')
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(await response.arrayBuffer())
+  const sheet = workbook.worksheets[0]!
+  const first = definition.firstDataRow
+  if (data.length > 1) sheet.duplicateRow(first, data.length - 1, true)
+  // Month/year in the supplied report title are report values, not fixed labels.
+  const months = [
+    ...new Set(sorted.map((row) => String(row.processing_date || '').slice(0, 7))),
+  ].filter((month) => /^\d{4}-\d{2}$/.test(month))
+  const title = sheet.getCell('A1')
+  if (months.length && typeof title.value === 'string') {
+    const start = months[0]!,
+      end = months.at(-1)!
+    const period = start === end ? `${Number(start.slice(5))}月` : `${start} 至 ${end}`
+    title.value = title.value.replace(/\d+月/, period)
+    const year =
+      start.slice(0, 4) === end.slice(0, 4)
+        ? start.slice(0, 4)
+        : `${start.slice(0, 4)}—${end.slice(0, 4)}`
+    title.value = title.value.replace(/\d{4}(\s*年)/, `${year}$1`)
   }
-  const { default: writeExcelFile } = await import('write-excel-file/universal')
-  return writeExcelFile(data, {
-    sheet: template.title,
-    columns: template.widths.map((width) => ({ width })),
-    stickyRowsCount: template.headers.length,
-  }).toBlob()
+  data.forEach((record, index) => {
+    for (const [column, value] of Object.entries(record)) {
+      const cell = sheet.getCell(`${column}${first + index}`)
+      // Plain strings stay literal, including serials with leading zeros and '=' notes.
+      cell.value = value ?? null
+      if (typeof value === 'number') cell.style = { ...cell.style, numFmt: '#,##0.######' }
+    }
+    const durationColumn: Record<string, string> = {
+      'FACTORY-ROLL': 'M',
+      'FACTORY-ANNEAL': 'M',
+      'FACTORY-GRIND': 'Q',
+      'FACTORY-WIRE': 'T',
+      'FACTORY-ENGRAVE': 'X',
+      'FACTORY-QC': 'AQ',
+      'QC-SANDBLAST': 'I',
+      'QC-DEBURR': 'I',
+    }
+    const durationCell = sheet.getCell(`${durationColumn[key]}${first + index}`)
+    durationCell.style = {
+      ...durationCell.style,
+      numFmt: key === 'FACTORY-WIRE' ? '0"分钟"' : '0.####"小时"',
+    }
+  })
+  sheet.pageSetup.printArea = `A1:${definition.lastColumn}${first + Math.max(data.length, 1) - 1}`
+  const buffer = await workbook.xlsx.writeBuffer()
+  return new Blob([new Uint8Array(buffer)], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
 }

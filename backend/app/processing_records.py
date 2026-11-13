@@ -596,6 +596,7 @@ def list_records(
             Transfer.batch_no,
             Transfer.material_name,
             Transfer.material_type,
+            Transfer.finished_quantity,
             Transfer.purpose_name.label("source_purpose_name"),
             balance.c.on_hand_quantity,
             balance.c.on_hand_weight,
@@ -690,6 +691,9 @@ def list_records(
         .limit(page_size)
     ).all()
     snapshots = [record_dict(row[0]) for row in rows]
+    from .processing_report import inspections_by_record
+
+    report_inspections = inspections_by_record(db, team_id, [row[0].id for row in rows])
     lot_ids = {row[0].source_transfer_id for row in rows}
     lot_ids.update(output["id"] for item in snapshots for output in (item.get("outputs") or []))
     balances = output_balances(db, team_id, lot_ids)
@@ -746,9 +750,11 @@ def list_records(
                         "batch_no",
                         "material_name",
                         "material_type",
+                        "finished_quantity",
                     )
                 },
                 "purpose_name": snapshot["purpose_name"] or current["source_purpose_name"],
+                "report_inspections": report_inspections.get(row[0].id, []),
                 **{key: value for key, value in holdings.items() if key != "progress"},
                 "processing_state": state(
                     current["material_type"],

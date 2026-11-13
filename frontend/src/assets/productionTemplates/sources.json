@@ -1,0 +1,34 @@
+{
+  "FACTORY-ROLL": {
+    "source": "轧制产量表.xlsx",
+    "sha256": "22e8d6fea13e1642641f12731cabf2a6ef6e79a33b80ada2d16380f223b3d333"
+  },
+  "FACTORY-ANNEAL": {
+    "source": "退火模压工序产量表.xlsx",
+    "sha256": "2ce48fcb6c1b28a860925991e5ad6b659caa173fbabae25a09718349ae76a262"
+  },
+  "FACTORY-GRIND": {
+    "source": "研磨产量表.xlsx",
+    "sha256": "3e1242445a4f91b8e52fec64a770c08f165efed55e89bca7be503c34a99341a9"
+  },
+  "FACTORY-WIRE": {
+    "source": "线切割产量表.xlsx",
+    "sha256": "33ef59b71d61386847ab5b848b9dc1c6f74c55200ca2919026a612ea443674b8"
+  },
+  "FACTORY-ENGRAVE": {
+    "source": "雕刻产量表.xlsx",
+    "sha256": "ab5665ad31846a427b342b62654b526209a180da7b5b263d30bac2e651885c0f"
+  },
+  "FACTORY-QC": {
+    "source": "检验产量表.xlsx",
+    "sha256": "4a956bd94094a8ce3295de4ff6c60cf9df53ec76b9de862b458576bad3b83116"
+  },
+  "QC-SANDBLAST": {
+    "source": "喷砂产量表.xlsx",
+    "sha256": "5944006146086b95e68232b8d7a4cfba0ecde10547afd2bbf7443f30b1c2d2e7"
+  },
+  "QC-DEBURR": {
+    "source": "去毛刺产量表.xlsx",
+    "sha256": "76be6e224b56f2df7d008b092b44503a7ee3568bb9b91f0435b3cabc2ed6121f"
+  }
+}

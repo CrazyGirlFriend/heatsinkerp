@@ -5897,6 +5897,49 @@ export interface components {
       /** Name */
       name: string | null
     }
+    /** ProcessingInspectionResponse */
+    ProcessingInspectionResponse: {
+      /** Batch Quantity */
+      batch_quantity: number
+      /**
+       * Checked At
+       * Format: date-time
+       */
+      checked_at: string
+      /**
+       * Disposition
+       * @enum {string}
+       */
+      disposition: 'pending' | 'rework' | 'shipment' | 'transfer' | 'reallocate' | 'scrap' | 'other'
+      /** Failed Quantity */
+      failed_quantity: number
+      /** Id */
+      id: number
+      /** Inspector Name */
+      inspector_name: string
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'patrol' | 'inspection'
+      /** Notes */
+      notes: string
+      /** Parent Id */
+      parent_id: number | null
+      /** Passed Quantity */
+      passed_quantity: number
+      /** Problem Names */
+      problem_names: string[]
+      /** Sample Quantity */
+      sample_quantity: number
+      /**
+       * Scope
+       * @enum {string}
+       */
+      scope: 'sample' | 'full'
+      /** Source Transfer Id */
+      source_transfer_id: number
+    }
     /** ProcessingOutput */
     ProcessingOutput: {
       /** Material Type */
@@ -6083,6 +6126,8 @@ export interface components {
       created_by: string
       /** Delta Quantity */
       delta_quantity: number
+      /** Finished Quantity */
+      finished_quantity: number | null
       /** Furnace No */
       furnace_no: string | null
       /** Holding Minutes */
@@ -6165,6 +6210,8 @@ export interface components {
       purpose_name: string | null
       /** Reason */
       reason: string
+      /** Report Inspections */
+      report_inspections: components['schemas']['ProcessingInspectionResponse'][]
       /** Rework Of Id */
       rework_of_id: number | null
       /** Rework Round */

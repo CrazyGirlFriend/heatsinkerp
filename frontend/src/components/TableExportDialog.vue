@@ -121,7 +121,7 @@ onBeforeUnmount(cancel)
         <strong>{{ activeSource.title }}</strong
         ><span>当前筛选 · 全部 {{ total.toLocaleString('zh-CN') }} 条</span>
       </div>
-      <p v-if="activeSource.workbook" class="export-scope">按原表样式导出；未登记的项目留空。</p>
+      <p v-if="activeSource.workbook" class="export-scope">使用班组原始 Excel 模板；未登记的项目留空。</p>
       <div v-else class="export-fields-heading">
         <strong>选择字段</strong
         ><ElCheckbox

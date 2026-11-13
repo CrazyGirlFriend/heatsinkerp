@@ -1,0 +1,50 @@
+{
+  "FACTORY-ROLL": {
+    "source": "轧制产量表.xlsx",
+    "label": "轧制产量表",
+    "firstDataRow": 4,
+    "lastColumn": "S"
+  },
+  "FACTORY-ANNEAL": {
+    "source": "退火模压工序产量表.xlsx",
+    "label": "退火模压产量表",
+    "firstDataRow": 3,
+    "lastColumn": "R"
+  },
+  "FACTORY-GRIND": {
+    "source": "研磨产量表.xlsx",
+    "label": "研磨产量表",
+    "firstDataRow": 4,
+    "lastColumn": "Y"
+  },
+  "FACTORY-WIRE": {
+    "source": "线切割产量表.xlsx",
+    "label": "线切割产量表",
+    "firstDataRow": 3,
+    "lastColumn": "Z"
+  },
+  "FACTORY-ENGRAVE": {
+    "source": "雕刻产量表.xlsx",
+    "label": "雕刻产量表",
+    "firstDataRow": 4,
+    "lastColumn": "X"
+  },
+  "FACTORY-QC": {
+    "source": "检验产量表.xlsx",
+    "label": "检验产量表",
+    "firstDataRow": 4,
+    "lastColumn": "AS"
+  },
+  "QC-SANDBLAST": {
+    "source": "喷砂产量表.xlsx",
+    "label": "喷砂产量表",
+    "firstDataRow": 4,
+    "lastColumn": "P"
+  },
+  "QC-DEBURR": {
+    "source": "去毛刺产量表.xlsx",
+    "label": "去毛刺产量表",
+    "firstDataRow": 4,
+    "lastColumn": "O"
+  }
+}
