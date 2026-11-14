@@ -10,7 +10,7 @@ export const boardDay = (time: number) =>
 export const boardDate = (time: number) => new Date(time + 28_800_000).toISOString().slice(0, 10)
 
 const colors: Record<string, string> = {
-  库房: '#738497',
+  库房: '#a67912',
   线切割: '#2275c7',
   退火: '#b36320',
   研磨: '#7760c0',

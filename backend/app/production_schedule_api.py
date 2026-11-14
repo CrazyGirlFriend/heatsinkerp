@@ -1,4 +1,4 @@
-"""Dispatch owns orders; teams submit delivery plans for confirmation."""
+"""Dispatch owns orders; teams save their delivery plans directly."""
 
 from datetime import datetime, timezone
 from pathlib import PurePath
@@ -49,6 +49,7 @@ from .schedule_read_schemas import (
     ScheduleReworkOptionResponse,
     ScheduleRouteOptionResponse,
     ScheduleSerialPageResponse,
+    ScheduleSerialProgressResponse,
     ScheduleSourcePageResponse,
     ScheduleTaskDetailResponse,
     ScheduleTaskPageResponse,
@@ -286,20 +287,6 @@ def delete_task(
 
 
 @router.post(
-    "/{schedule_id}/review",
-    response_model=ScheduleDetailResponse,
-    response_model_exclude_unset=True,
-)
-def review_plan(
-    schedule_id: int,
-    payload: schedule_batches.PlanReview,
-    user: User = Depends(require_dispatch),
-    db: Session = Depends(get_db),
-):
-    return schedule_batches.review(db, schedule_id, payload, user)
-
-
-@router.post(
     "/tasks",
     response_model=ScheduleTaskDetailResponse,
     response_model_exclude_unset=True,
@@ -439,6 +426,13 @@ def link_task_route(
     db: Session = Depends(get_db),
 ):
     return schedule_routes.link(db, task_id, payload, user)
+
+
+@router.get("/tasks/{task_id}/progress", response_model=ScheduleSerialProgressResponse)
+def serial_progress(task_id: int, db: Session = Depends(get_db)):
+    from .schedule_serial_progress import progress
+
+    return progress(db, task_id)
 
 
 @router.get(

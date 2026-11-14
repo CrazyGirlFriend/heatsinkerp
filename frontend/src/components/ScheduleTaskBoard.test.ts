@@ -446,6 +446,44 @@ describe('task scheduling board', () => {
       node_targets: '1. 库房：1 件 / 10 kg（参考）；2. 轧制：100 件 / 10 kg（参考）',
     })
   })
+  it('loads serial processing and customer shipments only when the progress tab is opened', async () => {
+    const progress = vi.spyOn(productionScheduleApi, 'serialProgress').mockResolvedValue({
+      serial_no: task.serial_no,
+      tasks: [
+        {
+          ...task,
+          nodes: [
+            {
+              ...node(1),
+              target_quantity: 100,
+              dispatched_quantity: 60,
+              assessment_enabled: false,
+            },
+            { ...node(2), processed_quantity: 80, dispatched_quantity: 50 },
+            { ...node(2), id: 3, sequence_no: 3, processed_quantity: 20, dispatched_quantity: 0 },
+          ],
+        },
+      ],
+      planned_quantity: 100,
+      shipped_quantity: 30,
+      shipped_weight: 3,
+      last_shipped_at: null,
+      shipment_count: 0,
+      shipments: [],
+    })
+    await render()
+    wrapper.getComponent({ name: 'VTableScheduleTimeline' }).vm.$emit('open-task', task)
+    await flushPromises()
+    expect(progress).not.toHaveBeenCalled()
+    await wrapper.get('[role="tab"][id$="-progress"]').trigger('click')
+    await flushPromises()
+    expect(progress).toHaveBeenCalledWith(task.id)
+    expect(wrapper.get('[aria-label="客户发货进度"]').text()).toContain('部分发货')
+    expect(wrapper.get('[aria-label="客户发货完成比例"]').attributes('aria-valuenow')).toBe('30')
+    expect(wrapper.get('[aria-label="1 库房转出比例"]').attributes('aria-valuenow')).toBe('60')
+    expect(wrapper.get('[aria-label="2 轧制加工比例"]').attributes('aria-valuenow')).toBe('80')
+    expect(wrapper.get('[aria-label="3 轧制加工比例"]').attributes('aria-valuenow')).toBe('20')
+  })
   it('stages scope, serials and people until applied, discards cancellation, and resets all conditions', async () => {
     await render('/production-schedules?serial_no=S-001')
     await button('筛选')
@@ -560,7 +598,7 @@ describe('task scheduling board', () => {
       expect.objectContaining({ sort_by: 'created_at', sort_order: 'asc', page: 1 }),
     )
   })
-  it('shows each route occurrence with its submission state and opens the selected node', async () => {
+  it('shows each route occurrence without opening details on icon click', async () => {
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
       items: [
         {
@@ -580,7 +618,7 @@ describe('task scheduling board', () => {
     })
     await render('/production-schedules', true)
     const planning = wrapper.getComponent(ScheduleTeamPlanning)
-    const steps = planning.findAll('button')
+    const steps = planning.findAll('.team-planning__step')
     expect(steps.map((step) => step.attributes('aria-label')?.split('：')[0])).toEqual([
       '库房',
       '轧制 1',
@@ -591,16 +629,17 @@ describe('task scheduling board', () => {
     expect(steps.map((step) => step.classes().includes('is-filled'))).toEqual([
       true,
       false,
-      true,
+      false,
       true,
     ])
-    expect(steps[2]!.attributes('aria-label')).toContain('待调度确认')
+    expect(steps[2]!.attributes('aria-label')).toContain('待填写')
+    expect(wrapper.text()).not.toContain('待确认')
     await steps[2]!.trigger('click')
-    expect(hooks.openDetail).toHaveBeenCalledWith(3)
+    expect(hooks.openDetail).not.toHaveBeenCalled()
     expect(wrapper.get('.dispatch-task-actions').text()).toContain('锁定')
     expect(wrapper.get('.dispatch-task-actions').text()).toContain('删除')
   })
-  it('keeps long routes compact and lets users open every omitted occurrence on click', async () => {
+  it('keeps long routes compact and reveals omitted occurrences on focus without navigation', async () => {
     const nodes = Array.from({ length: 11 }, (_, index) => ({
       ...node(index + 1),
       team_id: index === 0 ? 1 : 2,
@@ -620,14 +659,13 @@ describe('task scheduling board', () => {
     })
     expect(wrapper.findAll('.team-planning__step')).toHaveLength(9)
     expect(wrapper.find('.team-planning__list').exists()).toBe(false)
-    await wrapper.get('.team-planning__more').trigger('click')
+    await wrapper.get('.team-planning__more').trigger('focusin')
     const items = wrapper.findAll('.team-planning__item')
     expect(items).toHaveLength(11)
     expect(items[0]!.text()).toContain('库房')
     expect(items[10]!.text()).toContain('轧制 10')
     await items[10]!.trigger('click')
-    expect(wrapper.emitted('select')).toEqual([[nodes[10]]])
-    expect(wrapper.find('.team-planning__list').exists()).toBe(false)
+    expect(wrapper.emitted('select')).toBeUndefined()
   })
   it('restores visible column order and saves hidden columns through the shared settings', async () => {
     localStorage.setItem(

@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/utils/format'
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -231,12 +232,12 @@ describe('delivery schedule workbench', () => {
     await wrapper.get('[data-schedule-id="5"] .schedule-task-route__plan').trigger('click')
     await flushPromises()
     expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(5)
-    const saved = { ...task.nodes[0]!, planning_state: 'submitted' as const }
+    const saved = { ...task.nodes[0]!, planning_state: 'confirmed' as const }
     task.nodes[0] = saved
     wrapper.getComponent(ScheduleBatchEditor).vm.$emit('saved', saved)
     await flushPromises()
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
-    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain('待调度确认')
+    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain(formatDateTime(saved.due_at))
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
   it.each([{ order_locked: true }, { status: 'cancelled' as const }])(

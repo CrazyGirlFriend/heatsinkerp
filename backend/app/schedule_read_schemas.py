@@ -228,6 +228,26 @@ class ScheduleTaskDetailResponse(ScheduleTaskResponse):
     order_document: RouteOrderDocumentResponse | None
 
 
+class ScheduleShipmentResponse(ReadResponse):
+    id: int
+    batch_no: str
+    team_name: str | None
+    quantity: int
+    weight: float
+    shipped_at: str | None
+
+
+class ScheduleSerialProgressResponse(ReadResponse):
+    serial_no: str
+    tasks: list[ScheduleTaskResponse]
+    planned_quantity: int | None
+    shipped_quantity: int
+    shipped_weight: float
+    last_shipped_at: str | None
+    shipment_count: int
+    shipments: list[ScheduleShipmentResponse]
+
+
 class SchedulePeriodResponse(ReadResponse):
     completed: int
     completed_late: int

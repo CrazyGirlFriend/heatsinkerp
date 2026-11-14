@@ -69,41 +69,27 @@ def notify_change(db, plan, action, before, after):
         "batches_updated": ("changed", "分批计划已调整"),
         "cancelled": ("cancelled", "排期已取消"),
         "order_locked": ("locked", "调度已锁定订单"),
-        "order_unlocked": ("unlocked", "调度已解锁订单，可以提交交期调整"),
-        "plan_returned": ("returned", "交期计划已退回，请修改后重新提交"),
+        "order_unlocked": ("unlocked", "调度已解锁订单，可以修改交期"),
     }
-    if action == "plan_submitted":
-        from .team_constants import DISPATCH_TEAM_CODE
-
-        dispatch_id = db.scalar(
-            select(Team.id).where(Team.code == DISPATCH_TEAM_CODE, Team.active.is_(True))
-        )
-        if dispatch_id:
-            name = db.get(Team, plan.team_id).name
-            add_notice(
-                db,
-                plan,
-                "review",
-                f"{name}已提交交期计划，请确认",
-                f"plan:{plan.id}:{plan.version}:{action}",
-                team_id=dispatch_id,
-            )
-        return
     if action not in labels:
         return
     changed = {k for k in after if k != "version" and (before or {}).get(k) != after[k]}
     if before is not None and not changed and action not in ("order_locked", "order_unlocked"):
         return
     kind, message = labels[action]
-    if action == "batches_updated" and (before or {}).get("planning_state") in (
-        "submitted",
-        "revision_pending",
-    ):
-        message = "调度已确认本班组交期计划"
-    if action == "plan_returned":
-        message += "：" + after.get("reason", "")[:180]
     key = f"plan:{plan.id}:{plan.version}:{action}"
     add_notice(db, plan, kind, message, key)
+    if action == "batches_updated":
+        from .team_constants import DISPATCH_TEAM_CODE
+
+        dispatch_id = db.scalar(
+            select(Team.id).where(Team.code == DISPATCH_TEAM_CODE, Team.active.is_(True))
+        )
+        if dispatch_id and dispatch_id != plan.team_id:
+            name = db.get(Team, plan.team_id).name
+            add_notice(
+                db, plan, "changed", f"{name}交期计划已更新", f"{key}:dispatch", team_id=dispatch_id
+            )
     # Only explicitly linked next nodes receive upstream changes, not every team.
     if before and changed & {
         "due_at",
@@ -145,10 +131,11 @@ def notify_final_due(db, task):
 
 
 def scope(user):
+    filters = [Notice.kind != "review"]
     if user.role == "ADMIN":
-        return []
+        return filters
     if user.role == "TEAM" and user.team_id:
-        return [Notice.team_id == user.team_id]
+        return [*filters, Notice.team_id == user.team_id]
     raise HTTPException(403, "仅班组长和系统管理员可查看消息")
 
 

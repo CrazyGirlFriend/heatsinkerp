@@ -199,6 +199,9 @@ export type ScheduleTask = ScheduleTaskCore &
     nodes: ProductionSchedule[]
   }
 export type BusinessPerson = Contract['BusinessPersonResponse']
+export type ScheduleSerialProgress = Omit<Contract['ScheduleSerialProgressResponse'], 'tasks'> & {
+  tasks: ScheduleTask[]
+}
 export interface ScheduleSelection {
   value: number | string
   label: string

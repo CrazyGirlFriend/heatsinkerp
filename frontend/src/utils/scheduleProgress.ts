@@ -215,14 +215,16 @@ export function progressMarkers(
 }
 
 export function nodeCompletion(node: ProductionSchedule) {
-  if (!isAssessed(node) || node.status === 'cancelled') return { processed: null, dispatched: null }
+  if (node.status === 'cancelled') return { processed: null, dispatched: null }
   const percent = (actual: number | undefined, target: number | null) =>
     actual == null || target == null || target <= 0
       ? null
       : Math.max(0, Math.min(100, (actual / target) * 100))
   const basis = node.completion_basis || (node.target_quantity != null ? 'quantity' : 'weight')
   const processed =
-    basis === 'weight' ? null : percent(node.processed_quantity, node.target_quantity)
+    !isAssessed(node) || basis === 'weight'
+      ? null
+      : percent(node.processed_quantity, node.target_quantity)
   const quantities = [
     ...(basis !== 'weight' ? [percent(node.dispatched_quantity, node.target_quantity)] : []),
     ...(basis !== 'quantity' ? [percent(node.dispatched_weight, node.target_weight)] : []),
@@ -232,6 +234,14 @@ export function nodeCompletion(node: ProductionSchedule) {
     dispatched: quantities.every((value) => value != null)
       ? Math.min(...(quantities as number[]))
       : null,
+  }
+}
+
+export function nodeWorkProgress(node: ProductionSchedule) {
+  const progress = nodeCompletion(node)
+  return {
+    label: progress.processed == null ? '已转出' : '已加工',
+    percent: progress.processed ?? progress.dispatched,
   }
 }
 

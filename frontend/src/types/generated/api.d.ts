@@ -1259,23 +1259,6 @@ export interface paths {
     patch: operations['update_commitment_api_production_schedules__schedule_id__commitment_patch']
     trace?: never
   }
-  '/api/production-schedules/{schedule_id}/review': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Review Plan */
-    post: operations['review_plan_api_production_schedules__schedule_id__review_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/production-schedules/business-people': {
     parameters: {
       query?: never
@@ -1510,6 +1493,23 @@ export interface paths {
     }
     /** Download Order */
     get: operations['download_order_api_production_schedules_tasks__task_id__order_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/production-schedules/tasks/{task_id}/progress': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Serial Progress */
+    get: operations['serial_progress_api_production_schedules_tasks__task_id__progress_get']
     put?: never
     post?: never
     delete?: never
@@ -3003,7 +3003,6 @@ export interface components {
             | 'final_due'
             | 'due_soon'
             | 'overdue'
-            | 'review'
             | 'returned'
             | 'locked'
             | 'unlocked'
@@ -5385,7 +5384,7 @@ export interface components {
       /** Schedule Id */
       schedule_id?: number | null
       /** Section */
-      section: ('problem' | 'steps' | 'plan-review' | 'amendment' | 'quality') | null
+      section: ('problem' | 'steps' | 'amendment' | 'quality') | null
       /** Step Index */
       step_index?: number | null
     }
@@ -5804,18 +5803,6 @@ export interface components {
       source_transfer_id: number
       /** Weight */
       weight: number | string
-    }
-    /** PlanReview */
-    PlanReview: {
-      /** Approve */
-      approve: boolean
-      /** Expected Version */
-      expected_version: number
-      /**
-       * Reason
-       * @default
-       */
-      reason: string
     }
     /** ProblemFrequencyResponse */
     ProblemFrequencyResponse: {
@@ -7963,7 +7950,6 @@ export interface components {
         | 'final_due'
         | 'due_soon'
         | 'overdue'
-        | 'review'
         | 'returned'
         | 'locked'
         | 'unlocked'
@@ -8205,6 +8191,40 @@ export interface components {
       serial_no: string
       /** Task Count */
       task_count: number
+    }
+    /** ScheduleSerialProgressResponse */
+    ScheduleSerialProgressResponse: {
+      /** Last Shipped At */
+      last_shipped_at: string | null
+      /** Planned Quantity */
+      planned_quantity: number | null
+      /** Serial No */
+      serial_no: string
+      /** Shipment Count */
+      shipment_count: number
+      /** Shipments */
+      shipments: components['schemas']['ScheduleShipmentResponse'][]
+      /** Shipped Quantity */
+      shipped_quantity: number
+      /** Shipped Weight */
+      shipped_weight: number
+      /** Tasks */
+      tasks: components['schemas']['ScheduleTaskResponse'][]
+    }
+    /** ScheduleShipmentResponse */
+    ScheduleShipmentResponse: {
+      /** Batch No */
+      batch_no: string
+      /** Id */
+      id: number
+      /** Quantity */
+      quantity: number
+      /** Shipped At */
+      shipped_at: string | null
+      /** Team Name */
+      team_name: string | null
+      /** Weight */
+      weight: number
     }
     /** ScheduleSource */
     ScheduleSource: {
@@ -13083,41 +13103,6 @@ export interface operations {
       }
     }
   }
-  review_plan_api_production_schedules__schedule_id__review_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        schedule_id: number
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PlanReview']
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ScheduleDetailResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
   list_business_people_api_production_schedules_business_people_get: {
     parameters: {
       query?: {
@@ -13720,6 +13705,37 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  serial_progress_api_production_schedules_tasks__task_id__progress_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        task_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScheduleSerialProgressResponse']
+        }
       }
       /** @description Validation Error */
       422: {

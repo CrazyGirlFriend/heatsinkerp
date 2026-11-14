@@ -5,13 +5,15 @@ import PersonName from './PersonName.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
+import AppTabs from './AppTabs.vue'
+import ScheduleSerialProgress from './ScheduleSerialProgress.vue'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
+import { plannedDueLabel } from '@/utils/schedulePlanning'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElOption, ElTag, ElTableColumn } from 'element-plus'
+import { ElOption, ElTag, ElTableColumn, ElTabPane } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { Plus } from '@element-plus/icons-vue'
@@ -95,7 +97,6 @@ const taskColumns = [
   { key: 'team_planning', label: '班组排期', width: 280 },
   { key: 'created_at', label: '创建时间', width: 180 },
   { key: 'business_people', label: '业务人员', width: 140 },
-  { key: 'review', label: '待确认', width: 95 },
   { key: 'locked', label: '订单锁定', width: 100 },
 ] as const
 const selectableColumns = taskColumns.map((column) => ({ ...column, defaultVisible: true }))
@@ -125,6 +126,7 @@ const detailId = ref<number>(),
   detail = ref<ScheduleTask | null>(null),
   detailLoading = ref(false),
   detailError = ref('')
+const detailTab = ref('task')
 const nodeDetails = ref<{ openDetail: (id: number) => void }>()
 let generation = 0,
   detailGeneration = 0,
@@ -410,6 +412,7 @@ function openNode(node: ProductionSchedule) {
 async function openTask(task: ScheduleTask | number) {
   const id = typeof task === 'number' ? task : task.id,
     token = ++detailGeneration
+  if (detailId.value !== id) detailTab.value = 'task'
   detailId.value = id
   detail.value = null
   detailError.value = ''
@@ -736,11 +739,7 @@ onBeforeUnmount(() => {
           <template v-else-if="column.key === 'final_due_at' || column.key === 'created_at'">{{
             formatDateTime(row[column.key])
           }}</template>
-          <ScheduleTeamPlanning
-            v-else-if="column.key === 'team_planning'"
-            :nodes="row.nodes"
-            @select="openNode"
-          />
+          <ScheduleTeamPlanning v-else-if="column.key === 'team_planning'" :nodes="row.nodes" />
           <span v-else-if="column.key === 'business_people'" class="schedule-people">
             <template v-if="row.business_people?.length"
               ><PersonName
@@ -750,15 +749,6 @@ onBeforeUnmount(() => {
             /></template>
             <PersonName v-else :name="row.business_person_name" />
           </span>
-          <ElButton
-            v-else-if="column.key === 'review'"
-            link
-            :type="
-              row.nodes.some((n: ProductionSchedule) => awaitingReview(n)) ? 'warning' : undefined
-            "
-            @click="openTask(asTask(row))"
-            >{{ row.nodes.filter((n: ProductionSchedule) => awaitingReview(n)).length }}</ElButton
-          >
           <ElTag v-else-if="column.key === 'locked'" :type="row.locked_at ? 'warning' : 'info'">{{
             row.locked_at ? '已锁定' : '未锁定'
           }}</ElTag>
@@ -817,134 +807,142 @@ onBeforeUnmount(() => {
         :description="detailError"
         @retry="detailId && openTask(detailId)"
       />
-      <template v-else-if="detail"
-        ><div class="task-detail__heading">
-          <div>
-            <strong>{{ detail.title }}</strong
-            ><span>{{ detail.task_no }} · 流水号 {{ detail.serial_no }}</span>
-            <span
-              >业务人员：<span class="schedule-people"
-                ><template v-if="detail.business_people?.length"
-                  ><PersonName
-                    v-for="person in detail.business_people"
-                    :key="person.id"
-                    :name="person.name" /></template
-                ><PersonName v-else :name="detail.business_person_name || '未指定'" /></span
-            ></span>
-          </div>
-          <ElButton v-if="canManage && !detail.locked_at" @click="routeLinkOpen = true">{{
-            detail.route_changed ? '核对工艺变更' : '关联工艺'
-          }}</ElButton>
-          <ElTag :type="scheduleStatusTone(detail.status)">{{
-            scheduleStatusLabels[detail.status]
-          }}</ElTag
-          ><ElButton v-if="canManage && !detail.locked_at" @click="editTask(detail)"
-            >修改交期</ElButton
-          >
-        </div>
-        <div class="task-detail__meta">
-          <div>
-            <span>最终交货时间</span><strong>{{ formatDateTime(detail.final_due_at) }}</strong>
-          </div>
-          <span class="task-detail__created">创建于 {{ formatDateTime(detail.created_at) }}</span>
-        </div>
-        <ScheduleDocuments
-          :key="detail.id"
-          :task-id="detail.id"
-          :order-document="detail.order_document || null"
-          :serial-no="detail.serial_no"
-          :route-ids="detail.nodes.map((node) => node.process_route_id)"
-        >
-          <ElTable
-            columns-key="ScheduleTaskBoard-2"
-            v-if="detail.delivery_batches?.length"
-            :data="detail.delivery_batches"
-            border
-            size="small"
-            aria-label="订单交货要求"
-          >
-            <ElTableColumn label="交货批次" prop="batch_number" width="100" /><ElTableColumn
-              label="数量（件）"
-              prop="target_quantity"
-              width="120"
-            /><ElTableColumn label="交期"
-              ><template #default="{ row }">{{
-                formatDateTime(row.due_at)
-              }}</template></ElTableColumn
-            >
-          </ElTable>
-          <p v-if="detail.notes" class="task-detail__notes">
-            <span>任务备注</span>{{ detail.notes }}
-          </p>
-          <div class="task-detail__route business-table" role="table" aria-label="班组交货路线">
-            <div class="task-detail__route-head" role="row">
-              <span role="columnheader">工序 / 去向</span>
-              <span role="columnheader">要求交货时间</span>
-              <span role="columnheader">交货目标</span>
-              <span role="columnheader">实际进度</span>
-              <span role="columnheader">操作</span>
-            </div>
-            <article
-              v-for="(node, index) in detail.nodes"
-              :key="node.id"
-              class="task-detail__node"
-              role="row"
-            >
-              <div class="task-detail__stage" role="cell">
-                <div>
-                  <span class="task-detail__sequence">{{ String(index + 1).padStart(2, '0') }}</span
-                  ><strong>{{ node.team_name }}</strong>
-                </div>
-                <small>→ {{ node.next_team_name || node.external_destination }}</small>
-                <ElTag v-if="node.route_link?.state === 'changed'" type="warning" size="small"
-                  >工艺有更新</ElTag
-                >
+      <template v-else-if="detail">
+        <AppTabs v-model="detailTab">
+          <ElTabPane label="当前任务" name="task">
+            <div class="task-detail__heading">
+              <div>
+                <strong>{{ detail.title }}</strong
+                ><span>{{ detail.task_no }} · 流水号 {{ detail.serial_no }}</span>
+                <span
+                  >业务人员：<span class="schedule-people"
+                    ><template v-if="detail.business_people?.length"
+                      ><PersonName
+                        v-for="person in detail.business_people"
+                        :key="person.id"
+                        :name="person.name" /></template
+                    ><PersonName v-else :name="detail.business_person_name || '未指定'" /></span
+                ></span>
               </div>
-              <div class="task-detail__due" role="cell">
-                <strong>{{ plannedDueLabel(node) }}</strong>
-                <ElTag v-if="node.planning_state === 'revision_pending'" type="warning">{{
-                  planLabel(node)
-                }}</ElTag>
-                <ElTag :type="scheduleStatusTone(node.status)" size="small">{{
-                  scheduleStatusLabels[node.status]
-                }}</ElTag>
-              </div>
-              <div class="task-detail__target" role="cell">
-                <strong>{{ mainTarget(node) }}</strong>
-                <small v-if="referenceTarget(node)">{{ referenceTarget(node) }}</small>
-              </div>
-              <div
-                class="task-detail__execution"
-                :class="{
-                  'is-held': node.quality_held,
-                  'is-ready':
-                    !node.quality_held &&
-                    ['ready', 'completed'].includes(node.execution_state || ''),
-                }"
-                role="cell"
+              <ElButton v-if="canManage && !detail.locked_at" @click="routeLinkOpen = true">{{
+                detail.route_changed ? '核对工艺变更' : '关联工艺'
+              }}</ElButton>
+              <ElTag :type="scheduleStatusTone(detail.status)">{{
+                scheduleStatusLabels[detail.status]
+              }}</ElTag
+              ><ElButton v-if="canManage && !detail.locked_at" @click="editTask(detail)"
+                >修改交期</ElButton
               >
-                <strong>{{ execution(node) }}</strong>
-                <small
-                  >已转出 {{ formatAmount(node.dispatched_quantity) }} 件 /
-                  {{ formatAmount(node.dispatched_weight) }} kg</small
+            </div>
+            <div class="task-detail__meta">
+              <div>
+                <span>最终交货时间</span><strong>{{ formatDateTime(detail.final_due_at) }}</strong>
+              </div>
+              <span class="task-detail__created"
+                >创建于 {{ formatDateTime(detail.created_at) }}</span
+              >
+            </div>
+            <ScheduleDocuments
+              :key="detail.id"
+              :task-id="detail.id"
+              :order-document="detail.order_document || null"
+              :serial-no="detail.serial_no"
+              :route-ids="detail.nodes.map((node) => node.process_route_id)"
+            >
+              <ElTable
+                columns-key="ScheduleTaskBoard-2"
+                v-if="detail.delivery_batches?.length"
+                :data="detail.delivery_batches"
+                border
+                size="small"
+                aria-label="订单交货要求"
+              >
+                <ElTableColumn label="交货批次" prop="batch_number" width="100" /><ElTableColumn
+                  label="数量（件）"
+                  prop="target_quantity"
+                  width="120"
+                /><ElTableColumn label="交期"
+                  ><template #default="{ row }">{{
+                    formatDateTime(row.due_at)
+                  }}</template></ElTableColumn
                 >
+              </ElTable>
+              <p v-if="detail.notes" class="task-detail__notes">
+                <span>任务备注</span>{{ detail.notes }}
+              </p>
+              <div class="task-detail__route business-table" role="table" aria-label="班组交货路线">
+                <div class="task-detail__route-head" role="row">
+                  <span role="columnheader">工序 / 去向</span>
+                  <span role="columnheader">要求交货时间</span>
+                  <span role="columnheader">交货目标</span>
+                  <span role="columnheader">实际进度</span>
+                  <span role="columnheader">操作</span>
+                </div>
+                <article
+                  v-for="(node, index) in detail.nodes"
+                  :key="node.id"
+                  class="task-detail__node"
+                  role="row"
+                >
+                  <div class="task-detail__stage" role="cell">
+                    <div>
+                      <span class="task-detail__sequence">{{
+                        String(index + 1).padStart(2, '0')
+                      }}</span
+                      ><strong>{{ node.team_name }}</strong>
+                    </div>
+                    <small>→ {{ node.next_team_name || node.external_destination }}</small>
+                    <ElTag v-if="node.route_link?.state === 'changed'" type="warning" size="small"
+                      >工艺有更新</ElTag
+                    >
+                  </div>
+                  <div class="task-detail__due" role="cell">
+                    <strong>{{ plannedDueLabel(node) }}</strong>
+                    <ElTag :type="scheduleStatusTone(node.status)" size="small">{{
+                      scheduleStatusLabels[node.status]
+                    }}</ElTag>
+                  </div>
+                  <div class="task-detail__target" role="cell">
+                    <strong>{{ mainTarget(node) }}</strong>
+                    <small v-if="referenceTarget(node)">{{ referenceTarget(node) }}</small>
+                  </div>
+                  <div
+                    class="task-detail__execution"
+                    :class="{
+                      'is-held': node.quality_held,
+                      'is-ready':
+                        !node.quality_held &&
+                        ['ready', 'completed'].includes(node.execution_state || ''),
+                    }"
+                    role="cell"
+                  >
+                    <strong>{{ execution(node) }}</strong>
+                    <small
+                      >已转出 {{ formatAmount(node.dispatched_quantity) }} 件 /
+                      {{ formatAmount(node.dispatched_weight) }} kg</small
+                    >
+                  </div>
+                  <div role="cell">
+                    <ElButton link type="primary" @click="openNode(node)">详情</ElButton>
+                  </div>
+                </article>
               </div>
-              <div role="cell">
-                <ElButton link type="primary" @click="openNode(node)">详情</ElButton>
-              </div>
-            </article>
-          </div>
-          <ScheduleReworkPanel
-            :task="detail"
-            :manage="canManage && !detail.locked_at"
-            @saved="
-              (task) => {
-                detail = task
-                void load()
-              }
-            "
-          />
-        </ScheduleDocuments>
+              <ScheduleReworkPanel
+                :task="detail"
+                :manage="canManage && !detail.locked_at"
+                @saved="
+                  (task) => {
+                    detail = task
+                    void load()
+                  }
+                "
+              />
+            </ScheduleDocuments>
+          </ElTabPane>
+          <ElTabPane label="进度详情" name="progress" lazy>
+            <ScheduleSerialProgress v-if="detailTab === 'progress'" :task-id="detail.id" />
+          </ElTabPane>
+        </AppTabs>
       </template>
     </AppDialog>
     <ScheduleRouteLink

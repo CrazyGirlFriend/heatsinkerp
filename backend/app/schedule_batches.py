@@ -195,7 +195,7 @@ def save(db, plan_id, payload, user):
     with db.begin():
         db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
         plan = require_plan(db, plan_id, lock=True)
-        from .schedule_permissions import is_dispatch, require_planner, require_unlocked
+        from .schedule_permissions import require_planner, require_unlocked
 
         require_planner(user, plan)
         if plan.cancelled_at or plan.version != payload.expected_version:
@@ -243,98 +243,28 @@ def save(db, plan_id, payload, user):
             allocated = sum(getattr(source, field) or 0 for source in sources)
             if allocated and (target is None or allocated > target):
                 raise HTTPException(422, "计划总量不能小于已关联物料的分配量")
-        if not is_dispatch(user):
-            from .production_schedules import iso
-
-            plan.pending_batches = [
-                {
-                    **b.model_dump(mode="json"),
-                    "due_at": iso(b.due_at),
-                }
-                for b in payload.batches
-            ]
-            plan.planning_state = (
-                "revision_pending"
-                if plan.planning_state in ("confirmed", "revision_pending")
-                else "submitted"
-            )
-            plan.version += 1
-            plan.updated_at = utcnow()
-            task.version += 1
-            task.updated_at = plan.updated_at
-            record_event(db, plan, user, "plan_submitted", before)
-        else:
-            for bid in removed:
-                db.delete(existing[bid])
-            for entry in payload.batches:
-                data = {**entry.model_dump(exclude={"id"}), "planned_start_at": None}
-                if entry.id:
-                    for key, value in data.items():
-                        setattr(existing[entry.id], key, value)
-                else:
-                    db.add(Batch(schedule_id=plan.id, **data))
-            plan.target_quantity = quantity
-            plan.target_weight = weight
-            plan.due_at = max(b.due_at for b in payload.batches)
-            if not existing and plan.planning_state in ("pending", "submitted"):
-                plan.initial_due_at = plan.due_at
-            plan.planning_state = "confirmed"
-            plan.pending_batches = None
-            plan.version += 1
-            plan.updated_at = utcnow()
-            task.version += 1
-            task.updated_at = utcnow()
-            db.flush()
-            record_event(db, plan, user, "batches_updated", before)
-    return detail(db, plan_id)
-
-
-class PlanReview(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    expected_version: int = Field(ge=1)
-    approve: bool
-    reason: str = Field(default="", max_length=2000)
-
-
-def review(db, plan_id, payload, user):
-    from .production_schedules import detail, record_event, require_plan, snapshot
-    from .schedule_permissions import is_dispatch, require_unlocked
-
-    if not is_dispatch(user):
-        raise HTTPException(403, "仅调度班组可以确认排期")
-    with db.begin():
-        db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
-        plan = require_plan(db, plan_id, lock=True)
-        task = db.scalar(select(Task).where(Task.id == plan.task_id).with_for_update())
-        require_unlocked(task)
-        if (
-            plan.version != payload.expected_version
-            or plan.planning_state not in ("submitted", "revision_pending")
-            or not plan.pending_batches
-        ):
-            raise HTTPException(409, "待确认计划已变化，请刷新后重试")
-        proposal = BatchPlanWrite.model_validate(
-            {"expected_version": plan.version, "batches": plan.pending_batches}
-        )
-        if not payload.approve:
-            if not payload.reason.strip():
-                raise HTTPException(422, "请填写退回原因")
-            before = snapshot(db, plan)
-            plan.pending_batches = None
-            plan.planning_state = (
-                "confirmed"
-                if plan.planning_state == "revision_pending"
-                or db.scalar(select(Batch.id).where(Batch.schedule_id == plan.id).limit(1))
-                else "pending"
-            )
-            plan.version += 1
-            plan.updated_at = utcnow()
-            task.version += 1
-            task.updated_at = plan.updated_at
-            record_event(db, plan, user, "plan_returned", before, reason=payload.reason.strip())
-    if payload.approve:
-        # The second transaction checks the same revision and lock again before applying.
-        return save(db, plan_id, proposal, user)
+        for bid in removed:
+            db.delete(existing[bid])
+        for entry in payload.batches:
+            data = {**entry.model_dump(exclude={"id"}), "planned_start_at": None}
+            if entry.id:
+                for key, value in data.items():
+                    setattr(existing[entry.id], key, value)
+            else:
+                db.add(Batch(schedule_id=plan.id, **data))
+        plan.target_quantity = quantity
+        plan.target_weight = weight
+        plan.due_at = max(b.due_at for b in payload.batches)
+        if not existing and plan.planning_state in ("pending", "submitted"):
+            plan.initial_due_at = plan.due_at
+        plan.planning_state = "confirmed"
+        plan.pending_batches = None
+        plan.version += 1
+        plan.updated_at = utcnow()
+        task.version += 1
+        task.updated_at = utcnow()
+        db.flush()
+        record_event(db, plan, user, "batches_updated", before)
     return detail(db, plan_id)
 
 

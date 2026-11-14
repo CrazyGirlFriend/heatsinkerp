@@ -68,7 +68,6 @@ const labels: Record<BusinessNotice['kind'], string> = {
   amendment_cancelled: '申请已撤回',
   requested: '返工申请',
   ready: '返工工艺已定',
-  review: '待确认交期',
   returned: '交期退回',
   locked: '订单已锁定',
   unlocked: '订单已解锁',

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from functools import lru_cache
 from uuid import uuid4
 
@@ -62,7 +63,9 @@ def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00")
     return response.json(), people
 
 
-def test_dispatch_route_team_review_lock_and_notices(client, warehouse, dispatcher):
+def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
+    client, warehouse, dispatcher
+):
     task, people = create(client, warehouse, dispatcher)
     assert len(task["nodes"]) == 3
     assert all(n["planning_state"] == "pending" and n["process_route_id"] for n in task["nodes"])
@@ -75,49 +78,38 @@ def test_dispatch_route_team_review_lock_and_notices(client, warehouse, dispatch
     endpoint = f"{URL}/{plan['id']}"
     proposal = dict(
         expected_version=plan["version"],
-        batches=[
-            dict(
-                batch_number=1,
-                target_quantity=100,
-                planned_start_at="2026-12-28T08:00:00+08:00",
-                due_at="2026-12-29T16:00:00+08:00",
-            )
-        ],
+        batches=[dict(batch_number=1, target_quantity=100, due_at="2026-12-29T16:00:00+08:00")],
     )
-    assert client.put(endpoint + "/batches", json=proposal).status_code == 403
-    assert (
-        client.put(endpoint + "/batches", headers=warehouse["headers"], json=proposal).status_code
-        == 403
-    )
+    for headers in [None, warehouse["headers"]]:
+        assert client.put(endpoint + "/batches", headers=headers, json=proposal).status_code == 403
     response = client.put(endpoint + "/batches", headers=warehouse["other_headers"], json=proposal)
     assert response.status_code == 200, response.text
-    submitted = response.json()
-    assert submitted["planning_state"] == "submitted" and submitted["batches"] == []
-    assert submitted["due_at"] == plan["due_at"]
-    inbox = client.get("/api/business-notices", headers=dispatcher).json()
-    assert any(n["kind"] == "review" for n in inbox["items"])
-    review = {"expected_version": submitted["version"], "approve": True}
-    assert (
-        client.post(
-            endpoint + "/review", headers=warehouse["other_headers"], json=review
-        ).status_code
-        == 403
+    saved = response.json()
+    assert saved["planning_state"] == "confirmed" and saved["pending_batches"] is None
+    assert saved["due_at"] == saved["batches"][0]["due_at"] == "2026-12-29T08:00:00+00:00"
+    assert len(saved["batches"]) == 1
+    # The retired approval operation is no longer exposed, even to dispatch.
+    assert client.post(endpoint + "/review", headers=dispatcher, json={}).status_code == 404
+    notices = client.get("/api/business-notices", headers=dispatcher).json()["items"]
+    assert any(n["kind"] == "changed" for n in notices)
+    assert not any(n["kind"] == "review" for n in notices)
+    changed = dict(
+        expected_version=saved["version"],
+        batches=[
+            {
+                **proposal["batches"][0],
+                "id": saved["batches"][0]["id"],
+                "due_at": "2026-12-30T16:00:00+08:00",
+            }
+        ],
     )
-    approved = client.post(endpoint + "/review", headers=dispatcher, json=review)
-    assert approved.status_code == 200, approved.text
-    approved = approved.json()
-    assert approved["planning_state"] == "confirmed" and approved["pending_batches"] is None
-    assert len(approved["batches"]) == 1
-    assert client.post(endpoint + "/review", headers=dispatcher, json=review).status_code == 409
-    # A revision remains pending while the approved period stays live.
-    changed = {**proposal, "expected_version": approved["version"]}
-    changed["batches"][0]["id"] = approved["batches"][0]["id"]
-    changed["batches"][0]["due_at"] = "2026-12-30T16:00:00+08:00"
     response = client.put(endpoint + "/batches", headers=warehouse["other_headers"], json=changed)
     assert response.status_code == 200, response.text
     revised = response.json()
-    assert revised["planning_state"] == "revision_pending"
-    assert revised["batches"][0]["due_at"] == approved["batches"][0]["due_at"]
+    assert revised["planning_state"] == "confirmed" and revised["pending_batches"] is None
+    assert revised["due_at"] == "2026-12-30T08:00:00+00:00"
+    assert revised["batches"][0]["id"] == saved["batches"][0]["id"]
+    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 409
     task = client.get(f"{URL}/tasks/{task['id']}").json()
     lockurl = f"{URL}/tasks/{task['id']}/lock"
     assert (
@@ -129,25 +121,10 @@ def test_dispatch_route_team_review_lock_and_notices(client, warehouse, dispatch
     )
     assert locked.status_code == 200, locked.text
     locked = locked.json()
-    assert locked["locked_at"]
-    assert any(
-        n["kind"] == "locked"
-        for n in client.get("/api/business-notices", headers=warehouse["other_headers"]).json()[
-            "items"
-        ]
-    )
     current = client.get(endpoint).json()
     changed["expected_version"] = current["version"]
     for headers in [dispatcher, warehouse["other_headers"]]:
         assert client.put(endpoint + "/batches", headers=headers, json=changed).status_code == 409
-    assert (
-        client.post(
-            endpoint + "/review",
-            headers=dispatcher,
-            json={"expected_version": current["version"], "approve": True},
-        ).status_code
-        == 409
-    )
     assert (
         client.request(
             "DELETE",
@@ -161,19 +138,12 @@ def test_dispatch_route_team_review_lock_and_notices(client, warehouse, dispatch
         lockurl, headers=dispatcher, json={"expected_version": locked["version"], "locked": False}
     )
     assert unlock.status_code == 200
-    current = client.get(endpoint).json()
-    returned = client.post(
-        endpoint + "/review",
-        headers=dispatcher,
-        json={"expected_version": current["version"], "approve": False, "reason": "请提前一天"},
-    )
-    assert returned.status_code == 200, returned.text
-    assert returned.json()["batches"][0]["due_at"] == approved["batches"][0]["due_at"]
-    assert any(
-        n["kind"] == "returned"
-        for n in client.get("/api/business-notices", headers=warehouse["other_headers"]).json()[
-            "items"
-        ]
+    changed["expected_version"] = client.get(endpoint).json()["version"]
+    assert (
+        client.put(
+            endpoint + "/batches", headers=warehouse["other_headers"], json=changed
+        ).status_code
+        == 200
     )
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
@@ -226,57 +196,55 @@ def test_customer_batches_people_admin_and_soft_delete(client, warehouse, dispat
         assert db.get(ProductionScheduleTask, task["id"]).cancelled_at
 
 
-def test_legacy_confirmed_plan_stays_live_while_revision_is_reviewed(client, warehouse, dispatcher):
-    from app.models import ProductionSchedule
+@pytest.mark.parametrize("state", ["submitted", "revision_pending"])
+def test_legacy_proposals_are_preserved_until_saved_directly(client, warehouse, dispatcher, state):
+    from app.models import ProductionSchedule, ScheduleNotice
 
     task, _ = create(client, warehouse, dispatcher)
     plan = task["nodes"][1]
-    # Migrated plans have a confirmed date but no explicit batch rows.
+    draft = dict(
+        id=None,
+        batch_number=1,
+        target_quantity=100,
+        target_weight=None,
+        upstream_batch_ids=[],
+        due_at="2026-12-29T16:00:00+08:00",
+    )
     with SessionLocal.begin() as db:
-        db.get(ProductionSchedule, plan["id"]).planning_state = "confirmed"
+        model = db.get(ProductionSchedule, plan["id"])
+        model.planning_state = state
+        model.pending_batches = [draft]
+        notice = ScheduleNotice(
+            schedule_id=plan["id"],
+            team_id=plan["team_id"],
+            kind="review",
+            message="请确认",
+            event_key=f"legacy:{state}",
+        )
+        db.add(notice)
+        db.flush()
+        notice_id = notice.id
     endpoint = f"{URL}/{plan['id']}"
     current = client.get(endpoint).json()
-    proposal = dict(
-        expected_version=current["version"],
-        batches=[
-            dict(
-                batch_number=1,
-                target_quantity=100,
-                planned_start_at="2026-12-28T08:00:00+08:00",
-                due_at="2026-12-29T16:00:00+08:00",
-            )
-        ],
+    assert current["pending_batches"][0]["target_quantity"] == 100
+    assert not any(
+        n["kind"] == "review" for n in client.get("/api/business-notices").json()["items"]
     )
-    submitted = client.put(endpoint + "/batches", headers=warehouse["other_headers"], json=proposal)
-    assert submitted.status_code == 200, submitted.text
-    assert submitted.json()["planning_state"] == "revision_pending"
-    assert submitted.json()["due_at"] == current["due_at"]
-    returned = client.post(
-        endpoint + "/review",
-        headers=dispatcher,
-        json=dict(
-            expected_version=submitted.json()["version"],
-            approve=False,
-            reason="交期保留",
-        ),
+    assert not any(
+        n["kind"] == "review" for n in client.get("/api/schedule-notices").json()["items"]
     )
-    assert returned.status_code == 200, returned.text
-    assert returned.json()["planning_state"] == "confirmed"
-    assert returned.json()["due_at"] == current["due_at"]
-    proposal["expected_version"] = returned.json()["version"]
-    submitted = client.put(
-        endpoint + "/batches", headers=warehouse["other_headers"], json=proposal
-    ).json()
-    approved = client.post(
-        endpoint + "/review",
-        headers=dispatcher,
-        json=dict(
-            expected_version=submitted["version"],
-            approve=True,
-        ),
+    assert client.get(f"/api/business-notices/schedule/{notice_id}/target").status_code == 404
+    result = client.put(
+        endpoint + "/batches",
+        headers=warehouse["other_headers"],
+        json={"expected_version": current["version"], "batches": [draft]},
     )
-    assert approved.status_code == 200, approved.text
-    assert approved.json()["initial_due_at"] == current["initial_due_at"]
+    assert result.status_code == 200, result.text
+    saved = result.json()
+    assert saved["planning_state"] == "confirmed" and saved["pending_batches"] is None
+    assert datetime.fromisoformat(saved["due_at"]) == datetime.fromisoformat(draft["due_at"])
+    if state == "revision_pending":
+        assert saved["initial_due_at"] == current["initial_due_at"]
 
 
 def test_new_order_requires_business_people(client, warehouse, dispatcher):

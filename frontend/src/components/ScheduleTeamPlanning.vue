@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import AppButton from './AppButton.vue'
 import AppPopover from './AppPopover.vue'
 import FactoryNavIcon from './FactoryNavIcon.vue'
+import ScheduleNodePopover from './ScheduleNodePopover.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import { boardTeamColor } from '@/utils/scheduleBoard'
-import { planLabel } from '@/utils/schedulePlanning'
+import { hasConfirmedPlan, planLabel } from '@/utils/schedulePlanning'
+import { nodeWorkProgress } from '@/utils/scheduleProgress'
 
 const props = defineProps<{ nodes: ProductionSchedule[] }>()
-const emit = defineEmits<{ select: [node: ProductionSchedule] }>()
 const moreOpen = ref(false)
 const icons = {
   库房: 'warehouse',
@@ -26,7 +26,7 @@ const steps = computed(() =>
     .slice()
     .sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id)
     .map((node, index, nodes) => {
-      const filled = node.planning_state ? node.planning_state !== 'pending' : !!node.due_at
+      const filled = hasConfirmedPlan(node)
       const occurrence = nodes.some(
         (other) => other.id !== node.id && other.team_id === node.team_id,
       )
@@ -37,7 +37,8 @@ const steps = computed(() =>
         filled,
         occurrence,
         label: node.team_name + (occurrence ? ` ${occurrence}` : ''),
-        state: filled ? planLabel(node) : '待填写',
+        state: planLabel(node),
+        progress: nodeWorkProgress(node),
         icon: icons[node.team_name as keyof typeof icons] || 'flow',
       }
     }),
@@ -47,62 +48,83 @@ const visibleSteps = computed(() =>
   steps.value.length > 9 ? steps.value.slice(0, 8) : steps.value,
 )
 const remaining = computed(() => steps.value.length - visibleSteps.value.length)
-function select(node: ProductionSchedule) {
-  moreOpen.value = false
-  emit('select', node)
-}
 </script>
 
 <template>
   <div class="team-planning" role="group" aria-label="班组排期填写情况">
     <template v-for="(step, index) in visibleSteps" :key="step.node.id">
       <span v-if="index" class="team-planning__connector" aria-hidden="true" />
-      <AppButton
-        unstyled
-        class="team-planning__step team-planning__symbol"
-        :class="{ 'is-filled': step.filled }"
-        :style="{ '--planning-team-color': boardTeamColor(step.node.team_name) }"
-        :aria-label="`${step.label}：${step.state}，查看排期`"
-        :title="`第 ${step.node.sequence_no} 道 · ${step.label} · ${step.state}`"
-        @click="select(step.node)"
-      >
-        <FactoryNavIcon :name="step.icon" />
-        <small v-if="step.occurrence" class="team-planning__occurrence" aria-hidden="true">{{
-          step.occurrence
-        }}</small>
-      </AppButton>
+      <ScheduleNodePopover :node="step.node" :label="step.label">
+        <span
+          tabindex="0"
+          role="img"
+          class="team-planning__step team-planning__symbol"
+          :class="{ 'is-filled': step.filled }"
+          :style="{
+            '--planning-team-color': boardTeamColor(step.node.team_name),
+            '--planning-progress': `${step.progress.percent ?? 0}%`,
+          }"
+          :aria-label="`${step.label}：${step.state}，${step.progress.label} ${step.progress.percent == null ? '暂无进度' : `${Math.round(step.progress.percent)}%`}`"
+        >
+          <span class="team-planning__fill" aria-hidden="true" />
+          <FactoryNavIcon :name="step.icon" />
+          <small v-if="step.occurrence" class="team-planning__occurrence" aria-hidden="true">{{
+            step.occurrence
+          }}</small>
+        </span>
+      </ScheduleNodePopover>
     </template>
     <template v-if="remaining">
       <span class="team-planning__connector" aria-hidden="true" />
-      <AppPopover v-model:visible="moreOpen" trigger="click" placement="bottom-start" :width="280">
+      <AppPopover
+        v-model:visible="moreOpen"
+        trigger="hover"
+        placement="bottom-start"
+        :width="280"
+        :show-after="180"
+      >
         <template #reference>
-          <AppButton
-            unstyled
+          <span
+            tabindex="0"
             class="team-planning__step team-planning__more"
             :aria-label="`另有 ${remaining} 道工序，查看完整班组排期`"
             :aria-expanded="moreOpen"
-            >+{{ remaining }}</AppButton
+            @focusin="moreOpen = true"
+            @focusout="moreOpen = false"
+            >+{{ remaining }}</span
           >
         </template>
         <div v-if="moreOpen" class="team-planning__list" aria-label="完整班组排期">
-          <AppButton
+          <ScheduleNodePopover
             v-for="step in steps"
             :key="step.node.id"
-            unstyled
-            class="team-planning__item"
-            :aria-label="`${step.label}：${step.state}，查看排期`"
-            @click="select(step.node)"
+            :node="step.node"
+            :label="step.label"
           >
             <span
-              class="team-planning__symbol"
-              :class="{ 'is-filled': step.filled }"
-              :style="{ '--planning-team-color': boardTeamColor(step.node.team_name) }"
+              tabindex="0"
+              class="team-planning__item"
+              :aria-label="`${step.label}：${step.state}`"
             >
-              <FactoryNavIcon :name="step.icon" />
+              <span
+                class="team-planning__symbol"
+                :class="{ 'is-filled': step.filled }"
+                :style="{
+                  '--planning-team-color': boardTeamColor(step.node.team_name),
+                  '--planning-progress': `${step.progress.percent ?? 0}%`,
+                }"
+              >
+                <span class="team-planning__fill" aria-hidden="true" />
+                <FactoryNavIcon :name="step.icon" />
+              </span>
+              <span>{{ step.label }}</span
+              ><small>{{
+                step.progress.percent == null
+                  ? step.state
+                  : `${step.progress.label} ${Math.round(step.progress.percent)}%`
+              }}</small>
             </span>
-            <span>{{ step.label }}</span
-            ><small>{{ step.state }}</small>
-          </AppButton>
+          </ScheduleNodePopover>
         </div>
       </AppPopover>
     </template>
@@ -142,8 +164,21 @@ function select(node: ProductionSchedule) {
     background-color 160ms;
 }
 .team-planning__symbol :deep(.tabler-icon) {
+  position: relative;
   width: 15px;
   height: 15px;
+}
+.team-planning__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--planning-team-color) 24%, transparent),
+    color-mix(in srgb, var(--planning-team-color) 58%, transparent)
+  );
+  clip-path: inset(0 calc(100% - var(--planning-progress, 0%)) 0 0);
+  transition: clip-path 240ms ease-out;
 }
 .team-planning__symbol.is-filled {
   border-color: color-mix(in srgb, var(--planning-team-color) 36%, transparent);
@@ -152,7 +187,7 @@ function select(node: ProductionSchedule) {
 }
 .team-planning__step,
 .team-planning__item {
-  cursor: pointer;
+  cursor: default;
 }
 .team-planning__step:hover {
   border-color: currentColor;
@@ -207,6 +242,10 @@ function select(node: ProductionSchedule) {
   font: inherit;
   font-size: 13px;
   text-align: left;
+  width: 100%;
+}
+.team-planning__list :deep(.schedule-node-reference) {
+  width: 100%;
 }
 .team-planning__item:hover {
   background: var(--surface-soft);
@@ -223,7 +262,8 @@ function select(node: ProductionSchedule) {
 }
 @media (prefers-reduced-motion: reduce) {
   .team-planning__symbol,
-  .team-planning__more {
+  .team-planning__more,
+  .team-planning__fill {
     transition: none;
   }
 }

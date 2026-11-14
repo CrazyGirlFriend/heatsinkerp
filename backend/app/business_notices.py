@@ -42,10 +42,11 @@ MODELS = {
 
 
 def scope(user, notice):
+    filters = [notice.kind != "review"] if notice is ScheduleNotice else []
     if user.role == "ADMIN":
-        return []
+        return filters
     if user.role == "TEAM" and user.team_id:
-        filters = [notice.team_id == user.team_id]
+        filters.append(notice.team_id == user.team_id)
         if notice is QualityNotice:
             filters.append(
                 exists().where(
@@ -366,7 +367,7 @@ def target(*, source: Source, notice_id: int, user: User, db: Session):
     )
     return dict(
         href=href,
-        section="plan-review" if notice.kind == "review" else None,
+        section=None,
         **location,
     )
 

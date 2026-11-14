@@ -1,18 +1,14 @@
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import { formatDateTime } from './format'
 
-export const awaitingReview = (node: ProductionSchedule) =>
-  node.planning_state === 'submitted' || node.planning_state === 'revision_pending'
-
+// Retain legacy submitted drafts until their owner saves them; live plans stay effective.
 export const hasConfirmedPlan = (node: ProductionSchedule) =>
-  !!node.batches?.length || !['pending', 'submitted'].includes(node.planning_state || '')
+  !!node.batches?.length ||
+  (!!node.due_at && !['pending', 'submitted'].includes(node.planning_state || ''))
 
 export function planLabel(node: ProductionSchedule) {
-  return node.planning_state === 'pending'
-    ? '待填写'
-    : awaitingReview(node)
-      ? '待调度确认'
-      : '已确认'
+  if (node.pending_batches?.length) return '待保存草稿'
+  return hasConfirmedPlan(node) ? '已填写' : '待填写'
 }
 
 export const plannedDueLabel = (node: ProductionSchedule) =>

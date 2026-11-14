@@ -17,10 +17,8 @@ import type {
   ScheduleTask,
 } from '@/types/productionSchedule'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
-import { useAuthStore } from '@/stores/auth'
 import { formatAmount, formatDateTime } from '@/utils/format'
 
-const auth = useAuthStore()
 const props = defineProps<{ schedule: ProductionSchedule }>()
 const emit = defineEmits<{ close: []; saved: [ProductionSchedule] }>()
 const visible = ref(true),
@@ -154,6 +152,12 @@ const defaultTime = new Date(2000, 0, 1, 8)
     :show-close="!saving"
     @closed="emit('close')"
   >
+    <ElAlert
+      v-if="schedule.pending_batches?.length"
+      title="旧版排期草稿已保留，保存后生效"
+      type="info"
+      :closable="false"
+    />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div class="batch-plan-summary">
       <strong>{{ schedule.serial_no }}</strong
@@ -347,7 +351,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
         :loading="saving"
         :disabled="loading || !task || !!task.locked_at"
         @click="save"
-        >{{ auth.isDispatch ? '确认并保存' : '提交调度确认' }}</ElButton
+        >保存排期</ElButton
       ></template
     >
   </AppDialog>

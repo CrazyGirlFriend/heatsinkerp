@@ -1,7 +1,7 @@
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, ProductionScheduleTask
-from legacy_schedules import dispatch_patch, dispatch_post, dispatcher
+from legacy_schedules import dispatch_patch, dispatcher
 from test_production_schedules import URL, get, plan
 from test_warehouse_classification import dispatch
 from test_warehouse_receipts import intake  # noqa: F401
@@ -26,20 +26,6 @@ def save(client, item, batches, headers=None):
         json={"expected_version": item["version"], "batches": batches},
     )
 
-    if response.status_code == 200 and response.json()["planning_state"] in (
-        "submitted",
-        "revision_pending",
-    ):
-        # These fulfillment tests use accepted plans. Submit through the owner and
-        # explicitly confirm through dispatch, as the current workflow requires.
-        response = dispatch_post(
-            client,
-            f"{URL}/{item['id']}/review",
-            json={
-                "expected_version": response.json()["version"],
-                "approve": True,
-            },
-        )
     return response
 
 

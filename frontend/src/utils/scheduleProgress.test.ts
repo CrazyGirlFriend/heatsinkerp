@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   nodeCompletion,
+  nodeWorkProgress,
   PROGRESS_CARD_HEIGHT,
   PROGRESS_CARD_WIDTH,
   PROGRESS_LANE_HEIGHT,
@@ -92,9 +93,12 @@ describe('progress calendar and reminders', () => {
     const task = { status: 'pending', nodes: [] } as unknown as ScheduleTask
     expect(taskRisk(task).label).toBe('无逾期')
     expect(taskRisk({ ...task, status: 'not_assessed' }).label).toBe('库房备料')
-    expect(taskRisk({ ...task, nodes: [{ ...node(1, ''), quality_held: true }] }).label).toBe(
-      '质量暂扣',
-    )
+    expect(
+      taskRisk({
+        ...task,
+        nodes: [{ ...node(1, '2026-10-23T10:00:00+08:00'), quality_held: true }],
+      }).label,
+    ).toBe('质量暂扣')
   })
   it('keeps midnight and end-of-range deadlines at their exact positions with labels inside the table', () => {
     const midnight = Date.parse('2026-10-23T00:00:00+08:00')
@@ -131,11 +135,18 @@ describe('progress calendar and reminders', () => {
   })
   it('distinguishes overdue delivery from an upcoming deadline', () => {
     const task = { status: 'pending', nodes: [] } as unknown as ScheduleTask
-    expect(taskRisk({ ...task, nodes: [{ ...node(1, ''), status: 'today' }] })).toEqual({
+    expect(
+      taskRisk({ ...task, nodes: [{ ...node(1, '2026-10-23T10:00:00+08:00'), status: 'today' }] }),
+    ).toEqual({
       tone: 'watch',
       label: '今日交货',
     })
-    expect(taskRisk({ ...task, nodes: [{ ...node(1, ''), status: 'overdue' }] })).toEqual({
+    expect(
+      taskRisk({
+        ...task,
+        nodes: [{ ...node(1, '2026-10-23T10:00:00+08:00'), status: 'overdue' }],
+      }),
+    ).toEqual({
       tone: 'late',
       label: '1 项逾期',
     })
@@ -177,7 +188,22 @@ describe('individual operation progress', () => {
     expect(nodeCompletion(weight)).toEqual({ processed: null, dispatched: 40 })
     expect(nodeCompletion({ ...weight, assessment_enabled: false })).toEqual({
       processed: null,
-      dispatched: null,
+      dispatched: 40,
+    })
+    expect(nodeWorkProgress({ ...weight, assessment_enabled: false })).toEqual({
+      label: '已转出',
+      percent: 40,
+    })
+    expect(
+      nodeWorkProgress({
+        ...node(1, ''),
+        target_quantity: 100,
+        processed_quantity: 60,
+        dispatched_quantity: 40,
+      }),
+    ).toEqual({
+      label: '已加工',
+      percent: 60,
     })
     expect(nodeCompletion({ ...weight, status: 'cancelled' })).toEqual({
       processed: null,

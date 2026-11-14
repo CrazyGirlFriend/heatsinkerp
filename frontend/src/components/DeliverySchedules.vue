@@ -5,7 +5,7 @@ import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
+import { plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { EditPen } from '@element-plus/icons-vue'
@@ -31,7 +31,6 @@ import TableExportButton from './TableExportButton.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import type { MaterialTransferStatus as TransferStatus } from '@/types/materialTransfer'
-import SchedulePlanReview from './SchedulePlanReview.vue'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -263,14 +262,11 @@ async function focusScheduleNotice() {
   if (eventId) expandedEvents.value = [eventId]
   await nextTick()
   if (noticeTarget.value !== target || key !== route.query.notice) return
-  const selector =
-    target.section === 'plan-review' && awaitingReview(detail.value)
-      ? '.plan-review'
-      : eventId
-        ? `[data-notice-event="${eventId}"]`
-        : target.batch_id
-          ? `.notice-batch-${target.batch_id}`
-          : '.schedule-summary'
+  const selector = eventId
+    ? `[data-notice-event="${eventId}"]`
+    : target.batch_id
+      ? `.notice-batch-${target.batch_id}`
+      : '.schedule-summary'
   const element = document.querySelector<HTMLElement>(`.schedule-detail ${selector}`)
   if (!element) {
     noticeFailed(key, new Error('对应记录已调整，未能定位，请从排期明细查看'))
@@ -353,7 +349,7 @@ function saved(row: ProductionSchedule) {
   void load()
   void openDetail(row.id)
   emit('changed')
-  showToast(awaitingReview(row) ? '已提交调度确认' : '交货排期已保存', 'success')
+  showToast('交货排期已保存', 'success')
 }
 
 function viewBatch(batch: string) {
@@ -1027,7 +1023,6 @@ defineExpose({ exportSource, openDetail })
               }}</template></ElTableColumn
             ></ElTable
           >
-          <SchedulePlanReview :schedule="detail" @changed="saved" />
           <div class="schedule-section-heading"><h3>分批排期</h3></div>
           <ElTable
             columns-key="DeliverySchedules-3"

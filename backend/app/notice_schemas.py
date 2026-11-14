@@ -16,7 +16,6 @@ ScheduleNoticeKind = Literal[
     "final_due",
     "due_soon",
     "overdue",
-    "review",
     "returned",
     "locked",
     "unlocked",
@@ -72,7 +71,7 @@ class BusinessNoticePageResponse(ReadResponse):
 
 class NoticeTargetResponse(ReadResponse):
     href: str
-    section: Literal["problem", "steps", "plan-review", "amendment", "quality"] | None
+    section: Literal["problem", "steps", "amendment", "quality"] | None
     amendment_id: int | None = None
     schedule_id: int | None = None
     event_id: int | None = None

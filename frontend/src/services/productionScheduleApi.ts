@@ -16,6 +16,7 @@ import type {
   DispatchTaskWrite,
   CustomerDeliveryBatch,
   BusinessPerson,
+  ScheduleSerialProgress,
 } from '@/types/productionSchedule'
 
 function queryString(params: object) {
@@ -90,6 +91,8 @@ export const productionScheduleApi = {
   tasks: (params: ScheduleFilters = {}) =>
     request<MaterialPage<ScheduleTask>>(`/production-schedules/tasks?${queryString(params)}`),
   task: (id: number) => request<ScheduleTask>(`/production-schedules/tasks/${id}`),
+  serialProgress: (taskId: number) =>
+    request<ScheduleSerialProgress>(`/production-schedules/tasks/${taskId}/progress`),
   createTask: (payload: DispatchTaskWrite, file: File) => {
     const body = new FormData()
     body.append('payload', JSON.stringify(payload))
@@ -155,8 +158,6 @@ export const productionScheduleApi = {
       method: 'DELETE',
       body: { expected_version },
     }),
-  reviewPlan: (id: number, body: { expected_version: number; approve: boolean; reason?: string }) =>
-    request<ProductionSchedule>(`/production-schedules/${id}/review`, { method: 'POST', body }),
   candidates: (params: {
     team_id: number
     source_transfer_ids: string

@@ -88,7 +88,7 @@ describe('team batch planner', () => {
       },
     )
     expect(wrapper.text()).toContain('30.75 kg')
-    await click('提交调度确认')
+    await click('保存排期')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
       expected_version: 7,
       batches: [10.5, 20.25].map((weight, index) => ({
@@ -121,7 +121,7 @@ describe('team batch planner', () => {
     await click('下载原件')
     expect(download).toHaveBeenCalledWith(2, '调度订单原件.xlsx')
     expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(1)
-    expect(wrapper.text()).toContain('提交调度确认')
+    expect(wrapper.text()).toContain('保存排期')
   })
   it('never substitutes the engineering order when this task has no order document', async () => {
     await render()
@@ -134,7 +134,7 @@ describe('team batch planner', () => {
     await render()
     expect(wrapper.text()).not.toContain('计划开始')
     wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '')
-    await click('提交调度确认')
+    await click('保存排期')
     expect(productionScheduleApi.saveBatches).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('请填写转交时间')
     expect(wrapper.text()).toContain('2026-12-30 16:00')
@@ -148,7 +148,7 @@ describe('team batch planner', () => {
     const amounts = wrapper.findAllComponents(ElInputNumber)
     amounts[1]!.vm.$emit('update:modelValue', 40)
     amounts[3]!.vm.$emit('update:modelValue', 60)
-    await click('提交调度确认')
+    await click('保存排期')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
       expected_version: 7,
       batches: [
