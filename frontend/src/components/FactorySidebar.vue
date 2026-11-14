@@ -89,9 +89,7 @@ const activeIndex = computed(() => {
   if (route.path === '/process-routes')
     return route.query.tab === 'settings' && canManageEngineering.value
       ? 'engineering:settings'
-      : route.query.kind === 'rework'
-        ? 'engineering:rework'
-        : 'engineering:normal'
+      : 'engineering:design'
   return route.path
 })
 const routeGroups = computed(() => [
@@ -348,14 +346,12 @@ const materialLinks = computed(() => [
               ><span>工艺</span></template
             >
             <ElMenuItem
-              v-for="kind in ['normal', 'rework']"
-              :key="kind"
-              :index="`engineering:${kind}`"
-              :route="{ path: '/process-routes', query: kind === 'rework' ? { kind } : {} }"
+              index="engineering:design"
+              :route="{ path: '/process-routes' }"
               class="factory-nav__workspace-link"
-              :aria-label="kind === 'normal' ? '正常工艺' : '返工工艺'"
-              :aria-current="activeIndex === `engineering:${kind}` ? 'page' : undefined"
-              >{{ kind === 'normal' ? '正常工艺' : '返工工艺' }}</ElMenuItem
+              aria-label="工艺设计"
+              :aria-current="activeIndex === 'engineering:design' ? 'page' : undefined"
+              >工艺设计</ElMenuItem
             >
             <ElMenuItem
               v-if="canManageEngineering"

@@ -85,8 +85,6 @@ function changeKind(kind: 'normal' | 'rework') {
     })
   query.value = ''
   appliedQuery.value = ''
-  items.value = []
-  total.value = 0
   page.value = 1
   void load()
 }
@@ -103,6 +101,11 @@ const items = ref<ProcessRoute[]>([]),
   selected = ref<ProcessRoute | null>(null),
   editing = ref(false),
   creating = ref(false)
+// Keep only the latest page of each type, scoped to this mounted workbench.
+type RoutePage = Awaited<ReturnType<typeof processRouteApi.list>>
+const viewCache = new Map<string, { key: string; result: RoutePage }>()
+const hasLoadedView = ref(false)
+const initialLoading = computed(() => loading.value && !hasLoadedView.value)
 function create() {
   if (!canEdit.value) return
   newMenuOpen.value = false
@@ -129,20 +132,29 @@ watch(
 async function load() {
   if (managingTeam.value) return
   const request = ++generation
+  const kind = routeKind.value
+  const params = [
+    appliedQuery.value,
+    page.value,
+    pendingOnly.value ? 'draft' : undefined,
+    sortOrder.value,
+    pageSize.value,
+    kind,
+    kind === 'rework' ? reworkScope.value : 'all',
+  ] as const
+  const key = JSON.stringify(params)
+  const cached = viewCache.get(kind)
+  hasLoadedView.value = cached?.key === key
+  items.value = hasLoadedView.value ? cached!.result.items : []
+  total.value = hasLoadedView.value ? cached!.result.total : 0
   loading.value = true
   error.value = ''
   try {
-    const result = await processRouteApi.list(
-      appliedQuery.value,
-      page.value,
-      pendingOnly.value ? 'draft' : undefined,
-      sortOrder.value,
-      pageSize.value,
-      routeKind.value,
-      routeKind.value === 'rework' ? reworkScope.value : 'all',
-    )
+    const result = await processRouteApi.list(...params)
     if (request !== generation) return
+    viewCache.set(kind, { key, result })
     items.value = result.items
+    hasLoadedView.value = true
     stepDetails.value = {}
     total.value = result.total
     pendingRework.value = result.pending_rework_count ?? 0
@@ -151,6 +163,10 @@ async function load() {
   } finally {
     if (request === generation) loading.value = false
   }
+}
+function saved() {
+  viewCache.clear()
+  void load()
 }
 function search() {
   appliedQuery.value = query.value.trim()
@@ -411,7 +427,7 @@ onBeforeUnmount(() => {
               placement="bottom-end"
             >
               <template #reference
-                ><ElButton type="primary" :icon="Plus" :disabled="loading"
+                ><ElButton type="primary" :icon="Plus" :disabled="initialLoading"
                   >新建工艺</ElButton
                 ></template
               >
@@ -425,7 +441,7 @@ onBeforeUnmount(() => {
       </WorkspaceDataToolbar>
       <WorkspaceTable
         :key="routeKind"
-        :loading="loading"
+        :loading="loading && (!hasLoadedView || items.length > 0)"
         :data="items"
         border
         row-key="id"
@@ -525,6 +541,7 @@ onBeforeUnmount(() => {
               >
                 <span v-if="index" class="route-path-connector" aria-hidden="true" />
                 <AppPopover
+                  :persistent="false"
                   :trigger="['hover', 'focus']"
                   :show-after="180"
                   :hide-after="120"
@@ -574,6 +591,7 @@ onBeforeUnmount(() => {
               <template v-if="routeSteps(row).length > visibleStepCount">
                 <span class="route-path-connector" aria-hidden="true" />
                 <AppPopover
+                  :persistent="false"
                   :trigger="['hover', 'focus']"
                   :show-after="180"
                   :hide-after="120"
@@ -796,7 +814,7 @@ onBeforeUnmount(() => {
       <WorkspacePagination
         :current-page="page"
         :page-size="pageSize"
-        :disabled="loading"
+        :disabled="initialLoading"
         :total="total"
         @current-change="pageChanged"
         @size-change="pageSizeChanged"
@@ -818,7 +836,7 @@ onBeforeUnmount(() => {
         :view-only="!canEdit"
         @opened="focusReworkNotice"
         @close="closeEditor"
-        @saved="load"
+        @saved="saved"
       />
     </template>
   </TeamWorkspaceShell>

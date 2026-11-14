@@ -12,6 +12,7 @@ import { ElPagination, ElPopover } from 'element-plus'
 import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import DocumentViewer from '@/components/DocumentViewer.vue'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
@@ -702,6 +703,115 @@ it('defaults to normal engineering and clears a previous search when switching v
   expect((wrapper.get('input[aria-label="工艺记录搜索"]').element as HTMLInputElement).value).toBe(
     '',
   )
+})
+
+it('restores the normal list while revalidating, without another blank loading screen', async () => {
+  await render({}, 'watermelon')
+  const normal = await vi.mocked(processRouteApi.list).mock.results[0]!.value
+  vi.mocked(processRouteApi.list).mockResolvedValue({
+    ...normal,
+    items: [{ ...reworkRouteFixture, serial_nos: ['RW-001'] }],
+  })
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('.route-serial').text()).toBe('RW-001')
+
+  let finish!: (value: typeof normal) => void
+  vi.mocked(processRouteApi.list).mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  )
+  const requests = vi.mocked(processRouteApi.list).mock.calls.length
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
+  await flushPromises()
+  expect(processRouteApi.list).toHaveBeenCalledTimes(requests + 1)
+  expect(wrapper.get('.route-serial').text()).toBe('S-001')
+  expect(wrapper.find('.wm-skeleton').exists()).toBe(false)
+  expect(wrapper.get('.route-list').attributes('aria-busy')).toBe('true')
+  expect(wrapper.getComponent(WorkspacePagination).props('total')).toBe(1)
+  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toContain('材质')
+  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).not.toContain('问题')
+
+  finish({ ...normal, items: [{ ...routeFixture, serial_nos: ['S-UPDATED'] }] })
+  await flushPromises()
+  expect(wrapper.get('.route-serial').text()).toBe('S-UPDATED')
+  expect(wrapper.get('.route-list').attributes('aria-busy')).toBe('false')
+})
+
+it('keeps a cached empty view empty while revalidating instead of flashing skeletons', async () => {
+  vi.mocked(processRouteApi.list).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 20,
+    enforced_after: null,
+  })
+  await render({}, 'watermelon')
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
+  await flushPromises()
+  vi.mocked(processRouteApi.list).mockImplementationOnce(() => new Promise(() => {}))
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.wm-skeleton').exists()).toBe(false)
+  expect(wrapper.get('.el-table__empty-text').text()).toBe('暂无数据')
+})
+
+it('does not reuse a searched page after switching back to the unfiltered view', async () => {
+  await render({}, 'watermelon')
+  await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
+  await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keydown', { key: 'Enter' })
+  await flushPromises()
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
+  await flushPromises()
+  vi.mocked(processRouteApi.list).mockImplementationOnce(() => new Promise(() => {}))
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.route-serial').exists()).toBe(false)
+  expect(wrapper.find('.wm-skeleton').exists()).toBe(true)
+  expect(processRouteApi.list).toHaveBeenLastCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'normal',
+    'all',
+  )
+})
+
+it('ignores an unfinished rework response after switching back to normal', async () => {
+  await render({}, 'watermelon')
+  const normal = await vi.mocked(processRouteApi.list).mock.results[0]!.value
+  let finish!: (value: typeof normal) => void
+  vi.mocked(processRouteApi.list).mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  )
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.route-serial').exists()).toBe(false)
+  expect(wrapper.find('.wm-skeleton').exists()).toBe(true)
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
+  await flushPromises()
+  finish({ ...normal, items: [{ ...reworkRouteFixture, serial_nos: ['RW-LATE'] }] })
+  await flushPromises()
+  expect(wrapper.get('.route-serial').text()).toBe('S-001')
+  expect(wrapper.get('.route-list').attributes('aria-busy')).toBe('false')
+})
+
+it('invalidates cached lists when an engineering record is saved', async () => {
+  await render({}, 'watermelon')
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(reworkRouteFixture)
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
+  await flushPromises()
+  await wrapper.get('.route-serial').trigger('click')
+  await flushPromises()
+  wrapper.getComponent(ProcessRouteEditor).vm.$emit('saved')
+  await flushPromises()
+  wrapper.getComponent(ProcessRouteEditor).vm.$emit('close')
+  vi.mocked(processRouteApi.list).mockImplementationOnce(() => new Promise(() => {}))
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.route-serial').exists()).toBe(false)
+  expect(wrapper.find('.wm-skeleton').exists()).toBe(true)
 })
 
 it('starts rework from pending submitted problems rather than creating an unrelated route', async () => {

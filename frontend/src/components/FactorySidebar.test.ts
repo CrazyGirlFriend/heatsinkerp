@@ -98,7 +98,7 @@ describe('three-level team navigation', () => {
       expect(wrapper.get('[aria-current=page]').text()).toBe('班组管理')
       await router.back()
       await flushPromises()
-      expect(wrapper.get('[aria-current=page]').text()).toBe('正常工艺')
+      expect(wrapper.get('[aria-current=page]').text()).toBe('工艺设计')
     },
   )
   it.each(['ADMIN', 'TEAM'] as const)(
@@ -431,19 +431,22 @@ describe('three-level team navigation', () => {
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 质量')
   })
 
-  it('links normal and rework processes separately and restores them on browser back', async () => {
+  it('uses one engineering design entry for normal and rework routes, including browser back', async () => {
     const { wrapper, router } = await renderSidebar('/process-routes')
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('正常工艺')
-    await wrapper
-      .findAllComponents(ElMenuItem)
-      .find((item) => item.props('index') === 'engineering:rework')!
-      .trigger('click')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
+    expect(wrapper.find('[aria-label="正常工艺"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="返工工艺"]').exists()).toBe(false)
+    await router.push('/process-routes?kind=rework')
     await flushPromises()
     expect(router.currentRoute.value.query.kind).toBe('rework')
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('返工工艺')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
     await router.back()
     await flushPromises()
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('正常工艺')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
+    await router.push('/factory-analysis')
+    await wrapper.get('[aria-label="工艺设计"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/process-routes')
   })
 
   it('expands and folds a first-level group without promoting its children', async () => {
