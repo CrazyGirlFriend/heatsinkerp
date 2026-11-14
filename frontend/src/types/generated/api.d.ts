@@ -11704,6 +11704,7 @@ export interface operations {
         quantity_max?: number | null
         quantity_min?: number | null
         query?: string | null
+        record_kind?: ('shared' | 'reallocation') | null
         search_field?: string
         search_mode?: string
         serial_no?: string | null

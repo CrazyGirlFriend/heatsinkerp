@@ -47,6 +47,12 @@ const router = createRouter({
       meta: { title: '调度工作台' },
     },
     {
+      path: '/quality-management',
+      name: 'quality-management',
+      component: () => import('@/pages/QualityManagementPage.vue'),
+      meta: { title: '质量管理' },
+    },
+    {
       path: '/business-people',
       name: 'business-people',
       component: () => import('@/pages/BusinessPeoplePage.vue'),
@@ -75,6 +81,20 @@ const router = createRouter({
       name: 'transfer-batches',
       component: () => import('@/pages/TransferBatchesPage.vue'),
       meta: { title: '转料记录' },
+    },
+    {
+      path: '/shared-material-records',
+      name: 'shared-material-records',
+      component: () => import('@/pages/TransferBatchesPage.vue'),
+      props: { recordKind: 'shared' },
+      meta: { title: '共投记录' },
+    },
+    {
+      path: '/serial-reallocation-records',
+      name: 'serial-reallocation-records',
+      component: () => import('@/pages/TransferBatchesPage.vue'),
+      props: { recordKind: 'reallocation' },
+      meta: { title: '转投记录' },
     },
     {
       path: '/transfer-batches/scan',

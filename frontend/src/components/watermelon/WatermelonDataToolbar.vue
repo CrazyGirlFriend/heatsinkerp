@@ -59,6 +59,7 @@ if (workspace?.registerExport) provide(workspaceToolbarExportKey, workspace.regi
     >
       <IconRefresh v-if="!loading" :size="17" />
     </WatermelonButton>
+    <slot name="query-actions" />
     <div class="wm-toolbar-tools">
       <slot name="tools" />
       <slot name="status" />

@@ -194,7 +194,14 @@ def list_material_transfers(
             raise _not_found("team")
         filters.append(team_scope_predicate(team_id, direction))
     if query and query.strip():
-        filters.append(search_predicate(query, search_field, search_mode))
+        filters.append(
+            search_predicate(
+                query,
+                search_field,
+                search_mode,
+                include_source_serial=column_filters.record_kind == "reallocation",
+            )
+        )
     if material_type is not None:
         filters.append(MaterialTransfer.material_type == material_type)
     if serial_no is not None:

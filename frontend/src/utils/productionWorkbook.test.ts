@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs'
 import { strFromU8, unzipSync } from 'fflate'
 import { createProductionWorkbook, productionTemplates } from './productionWorkbook'
 import definitions from '../config/productionTemplates.json'
+import reportColumns from '../config/productionTemplateColumns.json'
 import type { ProcessingRecord } from '../types/materialProcessing'
 
 type Inspection = NonNullable<ProcessingRecord['report_inspections']>[number]
@@ -91,7 +92,10 @@ it.each(Object.keys(definitions))(
       .filter(([name]) => /sheet1.xml|sharedStrings.xml/.test(name))
       .map(([, bytes]) => strFromU8(bytes))
       .join('')
-    for (const text of ['000123-1', '张三', '李四', '王五', '=1+1']) expect(strings).toContain(text)
+    for (const text of ['000123-1', '=1+1']) expect(strings).toContain(text)
+    if (!['FACTORY-ROLL', 'FACTORY-QC'].includes(key)) {
+      for (const text of ['张三', '李四', '王五']) expect(strings).toContain(text)
+    }
     expect(strings).not.toContain('<f>')
   },
 )
@@ -109,7 +113,7 @@ it.each(Object.keys(definitions))('ships %s with no historical production record
   })
 })
 
-it('keeps original primary/secondary operator columns and records unclassified crew in remarks', async () => {
+it('keeps unknown operator roles blank without putting extra fields in remarks', async () => {
   const blob = await createProductionWorkbook('FACTORY-ROLL', [
     { processor_name: '张三、李四', machine_no: 'M-03' },
   ])
@@ -120,13 +124,12 @@ it('keeps original primary/secondary operator columns and records unclassified c
   expect(sheet.getCell('O2').text.trim()).toBe('副操')
   expect(sheet.getCell('N4').value).toBeNull()
   expect(sheet.getCell('O4').value).toBeNull()
-  expect(sheet.getCell('S4').text).toContain('加工人员：张三、李四')
-  expect(sheet.getCell('S4').text).toContain('M-03')
+  expect(sheet.getCell('S4').value).toBeNull()
   expect(sheet.getCell('T2').value).toBeNull()
 })
 
 it.each([0, 925.5])(
-  'keeps temperature %s in the original annealing column and extra parameters in remarks',
+  'keeps temperature %s in the original annealing column without adding extra parameters to remarks',
   async (actual_temperature_c) => {
     const blob = await createProductionWorkbook('FACTORY-ANNEAL', [
       {
@@ -144,8 +147,7 @@ it.each([0, 925.5])(
     expect(sheet.getCell('N3').text).toBe('02炉')
     expect(sheet.getCell('M3').value).toBe(1.5833)
     expect(sheet.getCell('M3').numFmt).toContain('小时')
-    expect(sheet.getCell('R3').text).toContain('保温：60 分钟')
-    expect(sheet.getCell('R3').text).toContain('900–950 °C')
+    expect(sheet.getCell('R3').value).toBeNull()
     expect(sheet.getCell('T3').value).toBeNull()
   },
 )
@@ -199,7 +201,7 @@ it('reports template loading errors', async () => {
   await expect(createProductionWorkbook('FACTORY-ROLL', [])).rejects.toThrow('读取失败')
 })
 
-it('keeps all inspection categories in one original sheet with their own quantities, crew and hours', async () => {
+it('keeps all inspection categories in one original sheet with their own quantities and hours', async () => {
   const tasks = ['检验', '喷砂', '去毛刺', '显微镜修毛刺']
   const blob = await createProductionWorkbook(
     'FACTORY-QC',
@@ -226,7 +228,7 @@ it('keeps all inspection categories in one original sheet with their own quantit
     expect(sheet.getCell(`AP${row}`).text).toBe(task)
     expect(sheet.getCell(`G${row}`).value).toBe(123 + index)
     expect(sheet.getCell(`AQ${row}`).value).toBe(1 + index * 0.5)
-    expect(sheet.getCell(`AR${row}`).text).toBe(`人员${index + 1}、共同加工人`)
+    expect(sheet.getCell(`AR${row}`).value).toBeNull()
     expect(sheet.getCell(`AS${row}`).text).toContain(`任务备注${index + 1}`)
     expect(sheet.getCell(`H${row}`).value).toBe(index === 0 ? 12 : null)
     expect(sheet.getCell(`I${row}`).value).toBe(index === 0 ? 10 : null)
@@ -251,7 +253,7 @@ it.each(['检验', '喷砂', '去毛刺'])(
     })
     expect(sheet.getCell('G4').value).toBe(123)
     expect(sheet.getCell('H4').value).toBeNull()
-    expect(sheet.getCell('AS4').text).toContain('未登记检验结果')
+    expect(sheet.getCell('AS4').text).toBe('')
     expect(sheet.getCell('I4').value).toBeNull()
     expect(sheet.getCell('K4').value).toBeNull()
     expect(sheet.getCell('AP4').text).toBe(processing_task_name)
@@ -268,9 +270,7 @@ it('fills only checked and passed pieces, keeping unresolved failures out of scr
   expect(sheet.getCell('H4').value).toBe(12)
   expect(sheet.getCell('I4').value).toBe(10)
   for (const cell of ['J4', 'K4', 'AF4', 'M4', 'N4']) expect(sheet.getCell(cell).value).toBeNull()
-  expect(sheet.getCell('AS4').text).toContain('抽检 12 件，不合格 2 件')
-  expect(sheet.getCell('AS4').text).toContain('待处理')
-  expect(sheet.getCell('AS4').text).toContain('划伤、磕伤（未登记分类数量）')
+  expect(sheet.getCell('AS4').text).toBe('')
 })
 
 it.each(['scrap', 'rework'] as const)(
@@ -325,9 +325,7 @@ it.each(['检验', '喷砂', '去毛刺'])(
     expect(sheet.getCell('G5').value).toBeNull()
     expect(sheet.getCell('AQ4').value).toBe(1.5)
     expect(sheet.getCell('AQ5').value).toBeNull()
-    expect(sheet.getCell('AS5').text).toContain('复检 #72（原检查 #71）')
-    expect(sheet.getCell('AS5').text).toContain('2026-11-13 09:30，检验员甲')
-    expect(sheet.getCell('AS5').text).not.toContain('本次加工完成')
+    expect(sheet.getCell('AS5').text).toBe('')
     expect(sheet.getCell('AP5').text).toBe(processing_task_name)
     expect(sheet.rowCount).toBe(5)
     expect(sheet.getCell('I5').value).toBe(12)
@@ -354,4 +352,29 @@ it('limits the number of exported rows after adding inspection rows', async () =
       },
     ]),
   ).rejects.toThrow('10,000')
+})
+
+it.each(Object.keys(definitions))('uses only original headers in the %s list', async (key) => {
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(await original(key))
+  const sheet = workbook.worksheets[0]!
+  const definition = definitions[key as keyof typeof definitions]
+  const columns = reportColumns[key as keyof typeof reportColumns]
+  for (const column of columns) {
+    const labels: string[] = []
+    for (let row = definition.firstDataRow === 3 ? 1 : 2; row < definition.firstDataRow; row++) {
+      const cell = sheet.getCell(`${column.key}${row}`).master
+      const value = cell.value
+      const text =
+        typeof value === 'string'
+          ? value
+          : value && typeof value === 'object' && 'richText' in value
+            ? value.richText.map((part) => part.text).join('')
+            : ''
+      const label = text.trim().replace(/\s+/g, ' ')
+      if (label && !labels.includes(label)) labels.push(label)
+    }
+    expect(column.label).toBe(labels.join(' / '))
+  }
+  expect(columns.some((column) => column.label.includes('登记时进度'))).toBe(false)
 })

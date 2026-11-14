@@ -14,8 +14,8 @@ import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-import { globalTransferExportFields } from '@/utils/teamTableExport'
-import { transferRecordColumns as displayColumns } from '@/utils/transferRecordColumns'
+import { globalTransferExportFields, reallocationExportFields } from '@/utils/teamTableExport'
+import { transferRecordColumns } from '@/utils/transferRecordColumns'
 import PageBackButton from '@/components/PageBackButton.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
@@ -67,21 +67,60 @@ import {
 } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
+const props = defineProps<{ recordKind?: 'shared' | 'reallocation' }>()
+const pageTitle = computed(() =>
+  props.recordKind === 'shared'
+    ? '共投记录'
+    : props.recordKind === 'reallocation'
+      ? '转投记录'
+      : '转料记录',
+)
+const timeLabel = computed(() =>
+  props.recordKind === 'shared'
+    ? '共投时间'
+    : props.recordKind === 'reallocation'
+      ? '转投时间'
+      : '转出时间',
+)
+const serialLabel = computed(() =>
+  props.recordKind === 'shared'
+    ? '共投流水号'
+    : props.recordKind === 'reallocation'
+      ? '转入流水号'
+      : '流水号',
+)
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
-type DisplayColumnKey = (typeof displayColumns)[number]['key']
+type DisplayColumnKey = (typeof transferRecordColumns)[number]['key']
+const displayColumns = computed(() =>
+  transferRecordColumns.map((column) => {
+    if (!props.recordKind) return column
+    const common = ['material', 'source', 'quantity', 'weight', 'status', 'notes']
+    return {
+      ...column,
+      defaultVisible:
+        common.includes(column.key) ||
+        (props.recordKind === 'shared' && column.key === 'destination'),
+      ...(column.key === 'source'
+        ? { label: '所属班组', value: (row: MaterialTransfer) => row.source_team.name }
+        : {}),
+    }
+  }),
+)
 const columnChoices = ref<InventoryColumnChoice<DisplayColumnKey>[]>(
-  displayColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
+  displayColumns.value.map((column) => ({ key: column.key, visible: column.defaultVisible })),
 )
 const columnStorageKey = computed(() =>
-  authStore.currentUser?.id ? `heatsink.transfer-columns.v1:${authStore.currentUser.id}` : null,
+  authStore.currentUser?.id
+    ? `heatsink.${props.recordKind || 'transfer'}-columns.v1:${authStore.currentUser.id}`
+    : null,
 )
 const visibleColumns = computed(() =>
   columnChoices.value
     .filter((choice) => choice.visible)
-    .flatMap((choice) => displayColumns.filter((column) => column.key === choice.key)),
+    .flatMap((choice) => displayColumns.value.filter((column) => column.key === choice.key)),
 )
 const rows = ref<MaterialTransfer[]>([])
 const loading = ref(true)
@@ -236,6 +275,7 @@ function headerSort(field: string) {
 }
 const filterParams = computed<MaterialTransferFilterParams>(() => ({
   ...tableQuery.params.value,
+  record_kind: props.recordKind,
   query: query.value || undefined,
   date_from: dates.value.from || undefined,
   date_to: dates.value.to || undefined,
@@ -253,9 +293,9 @@ const filterParams = computed<MaterialTransferFilterParams>(() => ({
 function exportSource() {
   const params = { ...filterParams.value, ...statusParams.value }
   return tableExportSource(
-    '转料记录',
+    pageTitle.value,
     total.value,
-    globalTransferExportFields,
+    props.recordKind === 'reallocation' ? reallocationExportFields : globalTransferExportFields,
     (signal, progress) =>
       loadExportPages(
         (page, pageSize) => materialTransferApi.list({ ...params, page, page_size: pageSize }),
@@ -284,6 +324,7 @@ let disposed = false
 const hasRows = computed(() => rows.value.length > 0)
 const canCreate = computed(
   () =>
+    !props.recordKind &&
     authStore.isTeamAccount &&
     Boolean(authStore.currentUser?.team_id) &&
     !authStore.currentUserError,
@@ -655,6 +696,19 @@ function handleCreated(transfer: MaterialTransfer): void {
   void loadCounts()
 }
 
+watch(
+  () => props.recordKind,
+  () => {
+    clearWorkspace()
+    columnChoices.value = displayColumns.value.map((column) => ({
+      key: column.key,
+      visible: column.defaultVisible,
+    }))
+    void loadCounts()
+    void loadRows()
+  },
+)
+
 onMounted(() => {
   if (!teamStore.items.length) void teamStore.refreshTeamDirectory()
   void loadRows()
@@ -670,21 +724,21 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page workspace-page transfers-page reading-workspace">
-    <h1 class="sr-only">转料记录</h1>
+    <h1 class="sr-only">{{ pageTitle }}</h1>
     <WorkspaceDataPanel class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <ElCard class="transfers-card" shadow="never">
         <form class="filter-bar" @submit.prevent="applyFilters">
           <div class="page-heading-start">
             <PageBackButton />
-            <h2 class="transfer-heading">转料记录</h2>
+            <h2 class="transfer-heading">{{ pageTitle }}</h2>
           </div>
           <div class="search-fields">
             <ElInput
               v-model="queryDraft"
               clearable
               :placeholder="searchPlaceholder"
-              aria-label="搜索转料记录"
+              :aria-label="`搜索${pageTitle}`"
               @clear="applyFilters"
             >
               <template #prefix
@@ -704,7 +758,7 @@ onBeforeUnmount(() => {
           <div class="filter-options">
             <FilterDialog
               v-model="filtersOpen"
-              title="转料记录筛选"
+              :title="`${pageTitle}筛选`"
               :count="appliedFilterCount"
               @open="openFilters"
               @cancel="cancelFilters"
@@ -858,11 +912,15 @@ onBeforeUnmount(() => {
                 :storage-key="columnStorageKey"
                 :columns="displayColumns"
                 description="流水号、转出时间、批次号始终显示。仅保存在当前浏览器。"
-                choices-label="转料记录可选列"
+                :choices-label="`${pageTitle}可选列`"
                 @change="columnChoices = $event"
               />
             </div>
-            <ElButton :icon="Refresh" aria-label="刷新转料记录" @click="liveRefresh.request" />
+            <ElButton
+              :icon="Refresh"
+              :aria-label="`刷新${pageTitle}`"
+              @click="liveRefresh.request"
+            />
           </div>
           <div class="heading-actions">
             <TableExportButton
@@ -891,7 +949,7 @@ onBeforeUnmount(() => {
           <StatePanel
             v-else-if="!hasRows && !appliedFilterCount && !query"
             state="empty"
-            title="暂无转料记录"
+            :title="`暂无${pageTitle}`"
             description="请调整筛选条件。"
             ><ElButton v-if="canCreate" type="primary" plain :icon="Plus" @click="openCreate"
               >新建转料</ElButton
@@ -905,15 +963,32 @@ onBeforeUnmount(() => {
             :loading="loading"
             class="transfer-table"
             row-key="batch_no"
-            empty-text="暂无转料记录"
+            :empty-text="`暂无${pageTitle}`"
             :current-row-key="drawerOpen ? selected?.batch_no : undefined"
             highlight-current-row
             @row-click="openDetail"
           >
-            <ElTableColumn label="流水号" min-width="220" align="center" show-overflow-tooltip
+            <ElTableColumn
+              v-if="recordKind === 'reallocation'"
+              label="原流水号"
+              min-width="170"
+              align="center"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                <RouterLink
+                  v-if="row.source_serial_no"
+                  :to="traceLink(row.source_serial_no)"
+                  @click.stop
+                  >{{ row.source_serial_no }}</RouterLink
+                >
+                <span v-else>—</span>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn :label="serialLabel" min-width="220" align="center" show-overflow-tooltip
               ><template #header
                 ><TableColumnFilter
-                  label="流水号"
+                  :label="serialLabel"
                   v-bind="headerSort('serial_no')"
                   :context="route.fullPath"
                   :value="columns.serial_query"
@@ -940,10 +1015,10 @@ onBeforeUnmount(() => {
                     >{{ sharedSerialLabel(row) }}</RouterLink
                   ><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template
             ></ElTableColumn>
-            <ElTableColumn label="转出时间" min-width="180" align="center"
+            <ElTableColumn :label="timeLabel" min-width="180" align="center"
               ><template #header
                 ><TableColumnFilter
-                  label="转出时间"
+                  :label="timeLabel"
                   v-bind="headerSort('created_at')"
                   :context="route.fullPath"
                   kind="date"
@@ -976,7 +1051,7 @@ onBeforeUnmount(() => {
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'source'"
-                  label="来源"
+                  :label="column.label"
                   v-bind="headerSort('source_team_name')"
                   :context="route.fullPath"
                   kind="select"

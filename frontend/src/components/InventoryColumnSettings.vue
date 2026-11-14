@@ -2,7 +2,7 @@
 import AppPopover from '@/components/AppPopover.vue'
 import { showToast } from '@/stores/toast'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { IconColumns3 } from '@tabler/icons-vue'
 import { ElCheckbox } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -12,19 +12,22 @@ import {
   type InventoryColumnKey,
 } from '@/types/inventoryColumns'
 
-const props = defineProps<{
-  storageKey: string | null
-  columns?: readonly { key: K; label: string; defaultVisible?: boolean; required?: boolean }[]
-  legacyKeys?: Record<string, readonly K[]>
-  newVisibleKeys?: readonly K[]
-  previousDefaults?: readonly InventoryColumnChoice<K>[]
-  description?: string
-  choicesLabel?: string
-  showTrigger?: boolean
-  compact?: boolean
-  minimumVisible?: number
-  initialChoices?: readonly InventoryColumnChoice<K>[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    storageKey: string | null
+    columns?: readonly { key: K; label: string; defaultVisible?: boolean; required?: boolean }[]
+    legacyKeys?: Record<string, readonly K[]>
+    newVisibleKeys?: readonly K[]
+    previousDefaults?: readonly InventoryColumnChoice<K>[]
+    description?: string
+    choicesLabel?: string
+    showTrigger?: boolean
+    compact?: boolean
+    minimumVisible?: number
+    initialChoices?: readonly InventoryColumnChoice<K>[]
+  }>(),
+  { showTrigger: true },
+)
 const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
 const options = computed(
   () =>
@@ -158,15 +161,14 @@ defineExpose({
   >
     <template #reference
       ><ElButton
-        v-show="showTrigger !== false"
+        v-if="showTrigger"
         class="inventory-columns-trigger"
         :class="{ 'inventory-columns-trigger--compact': compact }"
         :unstyled="compact"
-        :icon="compact ? undefined : Setting"
         aria-label="显示列"
         title="显示列"
         :aria-expanded="opened"
-        ><IconColumns3 v-if="compact" :size="17" /><template v-else>显示列</template></ElButton
+        ><IconColumns3 :size="17" /><template v-if="!compact">显示列</template></ElButton
       ></template
     >
     <div v-if="opened || !compact" class="column-settings">

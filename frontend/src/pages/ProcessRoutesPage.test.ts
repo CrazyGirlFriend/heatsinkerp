@@ -14,7 +14,6 @@ import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import DocumentViewer from '@/components/DocumentViewer.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import TableColumnFilter from '@/components/TableColumnFilter.vue'
-import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
@@ -105,7 +104,6 @@ async function render(
         TeamBusinessDialog: true,
         ProcessRouteEditor: true,
         DocumentViewer: true,
-        FactoryNavIcon: true,
         ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
       },
     },
@@ -202,7 +200,7 @@ it('keeps the common workspace shell without a full-width single tab or duplicat
   expect(wrapper.text()).not.toContain('历史工艺')
   expect(wrapper.text()).not.toContain('返回当前工艺')
 })
-it('shows icon-only process nodes in order, including repeated teams', async () => {
+it('shows team initials in process order, including repeated teams', async () => {
   await render()
   expect(wrapper.text()).toContain('Mo70Cu30')
   expect(wrapper.get('.route-step-summary').attributes('aria-description')).toBe(
@@ -211,19 +209,13 @@ it('shows icon-only process nodes in order, including repeated teams', async () 
   expect(wrapper.find('.route-path-more').exists()).toBe(false)
   const nodes = wrapper.findAll('.route-step-node')
   expect(nodes).toHaveLength(4)
-  expect(nodes.map((node) => node.text())).toEqual(['', '', '', ''])
+  expect(nodes.map((node) => node.text())).toEqual(['库', '退', '研', '退'])
   expect(nodes.map((node) => node.attributes('aria-label'))).toEqual([
     '工序 0 · 库房',
     '工序 1 · 退火',
     '工序 2 · 研磨',
     '工序 3 · 退火',
   ])
-  expect(
-    wrapper
-      .get('.route-step-summary')
-      .findAllComponents(FactoryNavIcon)
-      .map((icon: VueWrapper<InstanceType<typeof FactoryNavIcon>>) => icon.props('name')),
-  ).toEqual(['warehouse', 'annealing', 'grinding', 'annealing'])
   expect(processRouteApi.drawing).not.toHaveBeenCalled()
 })
 
@@ -246,26 +238,24 @@ it.each([
       `另有 ${overflow} 道工序，查看完整路线`,
     )
     expect(wrapper.findAll('.route-path-list li').map((item) => item.text())).toEqual([
-      '0库房',
-      '1退火',
-      '2研磨',
-      '3退火',
-      '4库房',
-      '5退火',
-      '6研磨',
-      '7退火',
+      '0库库房',
+      '1退退火',
+      '2研研磨',
+      '3退退火',
+      '4库库房',
+      '5退退火',
+      '6研研磨',
+      '7退退火',
     ])
   },
 )
 
-it('uses the assigned team icon for a custom operation name', async () => {
+it('uses the assigned team initial for a custom operation name', async () => {
   const response = await processRouteApi.list()
   response.items[0]!.step_summary![1]!.name = '高温整平'
   await render()
-  const icons = wrapper.get('.route-step-summary').findAllComponents(FactoryNavIcon)
-  expect(icons[1]!.props('name')).toBe('annealing')
   expect(wrapper.findAll('.route-step-node')[1]!.attributes('aria-label')).toContain('高温整平')
-  expect(wrapper.findAll('.route-step-node')[1]!.text()).toBe('')
+  expect(wrapper.findAll('.route-step-node')[1]!.text()).toBe('退')
 })
 
 it('keeps the overflow entry reachable in narrow windows and updates it on resize', async () => {
@@ -692,10 +682,7 @@ it('shows authored rework execution teams without claiming work has finished', a
   ).toEqual(['研磨', '检验'])
   expect(wrapper.text()).not.toContain('已完成')
   expect(wrapper.text()).not.toContain(authored.rework_request!.batch_no)
-  expect(wrapper.get('.route-step-node').text()).toBe('')
-  expect(wrapper.get('.route-step-summary').findComponent(FactoryNavIcon).props('name')).toBe(
-    'grinding',
-  )
+  expect(wrapper.get('.route-step-node').text()).toBe('研')
   expect(detail).not.toHaveBeenCalled()
   wrapper
     .findAllComponents(ElPopover)

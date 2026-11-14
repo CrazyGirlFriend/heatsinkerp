@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import ExcelJS from 'exceljs'
+import { productionTemplateColumns } from './production-template-columns.mjs'
 
 // Import the supplied workbooks, removing historical entries before shipping assets.
 // Usage: node scripts/import-production-templates.mjs /path/to/产量表
@@ -14,12 +15,14 @@ const definitions = JSON.parse(
 const destination = new URL('../src/assets/productionTemplates/', import.meta.url)
 await mkdir(destination, { recursive: true })
 const provenance = {}
+const columns = {}
 for (const [key, definition] of Object.entries(definitions)) {
   const original = await readFile(resolve(sourceDirectory, definition.source))
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(original)
   assert.equal(workbook.worksheets.length, 1, '新增工作表须先检查并清理历史数据')
   const sheet = workbook.worksheets[0]
+  columns[key] = productionTemplateColumns(sheet, definition)
   const header = () =>
     Array.from({ length: definition.firstDataRow - 1 }, (_, i) => sheet.getRow(i + 1).values)
   const originalHeader = structuredClone(header())
@@ -49,3 +52,7 @@ for (const [key, definition] of Object.entries(definitions)) {
   console.log(`${definition.source} → ${key}.xlsx`)
 }
 await writeFile(new URL('sources.json', destination), JSON.stringify(provenance, null, 2) + '\n')
+await writeFile(
+  new URL('../src/config/productionTemplateColumns.json', import.meta.url),
+  JSON.stringify(columns, null, 2) + '\n',
+)

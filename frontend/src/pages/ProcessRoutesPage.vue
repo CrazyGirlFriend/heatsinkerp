@@ -25,7 +25,7 @@ import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import DocumentViewer from '@/components/DocumentViewer.vue'
-import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
+import { boardTeamColor } from '@/utils/scheduleBoard'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -211,23 +211,15 @@ function routePath(row: unknown) {
     .map((step) => step.name)
     .join(' → ')
 }
-const teamIcons = {
-  'FACTORY-WAREHOUSE': 'warehouse',
-  'FACTORY-ROLL': 'rolling',
-  'FACTORY-ANNEAL': 'annealing',
-  'FACTORY-GRIND': 'grinding',
-  'FACTORY-WIRE': 'cutting',
-  'FACTORY-ENGRAVE': 'engraving',
-  'FACTORY-PLATE': 'plating',
-  'FACTORY-QC': 'inspection',
-} as const
-function stepIcon(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
+function stepTeamName(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
   const aliases: Record<string, string> = { 中转库: '库房', 轧板: '轧制', 质检: '检验' }
   const team = step.team_id
     ? directory.items.find((item) => Number(item.id) === step.team_id)
     : directory.items.find((item) => item.name === (aliases[step.name] || step.name))
-  const code = team?.code
-  return code && code in teamIcons ? teamIcons[code as keyof typeof teamIcons] : 'flow'
+  return team?.name || aliases[step.name] || step.name || '—'
+}
+function stepInitial(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
+  return Array.from(stepTeamName(step).trim())[0] || '—'
 }
 const routeMedia = window.matchMedia?.('(max-width: 1100px)')
 const responsiveStepCount = ref(routeMedia?.matches ? 4 : 6)
@@ -562,9 +554,10 @@ onBeforeUnmount(() => {
                       unstyled
                       type="button"
                       class="route-step-node"
+                      :style="{ '--route-team-color': boardTeamColor(stepTeamName(step)) }"
                       :aria-label="`工序 ${step.sequence_no} · ${step.name || '未命名工序'}`"
                     >
-                      <FactoryNavIcon :name="stepIcon(step)" />
+                      <span aria-hidden="true">{{ stepInitial(step) }}</span>
                     </AppButton>
                   </template>
                   <div class="route-path-heading">
@@ -622,9 +615,12 @@ onBeforeUnmount(() => {
                   <ol class="route-path-list" aria-label="完整工序顺序" tabindex="0">
                     <li v-for="(step, index) in routeSteps(row)" :key="index">
                       <span class="route-path-sequence">{{ step.sequence_no }}</span>
-                      <span class="route-step-symbol"
-                        ><FactoryNavIcon :name="stepIcon(step)"
-                      /></span>
+                      <span
+                        class="route-step-symbol"
+                        :style="{ '--route-team-color': boardTeamColor(stepTeamName(step)) }"
+                        aria-hidden="true"
+                        >{{ stepInitial(step) }}</span
+                      >
                       <span>{{ step.name || '未命名工序' }}</span>
                     </li>
                   </ol>
@@ -900,14 +896,13 @@ onBeforeUnmount(() => {
     border-color var(--motion-fast),
     background-color var(--motion-fast);
 }
-.route-step-node :deep(.tabler-icon),
-.route-step-symbol :deep(.tabler-icon) {
-  width: 16px;
-  height: 16px;
-  color: var(--primary);
+.route-step-node,
+.route-step-symbol {
+  color: var(--route-team-color);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
-.route-step-node:hover,
-.route-step-node:focus-visible,
 .route-path-more:hover,
 .route-path-more:focus-visible {
   border-color: var(--primary);
@@ -1019,6 +1014,22 @@ onBeforeUnmount(() => {
   border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--surface-soft);
+}
+.route-step-node,
+.route-step-symbol {
+  border-color: color-mix(in srgb, var(--route-team-color) 36%, transparent);
+  background: color-mix(in srgb, var(--route-team-color) 14%, var(--surface));
+}
+.route-step-node:hover,
+.route-step-node:focus-visible {
+  border-color: var(--route-team-color);
+  background: color-mix(in srgb, var(--route-team-color) 22%, var(--surface));
+}
+@media (prefers-color-scheme: dark) {
+  .route-step-node,
+  .route-step-symbol {
+    color: color-mix(in srgb, var(--route-team-color) 70%, white);
+  }
 }
 .route-drawing-files {
   display: grid;

@@ -1,5 +1,5 @@
 import { assertExportSize, type ExportValue } from './tableExport'
-import { formatDateTime } from './format'
+import { sharedSerialLabel } from '../types/sharedMaterial'
 import type { ProcessingRecord } from '../types/materialProcessing'
 import definitions from '../config/productionTemplates.json'
 
@@ -25,9 +25,7 @@ function values(
       ? Number((r.processing_minutes / 60).toFixed(4))
       : null
   const people = String(r.processor_name || '').split('、')
-  const note = [r.work_kind === '返工' ? `返工第 ${r.rework_round} 次` : '', r.reason]
-    .filter(Boolean)
-    .join('；')
+  const note = r.reason
   const remaining = r.remaining_weight
   // Blank cells represent fields that were not recorded. Do not infer quality results,
   // machine use, upstream/downstream dispatches or operator roles from production counts.
@@ -45,13 +43,7 @@ function values(
       L: r.scrap_weight,
       M: hours,
       // The original columns distinguish primary/secondary roles, which we do not record.
-      S: [
-        note,
-        r.processor_name && `加工人员：${r.processor_name}`,
-        r.machine_no && `机床：${r.machine_no}`,
-      ]
-        .filter(Boolean)
-        .join('；'),
+      S: note,
     }
   if (key === 'FACTORY-ANNEAL')
     return {
@@ -66,13 +58,7 @@ function values(
       L: r.actual_temperature_c,
       M: hours,
       N: r.furnace_no,
-      R: [
-        note,
-        r.temperature_requirement && `温度要求：${r.temperature_requirement}`,
-        r.holding_minutes != null && `保温：${r.holding_minutes} 分钟`,
-      ]
-        .filter(Boolean)
-        .join('；'),
+      R: note,
     }
   if (key === 'FACTORY-GRIND')
     return {
@@ -127,24 +113,7 @@ function values(
       W: note,
       X: hours,
     }
-  const qualityNote = [
-    note,
-    r.batch_no && `批次：${r.batch_no}`,
-    !continuation && r.completed_quantity != null && `本次加工完成 ${r.completed_quantity} 件`,
-    inspection
-      ? `${inspection.parent_id ? `复检 #${inspection.id}（原检查 #${inspection.parent_id}）` : `检查 #${inspection.id}`}：${formatDateTime(inspection.checked_at)}，${inspection.inspector_name}`
-      : '未登记检验结果',
-    inspection &&
-      `${inspection.scope === 'full' ? '全检' : '抽检'} ${inspection.sample_quantity} 件，不合格 ${inspection.failed_quantity} 件`,
-    inspection?.failed_quantity
-      ? `处理：${({ pending: '待处理', rework: '返工', shipment: '发货', transfer: '转出', reallocate: '转投', scrap: '判废', other: '其他' } as const)[inspection.disposition]}`
-      : '',
-    inspection?.problem_names.length &&
-      `问题：${inspection.problem_names.join('、')}（未登记分类数量）`,
-    inspection?.notes,
-  ]
-    .filter(Boolean)
-    .join('；')
+  const qualityNote = [note, inspection?.notes].filter(Boolean).join('；')
   return {
     A: r.processing_date,
     B: r.serial_no,
@@ -166,9 +135,38 @@ function values(
           : null,
     AP: r.processing_task_name,
     AQ: hours,
-    AR: r.processor_name,
     AS: qualityNote,
   }
+}
+
+export function productionRecordData(record: ProcessingRecord): ExportRow {
+  const { report_inspections, outputs, ...fields } = record
+  return {
+    ...(Object.fromEntries(
+      Object.entries(fields).filter(
+        ([, value]) => value == null || typeof value === 'string' || typeof value === 'number',
+      ),
+    ) as ExportRow),
+    serial_no: sharedSerialLabel(record),
+    report_inspections: JSON.stringify(report_inspections || []),
+    remaining_quantity: outputs
+      ?.filter((output) => output.role === 'remaining')
+      .reduce((sum, output) => sum + output.quantity, 0),
+    remaining_weight: outputs
+      ?.filter((output) => output.role === 'remaining')
+      .reduce((sum, output) => sum + output.weight, 0),
+  }
+}
+
+export function productionReportRows(key: string, rows: ExportRow[]) {
+  return rows.flatMap((record) => {
+    const inspections: Inspection[] =
+      key === 'FACTORY-QC' ? JSON.parse(String(record.report_inspections || '[]')) : []
+    // Rechecks describe the same pieces; do not count them as new production.
+    return inspections.length
+      ? inspections.map((inspection, index) => values(key, record, inspection, index > 0))
+      : [values(key, record)]
+  })
 }
 
 export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
@@ -179,14 +177,7 @@ export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
   const sorted = [...rows].sort((a, b) =>
     String(a.processing_date || '').localeCompare(String(b.processing_date || '')),
   )
-  const data = sorted.flatMap((record) => {
-    const inspections: Inspection[] =
-      key === 'FACTORY-QC' ? JSON.parse(String(record.report_inspections || '[]')) : []
-    // Keep rechecks separate; they are observations of the same pieces, not new production.
-    return inspections.length
-      ? inspections.map((inspection, index) => values(key, record, inspection, index > 0))
-      : [values(key, record)]
-  })
+  const data = productionReportRows(key, sorted)
   assertExportSize(data.length)
   const response = await fetch((await load()) as string)
   if (!response.ok) throw new Error('产量表模板读取失败，请重试')

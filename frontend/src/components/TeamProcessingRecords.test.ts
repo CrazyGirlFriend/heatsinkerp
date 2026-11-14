@@ -9,6 +9,7 @@ import RecordDateFilter from './RecordDateFilter.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TableExportButton from './TableExportButton.vue'
+import TableExportDialog from './TableExportDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { processRouteApi } from '@/services/processRouteApi'
 import { reworkRouteFixture } from '@/testFixtures/processRoute'
@@ -632,4 +633,79 @@ it('exports all inspection tasks through one original template without exposing 
   expect(rows[0]).toMatchObject({ finished_quantity: 4008, completed_quantity: 123 })
   expect(JSON.parse(String(rows[0]!.report_inspections))).toEqual(inspections)
   for (const row of rows.slice(1)) expect(JSON.parse(String(row.report_inspections))).toEqual([])
+})
+
+it.each([
+  ['FACTORY-ROLL', '轧制产量表'],
+  ['FACTORY-ANNEAL', '退火模压产量表'],
+  ['FACTORY-GRIND', '研磨产量表'],
+  ['FACTORY-WIRE', '线切割产量表'],
+  ['FACTORY-ENGRAVE', '雕刻产量表'],
+  ['FACTORY-QC', '检验产量表'],
+])('defaults production registration to the original %s template', async (teamCode, title) => {
+  await render(false, '/team-workspaces/5?tab=settings&management_tab=production')
+  await wrapper.setProps({ management: true, teamCode })
+  const button = wrapper.getComponent(TableExportButton)
+  await button.get('button').trigger('click')
+  const dialog = wrapper.getComponent(TableExportDialog)
+  expect(dialog.props('source')).toMatchObject({ title, workbook: expect.any(Function) })
+  expect(dialog.find('.export-fields').exists()).toBe(false)
+  expect(dialog.props('variants')).toEqual([])
+  expect(dialog.props('variants')?.[0]?.workbook).toBeUndefined()
+})
+
+it('keeps actual-date and task filters and loads all matching records for the default template', async () => {
+  const result = await teamMaterialApi.processingRecords(5)
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    ...result,
+    total: 1,
+    items: [{ ...record(), completed_quantity: 123, processing_minutes: 90 }],
+  })
+  await render(
+    false,
+    '/team-workspaces/5?tab=settings&management_tab=production&date_from=2026-11-01&date_to=2026-11-15&processing_task_id=8&page_size=20',
+  )
+  await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  const rows = await source.load(new AbortController().signal, () => {})
+  expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
+    5,
+    expect.objectContaining({
+      date_from: '2026-11-01',
+      date_to: '2026-11-15',
+      processing_task_id: 8,
+      page: 1,
+      page_size: 100,
+    }),
+  )
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ completed_quantity: 123, processing_minutes: 90 })
+})
+
+it('uses ordinary details for processing history and teams without a supplied template', async () => {
+  await render()
+  await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
+  const button = wrapper.getComponent(TableExportButton)
+  expect(button.props('source')()!.workbook).toBeUndefined()
+  expect(button.props('variants')!()[0]!.title).toBe('轧制产量表')
+  await wrapper.setProps({ management: true, teamCode: 'FACTORY-PLATE' })
+  expect(button.props('source')()!.title).toBe('逐笔加工明细')
+  expect(button.props('source')()!.workbook).toBeUndefined()
+  expect(button.props('variants')!().some((source) => source.workbook)).toBe(false)
+})
+
+it('uses only original columns in daily registration and leaves unrecorded roles blank', async () => {
+  await render(false, '/team-workspaces/5?tab=settings&management_tab=production')
+  await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+  await flushPromises()
+  const headers = wrapper.findAll('thead th').map((cell) => cell.text())
+  for (const label of ['日期', '流水号', '主操', '副操', '加工成品 / 件数', '备注']) {
+    expect(headers.some((text) => text.includes(label))).toBe(true)
+  }
+  for (const label of ['当前状态', '工艺工序', '当前未转出件数', '登记时进度', '操作']) {
+    expect(headers.some((text) => text.includes(label))).toBe(false)
+  }
+  expect(wrapper.text()).not.toContain('筛选结果合计')
+  expect(wrapper.text()).not.toContain('加工人员：')
+  expect(wrapper.find('.el-table__expand-icon').exists()).toBe(false)
 })

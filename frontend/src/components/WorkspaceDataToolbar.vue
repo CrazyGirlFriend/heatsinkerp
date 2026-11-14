@@ -92,6 +92,7 @@ const emit = defineEmits<{ search: []; refresh: []; columns: [anchor: HTMLElemen
         @click="emit('refresh')"
       />
     </div>
+    <slot name="query-actions" />
     <slot name="tools" />
     <slot name="status" />
     <WorkspaceTools :columns="columns" @columns="emit('columns', $event)">

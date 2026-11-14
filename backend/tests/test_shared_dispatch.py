@@ -268,3 +268,41 @@ def test_invalid_joint_transfer_rolls_back_stock_and_group(client, warehouse, jo
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 1
     rows = client.get(base(warehouse) + "/stock").json()["items"]
     assert rows[0]["available_weight"] == 20
+
+
+def test_shared_records_list_only_joint_dispatch_with_member_search(client, warehouse, joint):
+    response = send(client, warehouse, joint)
+    assert response.status_code == 201, response.text
+    lot = response.json()["items"][0]
+    for params in ({}, {"query": "ORDER-B"}, {"serial_query": "WAREHOUSE-001"}):
+        result = client.get(
+            "/api/material-transfers",
+            params={
+                "record_kind": "shared",
+                "page_size": 1,
+                "include_summary": True,
+                **params,
+            },
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["total"] == 1
+        assert result.json()["items"][0]["id"] == lot["id"]
+    empty = client.get(
+        "/api/material-transfers",
+        params={
+            "record_kind": "reallocation",
+            "include_summary": True,
+        },
+    )
+    assert empty.json()["total"] == 0
+    assert (
+        client.get(
+            "/api/material-transfers",
+            params={
+                "record_kind": "shared",
+                "page_size": 1,
+                "page": 2,
+            },
+        ).json()["items"]
+        == []
+    )

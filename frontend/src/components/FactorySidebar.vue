@@ -42,9 +42,19 @@ const activeGroup = computed(() =>
     ? 'settings'
     : ['/factory-analysis', '/production-schedules'].includes(route.path)
       ? 'factory'
-      : ['/transfer-batches', '/material-trace'].includes(route.path)
+      : [
+            '/transfer-batches',
+            '/shared-material-records',
+            '/serial-reallocation-records',
+            '/material-trace',
+          ].includes(route.path)
         ? 'materials'
-        : ['/process-routes', '/business-people', '/dispatch-schedules'].includes(route.path)
+        : [
+              '/process-routes',
+              '/business-people',
+              '/dispatch-schedules',
+              '/quality-management',
+            ].includes(route.path)
           ? 'management'
           : 'teams',
 )
@@ -244,6 +254,8 @@ onBeforeUnmount(() => {
 })
 const materialLinks = computed(() => [
   { path: '/transfer-batches', label: '转料记录', icon: 'records' as const },
+  { path: '/shared-material-records', label: '共投记录', icon: 'records' as const },
+  { path: '/serial-reallocation-records', label: '转投记录', icon: 'records' as const },
   ...(isAdmin.value
     ? [{ path: '/material-trace', label: '流水号查询', icon: 'trace' as const }]
     : []),
@@ -378,6 +390,14 @@ const materialLinks = computed(() => [
             ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
               ><FactoryNavIcon name="schedule" /></ElIcon
             ><span>调度</span></ElMenuItem
+          >
+          <ElMenuItem
+            index="/quality-management"
+            aria-label="质量管理"
+            :aria-current="route.path === '/quality-management' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="inspection" /></ElIcon
+            ><span>质量管理</span></ElMenuItem
           >
         </ElSubMenu>
         <ElSubMenu

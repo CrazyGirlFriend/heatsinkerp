@@ -661,7 +661,7 @@ describe('task scheduling board', () => {
       '轧制 2',
       '轧制 3',
     ])
-    expect(steps.map((step) => step.text())).toEqual(['', '1', '2', '3'])
+    expect(steps.map((step) => step.text())).toEqual(['库', '轧1', '轧2', '轧3'])
     expect(steps.map((step) => step.classes().includes('is-filled'))).toEqual([
       true,
       false,
@@ -680,6 +680,7 @@ describe('task scheduling board', () => {
       ...node(index + 1),
       team_id: index === 0 ? 1 : 2,
       planning_state: 'confirmed' as const,
+      handover_status: index === 10 ? ('overdue' as const) : ('pending' as const),
     }))
     wrapper = mount(ScheduleTeamPlanning, {
       props: { nodes: [...nodes].reverse() },
@@ -700,6 +701,8 @@ describe('task scheduling board', () => {
     expect(items).toHaveLength(11)
     expect(items[0]!.text()).toContain('库房')
     expect(items[10]!.text()).toContain('轧制 10')
+    expect(items[10]!.get('.team-planning__initial').text()).toBe('轧')
+    expect(items[10]!.get('.team-planning__symbol').classes()).toContain('is-overdue')
     await items[10]!.trigger('click')
     expect(wrapper.emitted('select')).toBeUndefined()
   })

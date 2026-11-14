@@ -34,6 +34,9 @@ const selected = ref<string[]>([]),
   loaded = ref(0),
   total = ref(0)
 const allSelected = computed(() => selected.value.length === activeSource.value?.fields.length)
+const hasExportFields = computed(
+  () => Boolean(activeSource.value?.workbook) || selected.value.length > 0,
+)
 let controller: AbortController | undefined
 function cancel() {
   controller?.abort()
@@ -57,7 +60,7 @@ watch(
 )
 async function exportFile() {
   const selectedSource = activeSource.value
-  if (!selectedSource || busy.value || !selected.value.length) return
+  if (!selectedSource || busy.value || !hasExportFields.value) return
   const fields = selectedSource.fields.filter((field) => selected.value.includes(field.key))
   const task = new AbortController()
   controller = task
@@ -121,7 +124,9 @@ onBeforeUnmount(cancel)
         <strong>{{ activeSource.title }}</strong
         ><span>当前筛选 · 全部 {{ total.toLocaleString('zh-CN') }} 条</span>
       </div>
-      <p v-if="activeSource.workbook" class="export-scope">使用班组原始 Excel 模板；未登记的项目留空。</p>
+      <p v-if="activeSource.workbook" class="export-scope">
+        使用班组原始 Excel 模板；未登记的项目留空。
+      </p>
       <div v-else class="export-fields-heading">
         <strong>选择字段</strong
         ><ElCheckbox
@@ -158,7 +163,7 @@ onBeforeUnmount(cancel)
       ><ElButton
         class="action-warm"
         :loading="busy"
-        :disabled="!selected.length || !total"
+        :disabled="!hasExportFields || !total"
         @click="exportFile"
         >导出 Excel</ElButton
       ></template

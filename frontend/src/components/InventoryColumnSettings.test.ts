@@ -44,6 +44,12 @@ function check(label: string, value: boolean) {
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it('shows its own trigger by default and hides it only for an external toolbar', async () => {
+    await render()
+    expect(wrapper.get('.inventory-columns-trigger').isVisible()).toBe(true)
+    await wrapper.setProps({ showTrigger: false })
+    expect(wrapper.find('.inventory-columns-trigger').exists()).toBe(false)
+  })
   it.each(['default', 'visibility', 'order'] as const)(
     'updates the previous default preset while preserving custom %s preferences',
     async (mode) => {

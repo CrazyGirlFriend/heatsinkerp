@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
-import { inspectionQueryColumns } from '@/utils/tableQueryColumns'
+import { inspectionQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
+import TableFilterFields from './TableFilterFields.vue'
+import type { TableColumnCondition } from '@/types/tableQuery'
 import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
@@ -30,7 +32,7 @@ import {
 import { formatDateTime } from '@/utils/format'
 import { inspectionProblemLabel } from '@/services/inspectionApi'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-const props = defineProps<{ teamId: number; showAll?: boolean }>()
+const props = defineProps<{ teamId?: number; showAll?: boolean }>()
 const emit = defineEmits<{ count: [value: number] }>()
 const route = useRoute(),
   directory = useTeamDirectoryStore()
@@ -43,6 +45,7 @@ const noticeKey = computed(() =>
 )
 const rows = ref<QualityFeedback[]>([]),
   total = ref(0),
+  pending = ref(0),
   page = ref(1),
   size = ref(10),
   query = ref(''),
@@ -56,23 +59,43 @@ const filtersOpen = ref(false),
   draftProblem = ref<number>(),
   dates = ref({ from: '', to: '' }),
   applied = ref<QualityFilters>({})
+const columnSettingsTarget = ref<HTMLElement | null>(null)
+const draftColumns = ref<TableColumnCondition[]>([])
+const dispositionColumns = {
+  处理方式: {
+    field: 'disposition',
+    kind: 'select' as const,
+    options: Object.entries(dispositions).map(([value, label]) => ({ value, label })),
+  },
+}
 const count = computed(
   () =>
     Number(!!applied.value.status) +
     Number(!!applied.value.kind) +
     Number(!!applied.value.team_id) +
     Number(!!applied.value.problem_type_id) +
-    Number(!!applied.value.date_from || !!applied.value.date_to),
+    Number(!!applied.value.date_from || !!applied.value.date_to) +
+    tableQuery.state.value.filters.length,
 )
 let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
   busy: () => loading.value || !!selected.value,
 })
-const tableQuery = useTableQuery(inspectionQueryColumns, () => {
-  page.value = 1
-  void load()
-})
+const tableQuery = useTableQuery(
+  {
+    ...inspectionQueryColumns,
+    ...queryColumns([
+      ['发现班组', 'team_name'],
+      ['问题说明', 'notes'],
+    ]),
+    ...dispositionColumns,
+  },
+  () => {
+    page.value = 1
+    void load()
+  },
+)
 function params(): QualityFilters {
   return {
     ...tableQuery.params.value,
@@ -107,6 +130,7 @@ async function load(background = false) {
     }
     rows.value = result.items
     total.value = result.total
+    pending.value = result.pending_count
   } catch (e) {
     if (token === generation) {
       if (background) throw e
@@ -122,6 +146,7 @@ function search() {
   void load()
 }
 function openFilters() {
+  draftColumns.value = tableQuery.state.value.filters.map((item) => ({ ...item }))
   draftStatus.value = applied.value.status
   draftKind.value = applied.value.kind
   draftTeam.value = applied.value.team_id
@@ -129,6 +154,7 @@ function openFilters() {
   dates.value = { from: applied.value.date_from || '', to: applied.value.date_to || '' }
 }
 function apply() {
+  tableQuery.state.value.filters = draftColumns.value
   applied.value = {
     query: query.value.trim() || undefined,
     status: draftStatus.value,
@@ -143,6 +169,7 @@ function apply() {
   void load()
 }
 function reset() {
+  draftColumns.value = []
   draftStatus.value = undefined
   draftKind.value = undefined
   draftTeam.value = undefined
@@ -287,8 +314,10 @@ onBeforeUnmount(() => {
           <label
             >检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem"
           /></label>
+          <TableFilterFields v-model="draftColumns" :columns="dispositionColumns" />
         </FilterDialog>
       </template>
+      <template #query-actions><div ref="columnSettingsTarget" /></template>
       <template #tools
         ><TableExportButton
           :source="exportSource"
@@ -299,10 +328,12 @@ onBeforeUnmount(() => {
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <WorkspaceTable
-      columns-key="TeamQualityFeedback-1"
+      :columns-key="showAll ? 'QualityManagement-1' : 'TeamQualityFeedback-1'"
+      :column-settings-target="columnSettingsTarget"
       :column-query="tableQuery.controller.value"
       v-else
       :data="rows"
+      :loading="loading"
       class="quality-feedback-table"
       row-key="id"
       empty-text="暂无质量反馈"
@@ -315,9 +346,31 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
       />
+      <ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
+        <template #default="{ row }">{{ inspectionProblemLabel(row as QualityFeedback) }}</template>
+      </ElTableColumn>
+      <ElTableColumn prop="failed_quantity" label="不合格件数" width="110" align="center" />
+      <ElTableColumn label="涉及班组" min-width="180" align="center" show-overflow-tooltip
+        ><template #default="{ row }">{{
+          (row as QualityFeedback).involved_teams.map((t) => t.name).join('、') || '待指定'
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="处理状态" width="110" align="center"
+        ><template #default="{ row }"
+          ><ElTag :type="row.feedback_status === 'closed' ? 'success' : 'warning'">{{
+            feedbackStates[row.feedback_status as keyof typeof feedbackStates]
+          }}</ElTag></template
+        ></ElTableColumn
+      >
+      <ElTableColumn label="处理方式" width="120" align="center">
+        <template #default="{ row }">{{
+          dispositions[row.disposition as keyof typeof dispositions] || '—'
+        }}</template>
+      </ElTableColumn>
       <ElTableColumn label="发现时间" min-width="170" align="center"
         ><template #default="{ row }">{{ formatDateTime(row.checked_at) }}</template></ElTableColumn
       >
+      <ElTableColumn prop="notes" label="问题说明" min-width="220" show-overflow-tooltip />
       <ElTableColumn label="来源" width="80" align="center"
         ><template #default="{ row }">{{
           row.kind === 'inspection' ? '检验' : '巡检'
@@ -329,26 +382,10 @@ onBeforeUnmount(() => {
           row.scope === 'full' ? '全检' : '抽检'
         }}</template></ElTableColumn
       >
-      <ElTableColumn prop="failed_quantity" label="不合格件数" width="110" align="center" />
-      <ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
-        <template #default="{ row }">{{ inspectionProblemLabel(row as QualityFeedback) }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="涉及班组" min-width="180" align="center" show-overflow-tooltip
-        ><template #default="{ row }">{{
-          (row as QualityFeedback).involved_teams.map((t) => t.name).join('、') || '待指定'
-        }}</template></ElTableColumn
-      >
       <ElTableColumn label="班组反馈" width="110" align="center"
         ><template #default="{ row }"
           >{{ (row as QualityFeedback).involved_teams.filter((t) => t.replied).length }} /
           {{ row.involved_teams.length }}</template
-        ></ElTableColumn
-      >
-      <ElTableColumn label="处理状态" width="110" align="center"
-        ><template #default="{ row }"
-          ><ElTag :type="row.feedback_status === 'closed' ? 'success' : 'warning'">{{
-            feedbackStates[row.feedback_status as keyof typeof feedbackStates]
-          }}</ElTag></template
         ></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
@@ -369,7 +406,7 @@ onBeforeUnmount(() => {
           changePage(1)
         }
       "
-      >共 {{ total }} 条问题 · 多班组关联不重复计数</WorkspacePagination
+      >共 {{ total }} 条问题 · {{ pending }} 条未结束</WorkspacePagination
     >
     <QualityFeedbackDetail
       v-if="selected"

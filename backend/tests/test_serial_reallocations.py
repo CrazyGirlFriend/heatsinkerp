@@ -456,3 +456,43 @@ def test_records_list_preserves_provenance_filters_order_and_team_scope(client, 
         == 0
     )
     assert client.get("/api/team-materials/999999/serial-reallocations").status_code == 404
+
+
+def test_reallocation_records_search_both_serials_and_exclude_other_stock(client, warehouse):
+    original = intake(client, warehouse, serial_no="FROM-A").json()
+    response = reallocate(client, warehouse, original, serial_no="TO-B")
+    assert response.status_code == 201, response.text
+    expected = response.json()
+    for params in ({}, {"query": "FROM-A"}, {"query": "TO-B"}, {"serial_query": "FROM-A"}):
+        result = client.get(
+            "/api/material-transfers",
+            params={
+                "record_kind": "reallocation",
+                "include_summary": True,
+                **params,
+            },
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["total"] == 1
+        row = result.json()["items"][0]
+        assert row["id"] == expected["id"]
+        assert row["source_serial_no"] == "FROM-A"
+        assert row["serial_no"] == "TO-B"
+    assert (
+        client.get(
+            "/api/material-transfers",
+            params={
+                "record_kind": "shared",
+            },
+        ).json()["total"]
+        == 0
+    )
+    assert (
+        client.get(
+            "/api/material-transfers",
+            params={
+                "record_kind": "unknown",
+            },
+        ).status_code
+        == 422
+    )

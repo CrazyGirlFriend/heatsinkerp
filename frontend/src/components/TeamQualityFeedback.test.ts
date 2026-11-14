@@ -7,6 +7,7 @@ import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import TableExportButton from './TableExportButton.vue'
+import TableFilterFields from './TableFilterFields.vue'
 import { qualityFeedbackApi, type QualityFeedback } from '@/services/qualityFeedbackApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 const route = vi.hoisted(() => ({ query: {} as Record<string, string> }))
@@ -67,9 +68,9 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render() {
+async function render(showAll = false) {
   wrapper = mount(TeamQualityFeedback, {
-    props: { teamId: 2 },
+    props: showAll ? { showAll: true } : { teamId: 2 },
     global: {
       stubs: {
         QualityFeedbackDetail: true,
@@ -82,6 +83,56 @@ async function render() {
   })
   await flushPromises()
 }
+it('lists cross-team issues without a team constraint and keeps disposition filtering in exports', async () => {
+  vi.mocked(qualityFeedbackApi.records).mockResolvedValue({
+    items: [
+      { ...record, notes: '边缘毛刺', disposition: 'rework' },
+      {
+        ...record,
+        id: 2,
+        kind: 'inspection',
+        team_name: '检验',
+        notes: '尺寸超差',
+        disposition: 'scrap',
+      },
+    ],
+    total: 2,
+    pending_count: 2,
+  })
+  await render(true)
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(
+    expect.objectContaining({ team_id: undefined, page: 1 }),
+  )
+  expect(wrapper.text()).toContain('边缘毛刺')
+  expect(wrapper.text()).toContain('尺寸超差')
+  expect(wrapper.text()).toContain('返工')
+  expect(wrapper.text()).toContain('报废')
+  expect(wrapper.text()).toContain('共 2 条问题')
+  wrapper.getComponent(FilterDialog).vm.$emit('open')
+  wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+  await flushPromises()
+  wrapper
+    .getComponent(TableFilterFields)
+    .vm.$emit('update:modelValue', [
+      { field: 'disposition', kind: 'select', value: 'rework', end: '' },
+    ])
+  wrapper.getComponent(FilterDialog).vm.$emit('apply')
+  await flushPromises()
+  const filters = {
+    table_query: JSON.stringify({
+      filters: [{ field: 'disposition', kind: 'select', value: 'rework', end: '' }],
+    }),
+  }
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(expect.objectContaining(filters))
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  await source.load(new AbortController().signal, vi.fn())
+  expect(qualityFeedbackApi.records).toHaveBeenLastCalledWith(expect.objectContaining(filters))
+  await wrapper
+    .findAll('button')
+    .find((item) => item.text() === '查看 / 处理')!
+    .trigger('click')
+  expect(wrapper.getComponent(QualityFeedbackDetail).props('issueId')).toBe(1)
+})
 it('opens the exact issue from a quality notification and passes its navigation key', async () => {
   route.query = { issue: '42', business_notice: 'quality:8', notice: 'quality-landing' }
   await render()

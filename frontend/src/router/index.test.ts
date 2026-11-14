@@ -86,19 +86,20 @@ describe('phase-one routes', () => {
     expect(router.currentRoute.value.path).toBe('/factory-analysis')
   })
 
-  it.each(['/team-workspaces/2?tab=outbound', '/factory-stock'])(
-    'retains an explicit protected destination %s through login',
-    async (path) => {
-      authMocks.authenticated = false
-      await router.push(path)
-      const redirect = router.currentRoute.value.query.redirect
-      expect(router.currentRoute.value.path).toBe('/login')
-      expect(redirect).toBe(path === '/factory-stock' ? '/factory-analysis' : path)
-      authMocks.authenticated = true
-      await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
-      expect(router.currentRoute.value.fullPath).toBe(redirect)
-    },
-  )
+  it.each([
+    '/team-workspaces/2?tab=outbound',
+    '/factory-stock',
+    '/quality-management?status=pending',
+  ])('retains an explicit protected destination %s through login', async (path) => {
+    authMocks.authenticated = false
+    await router.push(path)
+    const redirect = router.currentRoute.value.query.redirect
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(redirect).toBe(path === '/factory-stock' ? '/factory-analysis' : path)
+    authMocks.authenticated = true
+    await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
+    expect(router.currentRoute.value.fullPath).toBe(redirect)
+  })
 
   it('opens the factory homepage for both roles and retains explicit team routes', async () => {
     await router.push('/')
@@ -187,4 +188,13 @@ describe('phase-one routes', () => {
     await router.push('/settings/teams')
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
   })
+})
+
+it.each([
+  ['/shared-material-records', 'shared'],
+  ['/serial-reallocation-records', 'reallocation'],
+])('opens %s with the matching record filter', async (path, recordKind) => {
+  await router.push(path!)
+  expect(router.currentRoute.value.path).toBe(path)
+  expect(router.currentRoute.value.matched.at(-1)?.props.default).toEqual({ recordKind })
 })

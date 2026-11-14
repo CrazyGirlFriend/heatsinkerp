@@ -35,16 +35,20 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', redirect: '/factory-analysis' },
-      ...['/process-routes', '/business-people', '/dispatch-schedules'].map((path) => ({
-        path,
-        component: page,
-      })),
+      ...['/process-routes', '/business-people', '/dispatch-schedules', '/quality-management'].map(
+        (path) => ({
+          path,
+          component: page,
+        }),
+      ),
       { path: '/factory-stock', redirect: '/factory-analysis' },
       { path: '/factory-analysis', component: page },
       { path: '/production-schedules', component: page },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
+      { path: '/shared-material-records', component: page },
+      { path: '/serial-reallocation-records', component: page },
       { path: '/settings/teams', component: page },
       { path: '/settings/accounts', component: page },
       { path: '/team-workspaces/:teamId', component: page },
@@ -77,6 +81,15 @@ afterEach(() => {
 })
 
 describe('three-level team navigation', () => {
+  it('opens the shared quality list under production management and restores the active group', async () => {
+    const { wrapper, router } = await renderSidebar('/dispatch-schedules')
+    await wrapper.get('[aria-label="质量管理"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/quality-management')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('质量管理')
+    expect(wrapper.get('[data-nav-index="management"]').classes()).toContain('factory-nav__current')
+    expect(useSidebarStore(appPinia).opened).toEqual(['management'])
+  })
   it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-error'])(
     'exposes the engineering management menu for the permitted %s account',
     async (account) => {
@@ -362,7 +375,7 @@ describe('three-level team navigation', () => {
         .find((group) => group.props('index') === 'materials')!
         .findAllComponents(ElMenuItem)
         .map((item) => item.attributes('aria-label')),
-    ).toEqual(['转料记录', '流水号查询'])
+    ).toEqual(['转料记录', '共投记录', '转投记录', '流水号查询'])
   })
 
   it('opens team modules and restores the selected module on browser back', async () => {
@@ -557,4 +570,19 @@ describe('three-level team navigation', () => {
     expect(router.currentRoute.value.path).toBe('/production-schedules')
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('生产排期')
   })
+})
+
+it('places shared and reallocation records at the same flow-query menu level', async () => {
+  const { wrapper, router } = await renderSidebar('/shared-material-records')
+  for (const [label, path] of [
+    ['共投记录', '/shared-material-records'],
+    ['转投记录', '/serial-reallocation-records'],
+  ]) {
+    const link = wrapper.get(`[aria-label="${label}"]`)
+    await link.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(path)
+    expect(link.attributes('aria-current')).toBe('page')
+    expect(link.element.closest('.el-sub-menu')?.textContent).toContain('流转查询')
+  }
 })

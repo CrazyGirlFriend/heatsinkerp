@@ -8,6 +8,7 @@ import ProcessingPeople from './ProcessingPeople.vue'
 import { formatProcessingMinutes } from '@/utils/processingDuration'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
+import ProductionReportTable from './ProductionReportTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -38,7 +39,11 @@ import {
   processingRoleLabels,
 } from '@/types/materialProcessing'
 import { formatDateTime } from '@/utils/format'
-import { createProductionWorkbook, productionTemplates } from '@/utils/productionWorkbook'
+import {
+  createProductionWorkbook,
+  productionTemplates,
+  productionRecordData,
+} from '@/utils/productionWorkbook'
 
 const props = defineProps<{
   teamId: number
@@ -49,6 +54,9 @@ const props = defineProps<{
   refreshKey?: unknown
   dispatchingRecordId?: number
 }>()
+const reportTemplate = computed(() =>
+  props.management ? productionTemplates(props.teamCode)[0] : undefined,
+)
 const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
 const {
   route: viewedRoute,
@@ -71,6 +79,7 @@ const workKind = ref('')
 const processorId = ref<number | null>(null)
 const taskId = ref<number | null>(null)
 const tasks = ref<{ id: number; name: string }[]>([])
+const columnSettingsTarget = ref<HTMLElement | null>(null)
 const processors = ref<{ id: number; name: string }[]>([])
 const processorName = computed({
   get: () => processors.value.find((person) => person.id === processorId.value)?.name || '',
@@ -203,7 +212,7 @@ async function load(background = false) {
     if (current === generation) loading.value = false
   }
 }
-function exportSource(originalTemplate = false) {
+function exportSource() {
   const id = props.teamId,
     params = filters()
   return tableExportSource(
@@ -217,16 +226,6 @@ function exportSource(originalTemplate = false) {
       },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
       { key: 'finished_quantity', label: '订单数量', value: (row) => row.finished_quantity },
-      ...(originalTemplate
-        ? [
-            {
-              key: 'report_inspections',
-              label: '关联检查记录',
-              value: (row: ProcessingRecord) => JSON.stringify(row.report_inspections || []),
-            },
-          ]
-        : []),
-
       {
         key: 'processing_task_name',
         label: '加工任务',
@@ -420,17 +419,30 @@ const dailyColumns = [
     value: (r: ProcessingDailyRow) => r.scrap_weight,
   },
 ]
-function exportVariants() {
-  if (!summary.value) return []
+function exportSources() {
   const id = props.teamId,
     params = filters()
+  const templates = productionTemplates(props.teamCode).map((template) => ({
+    title: template.label,
+    total: total.value,
+    fields: [],
+    load: async (signal: AbortSignal, progress: (loaded: number, total: number) => void) =>
+      (
+        await loadExportPages(
+          (page, pageSize) =>
+            teamMaterialApi.processingRecords(id, { ...params, page, page_size: pageSize }),
+          signal,
+          progress,
+        )
+      ).map(productionRecordData),
+    workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
+      createProductionWorkbook(template.key, rows),
+  }))
+  if (props.management && templates.length) return templates
+  const sources = [exportSource(), ...templates]
+  if (!summary.value) return sources
   return [
-    ...productionTemplates(props.teamCode).map((template) => ({
-      ...exportSource(true),
-      title: template.label,
-      workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
-        createProductionWorkbook(template.key, rows),
-    })),
+    ...sources,
     tableExportSource(
       '按参与人员和任务汇总',
       summary.value.daily_group_count ?? summary.value.employee_day_count,
@@ -553,10 +565,11 @@ onBeforeUnmount(() => {
           /></label>
         </FilterDialog>
       </template>
+      <template #query-actions><div ref="columnSettingsTarget" /></template>
       <template #tools
         ><TableExportButton
-          :source="exportSource"
-          :variants="exportVariants"
+          :source="() => exportSources()[0]!"
+          :variants="() => exportSources().slice(1)"
           :disabled="loading || !!error"
           :context="route.fullPath"
       /></template>
@@ -568,8 +581,16 @@ onBeforeUnmount(() => {
     </WorkspaceDataToolbar>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
+    <ProductionReportTable
+      v-else-if="reportTemplate"
+      :template-key="reportTemplate.key"
+      :records="rows"
+      :loading="loading"
+      :column-settings-target="columnSettingsTarget"
+    />
     <WorkspaceTable
       columns-key="TeamProcessingRecords-1"
+      :column-settings-target="columnSettingsTarget"
       :column-query="tableQuery.controller.value"
       v-else
       :loading="loading"
@@ -768,7 +789,7 @@ onBeforeUnmount(() => {
       @current-change="paginate($event)"
       @size-change="paginate(1, $event)"
     >
-      <template v-if="summary && !error" #statistics>
+      <template v-if="summary && !error && !reportTemplate" #statistics>
         <div class="processing-totals" aria-label="筛选结果加工工作量合计">
           <span class="summary-label">筛选结果合计</span>
           <span

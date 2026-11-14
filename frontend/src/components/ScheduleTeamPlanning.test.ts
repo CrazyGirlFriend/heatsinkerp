@@ -5,7 +5,7 @@ import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 
-it('fills the warehouse icon to its real dispatch ratio and mounts a short summary only on focus', async () => {
+it('fills the warehouse initial to its real dispatch ratio and mounts a short summary only on focus', async () => {
   const node = {
     ...scheduleSummaryFixture(),
     id: 1,
@@ -31,6 +31,8 @@ it('fills the warehouse icon to its real dispatch ratio and mounts a short summa
   })
   try {
     const icon = wrapper.get('.team-planning__step')
+    expect(icon.get('.team-planning__initial').text()).toBe('库')
+    expect(icon.find('svg').exists()).toBe(false)
     expect(icon.attributes('style')).toContain('--planning-progress: 60%')
     expect(icon.attributes('aria-label')).toContain('已转出 60%')
     expect(wrapper.find('.schedule-node-summary').exists()).toBe(false)
@@ -46,3 +48,33 @@ it('fills the warehouse icon to its real dispatch ratio and mounts a short summa
     wrapper.unmount()
   }
 })
+
+it.each([
+  { status: 'not_assessed', handover_status: 'overdue', overdue: true },
+  { status: 'pending', handover_status: 'overdue', overdue: true },
+  { status: 'completed', handover_status: 'completed_late', overdue: true },
+  { status: 'overdue', handover_status: 'completed', overdue: false },
+  { status: 'overdue', handover_status: undefined, overdue: true },
+  { status: 'pending', handover_status: 'pending', overdue: false },
+] as const)(
+  'uses handover status for the red background: %j',
+  ({ status, handover_status, overdue }) => {
+    const node = {
+      ...scheduleSummaryFixture(),
+      team_name: '线切割',
+      sequence_no: 1,
+      status,
+      handover_status,
+      planning_state: 'confirmed',
+    } as ProductionSchedule
+    const wrapper = mount(ScheduleTeamPlanning, { props: { nodes: [node] } })
+    try {
+      const symbol = wrapper.get('.team-planning__symbol')
+      expect(symbol.get('.team-planning__initial').text()).toBe('线')
+      expect(symbol.classes().includes('is-overdue')).toBe(overdue)
+      if (overdue) expect(symbol.attributes('aria-label')).toContain('逾期')
+    } finally {
+      wrapper.unmount()
+    }
+  },
+)

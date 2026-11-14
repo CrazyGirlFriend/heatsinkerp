@@ -80,7 +80,10 @@ afterEach(() => {
   localStorage.clear()
 })
 
-async function renderList(path = '/transfer-batches?status=pending') {
+async function renderList(
+  path = '/transfer-batches?status=pending',
+  recordKind?: 'shared' | 'reallocation',
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -91,6 +94,7 @@ async function renderList(path = '/transfer-batches?status=pending') {
   })
   await router.push(path)
   wrapper = mount(TransferBatchesPage, {
+    props: { recordKind },
     global: {
       plugins: [appPinia, router],
       stubs: {
@@ -1052,4 +1056,47 @@ describe('transfer list refresh continuity', () => {
     expect(statusCount(page, 'all')).toBe('7')
     expect(statusCount(page, 'pending')).toBe('3')
   })
+})
+
+it.each(['shared', 'reallocation'] as const)(
+  'keeps %s records scoped in queries, counts and exports',
+  async (recordKind) => {
+    const page = await renderList('/transfer-batches', recordKind)
+    expect(materialTransferApi.list).toHaveBeenCalledWith(
+      expect.objectContaining({ record_kind: recordKind }),
+    )
+    expect(materialTransferApi.counts).toHaveBeenCalledWith(
+      expect.objectContaining({ record_kind: recordKind }),
+    )
+    expect(page.find('h2').text()).toBe(recordKind === 'shared' ? '共投记录' : '转投记录')
+    expect(page.text()).not.toContain('新建转料')
+    const source = page.getComponent(TableExportButton).props('source')()!
+    expect(source.title).toBe(recordKind === 'shared' ? '共投记录' : '转投记录')
+    await source.load(new AbortController().signal, () => {})
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ record_kind: recordKind, page_size: 100 }),
+    )
+  },
+)
+
+it('shows original and destination serials separately in reallocation records', async () => {
+  vi.mocked(materialTransferApi.list).mockResolvedValue({
+    ...result,
+    items: [
+      {
+        ...transfer,
+        source_serial_no: 'FROM-001',
+        serial_no: 'TO-002',
+        entry_kind: 'serial_reallocation',
+      },
+    ],
+  })
+  const page = await renderList('/transfer-batches', 'reallocation')
+  expect(page.text()).toContain('原流水号')
+  expect(page.text()).toContain('转入流水号')
+  expect(page.text()).toContain('FROM-001')
+  expect(page.text()).toContain('TO-002')
+  const source = page.getComponent(TableExportButton).props('source')()!
+  const exported = await source.load(new AbortController().signal, () => {})
+  expect(exported[0]).toMatchObject({ source_serial_no: 'FROM-001', serial_no: 'TO-002' })
 })

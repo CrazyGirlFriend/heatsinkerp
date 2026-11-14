@@ -5,6 +5,7 @@ import {
   h,
   inject,
   ref,
+  Teleport,
   watch,
   type PropType,
   type Slots,
@@ -31,6 +32,7 @@ export default defineComponent({
     native: Boolean,
     columnsKey: { type: String, default: '' },
     columnSettings: { type: Boolean, default: true },
+    columnSettingsTarget: { type: Object as PropType<HTMLElement | null>, default: null },
     requiredColumns: { type: Array as PropType<string[]>, default: () => [] },
     columnQuery: { type: Object as PropType<TableQueryController>, default: undefined },
   },
@@ -65,11 +67,13 @@ export default defineComponent({
         .map(({ key, label, required }) => ({ key, label, required, defaultVisible: true }))
       if (!options.length && !props.columnQuery) return renderTable(nodes)
       const selected = props.columnSettings ? orderedTableColumns(entries, choices.value) : entries
-      const renderControl = () =>
-        h(
+      const renderControl = () => {
+        const control = h(
           'span',
           {
-            class: 'table-column-settings',
+            class: props.columnSettingsTarget
+              ? 'table-column-settings--toolbar'
+              : 'table-column-settings',
             onClick: (event: Event) => event.stopPropagation(),
             onKeydown: (event: Event) => event.stopPropagation(),
           },
@@ -83,7 +87,7 @@ export default defineComponent({
               initialChoices: choices.value,
               newVisibleKeys: options.map((option) => option.key),
               showTrigger: true,
-              compact: true,
+              compact: !props.columnSettingsTarget,
               minimumVisible: 1,
               choicesLabel: '表格显示列',
               description: '勾选显示列，上下移动调整顺序。必填项保留，固定列位置不变。',
@@ -93,6 +97,10 @@ export default defineComponent({
             }),
           ],
         )
+        return props.columnSettingsTarget
+          ? h(Teleport, { to: props.columnSettingsTarget }, control)
+          : control
+      }
       if (props.native)
         return renderTable(projectNativeTable(nodes, entries, selected, renderControl()))
       const first = selected.findIndex((entry) => !entry.pinned)
@@ -167,8 +175,13 @@ export default defineComponent({
   margin-left: 4px;
   vertical-align: middle;
 }
+.table-column-settings--toolbar {
+  display: inline-flex;
+  align-items: center;
+}
 @media print {
-  .table-column-settings {
+  .table-column-settings,
+  .table-column-settings--toolbar {
     display: none;
   }
 }

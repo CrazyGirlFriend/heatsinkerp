@@ -1,25 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppPopover from './AppPopover.vue'
-import FactoryNavIcon from './FactoryNavIcon.vue'
 import ScheduleNodePopover from './ScheduleNodePopover.vue'
-import type { ProductionSchedule } from '@/types/productionSchedule'
+import { scheduleStatusLabels, type ProductionSchedule } from '@/types/productionSchedule'
 import { boardTeamColor } from '@/utils/scheduleBoard'
 import { hasConfirmedPlan, planLabel } from '@/utils/schedulePlanning'
 import { nodeWorkProgress } from '@/utils/scheduleProgress'
 
 const props = defineProps<{ nodes: ProductionSchedule[] }>()
 const moreOpen = ref(false)
-const icons = {
-  库房: 'warehouse',
-  线切割: 'cutting',
-  退火: 'annealing',
-  研磨: 'grinding',
-  轧制: 'rolling',
-  检验: 'inspection',
-  雕刻: 'engraving',
-  电镀: 'plating',
-} as const
 const steps = computed(() =>
   props.nodes
     .filter((node) => node.status !== 'cancelled')
@@ -27,6 +16,7 @@ const steps = computed(() =>
     .sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id)
     .map((node, index, nodes) => {
       const filled = hasConfirmedPlan(node)
+      const deliveryStatus = node.handover_status || node.status
       const occurrence = nodes.some(
         (other) => other.id !== node.id && other.team_id === node.team_id,
       )
@@ -39,11 +29,13 @@ const steps = computed(() =>
         label: node.team_name + (occurrence ? ` ${occurrence}` : ''),
         state: planLabel(node),
         progress: nodeWorkProgress(node),
-        icon: icons[node.team_name as keyof typeof icons] || 'flow',
+        initial: Array.from(node.team_name.trim())[0] || '—',
+        overdue: deliveryStatus === 'overdue' || deliveryStatus === 'completed_late',
+        deliveryLabel: scheduleStatusLabels[deliveryStatus],
       }
     }),
 )
-// Nine icons fit in one table row; unusually long routes share the same bounded layout.
+// Nine team initials fit in one table row; longer routes share the same bounded layout.
 const visibleSteps = computed(() =>
   steps.value.length > 9 ? steps.value.slice(0, 8) : steps.value,
 )
@@ -59,15 +51,15 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
           tabindex="0"
           role="img"
           class="team-planning__step team-planning__symbol"
-          :class="{ 'is-filled': step.filled }"
+          :class="{ 'is-filled': step.filled, 'is-overdue': step.overdue }"
           :style="{
             '--planning-team-color': boardTeamColor(step.node.team_name),
             '--planning-progress': `${step.progress.percent ?? 0}%`,
           }"
-          :aria-label="`${step.label}：${step.state}，${step.progress.label} ${step.progress.percent == null ? '暂无进度' : `${Math.round(step.progress.percent)}%`}`"
+          :aria-label="`${step.label}：${step.state}，${step.deliveryLabel}，${step.progress.label} ${step.progress.percent == null ? '暂无进度' : `${Math.round(step.progress.percent)}%`}`"
         >
           <span class="team-planning__fill" aria-hidden="true" />
-          <FactoryNavIcon :name="step.icon" />
+          <span class="team-planning__initial" aria-hidden="true">{{ step.initial }}</span>
           <small v-if="step.occurrence" class="team-planning__occurrence" aria-hidden="true">{{
             step.occurrence
           }}</small>
@@ -104,18 +96,18 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
             <span
               tabindex="0"
               class="team-planning__item"
-              :aria-label="`${step.label}：${step.state}`"
+              :aria-label="`${step.label}：${step.state}，${step.deliveryLabel}`"
             >
               <span
                 class="team-planning__symbol"
-                :class="{ 'is-filled': step.filled }"
+                :class="{ 'is-filled': step.filled, 'is-overdue': step.overdue }"
                 :style="{
                   '--planning-team-color': boardTeamColor(step.node.team_name),
                   '--planning-progress': `${step.progress.percent ?? 0}%`,
                 }"
               >
                 <span class="team-planning__fill" aria-hidden="true" />
-                <FactoryNavIcon :name="step.icon" />
+                <span class="team-planning__initial" aria-hidden="true">{{ step.initial }}</span>
               </span>
               <span>{{ step.label }}</span
               ><small>{{
@@ -163,10 +155,10 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
     border-color 160ms,
     background-color 160ms;
 }
-.team-planning__symbol :deep(.tabler-icon) {
+.team-planning__initial {
   position: relative;
-  width: 15px;
-  height: 15px;
+  font-size: 13px;
+  font-weight: 600;
 }
 .team-planning__fill {
   position: absolute;
@@ -184,6 +176,17 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
   border-color: color-mix(in srgb, var(--planning-team-color) 36%, transparent);
   color: var(--planning-team-color);
   background: color-mix(in srgb, var(--planning-team-color) 14%, var(--surface));
+}
+.team-planning__symbol.is-overdue {
+  border-color: var(--el-color-danger);
+  color: #fff;
+  background: color-mix(in srgb, var(--el-color-danger) 76%, #000);
+}
+.team-planning__symbol.is-overdue .team-planning__fill {
+  background: linear-gradient(90deg, #00000014, #00000033);
+}
+.team-planning__symbol.is-overdue .team-planning__occurrence {
+  background: inherit;
 }
 .team-planning__step,
 .team-planning__item {
@@ -256,7 +259,7 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
   font-size: 12px;
 }
 @media (prefers-color-scheme: dark) {
-  .team-planning__symbol.is-filled {
+  .team-planning__symbol.is-filled:not(.is-overdue) {
     color: color-mix(in srgb, var(--planning-team-color) 70%, white);
   }
 }

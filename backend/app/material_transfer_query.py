@@ -1,12 +1,13 @@
 """Explicit search semantics shared by list filters and query-plan verification."""
 
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
-from .models import MaterialTransfer
+from .models import MaterialTransfer, SharedMaterialGroup
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
@@ -44,7 +45,12 @@ def team_scope_predicate(team_id: int, direction: str = "all"):
     return or_(MaterialTransfer.source_team_id == team_id, MaterialTransfer.next_team_id == team_id)
 
 
-def search_predicate(query: str, search_field: str = "all", search_mode: str = "contains"):
+def search_predicate(
+    query: str,
+    search_field: str = "all",
+    search_mode: str = "contains",
+    include_source_serial: bool = False,
+):
     """Never infer a mode or silently narrow an existing contains search."""
     if search_field == "all":
         fields = (
@@ -62,6 +68,19 @@ def search_predicate(query: str, search_field: str = "all", search_mode: str = "
         if search_field in ("all", "serial_no")
         else False
     )
+    if include_source_serial and search_field in ("all", "serial_no"):
+        from .serial_search import serial_text_match
+
+        origin = MaterialTransfer.__table__.alias("reallocation_origin")
+        shared = or_(
+            shared,
+            select(origin.c.id)
+            .where(
+                origin.c.id == MaterialTransfer.source_transfer_id,
+                serial_text_match(origin.c.serial_no, term, search_mode),
+            )
+            .exists(),
+        )
     if search_mode == "exact":
         return or_(shared, *(field == term for field in fields))
     # Treat user-supplied SQL wildcards literally, including the escape itself.
@@ -74,6 +93,7 @@ class TransferColumnFilters(BaseModel):
     """Column filters are intersected in SQL before counting and pagination."""
 
     internal_only: bool = False
+    record_kind: Literal["shared", "reallocation"] | None = None
     serial_query: str = Field(default="", max_length=160)
     material_query: str = Field(default="", max_length=160)
     batch_query: str = Field(default="", max_length=160)
@@ -95,6 +115,18 @@ class TransferColumnFilters(BaseModel):
         import re
 
         filters = []
+        if self.record_kind == "shared":
+            # One row per joint dispatch, not every later handoff of the same lot.
+            filters.append(
+                select(SharedMaterialGroup.id)
+                .where(
+                    SharedMaterialGroup.id == MaterialTransfer.shared_group_id,
+                    SharedMaterialGroup.batch_no == MaterialTransfer.batch_no,
+                )
+                .exists()
+            )
+        elif self.record_kind == "reallocation":
+            filters.append(MaterialTransfer.entry_kind == "serial_reallocation")
         if self.internal_only:
             filters.extend(
                 [
@@ -108,7 +140,11 @@ class TransferColumnFilters(BaseModel):
             (self.batch_query, "batch_no"),
         ):
             if value.strip():
-                filters.append(search_predicate(value, field))
+                filters.append(
+                    search_predicate(
+                        value, field, include_source_serial=self.record_kind == "reallocation"
+                    )
+                )
         if self.purpose_query.strip():
             filters.extend(
                 [
