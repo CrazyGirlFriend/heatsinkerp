@@ -37,7 +37,11 @@ function amount(team: FactoryTeam, state: string) {
 </script>
 <template>
   <div class="team-status" :class="{ 'team-status--motion': motion }">
-    <AppDetailTable class="team-status-table" aria-label="各班组当前物料状态">
+    <AppDetailTable
+      columns-key="FactoryTeamStatus-1"
+      class="team-status-table"
+      aria-label="各班组当前物料状态"
+    >
       <thead>
         <tr>
           <th scope="col">班组</th>
@@ -159,7 +163,7 @@ function amount(team: FactoryTeam, state: string) {
   padding-bottom: 12px;
   background: transparent;
 }
-.team-status-table.app-detail-table :deep(th:first-child) {
+.team-status-table.app-detail-table :deep(th[data-column-index='1']) {
   text-align: left;
   padding-left: 0;
 }

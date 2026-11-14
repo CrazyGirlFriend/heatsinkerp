@@ -31,6 +31,7 @@ const plannedQuantity = computed(() =>
       <span>{{ item.shared_unallocated ? '实物尚未分配' : `本批归属 ${item.serial_no}` }}</span>
     </header>
     <ElTable
+      columns-key="SharedMaterialInfo-1"
       class="business-table shared-plan-table"
       aria-label="共投流水号分配明细"
       :data="members"

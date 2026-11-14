@@ -439,6 +439,7 @@ onBeforeUnmount(() => {
         </WatermelonWarehouseToolbar>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" />
         <WatermelonDataTable
+          columns-key="WarehouseManagement-1"
           :data="entries"
           :loading="loading"
           fill
@@ -677,6 +678,7 @@ onBeforeUnmount(() => {
               >
             </BatchSelectionBar>
             <WatermelonDataTable
+              columns-key="WarehouseManagement-2"
               :data="detailBatches"
               row-key="key"
               empty-text="暂无批次"

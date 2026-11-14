@@ -130,7 +130,14 @@ watch(
 
 <template>
   <section class="shared-dispatch-fields" aria-label="共投流水号明细">
-    <WorkspaceTable :data="modelValue" size="small" :height="undefined" :fill="false">
+    <WorkspaceTable
+      columns-key="SharedDispatchFields-1"
+      :required-columns="['流水号', '关联工艺', '计划用料（kg）', '切出件数', '切割尺寸']"
+      :data="modelValue"
+      size="small"
+      :height="undefined"
+      :fill="false"
+    >
       <ElTableColumn label="流水号" min-width="165">
         <template #default="{ row, $index }">
           <MaterialInput

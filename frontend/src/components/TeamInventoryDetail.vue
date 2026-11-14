@@ -494,6 +494,7 @@ onBeforeUnmount(() => {
           </div>
         </header>
         <ElTable
+          columns-key="TeamInventoryDetail-1"
           class="business-table warehouse-source-table"
           :data="rows"
           row-key="transfer.id"
@@ -797,6 +798,7 @@ onBeforeUnmount(() => {
           </div>
         </header>
         <ElTable
+          columns-key="TeamInventoryDetail-2"
           class="business-table warehouse-movement-table"
           :data="movements"
           row-key="id"

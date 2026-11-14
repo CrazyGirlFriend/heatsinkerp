@@ -307,6 +307,7 @@ onBeforeUnmount(() => {
       <StatePanel v-else-if="loading" state="loading" title="正在读取明细" />
       <div v-else class="serial-record-table">
         <ElTable
+          columns-key="SerialMaterialDrawer-1"
           class="business-table"
           v-if="tab === 'stock'"
           :data="stock"
@@ -425,6 +426,7 @@ onBeforeUnmount(() => {
           >
         </ElTable>
         <ElTable
+          columns-key="SerialMaterialDrawer-2"
           class="business-table"
           v-else-if="tab === 'losses'"
           :data="losses"
@@ -465,6 +467,7 @@ onBeforeUnmount(() => {
           >
         </ElTable>
         <ElTable
+          columns-key="SerialMaterialDrawer-3"
           class="business-table"
           v-else
           :data="records"

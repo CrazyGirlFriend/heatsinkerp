@@ -42,7 +42,11 @@ onBeforeUnmount(() => ++generation)
     </div>
     <AppAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">读取中</p>
-    <AppDetailTable v-else-if="rows.length" aria-label="各轮返工记录">
+    <AppDetailTable
+      columns-key="ReworkRoundsTable-1"
+      v-else-if="rows.length"
+      aria-label="各轮返工记录"
+    >
       <thead>
         <tr>
           <th>轮次</th>
@@ -82,7 +86,11 @@ onBeforeUnmount(() => ++generation)
         <h4>第 {{ selected.request.round }} 轮 · {{ selected.request.batch_no }}</h4>
         <PersonName :name="selected.engineering_employee_name || '待制定'" />
       </div>
-      <AppDetailTable v-if="selected.steps.length" aria-label="本轮工艺要求">
+      <AppDetailTable
+        columns-key="ReworkRoundsTable-2"
+        v-if="selected.steps.length"
+        aria-label="本轮工艺要求"
+      >
         <thead>
           <tr>
             <th>序号</th>
@@ -101,7 +109,11 @@ onBeforeUnmount(() => ++generation)
         </tbody>
       </AppDetailTable>
       <p v-else>工艺待制定</p>
-      <AppDetailTable v-if="selected.progress.inspections.length" aria-label="本轮复检记录">
+      <AppDetailTable
+        columns-key="ReworkRoundsTable-3"
+        v-if="selected.progress.inspections.length"
+        aria-label="本轮复检记录"
+      >
         <thead>
           <tr>
             <th>复检批次</th>

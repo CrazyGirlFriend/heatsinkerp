@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Watermelon DataTable 11's surface, adapted to the existing Vue table engine.
-import { ElTable, type TableProps } from 'element-plus'
+import { type TableProps } from 'element-plus'
+import ColumnManagedTable from '../ColumnManagedTable.vue'
 import AppSkeleton from '../AppSkeleton.vue'
 
 defineOptions({ inheritAttrs: false })
@@ -34,7 +35,7 @@ function handleTableWheel(event: WheelEvent) {
 </script>
 
 <template>
-  <ElTable
+  <ColumnManagedTable
     class="wm-data-table"
     :class="{
       'wm-data-table--fill': fill,
@@ -58,7 +59,7 @@ function handleTableWheel(event: WheelEvent) {
       ><AppSkeleton v-if="loading" /><slot v-else name="empty">暂无数据</slot></template
     >
     <template v-if="$slots.append" #append><slot name="append" /></template>
-  </ElTable>
+  </ColumnManagedTable>
 </template>
 
 <style scoped>

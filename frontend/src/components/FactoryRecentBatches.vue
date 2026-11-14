@@ -79,7 +79,7 @@ const label = (row: FactoryRecentBatch) =>
       @focusout="focusOut"
     >
       <div class="recent-table-window">
-        <AppDetailTable class="recent-table">
+        <AppDetailTable columns-key="FactoryRecentBatches-1" class="recent-table">
           <thead>
             <tr>
               <th scope="col">批次号</th>
@@ -225,17 +225,17 @@ const label = (row: FactoryRecentBatch) =>
   text-align: left;
   border-block: 1px solid var(--line-light);
 }
-.recent-table th:first-child {
+.recent-table th[data-column-index='1'] {
   width: 22%;
 }
-.recent-table th:nth-child(4),
-.recent-table th:nth-child(5) {
+.recent-table th[data-column-index='4'],
+.recent-table th[data-column-index='5'] {
   width: 10%;
 }
-.recent-table th:nth-child(6) {
+.recent-table th[data-column-index='6'] {
   width: 11%;
 }
-.recent-table th:last-child {
+.recent-table th[data-column-index='7'] {
   width: 18%;
 }
 .recent-table.app-detail-table td {

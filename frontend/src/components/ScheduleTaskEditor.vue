@@ -507,7 +507,14 @@ onMounted(loadRoutes)
                 </span>
               </div>
             </template>
-            <ElTable class="form-field--full" :data="batches" border aria-label="订单分批交期">
+            <ElTable
+              columns-key="ScheduleTaskEditor-1"
+              :required-columns="['数量（件）', '交货时间']"
+              class="form-field--full"
+              :data="batches"
+              border
+              aria-label="订单分批交期"
+            >
               <ElTableColumn label="批次" width="90" align="center"
                 ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
               >
@@ -578,6 +585,7 @@ onMounted(loadRoutes)
           </CompactFormSection>
           <CompactFormSection v-if="!task && steps.length" title="执行工艺">
             <ElTable
+              columns-key="ScheduleTaskEditor-2"
               class="form-field--full"
               :data="steps"
               border

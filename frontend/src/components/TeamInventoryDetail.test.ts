@@ -422,7 +422,7 @@ describe('warehouse source detail', () => {
       page: 1,
       page_size: 10,
     })
-    await wrapper.get('.warehouse-movement-table button').trigger('click')
+    await wrapper.get('.warehouse-movement-table tbody button').trigger('click')
     await wrapper.setProps({ group: warehouseFixture({ in_transit_quantity: 0 }) })
     await flushPromises()
     expect(wrapper.findAllComponents(ElPagination)[1]!.props('currentPage')).toBe(2)

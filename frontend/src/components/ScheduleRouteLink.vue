@@ -151,7 +151,13 @@ async function save() {
           </ElFormItem>
         </CompactFormSection>
         <CompactFormSection title="节点映射">
-          <ElTable class="business-table form-field--full" :data="nodes" border>
+          <ElTable
+            columns-key="ScheduleRouteLink-1"
+            :required-columns="['对应工序']"
+            class="business-table form-field--full"
+            :data="nodes"
+            border
+          >
             <ElTableColumn label="排期班组" width="150"
               ><template #default="{ row }"
                 >{{ row.team_name }} →

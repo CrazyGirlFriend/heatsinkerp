@@ -692,6 +692,8 @@ function exportSource() {
         ><AppButton @click="load()">重试</AppButton></StatePanel
       >
       <WorkspaceTable
+        columns-key="SerialInventoryPage-1"
+        :column-settings="false"
         v-else
         :data="result?.items || []"
         row-key="group_id"

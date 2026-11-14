@@ -113,6 +113,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取待签收批次" />
     <ElTable
+      columns-key="InventoryPendingDialog-1"
       v-else
       :data="rows"
       row-key="id"

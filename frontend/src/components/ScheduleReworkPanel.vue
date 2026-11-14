@@ -121,7 +121,7 @@ async function view(id: number) {
       >
     </FormWorkspace>
     <div v-if="task.reworks?.length" class="rework-grid-wrap">
-      <AppDetailTable class="rework-grid" aria-label="返工跟进">
+      <AppDetailTable columns-key="ScheduleReworkPanel-1" class="rework-grid" aria-label="返工跟进">
         <colgroup>
           <col style="width: 185px" />
           <col />

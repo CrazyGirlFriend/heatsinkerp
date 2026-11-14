@@ -95,6 +95,7 @@ onBeforeUnmount(() => {
       <ElButton :disabled="loading || busy" @click="load">刷新</ElButton>
     </div>
     <ElTable
+      columns-key="QualityReworkRequest-1"
       :data="items"
       border
       class="business-table"

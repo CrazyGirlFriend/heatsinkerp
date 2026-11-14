@@ -4,6 +4,7 @@ import { ElConfigProvider, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } 
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
+import { tableColumnScopeKey } from '@/utils/tableColumnLayout'
 import { storeToRefs } from 'pinia'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import FactorySidebar from '@/components/FactorySidebar.vue'
@@ -43,6 +44,10 @@ const appearance = computed(() =>
     : 'watermelon',
 )
 provide(workspaceAppearanceKey, appearance)
+provide(
+  tableColumnScopeKey,
+  computed(() => currentUser.value?.id ?? null),
+)
 watch(
   appearance,
   (value) => {

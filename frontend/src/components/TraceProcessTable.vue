@@ -12,7 +12,12 @@ const rows = computed(() => traceProcessRows(props.trace))
 </script>
 <template>
   <div class="process-table">
-    <WorkspaceTable :data="rows" row-key="key" height="min(65vh, 760px)">
+    <WorkspaceTable
+      columns-key="TraceProcessTable-1"
+      :data="rows"
+      row-key="key"
+      height="min(65vh, 760px)"
+    >
       <ElTableColumn type="expand" width="40"
         ><template #default="{ row }">
           <div class="process-batches">

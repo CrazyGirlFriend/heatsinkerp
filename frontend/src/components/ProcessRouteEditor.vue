@@ -780,7 +780,7 @@ onMounted(async () => {
           </ElFormItem>
         </CompactFormSection>
         <div v-if="draft.rework_request" class="route-rework-context">
-          <AppDetailTable fields aria-label="返工问题信息">
+          <AppDetailTable columns-key="ProcessRouteEditor-1" fields aria-label="返工问题信息">
             <colgroup>
               <col class="rework-label-column" />
               <col />
@@ -944,6 +944,8 @@ onMounted(async () => {
             <div class="form-field--full">
               <div class="route-step-table-wrap">
                 <AppDetailTable
+                  columns-key="ProcessRouteEditor-2"
+                  :required-columns="['序号', '执行班组', '工艺要求', '计划加工数量']"
                   class="route-step-table"
                   :class="{ 'route-step-table--readonly': readonly }"
                   aria-label="工艺工序"
@@ -1571,7 +1573,7 @@ onMounted(async () => {
   color: var(--text);
 }
 .route-col-sequence {
-  width: 96px;
+  width: 128px;
 }
 .route-col-name {
   width: 130px;
@@ -1612,11 +1614,11 @@ onMounted(async () => {
   outline: 2px solid var(--wm-muted, #8fa9bd);
   outline-offset: -2px;
 }
-.route-edit-step > td:nth-child(2) .route-cell-value {
+.route-edit-step > td[data-column-index='2'] .route-cell-value {
   font-weight: 600;
   color: var(--wm-text, #365246);
 }
-.route-edit-step > td:nth-child(4) {
+.route-edit-step > td[data-column-index='4'] {
   font-variant-numeric: tabular-nums;
   color: var(--wm-text, #374e61);
 }
@@ -1661,7 +1663,7 @@ onMounted(async () => {
 }
 .route-sequence-field {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 18px;
+  grid-template-columns: 16px minmax(56px, 1fr) 18px;
   gap: 4px;
   align-items: center;
 }
@@ -1744,9 +1746,6 @@ onMounted(async () => {
   }
   .route-col-actions {
     width: 74px;
-  }
-  .route-col-sequence {
-    width: 102px;
   }
   .route-step-table td {
     padding: 8px 6px;

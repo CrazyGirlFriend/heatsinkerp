@@ -176,6 +176,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
       />
       <CompactFormSection v-if="task?.delivery_batches?.length" title="调度交货要求">
         <ElTable
+          columns-key="ScheduleBatchEditor-1"
           class="form-field--full"
           :data="task.delivery_batches"
           border
@@ -193,6 +194,8 @@ const defaultTime = new Date(2000, 0, 1, 8)
       <CompactFormSection title="本班组排期" class="batch-plan-main">
         <div class="form-field--full">
           <ElTable
+            columns-key="ScheduleBatchEditor-2"
+            :required-columns="['批次', '数量（件）', '重量（kg）', '转交时间']"
             :data="rows"
             border
             class="business-table"
@@ -305,6 +308,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
           <AsyncStatus v-if="loading" label="正在读取上游供料…" />
           <ElButton v-else-if="!task" @click="load">重新读取</ElButton>
           <ElTable
+            columns-key="ScheduleBatchEditor-3"
             v-else-if="upstream?.batches?.length"
             :data="upstream.batches"
             border

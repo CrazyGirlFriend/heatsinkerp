@@ -133,6 +133,7 @@ export interface ScheduleFilters {
   business_person_ids?: number[]
   due_from?: string
   due_to?: string
+  sort_by?: 'final_due_at' | 'created_at'
   sort_order?: 'asc' | 'desc'
   page?: number
   page_size?: number

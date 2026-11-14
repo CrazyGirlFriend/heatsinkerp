@@ -1,5 +1,6 @@
 """Task routes remain atomic, paginated, and distinct from physical execution."""
 
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -456,3 +457,31 @@ def test_shared_source_is_explicit_instead_of_implying_exclusive_task_inventory(
     create(client, route(s, lot))
     assert task_detail(client, first)["shared_source"] is True
     assert task_detail(client, first)["locations"][0]["quantity"] == 100
+
+
+def test_tasks_sort_by_creation_before_pagination_and_keep_due_sort(client, warehouse):
+    tasks = [create(client, route(warehouse, title=f"排期 {index}")) for index in range(4)]
+    with SessionLocal() as db:
+        for index, task in enumerate(tasks):
+            record = db.get(ProductionScheduleTask, task["id"])
+            # Creation order differs from both IDs and delivery order; two timestamps tie.
+            record.created_at = datetime(2026, 11, [3, 1, 2, 3][index])
+            record.final_due_at = datetime(2026, 12, index + 1)
+        db.commit()
+    params = {"sort_by": "created_at", "sort_order": "desc", "page_size": 2}
+    first = client.get(TASKS, params=params)
+    second = client.get(TASKS, params={**params, "page": 2})
+    assert first.status_code == second.status_code == 200
+    items = first.json()["items"] + second.json()["items"]
+    assert [item["id"] for item in items] == [tasks[i]["id"] for i in [3, 0, 2, 1]]
+    assert first.json()["total"] == 4
+    assert items[0]["created_at"].startswith("2026-11-03")
+    ascending = client.get(TASKS, params={"sort_by": "created_at", "sort_order": "asc"})
+    assert [item["id"] for item in ascending.json()["items"]] == [
+        tasks[i]["id"] for i in [1, 2, 0, 3]
+    ]
+    due = client.get(TASKS, params={"sort_by": "final_due_at", "sort_order": "desc"})
+    assert [item["id"] for item in due.json()["items"]] == [task["id"] for task in tasks[::-1]]
+    filtered = client.get(TASKS, params={**params, "query": "排期 2"})
+    assert [item["id"] for item in filtered.json()["items"]] == [tasks[2]["id"]]
+    assert client.get(TASKS, params={"sort_by": "unknown"}).status_code == 422

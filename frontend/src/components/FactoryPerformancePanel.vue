@@ -685,7 +685,7 @@ onBeforeUnmount(() => {
         }}</template>
         <template v-if="aggregate">
           <div class="performance-table-scroll">
-            <AppDetailTable class="performance-table">
+            <AppDetailTable columns-key="FactoryPerformancePanel-1" class="performance-table">
               <thead>
                 <tr>
                   <th>班组</th>
@@ -712,7 +712,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
         <div v-else class="performance-table-wrap">
-          <AppDetailTable class="performance-table">
+          <AppDetailTable columns-key="FactoryPerformancePanel-2" class="performance-table">
             <caption>
               {{
                 scene === 'production'

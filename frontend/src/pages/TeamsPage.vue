@@ -418,6 +418,7 @@ onMounted(() => void loadTeams())
       <div v-else class="table-region">
         <span class="mobile-table-hint">左右滑动查看</span>
         <ElTable
+          columns-key="TeamsPage-1"
           class="business-table"
           :data="pageRows"
           row-key="id"

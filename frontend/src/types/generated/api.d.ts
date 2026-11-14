@@ -13493,6 +13493,7 @@ export interface operations {
         scope?: ('attention' | 'completed') | null
         serial_no?: string | null
         serial_nos?: string[] | null
+        sort_by?: 'final_due_at' | 'created_at'
         sort_order?: 'asc' | 'desc'
         status?:
           | (

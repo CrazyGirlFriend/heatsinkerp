@@ -1197,6 +1197,8 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <WorkspaceTable
+      columns-key="TeamInventory-1"
+      :column-settings="false"
       v-else
       class="serial-table warehouse-table"
       :data="rows"

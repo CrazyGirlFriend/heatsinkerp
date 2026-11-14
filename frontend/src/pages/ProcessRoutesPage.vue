@@ -440,6 +440,7 @@ onBeforeUnmount(() => {
         >
       </WorkspaceDataToolbar>
       <WorkspaceTable
+        columns-key="ProcessRoutesPage-1"
         :key="routeKind"
         :loading="loading && (!hasLoadedView || items.length > 0)"
         :data="items"

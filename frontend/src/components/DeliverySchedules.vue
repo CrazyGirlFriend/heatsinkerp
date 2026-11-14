@@ -718,6 +718,7 @@ defineExpose({ exportSource, openDetail })
       </WorkspaceDataToolbar>
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <WorkspaceTable
+        columns-key="DeliverySchedules-1"
         v-else
         :data="rows"
         row-key="id"
@@ -1010,6 +1011,7 @@ defineExpose({ exportSource, openDetail })
             }}</ElDescriptionsItem>
           </ElDescriptions>
           <ElTable
+            columns-key="DeliverySchedules-2"
             v-if="detail.delivery_batches?.length"
             :data="detail.delivery_batches"
             border
@@ -1028,6 +1030,7 @@ defineExpose({ exportSource, openDetail })
           <SchedulePlanReview :schedule="detail" @changed="saved" />
           <div class="schedule-section-heading"><h3>分批排期</h3></div>
           <ElTable
+            columns-key="DeliverySchedules-3"
             :data="detail.batches || []"
             row-key="id"
             :row-class-name="noticeBatchClass"
@@ -1101,6 +1104,7 @@ defineExpose({ exportSource, openDetail })
             >
           </div>
           <ElTable
+            columns-key="DeliverySchedules-4"
             :data="detail.sources"
             class="business-table"
             :empty-text="detail.predecessor_id ? '随上序来料' : '暂无关联批次'"
@@ -1129,7 +1133,11 @@ defineExpose({ exportSource, openDetail })
             <div class="schedule-section-heading">
               <h3>来料记录</h3>
             </div>
-            <ElTable :data="detail.linked_batches" class="business-table">
+            <ElTable
+              columns-key="DeliverySchedules-5"
+              :data="detail.linked_batches"
+              class="business-table"
+            >
               <ElTableColumn label="来料批次" min-width="200" align="center"
                 ><template #default="{ row }"
                   ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
@@ -1162,7 +1170,12 @@ defineExpose({ exportSource, openDetail })
           <div class="schedule-section-heading">
             <h3>转出记录</h3>
           </div>
-          <ElTable :data="detail.deliveries || []" class="business-table" empty-text="暂无转出记录">
+          <ElTable
+            columns-key="DeliverySchedules-6"
+            :data="detail.deliveries || []"
+            class="business-table"
+            empty-text="暂无转出记录"
+          >
             <ElTableColumn label="计划批次" width="100" align="center">
               <template #default="{ row }">{{
                 row.schedule_batch_id
@@ -1220,6 +1233,7 @@ defineExpose({ exportSource, openDetail })
                   {{ actionLabel(event.action) }}</span
                 ></template
               ><ElTable
+                columns-key="DeliverySchedules-7"
                 :data="changes(event)"
                 class="business-table"
                 empty-text="本次操作未改变计划字段"
@@ -1285,6 +1299,7 @@ defineExpose({ exportSource, openDetail })
         @retry="loadDispatchSources()"
       />
       <ElTable
+        columns-key="DeliverySchedules-8"
         v-else
         :data="dispatchSources"
         class="business-table"

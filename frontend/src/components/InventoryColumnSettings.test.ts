@@ -84,6 +84,9 @@ describe('inventory display columns', () => {
       await flushPromises()
       const popper = wrapper.findComponent({ name: 'ElPopper' })
       expect((popper.vm as unknown as { triggerRef: HTMLElement }).triggerRef).toBe(anchor)
+      // The toolbar already opens the popover; its virtual trigger must not toggle it closed.
+      expect(wrapper.getComponent(ElPopover).props('trigger')).toEqual([])
+      expect(wrapper.getComponent(ElPopover).props('triggerKeys')).toEqual([])
     } finally {
       anchor.remove()
     }

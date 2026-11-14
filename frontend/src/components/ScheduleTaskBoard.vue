@@ -3,6 +3,9 @@ import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
+import InventoryColumnSettings from './InventoryColumnSettings.vue'
+import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
+import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
@@ -80,8 +83,35 @@ const query = ref(initialSerial),
     ...(route.query.status === 'overdue' ? { status: 'overdue' } : {}),
   }),
   filterOpen = ref(false)
-const sortOrder = ref<'asc' | 'desc'>('asc')
-const draftSortOrder = ref<'asc' | 'desc'>('asc')
+type TaskSort = 'created_at' | 'final_due_at'
+const sortBy = ref<TaskSort>(props.management ? 'created_at' : 'final_due_at')
+const sortOrder = ref<'asc' | 'desc'>(props.management ? 'desc' : 'asc')
+const draftSortOrder = ref<'asc' | 'desc'>(sortOrder.value)
+const taskColumns = [
+  { key: 'serial_no', label: '流水号', width: 150 },
+  { key: 'quantity', label: '数量（件）', width: 110 },
+  { key: 'delivery_batches', label: '交货批数', width: 100 },
+  { key: 'final_due_at', label: '最终交期', width: 180 },
+  { key: 'team_planning', label: '班组排期', width: 310 },
+  { key: 'created_at', label: '创建时间', width: 180 },
+  { key: 'business_people', label: '业务人员', width: 140 },
+  { key: 'review', label: '待确认', width: 95 },
+  { key: 'locked', label: '订单锁定', width: 100 },
+] as const
+const selectableColumns = taskColumns.map((column) => ({ ...column, defaultVisible: true }))
+type TaskColumn = (typeof taskColumns)[number]['key']
+const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
+const columnChoices = ref<InventoryColumnChoice<TaskColumn>[]>(
+  taskColumns.map((column) => ({ key: column.key, visible: true })),
+)
+const visibleColumns = computed(() =>
+  columnChoices.value
+    .filter((column) => column.visible)
+    .map((column) => taskColumns.find((item) => item.key === column.key)!),
+)
+const columnStorageKey = computed(() =>
+  auth.currentUser?.id ? `heatsink.dispatch-columns.v1:${auth.currentUser.id}` : null,
+)
 const draftTeam = ref<number>(),
   draftStatus = ref<ScheduleStatus>(),
   draftScope = ref<'attention' | 'completed'>(),
@@ -132,6 +162,7 @@ async function load(background = false) {
   try {
     const params = {
       ...filters.value,
+      sort_by: sortBy.value,
       sort_order: sortOrder.value,
       page: props.management ? page.value : 1,
       page_size: props.management ? pageSize.value : loadSize.value,
@@ -179,6 +210,7 @@ async function loadMore() {
   try {
     const result = await productionScheduleApi.tasks({
       ...filters.value,
+      sort_by: sortBy.value,
       sort_order: sortOrder.value,
       page: page.value + 1,
       page_size: loadSize.value,
@@ -215,15 +247,16 @@ function pasteSearch(event: ClipboardEvent) {
   query.value =
     query.value.slice(0, start) + text.replace(/[\r\n\t]+/g, ' ') + query.value.slice(end)
 }
-function changeSort(order: 'asc' | 'desc') {
-  if (order === sortOrder.value) return
+function changeSort(by: TaskSort, order: 'asc' | 'desc') {
+  if (by === sortBy.value && order === sortOrder.value) return
+  sortBy.value = by
   sortOrder.value = order
   page.value = 1
   void load()
 }
 function sortChanged(sort: { prop: string | null; order: 'ascending' | 'descending' | null }) {
-  if (sort.prop === 'final_due_at' && sort.order)
-    changeSort(sort.order === 'ascending' ? 'asc' : 'desc')
+  if ((sort.prop === 'final_due_at' || sort.prop === 'created_at') && sort.order)
+    changeSort(sort.prop, sort.order === 'ascending' ? 'asc' : 'desc')
 }
 function openFilters() {
   draftLoadSize.value = loadSize.value
@@ -415,7 +448,7 @@ function nodeChanged() {
   if (detailId.value) void openTask(detailId.value)
 }
 function exportSource() {
-  const selected = { ...filters.value, sort_order: sortOrder.value }
+  const selected = { ...filters.value, sort_by: sortBy.value, sort_order: sortOrder.value }
   const perNode = (task: ScheduleTask, value: (node: ProductionSchedule) => string) =>
     task.nodes.map((node, index) => `${index + 1}. ${node.team_name}：${value(node)}`).join('；')
   return tableExportSource(
@@ -439,6 +472,7 @@ function exportSource() {
         label: '最终交货时间',
         value: (task) => formatDateTime(task.final_due_at),
       },
+      { key: 'created_at', label: '创建时间', value: (task) => formatDateTime(task.created_at) },
       { key: 'route', label: '班组路线', value: teamRoute },
       {
         key: 'node_deadlines',
@@ -492,7 +526,7 @@ onBeforeUnmount(() => {
           text
           v-if="!fullscreen"
           :source="exportSource"
-          :context="JSON.stringify({ ...filters, sort_order: sortOrder })"
+          :context="JSON.stringify({ ...filters, sort_by: sortBy, sort_order: sortOrder })"
           :disabled="loading || !!error"
         />
         <slot name="view-actions" />
@@ -518,6 +552,8 @@ onBeforeUnmount(() => {
         :placeholder="management ? '搜索流水号、任务或批次号' : '搜索流水号，支持多个'"
         :maxlength="4096"
         refresh-label="刷新任务排期"
+        :columns="management"
+        @columns="columnSettings?.open($event)"
         @search="search"
         @refresh="load()"
       >
@@ -624,6 +660,17 @@ onBeforeUnmount(() => {
             </div>
           </FilterDialog></template
         >
+        <template v-if="management" #tools>
+          <InventoryColumnSettings
+            ref="columnSettings"
+            :storage-key="columnStorageKey"
+            :columns="selectableColumns"
+            :show-trigger="false"
+            description="勾选显示列，上下移动调整顺序；操作列固定在右侧。"
+            choices-label="调度排期可选列"
+            @change="columnChoices = $event"
+          />
+        </template>
         <template #primary-actions
           ><ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
             >新建任务排期</ElButton
@@ -634,7 +681,7 @@ onBeforeUnmount(() => {
         <TableExportButton
           text
           :source="exportSource"
-          :context="JSON.stringify({ ...filters, sort_order: sortOrder })"
+          :context="JSON.stringify({ ...filters, sort_by: sortBy, sort_order: sortOrder })"
           :disabled="loading || !!error"
         />
       </template>
@@ -646,6 +693,8 @@ onBeforeUnmount(() => {
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
+      columns-key="ScheduleTaskBoard-1"
+      :column-settings="false"
       v-else-if="management"
       :data="rows"
       border
@@ -653,96 +702,97 @@ onBeforeUnmount(() => {
       aria-label="调度排期列表"
       row-key="id"
       :default-sort="{
-        prop: 'final_due_at',
+        prop: sortBy,
         order: sortOrder === 'asc' ? 'ascending' : 'descending',
       }"
       @sort-change="sortChanged"
     >
-      <ElTableColumn class-name="table-identity" label="流水号" min-width="150"
-        ><template #default="{ row }"
-          ><ElButton link type="primary" @click="openTask(asTask(row))">{{
-            row.serial_no
-          }}</ElButton></template
-        ></ElTableColumn
-      >
-      <ElTableColumn label="数量（件）" width="110" align="right"
-        ><template #default="{ row }">{{
-          formatAmount(taskQuantity(row))
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn label="交货批数" width="95" align="center"
-        ><template #default="{ row }">{{
-          row.delivery_batches?.length || 1
-        }}</template></ElTableColumn
-      >
       <ElTableColumn
-        label="最终交期"
-        prop="final_due_at"
-        min-width="170"
-        sortable="custom"
-        :sort-orders="['ascending', 'descending']"
-        ><template #default="{ row }">{{
-          formatDateTime(row.final_due_at)
-        }}</template></ElTableColumn
+        v-for="column in visibleColumns"
+        :key="column.key"
+        :label="column.label"
+        :prop="column.key"
+        :min-width="column.width"
+        :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
+        :align="column.key === 'quantity' ? 'right' : 'left'"
+        :sortable="['final_due_at', 'created_at'].includes(column.key) ? 'custom' : false"
+        :sort-orders="['descending', 'ascending']"
+        :show-overflow-tooltip="column.key !== 'team_planning'"
       >
-      <ElTableColumn label="业务人员" min-width="140" show-overflow-tooltip
-        ><template #default="{ row }"
-          ><span class="schedule-people"
-            ><template v-if="row.business_people?.length"
+        <template #default="{ row }">
+          <ElButton
+            v-if="column.key === 'serial_no'"
+            link
+            type="primary"
+            @click="openTask(asTask(row))"
+            >{{ row.serial_no }}</ElButton
+          >
+          <template v-else-if="column.key === 'quantity'">{{
+            formatAmount(taskQuantity(row))
+          }}</template>
+          <template v-else-if="column.key === 'delivery_batches'">{{
+            row.delivery_batches?.length || 1
+          }}</template>
+          <template v-else-if="column.key === 'final_due_at' || column.key === 'created_at'">{{
+            formatDateTime(row[column.key])
+          }}</template>
+          <ScheduleTeamPlanning
+            v-else-if="column.key === 'team_planning'"
+            :nodes="row.nodes"
+            @select="openNode"
+          />
+          <span v-else-if="column.key === 'business_people'" class="schedule-people">
+            <template v-if="row.business_people?.length"
               ><PersonName
                 v-for="person in row.business_people"
                 :key="person.id"
-                :name="person.name" /></template
-            ><PersonName v-else :name="row.business_person_name" /></span></template
-      ></ElTableColumn>
-      <ElTableColumn label="待填班组" width="95" align="center"
-        ><template #default="{ row }">{{
-          new Set(
-            row.nodes
-              .filter((n: ProductionSchedule) => n.planning_state === 'pending')
-              .map((n: ProductionSchedule) => n.team_id),
-          ).size
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn label="待确认" width="95" align="center"
-        ><template #default="{ row }"
-          ><ElButton
+                :name="person.name"
+            /></template>
+            <PersonName v-else :name="row.business_person_name" />
+          </span>
+          <ElButton
+            v-else-if="column.key === 'review'"
             link
             :type="
               row.nodes.some((n: ProductionSchedule) => awaitingReview(n)) ? 'warning' : undefined
             "
             @click="openTask(asTask(row))"
             >{{ row.nodes.filter((n: ProductionSchedule) => awaitingReview(n)).length }}</ElButton
-          ></template
-        ></ElTableColumn
-      >
-      <ElTableColumn label="订单锁定" width="95" align="center"
-        ><template #default="{ row }"
-          ><ElTag :type="row.locked_at ? 'warning' : 'info'">{{
+          >
+          <ElTag v-else-if="column.key === 'locked'" :type="row.locked_at ? 'warning' : 'info'">{{
             row.locked_at ? '已锁定' : '未锁定'
-          }}</ElTag></template
-        ></ElTableColumn
+          }}</ElTag>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn
+        v-if="canManage"
+        label="操作"
+        width="264"
+        fixed="right"
+        :show-overflow-tooltip="false"
       >
-      <ElTableColumn v-if="canManage" label="操作" width="205" fixed="right"
-        ><template #default="{ row }"
-          ><ElButton
-            link
-            type="primary"
-            :disabled="!!row.locked_at || actionBusy"
-            @click="editTask(asTask(row))"
-            >修改交期</ElButton
-          ><ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
-            row.locked_at ? '解锁' : '锁定'
-          }}</ElButton
-          ><ElButton
-            link
-            type="danger"
-            :disabled="!!row.locked_at || actionBusy"
-            @click="deleteTarget = asTask(row)"
-            >删除</ElButton
-          ></template
-        ></ElTableColumn
-      >
+        <template #default="{ row }">
+          <div class="dispatch-task-actions">
+            <ElButton
+              link
+              type="primary"
+              :disabled="!!row.locked_at || actionBusy"
+              @click="editTask(asTask(row))"
+              >修改交期</ElButton
+            >
+            <ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
+              row.locked_at ? '解锁' : '锁定'
+            }}</ElButton>
+            <ElButton
+              link
+              type="danger"
+              :disabled="!!row.locked_at || actionBusy"
+              @click="deleteTarget = asTask(row)"
+              >删除</ElButton
+            >
+          </div>
+        </template>
+      </ElTableColumn>
     </WorkspaceTable>
     <WorkspacePagination
       v-if="management"
@@ -806,6 +856,7 @@ onBeforeUnmount(() => {
           :route-ids="detail.nodes.map((node) => node.process_route_id)"
         >
           <ElTable
+            columns-key="ScheduleTaskBoard-2"
             v-if="detail.delivery_batches?.length"
             :data="detail.delivery_batches"
             border
@@ -949,6 +1000,16 @@ onBeforeUnmount(() => {
   </section>
 </template>
 <style scoped>
+.dispatch-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dispatch-task-actions :deep(.el-button) {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .task-board__surface--management {
   flex: 0 0 auto;
 }

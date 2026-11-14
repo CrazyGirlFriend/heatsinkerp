@@ -275,6 +275,7 @@ function valueText(field: string, value: unknown): string {
 <template>
   <div v-if="events.length" class="history-table-scroll">
     <AppDetailTable
+      columns-key="MaterialTransferHistory-1"
       class="document-history business-document-table"
       :aria-label="
         transfer.entry_kind === 'processing_output'
@@ -375,13 +376,13 @@ function valueText(field: string, value: unknown): string {
   background: var(--table-header-bg);
   font-weight: 500;
 }
-.document-history th:nth-child(1) {
+.document-history th[data-column-index='1'] {
   width: 24%;
 }
-.document-history th:nth-child(2) {
+.document-history th[data-column-index='2'] {
   width: 16%;
 }
-.document-history th:nth-child(3) {
+.document-history th[data-column-index='3'] {
   width: 22%;
 }
 .document-history dl {

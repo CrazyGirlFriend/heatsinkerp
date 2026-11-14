@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
         {{ materialTypeLabel(selectedStock.batches[0]?.material_type) }}</span
       >
       <div class="location-batches">
-        <AppDetailTable class="business-table">
+        <AppDetailTable columns-key="WarehouseLocationSelect-1" class="business-table">
           <thead>
             <tr>
               <th>批次号</th>
@@ -456,8 +456,8 @@ onBeforeUnmount(() => {
   text-align: right;
   border-bottom: 1px solid var(--line);
 }
-.location-batches th:first-child,
-.location-batches td:first-child {
+.location-batches th[data-column-index='1'],
+.location-batches td[data-column-index='1'] {
   text-align: left;
 }
 </style>

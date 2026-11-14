@@ -111,6 +111,7 @@ onMounted(load)
       </WorkspaceDataToolbar>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <WorkspaceTable
+        columns-key="BusinessPeoplePage-1"
         :data="rows"
         border
         class="business-table"

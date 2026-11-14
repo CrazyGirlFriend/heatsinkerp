@@ -814,7 +814,11 @@ watch(
           >
         </p>
         <div v-else class="document-table-scroll">
-          <AppDetailTable class="amendment-list business-document-table" aria-label="转料修改申请">
+          <AppDetailTable
+            columns-key="MaterialTransferDrawer-1"
+            class="amendment-list business-document-table"
+            aria-label="转料修改申请"
+          >
             <thead>
               <tr>
                 <th scope="col">申请时间</th>
@@ -846,6 +850,7 @@ watch(
         <h3>来源批次丢失记录</h3>
         <div class="document-table-scroll">
           <AppDetailTable
+            columns-key="MaterialTransferDrawer-2"
             class="loss-record-table business-document-table"
             aria-label="来源批次丢失记录"
           >

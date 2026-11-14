@@ -167,7 +167,11 @@ onBeforeUnmount(() => {
     <AppDisclosure>
       <template #summary>自动分配明细 · {{ allocation.length }} 批</template>
       <p class="allocation-note">按入库先后分别分配件数和重量，保留原批次记录。</p>
-      <WorkspaceTable :data="allocation" height="240"
+      <WorkspaceTable
+        columns-key="InventoryShipmentDialog-1"
+        :required-columns="['发货件数', '发货重量 (kg)']"
+        :data="allocation"
+        height="240"
         ><ElTableColumn prop="batch_no" label="来源批次" min-width="200" /><ElTableColumn
           prop="quantity"
           label="发货件数"

@@ -196,6 +196,7 @@ onBeforeUnmount(() => {
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取可用库存" />
       <ElTable
+        columns-key="StockSourcePicker-1"
         class="business-table"
         v-else
         :data="rows"

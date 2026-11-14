@@ -406,7 +406,11 @@ onBeforeUnmount(() => {
           <h3>关联复检记录</h3>
           <ElButton v-if="canDecide" @click="rechecking = true">登记复检</ElButton>
         </div>
-        <ElTable :data="detail.rechecks" class="business-table" empty-text="暂无复检记录"
+        <ElTable
+          columns-key="QualityFeedbackDetail-1"
+          :data="detail.rechecks"
+          class="business-table"
+          empty-text="暂无复检记录"
           ><ElTableColumn label="时间" min-width="170" align="center"
             ><template #default="{ row }">{{
               formatDateTime(row.checked_at)

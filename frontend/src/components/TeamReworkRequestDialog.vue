@@ -97,6 +97,7 @@ onBeforeUnmount(() => ++generation)
       <AppButton :disabled="loading || busy" @click="load">刷新</AppButton>
     </form>
     <DataTable
+      columns-key="TeamReworkRequestDialog-1"
       :data="rows"
       border
       class="business-table"

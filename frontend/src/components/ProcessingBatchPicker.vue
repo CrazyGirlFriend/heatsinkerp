@@ -97,6 +97,7 @@ onBeforeUnmount(() => {
     </div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <ElTable
+      columns-key="ProcessingBatchPicker-1"
       v-else
       :loading="loading"
       :data="rows"

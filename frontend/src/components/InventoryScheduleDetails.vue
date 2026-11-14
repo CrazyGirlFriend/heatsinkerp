@@ -33,6 +33,7 @@ const batches = (value: unknown) => {
       <ElButton link @click="emit('close')">收起</ElButton>
     </header>
     <ElTable
+      columns-key="InventoryScheduleDetails-1"
       :data="summary.items"
       class="business-table inventory-schedule-table"
       row-key="id"

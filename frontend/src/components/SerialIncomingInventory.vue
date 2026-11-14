@@ -364,6 +364,7 @@ function exportSource() {
       ><AppButton @click="load()">重试</AppButton></StatePanel
     >
     <WorkspaceTable
+      columns-key="SerialIncomingInventory-1"
       v-else
       :data="result?.items || []"
       row-key="id"

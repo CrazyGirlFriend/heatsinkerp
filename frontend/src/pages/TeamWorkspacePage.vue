@@ -1424,6 +1424,7 @@ onBeforeUnmount(() => {
               />
               <div v-else class="team-table-scroll">
                 <WorkspaceTable
+                  columns-key="TeamWorkspacePage-1"
                   v-if="tab === 'pending'"
                   :data="pending"
                   class="team-table single-line-table"
@@ -1512,6 +1513,7 @@ onBeforeUnmount(() => {
                   >
                 </WorkspaceTable>
                 <WorkspaceTable
+                  columns-key="TeamWorkspacePage-2"
                   v-else-if="tab === 'receipts'"
                   :data="receipts"
                   class="team-table single-line-table"
@@ -1629,6 +1631,7 @@ onBeforeUnmount(() => {
                   >
                 </WorkspaceTable>
                 <WorkspaceTable
+                  columns-key="TeamWorkspacePage-3"
                   v-else-if="tab === 'outgoing'"
                   :data="outgoing"
                   class="team-table dispatch-table single-line-table"
@@ -1738,6 +1741,7 @@ onBeforeUnmount(() => {
                   >
                 </WorkspaceTable>
                 <WorkspaceTable
+                  columns-key="TeamWorkspacePage-4"
                   v-else-if="tab === 'reallocations'"
                   :data="reallocations"
                   class="team-table single-line-table"
@@ -1814,6 +1818,7 @@ onBeforeUnmount(() => {
                   >
                 </WorkspaceTable>
                 <WorkspaceTable
+                  columns-key="TeamWorkspacePage-5"
                   v-else
                   :data="losses"
                   class="team-table single-line-table"

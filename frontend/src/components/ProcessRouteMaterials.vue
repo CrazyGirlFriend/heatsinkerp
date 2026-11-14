@@ -35,7 +35,7 @@ function warningLabel(warning: string) {
     <header>
       <strong>物料与订单资料</strong><span v-if="data.material_confirmation">已确认</span>
     </header>
-    <AppDetailTable fields>
+    <AppDetailTable columns-key="ProcessRouteMaterials-1" fields>
       <thead>
         <tr>
           <th>项目</th>

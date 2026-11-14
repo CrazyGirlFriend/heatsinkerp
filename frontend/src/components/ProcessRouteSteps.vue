@@ -6,6 +6,7 @@ defineProps<{ route: ProcessRoute; current?: ProcessRouteContext | null }>()
 </script>
 <template>
   <ElTable
+    columns-key="ProcessRouteSteps-1"
     :data="route.steps"
     border
     row-key="sequence_no"

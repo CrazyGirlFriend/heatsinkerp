@@ -311,6 +311,7 @@ onBeforeUnmount(() => {
               show-icon
             />
             <ElTable
+              columns-key="MainSystemConfigurationPage-1"
               v-if="result?.data"
               :data="rows"
               class="business-table integration-result"

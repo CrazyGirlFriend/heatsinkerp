@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { motion, useReducedMotion } from 'motion-v'
 import { IconArrowRight, IconCalendarEvent, IconChevronRight } from '@tabler/icons-vue'
 import AppButton from './AppButton.vue'
+import ColumnManagedTable from './ColumnManagedTable.vue'
 import ScheduleDeliveryMark from './ScheduleDeliveryMark.vue'
 import { scheduleStatusLabels, type ProductionSchedule } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from '@/utils/format'
@@ -65,7 +66,12 @@ const measurements = computed(() => [
       :transition="reduced ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }"
     >
       <div class="detail-content">
-        <table v-if="batches && batches.length > 1" class="detail-batches">
+        <ColumnManagedTable
+          native
+          columns-key="ScheduleBatchSummary-batches"
+          v-if="batches && batches.length > 1"
+          class="detail-batches"
+        >
           <thead>
             <tr>
               <th>批次</th>
@@ -91,7 +97,7 @@ const measurements = computed(() => [
               </td>
             </tr>
           </tbody>
-        </table>
+        </ColumnManagedTable>
         <dl v-else class="detail-dates">
           <div>
             <dt>上序转交</dt>
@@ -231,8 +237,8 @@ const measurements = computed(() => [
   color: var(--wm-muted, #71717a);
   font-weight: 400;
 }
-.detail-batches th:first-child,
-.detail-batches td:first-child {
+.detail-batches th[data-column-index='1'],
+.detail-batches td[data-column-index='1'] {
   text-align: left;
   padding-left: 0;
 }

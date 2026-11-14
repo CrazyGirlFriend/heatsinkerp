@@ -991,6 +991,7 @@ onBeforeUnmount(() => {
       append-to-body
     >
       <ElTable
+        columns-key="FlowPreviewPage-1"
         :data="reallocations.slice((reallocationsPage - 1) * 10, reallocationsPage * 10)"
         class="business-table"
         row-key="id"

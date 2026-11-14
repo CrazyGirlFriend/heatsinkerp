@@ -160,7 +160,11 @@ onBeforeUnmount(() => {
       <h4>修改原因</h4>
       <p>{{ amendment.reason }}</p>
     </section>
-    <AppDetailTable class="amendment-diff business-document-table" aria-label="转料修改前后对比">
+    <AppDetailTable
+      columns-key="TransferAmendmentReview-1"
+      class="amendment-diff business-document-table"
+      aria-label="转料修改前后对比"
+    >
       <thead>
         <tr>
           <th scope="col">项目</th>
@@ -313,7 +317,7 @@ onBeforeUnmount(() => {
 .amendment-diff thead {
   background: var(--table-header-bg);
 }
-.amendment-diff th:first-child {
+.amendment-diff th[data-column-index='1'] {
   width: 24%;
 }
 .before-value,

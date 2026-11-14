@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+import ColumnManagedTable from './ColumnManagedTable.vue'
 
 // Slot-based tables retain editable cells, column groups and merged document fields.
 defineProps<{ fields?: boolean }>()
@@ -7,12 +8,14 @@ const themed = useWatermelonAppearance()
 </script>
 
 <template>
-  <table
+  <ColumnManagedTable
+    native
+    :column-settings="!fields"
     class="app-detail-table"
     :class="{ 'app-detail-table--themed': themed, 'app-detail-table--fields': fields }"
   >
     <slot />
-  </table>
+  </ColumnManagedTable>
 </template>
 
 <style scoped>

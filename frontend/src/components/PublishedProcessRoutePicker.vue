@@ -115,6 +115,7 @@ onBeforeUnmount(() => {
       >
     </div>
     <WorkspaceTable
+      columns-key="PublishedProcessRoutePicker-1"
       height="100%"
       fill
       :embedded="false"

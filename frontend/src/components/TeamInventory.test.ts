@@ -123,8 +123,12 @@ async function submit(term: string) {
   await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter')
   await flushPromises()
 }
+const columnSettings = () =>
+  wrapper
+    .findAllComponents({ name: 'InventoryColumnSettings' })
+    .find((item) => !item.props('compact'))!
 async function showColumns(...keys: string[]) {
-  wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit(
+  columnSettings().vm.$emit(
     'change',
     warehouseColumns.map((column) => ({
       key: column.key,
@@ -154,7 +158,7 @@ describe('warehouse grouped stock', () => {
     for (const index of [0, 1]) {
       expect(wrapper.findAll('thead th')[index]!.classes()).toContain('el-table-fixed-column--left')
     }
-    const optional = wrapper.getComponent({ name: 'InventoryColumnSettings' }).props('columns')
+    const optional = columnSettings().props('columns')
     expect(optional).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: 'on_hand_weight', defaultVisible: false }),
@@ -190,7 +194,7 @@ describe('warehouse grouped stock', () => {
     )
     expect(headers()).toContain('成品规格')
     expect(headers()).not.toContain('工艺工序')
-    const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+    const settings = columnSettings()
     expect(
       settings
         .props('columns')
@@ -258,7 +262,7 @@ describe('warehouse grouped stock', () => {
   })
   it('keeps warehouse process steps in details instead of the list and column settings', async () => {
     await render(undefined, true, true, false)
-    const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+    const settings = columnSettings()
     expect(
       settings.props('columns').some((column: { key: string }) => column.key === 'process_route'),
     ).toBe(false)
@@ -731,7 +735,7 @@ describe('warehouse grouped stock', () => {
     expect(dimensions()).toEqual(['100 × 80 × 5 mm', '20 × 10 × 2 mm', '—'])
     await wrapper.setProps({ fullscreen: true })
     expect(dimensions()).toEqual(['100 × 80 × 5 mm', '20 × 10 × 2 mm', '—'])
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit(
+    columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({
         key: column.key,
@@ -768,7 +772,7 @@ describe('warehouse grouped stock', () => {
     'hides processing columns and export fields for non-processing teams (warehouse=%s)',
     async (warehouse) => {
       await render(undefined, true, warehouse)
-      const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+      const settings = columnSettings()
       expect(
         settings
           .props('columns')
@@ -1035,7 +1039,7 @@ describe('warehouse grouped stock', () => {
     })
     await render(undefined, true, false)
     await wrapper.setProps({ processing: true })
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', [])
+    columnSettings().vm.$emit('change', [])
     await flushPromises()
     const labels = headers()
     const values = wrapper.findAll('tbody tr').map((row) => {
@@ -1318,7 +1322,7 @@ describe('warehouse grouped stock', () => {
     expect(row.text()).not.toContain('规格未填写')
     expect(headers()).toContain('实际尺寸')
     expect(row.findAll('td')[headers().indexOf('实际尺寸')]!.text()).toBe('100 × 80 × 5')
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit(
+    columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({
         key: column.key,
@@ -1342,7 +1346,7 @@ describe('warehouse grouped stock', () => {
         .findAll('button')
         .map((button) => button.text()),
     ).toEqual(['明细', '出库', '在途转出'])
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit(
+    columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
     )
@@ -1417,7 +1421,7 @@ describe('warehouse grouped stock', () => {
       page_size: 10,
     })
     await render(undefined, true, false)
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit(
+    columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({
         key: column.key,
@@ -1601,7 +1605,7 @@ describe('warehouse grouped stock', () => {
         { key: 'stock_balance', visible: true },
       ]),
     )
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', [
+    columnSettings().vm.$emit('change', [
       { key: 'on_hand_weight', visible: true },
       { key: 'on_hand_quantity', visible: true },
     ])
@@ -1718,19 +1722,13 @@ describe('warehouse grouped stock', () => {
       user: { id: 42 },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    expect(wrapper.getComponent({ name: 'InventoryColumnSettings' }).props('storageKey')).toBe(
-      'heatsink.classified-columns.v1:42:901',
-    )
+    expect(columnSettings().props('storageKey')).toBe('heatsink.classified-columns.v1:42:901')
     await wrapper.setProps({ warehouse: true })
     await flushPromises()
-    expect(wrapper.getComponent({ name: 'InventoryColumnSettings' }).props('storageKey')).toBe(
-      'heatsink.warehouse-columns.v1:42:901',
-    )
+    expect(columnSettings().props('storageKey')).toBe('heatsink.warehouse-columns.v1:42:901')
     await wrapper.setProps({ teamId: 902, warehouse: false })
     await flushPromises()
-    expect(wrapper.getComponent({ name: 'InventoryColumnSettings' }).props('storageKey')).toBe(
-      'heatsink.classified-columns.v1:42:902',
-    )
+    expect(columnSettings().props('storageKey')).toBe('heatsink.classified-columns.v1:42:902')
   })
   it('retains chart drill-down, date and urgency filters and clears them explicitly', async () => {
     const router = await render(
@@ -2045,7 +2043,7 @@ describe('warehouse grouped stock', () => {
         visible: column.key === 'source' || column.key === 'on_hand_weight',
       }))
       .reverse()
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices)
+    columnSettings().vm.$emit('change', choices)
     await applyModal()
     expect(headers()).toEqual([
       '客户编号',

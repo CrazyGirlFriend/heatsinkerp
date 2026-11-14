@@ -883,6 +883,8 @@ onBeforeUnmount(() => {
           >
           <WorkspaceTable
             v-else
+            columns-key="TransferBatchesPage-1"
+            :column-settings="false"
             :data="rows"
             :loading="loading"
             class="transfer-table"

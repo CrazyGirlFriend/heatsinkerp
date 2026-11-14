@@ -325,6 +325,7 @@ onBeforeUnmount(() => {
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
+      columns-key="TeamInspectionRecords-1"
       v-else
       :data="rows"
       class="inspection-table"

@@ -121,7 +121,11 @@ onBeforeUnmount(reset)
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <div class="historical-table">
-        <AppDetailTable class="business-document-table" aria-label="历史记录中的独立批次">
+        <AppDetailTable
+          columns-key="MaterialDispatchDrawer-1"
+          class="business-document-table"
+          aria-label="历史记录中的独立批次"
+        >
           <thead>
             <tr>
               <th>批次号</th>

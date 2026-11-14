@@ -285,6 +285,7 @@ onBeforeUnmount(() => {
             <ElButton :loading="loading" class="action-warm" @click="searchSources">查询</ElButton>
           </div>
           <ElTable
+            columns-key="InspectionRegistrationDialog-1"
             :data="rows"
             class="business-table"
             height="240"

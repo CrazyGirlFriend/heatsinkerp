@@ -214,6 +214,7 @@ def list_tasks(
     scope=None,
     serial_nos=None,
     business_person_ids=None,
+    sort_by="final_due_at",
     sort_order="asc",
     page=1,
     page_size=20,
@@ -276,14 +277,17 @@ def list_tasks(
         .limit(1)
         .scalar_subquery(),
     )
+    sort_column = Task.created_at if sort_by == "created_at" else final_due
     ids = list(
         db.scalars(
             select(matched.c.task_id)
             .join(Task, Task.id == matched.c.task_id)
             .order_by(
-                final_due.is_(None),
-                final_due.desc() if sort_order == "desc" else final_due.asc(),
-                matched.c.task_id,
+                sort_column.is_(None),
+                sort_column.desc() if sort_order == "desc" else sort_column.asc(),
+                matched.c.task_id.desc()
+                if sort_by == "created_at" and sort_order == "desc"
+                else matched.c.task_id.asc(),
             )
             .offset((page - 1) * page_size)
             .limit(page_size)

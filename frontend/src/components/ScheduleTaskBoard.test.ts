@@ -5,6 +5,8 @@ import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
+import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
+import { ElCheckbox } from 'element-plus'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -29,7 +31,7 @@ vi.mock('@/stores/auth', () => ({
     isAdmin: true,
     isDispatch: true,
     currentUserError: '',
-    currentUser: { active: true },
+    currentUser: { id: 1, active: true },
   }),
 }))
 vi.mock('@/stores/teamDirectory', () => ({
@@ -89,6 +91,7 @@ const task: ScheduleTask = {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  localStorage.clear()
   hooks.openDetail.mockReset()
   vi.spyOn(productionScheduleApi, 'tasks').mockResolvedValue({
     items: [task],
@@ -102,19 +105,22 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(path = '/production-schedules') {
+async function render(path = '/production-schedules', management = false, stubPopover = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/production-schedules', component: { template: '<div/>' } }],
   })
   await router.push(path)
   wrapper = mount(ScheduleTaskBoard, {
-    props: { fullscreen: false },
+    props: { fullscreen: false, management },
     slots: { 'view-actions': '<button class="fullscreen-toggle">全屏切换</button>' },
     global: {
       plugins: [router],
       directives: { loading: () => {} },
       stubs: {
+        ...(stubPopover
+          ? { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } }
+          : {}),
         AppDialog: {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
@@ -416,6 +422,7 @@ describe('task scheduling board', () => {
     }
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
+      sort_by: 'final_due_at',
       sort_order: 'asc',
       page: 1,
       page_size: 50,
@@ -428,6 +435,7 @@ describe('task scheduling board', () => {
     const exported = await data.load(new AbortController().signal, () => {})
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
+      sort_by: 'final_due_at',
       sort_order: 'asc',
       page: 1,
       page_size: 100,
@@ -526,6 +534,98 @@ describe('task scheduling board', () => {
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 1, page_size: 100 }),
     )
+  })
+  it('defaults dispatch to newest creation and preserves sorting for paging and export', async () => {
+    await render('/production-schedules', true)
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: 'created_at', sort_order: 'desc', page: 1 }),
+    )
+    expect(wrapper.text()).toContain('创建时间')
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenCalledWith(
+      expect.objectContaining({ sort_by: 'created_at', sort_order: 'desc', page: 2 }),
+    )
+    const data = wrapper.getComponent(TableExportButton).props('source')()!
+    await data.load(new AbortController().signal, () => {})
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: 'created_at', sort_order: 'desc' }),
+    )
+    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
+      prop: 'created_at',
+      order: 'ascending',
+    })
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: 'created_at', sort_order: 'asc', page: 1 }),
+    )
+  })
+  it('shows each route occurrence with its submission state and opens the selected node', async () => {
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [
+        {
+          ...task,
+          nodes: [
+            { ...node(1), planning_state: 'confirmed' },
+            { ...node(2), planning_state: 'pending' },
+            { ...node(2), id: 3, sequence_no: 3, planning_state: 'submitted', due_at: '' },
+            { ...node(2), id: 4, sequence_no: 4, planning_state: 'revision_pending' },
+            { ...node(2), id: 5, sequence_no: 5, status: 'cancelled' },
+          ],
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await render('/production-schedules', true)
+    const planning = wrapper.getComponent(ScheduleTeamPlanning)
+    const steps = planning.findAll('button')
+    expect(steps.map((step) => step.text())).toEqual(['库房', '轧制 1', '轧制 2', '轧制 3'])
+    expect(steps.map((step) => step.classes().includes('is-filled'))).toEqual([
+      true,
+      false,
+      true,
+      true,
+    ])
+    expect(steps[2]!.attributes('aria-label')).toContain('待调度确认')
+    await steps[2]!.trigger('click')
+    expect(hooks.openDetail).toHaveBeenCalledWith(3)
+    expect(wrapper.get('.dispatch-task-actions').text()).toContain('锁定')
+    expect(wrapper.get('.dispatch-task-actions').text()).toContain('删除')
+  })
+  it('restores visible column order and saves hidden columns through the shared settings', async () => {
+    localStorage.setItem(
+      'heatsink.dispatch-columns.v1:1',
+      JSON.stringify([
+        { key: 'created_at', visible: true },
+        { key: 'serial_no', visible: true },
+        { key: 'quantity', visible: false },
+      ]),
+    )
+    await render('/production-schedules', true, true)
+    const headers = () => wrapper.findAll('thead th').map((header) => header.text())
+    expect(headers()).toEqual(['创建时间', '流水号', '操作'])
+    const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+    settings.vm.open()
+    await flushPromises()
+    settings
+      .findAllComponents(ElCheckbox)
+      .find((checkbox) => checkbox.text() === '数量（件）')!
+      .vm.$emit('update:modelValue', true)
+    await settings.get('button[aria-label="上移流水号"]').trigger('click')
+    await settings
+      .findAll('button')
+      .find((item) => item.text() === '应用')!
+      .trigger('click')
+    await flushPromises()
+    expect(headers()).toEqual(['流水号', '创建时间', '数量（件）', '操作'])
+    const saved = JSON.parse(localStorage.getItem('heatsink.dispatch-columns.v1:1')!)
+    expect(saved.slice(0, 3)).toEqual([
+      { key: 'serial_no', visible: true },
+      { key: 'created_at', visible: true },
+      { key: 'quantity', visible: true },
+    ])
   })
   it('sorts the dispatch table by final delivery through the server', async () => {
     await render()

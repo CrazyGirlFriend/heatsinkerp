@@ -24,7 +24,12 @@ const rows = computed(() => {
 
 <template>
   <div class="document-table-container">
-    <AppDetailTable fields class="document-table business-document-table" :aria-label="label">
+    <AppDetailTable
+      columns-key="MaterialDocumentTable-1"
+      fields
+      class="document-table business-document-table"
+      :aria-label="label"
+    >
       <colgroup>
         <col class="field-label" />
         <col />

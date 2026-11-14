@@ -56,7 +56,7 @@ async function review(approve: boolean) {
       ><ElTag v-if="schedule.order_locked" type="info">订单已锁定</ElTag>
     </header>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <ElTable :data="schedule.pending_batches" border size="small"
+    <ElTable columns-key="SchedulePlanReview-1" :data="schedule.pending_batches" border size="small"
       ><ElTableColumn label="批次" prop="batch_number" width="80" /><ElTableColumn
         label="数量（件）"
         width="110"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ElTable, type TableProps } from 'element-plus'
+import { type TableProps } from 'element-plus'
+import ColumnManagedTable from './ColumnManagedTable.vue'
 import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 const watermelon = useWatermelonAppearance()
@@ -10,7 +11,7 @@ defineProps<{ data?: TableProps['data'] }>()
 
 <template>
   <component
-    :is="watermelon ? WatermelonDataTable : ElTable"
+    :is="watermelon ? WatermelonDataTable : ColumnManagedTable"
     :class="watermelon ? 'workspace-table--watermelon' : 'business-table workspace-table'"
     :data="data"
     :border="!watermelon"

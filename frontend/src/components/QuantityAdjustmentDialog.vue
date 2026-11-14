@@ -875,7 +875,11 @@ onBeforeUnmount(() => {
               aria-label="加工后完整实物明细"
             >
               <div class="processing-output-scroll">
-                <AppDetailTable class="processing-output-table business-document-table">
+                <AppDetailTable
+                  columns-key="QuantityAdjustmentDialog-1"
+                  :required-columns="['类别', '物料类型', '件数', '实测重量', '归属流水号 *']"
+                  class="processing-output-table business-document-table"
+                >
                   <thead>
                     <tr>
                       <th>类别</th>
@@ -1056,6 +1060,7 @@ onBeforeUnmount(() => {
             本批操作记录
           </h3>
           <ElTable
+            columns-key="QuantityAdjustmentDialog-2"
             v-if="historyRecords.length || !editable"
             :data="historyRecords"
             class="business-table"
@@ -1413,16 +1418,16 @@ onBeforeUnmount(() => {
   text-align: center;
   border-top: 1px solid var(--line);
 }
-.processing-output-table th:nth-child(1) {
+.processing-output-table th[data-column-index='1'] {
   width: 128px;
 }
-.processing-output-table th:nth-child(2) {
+.processing-output-table th[data-column-index='2'] {
   width: 112px;
 }
-.processing-output-table th:nth-child(3) {
+.processing-output-table th[data-column-index='3'] {
   width: 116px;
 }
-.processing-output-table th:nth-child(4) {
+.processing-output-table th[data-column-index='4'] {
   width: 208px;
 }
 .processing-output-table .shared-owner-column {
@@ -1477,16 +1482,16 @@ onBeforeUnmount(() => {
 .processing-workspace .processing-output-table:has(.shared-owner-column) {
   min-width: 970px;
 }
-.processing-workspace .processing-output-table th:nth-child(1) {
+.processing-workspace .processing-output-table th[data-column-index='1'] {
   width: 128px;
 }
-.processing-workspace .processing-output-table th:nth-child(2) {
+.processing-workspace .processing-output-table th[data-column-index='2'] {
   width: 112px;
 }
-.processing-workspace .processing-output-table th:nth-child(3) {
+.processing-workspace .processing-output-table th[data-column-index='3'] {
   width: 100px;
 }
-.processing-workspace .processing-output-table th:nth-child(4) {
+.processing-workspace .processing-output-table th[data-column-index='4'] {
   width: 160px;
 }
 .processing-workspace .processing-output-table :deep(.specification-input) {

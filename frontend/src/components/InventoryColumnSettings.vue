@@ -3,6 +3,7 @@ import AppPopover from '@/components/AppPopover.vue'
 import { showToast } from '@/stores/toast'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
+import { IconColumns3 } from '@tabler/icons-vue'
 import { ElCheckbox } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import {
@@ -13,13 +14,16 @@ import {
 
 const props = defineProps<{
   storageKey: string | null
-  columns?: readonly { key: K; label: string; defaultVisible?: boolean }[]
+  columns?: readonly { key: K; label: string; defaultVisible?: boolean; required?: boolean }[]
   legacyKeys?: Record<string, readonly K[]>
   newVisibleKeys?: readonly K[]
   previousDefaults?: readonly InventoryColumnChoice<K>[]
   description?: string
   choicesLabel?: string
   showTrigger?: boolean
+  compact?: boolean
+  minimumVisible?: number
+  initialChoices?: readonly InventoryColumnChoice<K>[]
 }>()
 const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
 const options = computed(
@@ -38,6 +42,8 @@ const anchor = shallowRef<HTMLElement>()
 const saved = shallowRef(defaults()),
   draft = shallowRef(defaults())
 const label = (key: string) => options.value.find((column) => column.key === key)!.label
+const required = (key: string) =>
+  props.columns?.some((column) => column.key === key && column.required)
 const copy = (columns: InventoryColumnChoice<K>[]) => columns.map((column) => ({ ...column }))
 function normalize(value: unknown): InventoryColumnChoice<K>[] {
   if (!Array.isArray(value)) return defaults()
@@ -67,7 +73,7 @@ function normalize(value: unknown): InventoryColumnChoice<K>[] {
         ...column,
         visible: result.length ? !!props.newVisibleKeys?.includes(column.key) : column.visible,
       })),
-  ]
+  ].map((column) => ({ ...column, visible: required(column.key) || column.visible }))
 }
 watch(
   opened,
@@ -77,13 +83,14 @@ watch(
   { flush: 'sync' },
 )
 watch(
-  () => props.storageKey,
-  (key) => {
+  [() => props.storageKey, () => JSON.stringify(props.columns)],
+  ([key]) => {
     opened.value = false
-    saved.value = defaults()
+    saved.value = normalize(props.initialChoices)
     if (key) {
       try {
-        const restored = normalize(JSON.parse(localStorage.getItem(key) || 'null'))
+        const stored = localStorage.getItem(key)
+        const restored = stored ? normalize(JSON.parse(stored)) : saved.value
         const previous = props.previousDefaults?.filter((column) =>
           options.value.some((option) => option.key === column.key),
         )
@@ -112,6 +119,10 @@ function move(index: number, offset: number) {
   draft.value = next
 }
 function apply() {
+  if (draft.value.filter((column) => column.visible).length < (props.minimumVisible || 0)) {
+    showToast('请至少保留一列。', 'warning')
+    return
+  }
   saved.value = copy(draft.value)
   if (props.storageKey) {
     try {
@@ -136,8 +147,9 @@ defineExpose({
     :virtual-ref="anchor"
     :virtual-triggering="showTrigger === false || !!anchor"
     v-model:visible="opened"
-    trigger="click"
-    placement="bottom-end"
+    :trigger="showTrigger === false || anchor ? [] : 'click'"
+    :trigger-keys="showTrigger === false || anchor ? [] : undefined"
+    :placement="compact ? 'bottom-start' : 'bottom-end'"
     :width="320"
     popper-class="inventory-columns-popover"
     :popper-options="{
@@ -148,12 +160,16 @@ defineExpose({
       ><ElButton
         v-show="showTrigger !== false"
         class="inventory-columns-trigger"
-        :icon="Setting"
+        :class="{ 'inventory-columns-trigger--compact': compact }"
+        :unstyled="compact"
+        :icon="compact ? undefined : Setting"
+        aria-label="显示列"
+        title="显示列"
         :aria-expanded="opened"
-        >显示列</ElButton
+        ><IconColumns3 v-if="compact" :size="17" /><template v-else>显示列</template></ElButton
       ></template
     >
-    <div class="column-settings">
+    <div v-if="opened || !compact" class="column-settings">
       <header>
         <strong>显示列</strong
         ><ElButton link type="primary" @click="draft = defaults()">恢复默认</ElButton>
@@ -163,6 +179,7 @@ defineExpose({
         <div v-for="(column, index) in draft" :key="column.key" class="column-choice">
           <ElCheckbox
             :model-value="column.visible"
+            :disabled="required(column.key)"
             @update:model-value="
               draft = draft.map((item) =>
                 item.key === column.key ? { ...item, visible: $event === true } : item,
@@ -245,5 +262,27 @@ defineExpose({
 .inventory-columns-trigger {
   margin-left: auto;
   flex-shrink: 0;
+}
+.inventory-columns-trigger--compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-regular, var(--wm-muted));
+  cursor: pointer;
+}
+.inventory-columns-trigger--compact:hover,
+.inventory-columns-trigger--compact[aria-expanded='true'] {
+  background: var(--wm-hover, var(--el-fill-color));
+  color: var(--el-text-color-primary, var(--wm-text));
+}
+.inventory-columns-trigger--compact:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
 }
 </style>

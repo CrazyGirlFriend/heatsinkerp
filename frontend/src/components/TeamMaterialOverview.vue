@@ -161,6 +161,7 @@ defineExpose({ exportSource })
       <template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template>
     </WorkspaceDataToolbar>
     <WorkspaceTable
+      columns-key="TeamMaterialOverview-1"
       :data="rows"
       class="ledger-table single-line-table"
       :class="{ 'ledger-table--empty': !rows.length }"
