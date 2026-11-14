@@ -92,7 +92,7 @@ const taskColumns = [
   { key: 'quantity', label: '数量（件）', width: 110 },
   { key: 'delivery_batches', label: '交货批数', width: 100 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
-  { key: 'team_planning', label: '班组排期', width: 310 },
+  { key: 'team_planning', label: '班组排期', width: 280 },
   { key: 'created_at', label: '创建时间', width: 180 },
   { key: 'business_people', label: '业务人员', width: 140 },
   { key: 'review', label: '待确认', width: 95 },

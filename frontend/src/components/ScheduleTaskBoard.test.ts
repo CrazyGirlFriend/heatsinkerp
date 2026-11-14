@@ -581,7 +581,13 @@ describe('task scheduling board', () => {
     await render('/production-schedules', true)
     const planning = wrapper.getComponent(ScheduleTeamPlanning)
     const steps = planning.findAll('button')
-    expect(steps.map((step) => step.text())).toEqual(['库房', '轧制 1', '轧制 2', '轧制 3'])
+    expect(steps.map((step) => step.attributes('aria-label')?.split('：')[0])).toEqual([
+      '库房',
+      '轧制 1',
+      '轧制 2',
+      '轧制 3',
+    ])
+    expect(steps.map((step) => step.text())).toEqual(['', '1', '2', '3'])
     expect(steps.map((step) => step.classes().includes('is-filled'))).toEqual([
       true,
       false,
@@ -593,6 +599,35 @@ describe('task scheduling board', () => {
     expect(hooks.openDetail).toHaveBeenCalledWith(3)
     expect(wrapper.get('.dispatch-task-actions').text()).toContain('锁定')
     expect(wrapper.get('.dispatch-task-actions').text()).toContain('删除')
+  })
+  it('keeps long routes compact and lets users open every omitted occurrence on click', async () => {
+    const nodes = Array.from({ length: 11 }, (_, index) => ({
+      ...node(index + 1),
+      team_id: index === 0 ? 1 : 2,
+      planning_state: 'confirmed' as const,
+    }))
+    wrapper = mount(ScheduleTeamPlanning, {
+      props: { nodes: [...nodes].reverse() },
+      global: {
+        stubs: {
+          AppPopover: {
+            props: ['visible'],
+            emits: ['update:visible'],
+            template: `<div><span @click="$emit('update:visible', !visible)"><slot name="reference"/></span><slot v-if="visible"/></div>`,
+          },
+        },
+      },
+    })
+    expect(wrapper.findAll('.team-planning__step')).toHaveLength(9)
+    expect(wrapper.find('.team-planning__list').exists()).toBe(false)
+    await wrapper.get('.team-planning__more').trigger('click')
+    const items = wrapper.findAll('.team-planning__item')
+    expect(items).toHaveLength(11)
+    expect(items[0]!.text()).toContain('库房')
+    expect(items[10]!.text()).toContain('轧制 10')
+    await items[10]!.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([[nodes[10]]])
+    expect(wrapper.find('.team-planning__list').exists()).toBe(false)
   })
   it('restores visible column order and saves hidden columns through the shared settings', async () => {
     localStorage.setItem(

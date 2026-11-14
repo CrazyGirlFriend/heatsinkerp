@@ -1,49 +1,111 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { IconCheck, IconCircle, IconClock } from '@tabler/icons-vue'
-import ElButton from './AppButton.vue'
+import { computed, ref } from 'vue'
+import AppButton from './AppButton.vue'
+import AppPopover from './AppPopover.vue'
+import FactoryNavIcon from './FactoryNavIcon.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import { boardTeamColor } from '@/utils/scheduleBoard'
-import { awaitingReview, planLabel } from '@/utils/schedulePlanning'
+import { planLabel } from '@/utils/schedulePlanning'
 
 const props = defineProps<{ nodes: ProductionSchedule[] }>()
 const emit = defineEmits<{ select: [node: ProductionSchedule] }>()
+const moreOpen = ref(false)
+const icons = {
+  库房: 'warehouse',
+  线切割: 'cutting',
+  退火: 'annealing',
+  研磨: 'grinding',
+  轧制: 'rolling',
+  检验: 'inspection',
+  雕刻: 'engraving',
+  电镀: 'plating',
+} as const
 const steps = computed(() =>
   props.nodes
     .filter((node) => node.status !== 'cancelled')
     .slice()
     .sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id)
-    .map((node, index, nodes) => ({
-      node,
-      filled: node.planning_state ? node.planning_state !== 'pending' : !!node.due_at,
-      label:
-        node.team_name +
-        (nodes.some((other) => other.id !== node.id && other.team_id === node.team_id)
-          ? ` ${nodes.slice(0, index + 1).filter((other) => other.team_id === node.team_id).length}`
-          : ''),
-    })),
+    .map((node, index, nodes) => {
+      const filled = node.planning_state ? node.planning_state !== 'pending' : !!node.due_at
+      const occurrence = nodes.some(
+        (other) => other.id !== node.id && other.team_id === node.team_id,
+      )
+        ? nodes.slice(0, index + 1).filter((other) => other.team_id === node.team_id).length
+        : null
+      return {
+        node,
+        filled,
+        occurrence,
+        label: node.team_name + (occurrence ? ` ${occurrence}` : ''),
+        state: filled ? planLabel(node) : '待填写',
+        icon: icons[node.team_name as keyof typeof icons] || 'flow',
+      }
+    }),
 )
+// Nine icons fit in one table row; unusually long routes share the same bounded layout.
+const visibleSteps = computed(() =>
+  steps.value.length > 9 ? steps.value.slice(0, 8) : steps.value,
+)
+const remaining = computed(() => steps.value.length - visibleSteps.value.length)
+function select(node: ProductionSchedule) {
+  moreOpen.value = false
+  emit('select', node)
+}
 </script>
 
 <template>
-  <div class="team-planning" aria-label="班组排期填写情况">
-    <ElButton
-      v-for="{ node, filled, label } in steps"
-      :key="node.id"
-      unstyled
-      class="team-planning__step"
-      :class="{ 'is-filled': filled }"
-      :style="{ '--planning-team-color': boardTeamColor(node.team_name) }"
-      :aria-label="`${label}：${planLabel(node)}，查看排期`"
-      :title="`第 ${node.sequence_no} 道 · ${label} · ${planLabel(node)}`"
-      @click="emit('select', node)"
-    >
-      <component
-        :is="!filled ? IconCircle : awaitingReview(node) ? IconClock : IconCheck"
-        :size="13"
-        aria-hidden="true"
-      />{{ label }}
-    </ElButton>
+  <div class="team-planning" role="group" aria-label="班组排期填写情况">
+    <template v-for="(step, index) in visibleSteps" :key="step.node.id">
+      <span v-if="index" class="team-planning__connector" aria-hidden="true" />
+      <AppButton
+        unstyled
+        class="team-planning__step team-planning__symbol"
+        :class="{ 'is-filled': step.filled }"
+        :style="{ '--planning-team-color': boardTeamColor(step.node.team_name) }"
+        :aria-label="`${step.label}：${step.state}，查看排期`"
+        :title="`第 ${step.node.sequence_no} 道 · ${step.label} · ${step.state}`"
+        @click="select(step.node)"
+      >
+        <FactoryNavIcon :name="step.icon" />
+        <small v-if="step.occurrence" class="team-planning__occurrence" aria-hidden="true">{{
+          step.occurrence
+        }}</small>
+      </AppButton>
+    </template>
+    <template v-if="remaining">
+      <span class="team-planning__connector" aria-hidden="true" />
+      <AppPopover v-model:visible="moreOpen" trigger="click" placement="bottom-start" :width="280">
+        <template #reference>
+          <AppButton
+            unstyled
+            class="team-planning__step team-planning__more"
+            :aria-label="`另有 ${remaining} 道工序，查看完整班组排期`"
+            :aria-expanded="moreOpen"
+            >+{{ remaining }}</AppButton
+          >
+        </template>
+        <div v-if="moreOpen" class="team-planning__list" aria-label="完整班组排期">
+          <AppButton
+            v-for="step in steps"
+            :key="step.node.id"
+            unstyled
+            class="team-planning__item"
+            :aria-label="`${step.label}：${step.state}，查看排期`"
+            @click="select(step.node)"
+          >
+            <span
+              class="team-planning__symbol"
+              :class="{ 'is-filled': step.filled }"
+              :style="{ '--planning-team-color': boardTeamColor(step.node.team_name) }"
+            >
+              <FactoryNavIcon :name="step.icon" />
+            </span>
+            <span>{{ step.label }}</span
+            ><small>{{ step.state }}</small>
+          </AppButton>
+        </div>
+      </AppPopover>
+    </template>
     <span v-if="!steps.length">—</span>
   </div>
 </template>
@@ -51,44 +113,118 @@ const steps = computed(() =>
 <style scoped>
 .team-planning {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  min-width: 0;
   padding-block: 2px;
 }
-.team-planning .team-planning__step {
+.team-planning__symbol,
+.team-planning__more {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  height: 28px;
-  min-height: 28px;
+  justify-content: center;
+  position: relative;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
   margin: 0;
-  padding: 0 8px;
+  padding: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--subtle);
-  background: var(--surface);
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface-soft);
   box-shadow: none;
-  font-size: 12px;
+  font: inherit;
   line-height: 1;
+  transition:
+    border-color 160ms,
+    background-color 160ms;
 }
-.team-planning .team-planning__step.is-filled {
-  border-color: color-mix(in srgb, var(--planning-team-color) 32%, transparent);
+.team-planning__symbol :deep(.tabler-icon) {
+  width: 15px;
+  height: 15px;
+}
+.team-planning__symbol.is-filled {
+  border-color: color-mix(in srgb, var(--planning-team-color) 36%, transparent);
   color: var(--planning-team-color);
-  background: color-mix(in srgb, var(--planning-team-color) 12%, var(--surface));
+  background: color-mix(in srgb, var(--planning-team-color) 14%, var(--surface));
 }
-.team-planning .team-planning__step:hover {
+.team-planning__step,
+.team-planning__item {
+  cursor: pointer;
+}
+.team-planning__step:hover {
   border-color: currentColor;
 }
-.team-planning .team-planning__step:focus-visible {
+.team-planning__step:focus-visible,
+.team-planning__item:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+.team-planning__connector {
+  flex: 0 0 4px;
+  height: 1px;
+  background: var(--line);
+}
+.team-planning__occurrence {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  min-width: 11px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+}
+.team-planning__more {
+  flex-basis: auto;
+  min-width: 24px;
+  width: auto;
+  padding-inline: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.team-planning__list {
+  display: grid;
+  gap: 2px;
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+}
+.team-planning__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.team-planning__item:hover {
+  background: var(--surface-soft);
+}
+.team-planning__item small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
 @media (prefers-color-scheme: dark) {
-  .team-planning .team-planning__step.is-filled {
+  .team-planning__symbol.is-filled {
     color: color-mix(in srgb, var(--planning-team-color) 70%, white);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-planning__symbol,
+  .team-planning__more {
+    transition: none;
   }
 }
 </style>
