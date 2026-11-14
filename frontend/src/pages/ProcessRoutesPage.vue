@@ -541,7 +541,6 @@ onBeforeUnmount(() => {
               >
                 <span v-if="index" class="route-path-connector" aria-hidden="true" />
                 <AppPopover
-                  :persistent="false"
                   :trigger="['hover', 'focus']"
                   :show-after="180"
                   :hide-after="120"
@@ -591,7 +590,6 @@ onBeforeUnmount(() => {
               <template v-if="routeSteps(row).length > visibleStepCount">
                 <span class="route-path-connector" aria-hidden="true" />
                 <AppPopover
-                  :persistent="false"
                   :trigger="['hover', 'focus']"
                   :show-after="180"
                   :hide-after="120"

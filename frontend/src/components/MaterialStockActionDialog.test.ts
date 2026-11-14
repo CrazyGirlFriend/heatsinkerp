@@ -146,6 +146,20 @@ function sourceAmountInputs() {
     )
   })
 }
+async function openSourceActions() {
+  const row = wrapper.findAll('.source-line')[0]!
+  await row.get('button[aria-label$="更多操作"]').trigger('click')
+  await vi.waitFor(() => expect(row.find('.source-action-menu').exists()).toBe(true))
+  return row
+}
+async function sourceAction(label: string) {
+  const row = await openSourceActions()
+  await row
+    .findAll('button')
+    .find((button) => button.text() === label)!
+    .trigger('click')
+  await flushPromises()
+}
 async function submit() {
   await wrapper
     .findAll('button')
@@ -372,6 +386,8 @@ describe('source batch dispatch and loss drafts', () => {
     row.transfer.next_team.code = code
     if (code === 'FACTORY-WAREHOUSE') row.transfer.process_route = warehouseRoute()
     await render('dispatch', [row])
+    const menu = wrapper.find('button[aria-label$="更多操作"]')
+    if (menu.exists()) await openSourceActions()
     expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
       allowed,
     )
@@ -490,10 +506,7 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render('dispatch', [row])
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     await flushPromises()
     const count = wrapper
       .findAllComponents(ElInputNumber)
@@ -560,10 +573,7 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render('dispatch', [row])
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     await flushPromises()
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
@@ -614,10 +624,7 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render('dispatch', [source()])
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     await flushPromises()
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
@@ -907,10 +914,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('clears one source remainder across split lines and discards consent when the amounts change', async () => {
     await render('dispatch', [source()])
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '拆分物料')!
-      .trigger('click')
+    await sourceAction('拆分物料')
     const inputs = sourceAmountInputs()
     ;[30, 4, 50, 6].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     await flushPromises()
@@ -1054,10 +1058,7 @@ describe('source batch dispatch and loss drafts', () => {
     const inputs = sourceAmountInputs()
     inputs[0]!.vm.$emit('update:modelValue', 3)
     inputs[1]!.vm.$emit('update:modelValue', 0.3)
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     await flushPromises()
     wrapper
       .findAllComponents(ElInputNumber)
@@ -1098,10 +1099,7 @@ describe('source batch dispatch and loss drafts', () => {
     const change = vi.spyOn(teamMaterialApi, 'changeQuantity')
     await render('dispatch', [source()])
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     expect(wrapper.find('input[aria-label="TL10加工后未转出件数"]').exists()).toBe(false)
     resolve({
       source_transfer_id: 10,
@@ -1146,19 +1144,13 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render()
     await destination()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '登记加工后件数')!
-      .trigger('click')
+    await sourceAction('登记加工后件数')
     await flushPromises()
     wrapper
       .findAllComponents(ElInputNumber)
       .find((input) => input.props('ariaLabel')?.endsWith('加工后未转出件数'))!
       .vm.$emit('update:modelValue', 120)
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '移除')!
-      .trigger('click')
+    await sourceAction('移除')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
@@ -1229,10 +1221,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('submits excessive split amounts and shows the combined shortage without blocking', async () => {
     await render('dispatch', [source()])
     await destination(1)
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '拆分物料')!
-      .trigger('click')
+    await sourceAction('拆分物料')
     await flushPromises()
     const inputs = sourceAmountInputs()
     ;[80, 8, 21, 2.001].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
@@ -1261,10 +1250,7 @@ describe('source batch dispatch and loss drafts', () => {
     async (difference) => {
       await render('dispatch', [source()])
       await destination()
-      await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '拆分物料')!
-        .trigger('click')
+      await sourceAction('拆分物料')
       await flushPromises()
       const inputs = sourceAmountInputs()
       ;[50, 5, 50, 5 + difference].forEach((value, index) =>

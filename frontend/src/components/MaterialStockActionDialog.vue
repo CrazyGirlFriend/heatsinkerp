@@ -1326,7 +1326,6 @@ watch(
                   :width="180"
                   :teleported="false"
                   :show-arrow="false"
-                  persistent
                 >
                   <template #reference>
                     <ElButton size="small" :aria-label="`${line.source.transfer.batch_no}更多操作`">

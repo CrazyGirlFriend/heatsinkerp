@@ -11,6 +11,7 @@ defineExpose({ hide: () => popover.value?.hide() })
 <template>
   <ElPopover
     ref="popover"
+    :persistent="false"
     v-bind="$attrs"
     :transition="themed ? 'wm-popover' : transition"
     :popper-class="

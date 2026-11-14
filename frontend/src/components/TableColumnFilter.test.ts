@@ -8,7 +8,7 @@ let wrapper: VueWrapper
 const popover = { template: '<div><slot name="reference"/><slot/></div>' }
 afterEach(() => wrapper?.unmount())
 async function open() {
-  wrapper.getComponent(ElPopover).vm.$emit('show')
+  wrapper.getComponent(ElPopover).vm.$emit('update:visible', true)
   await flushPromises()
 }
 async function click(text: string) {
@@ -18,6 +18,19 @@ async function click(text: string) {
     .trigger('click')
 }
 describe('table column filters', () => {
+  it('does not overwrite input entered before the opening animation finishes', async () => {
+    wrapper = mount(TableColumnFilter, {
+      props: { label: '流水号', value: '691236-50' },
+      global: { stubs: { ElPopover: popover } },
+    })
+    wrapper.getComponent(ElPopover).vm.$emit('update:visible', true)
+    await flushPromises()
+    await wrapper.get('input').setValue('691236-51')
+    wrapper.getComponent(ElPopover).vm.$emit('show')
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[0]).toEqual(['691236-51', ''])
+  })
   it('cancels drafts, trims on apply and clears only when requested', async () => {
     wrapper = mount(TableColumnFilter, {
       props: { label: '流水号', value: 'YS-001' },

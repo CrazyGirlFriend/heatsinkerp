@@ -76,8 +76,10 @@ function escape(event: KeyboardEvent) {
   void nextTick(() => trigger.value?.ref?.focus())
 }
 watch(visible, (value) => {
-  if (value) document.addEventListener('keydown', escape)
-  else document.removeEventListener('keydown', escape)
+  if (value) {
+    open()
+    document.addEventListener('keydown', escape)
+  } else document.removeEventListener('keydown', escape)
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 </script>
@@ -93,7 +95,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
       modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 8 } }],
     }"
     popper-class="record-date-popover"
-    @show="open"
   >
     <template #reference
       ><ElButton

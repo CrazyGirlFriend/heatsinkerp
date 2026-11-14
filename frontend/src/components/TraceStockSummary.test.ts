@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { afterEach, expect, it } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, expect, it, vi } from 'vitest'
 import { ElPopover } from 'element-plus'
 import TraceStockSummary from './TraceStockSummary.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -90,7 +90,7 @@ it('breaks down reusable natures and waste by team, including weight-only waste'
   const popovers = page.findAllComponents(ElPopover)
   expect(popovers[0]!.text()).toContain('18')
   await page.get('.stock-waste').trigger('click')
-  await flushPromises()
+  await vi.waitFor(() => expect(document.body.querySelector('.stock-waste-details')).not.toBeNull())
   const waste = document.body.querySelector('.stock-waste-details')!
   expect(waste.textContent).toContain('废屑')
   expect(waste.textContent).toContain('19.577 kg')

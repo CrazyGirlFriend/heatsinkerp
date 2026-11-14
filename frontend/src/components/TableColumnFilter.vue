@@ -61,6 +61,9 @@ function apply(clear = false) {
   emit('apply', clear ? '' : draft.value.trim(), clear ? '' : endDraft.value.trim())
   close()
 }
+watch(visible, (value) => {
+  if (value) void open()
+})
 watch(
   () => props.context,
   () => {
@@ -81,7 +84,6 @@ watch(
     :popper-options="{
       modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 8 } }],
     }"
-    @show="open"
   >
     <template #reference>
       <ElButton

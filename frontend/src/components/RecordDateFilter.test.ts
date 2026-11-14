@@ -17,7 +17,7 @@ async function render(value = { from: '', to: '' }) {
     props: { modelValue: value, label: '流转日期' },
     global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } },
   })
-  wrapper.getComponent(ElPopover).vm.$emit('show')
+  wrapper.getComponent(ElPopover).vm.$emit('update:visible', true)
   await wrapper.vm.$nextTick()
 }
 async function click(text: string) {
@@ -27,6 +27,16 @@ async function click(text: string) {
     .trigger('click')
 }
 describe('compact calendar', () => {
+  it('keeps a shortcut selected before the opening animation finishes', async () => {
+    await render({ from: '2026-09-10', to: '2026-09-10' })
+    await click('今天')
+    wrapper.getComponent(ElPopover).vm.$emit('show')
+    await wrapper.vm.$nextTick()
+    await click('确定')
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([
+      { from: '2026-09-12', to: '2026-09-12' },
+    ])
+  })
   it('keeps dates hidden behind one labelled button and applies a selected day', async () => {
     await render()
     expect(wrapper.get('.record-date-trigger').attributes('aria-label')).toBe('流转日期：不限')
@@ -61,7 +71,7 @@ describe('compact calendar', () => {
     ])
     await click('清空')
     expect(wrapper.emitted('update:modelValue')?.[1]).toEqual([{ from: '', to: '' }])
-    wrapper.getComponent(ElPopover).vm.$emit('show')
+    wrapper.getComponent(ElPopover).vm.$emit('update:visible', true)
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[aria-label="2026-09-10"]').attributes('aria-pressed')).toBe('true')
   })
