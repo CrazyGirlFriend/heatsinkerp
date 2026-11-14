@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
 import ElSkeleton from '@/components/AppSkeleton.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
@@ -219,7 +220,22 @@ const statusParams = computed(() =>
     ? { statuses: status.value, status: 'all' as const }
     : { status: status.value as TransferStatusValue | 'all' },
 )
+const tableQuery = useTableQuery({}, () => {
+  page.value = 1
+  void loadRows()
+})
+function headerSort(field: string) {
+  return {
+    sortable: true,
+    sort:
+      tableQuery.state.value.sort?.field === field
+        ? tableQuery.state.value.sort.direction
+        : undefined,
+    onSort: (direction?: 'asc' | 'desc') => tableQuery.controller.value.sort(field, direction),
+  }
+}
 const filterParams = computed<MaterialTransferFilterParams>(() => ({
+  ...tableQuery.params.value,
   query: query.value || undefined,
   date_from: dates.value.from || undefined,
   date_to: dates.value.to || undefined,
@@ -898,6 +914,7 @@ onBeforeUnmount(() => {
               ><template #header
                 ><TableColumnFilter
                   label="流水号"
+                  v-bind="headerSort('serial_no')"
                   :context="route.fullPath"
                   :value="columns.serial_query"
                   @apply="(value) => applyColumn('serial_query', value)" /></template
@@ -927,6 +944,7 @@ onBeforeUnmount(() => {
               ><template #header
                 ><TableColumnFilter
                   label="转出时间"
+                  v-bind="headerSort('created_at')"
                   :context="route.fullPath"
                   kind="date"
                   :value="dates.from"
@@ -951,6 +969,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-if="column.key === 'material'"
                   label="材质"
+                  v-bind="headerSort('material_name')"
                   :context="route.fullPath"
                   :value="columns.material_query"
                   @apply="(value) => applyColumn('material_query', value)"
@@ -958,6 +977,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'source'"
                   label="来源"
+                  v-bind="headerSort('source_team_name')"
                   :context="route.fullPath"
                   kind="select"
                   :value="String(sourceTeamId)"
@@ -967,6 +987,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'destination'"
                   label="去向"
+                  v-bind="headerSort('next_team_name')"
                   :context="route.fullPath"
                   kind="select"
                   :value="String(nextTeamId)"
@@ -976,6 +997,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'purpose'"
                   label="接收任务"
+                  v-bind="headerSort('purpose_name')"
                   :context="route.fullPath"
                   :value="columns.purpose_query"
                   @apply="(value) => applyColumn('purpose_query', value)"
@@ -983,6 +1005,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'material_type'"
                   label="物料类型"
+                  v-bind="headerSort('material_type')"
                   :context="route.fullPath"
                   kind="select"
                   :value="materialType"
@@ -992,6 +1015,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'quantity'"
                   label="数量"
+                  v-bind="headerSort('quantity')"
                   :context="route.fullPath"
                   kind="number"
                   integer
@@ -1002,6 +1026,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'weight'"
                   label="重量"
+                  v-bind="headerSort('weight')"
                   :context="route.fullPath"
                   kind="number"
                   :value="columns.weight_min"
@@ -1011,6 +1036,7 @@ onBeforeUnmount(() => {
                 <TableColumnFilter
                   v-else-if="column.key === 'status'"
                   label="状态"
+                  v-bind="headerSort('status')"
                   :context="route.fullPath"
                   kind="select"
                   :value="status === 'all' ? '' : status"
@@ -1047,6 +1073,7 @@ onBeforeUnmount(() => {
               ><template #header
                 ><TableColumnFilter
                   label="批次号"
+                  v-bind="headerSort('batch_no')"
                   :context="route.fullPath"
                   :value="columns.batch_query"
                   @apply="(value) => applyColumn('batch_query', value)"

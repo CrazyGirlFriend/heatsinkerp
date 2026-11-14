@@ -6,7 +6,7 @@ from .models import MaterialTransfer as Transfer
 from .models import ProductionScheduleTask as Task
 from .production_schedule_queries import iso
 from .production_schedule_tasks import require_task, task_values
-from .team_constants import EXTERNAL_ENTRY_KINDS
+from .schedule_fulfillment import customer_shipments
 
 
 def progress(db, task_id):
@@ -32,13 +32,7 @@ def progress(db, task_id):
         )
     # Warehouse/inspection customer exits count once. Internal handoffs, outsourcing,
     # unfinished material, pending exits and voided records never count as shipped.
-    filters = (
-        Transfer.serial_no == selected.serial_no,
-        Transfer.entry_kind.in_(EXTERNAL_ENTRY_KINDS),
-        Transfer.external_destination == "对外转料",
-        Transfer.material_type == "finished",
-        Transfer.status == "dispatched",
-    )
+    filters = (Transfer.serial_no == selected.serial_no, *customer_shipments())
     total = db.execute(
         select(
             func.sum(Transfer.quantity),

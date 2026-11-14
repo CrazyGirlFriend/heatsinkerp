@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { inspectionQueryColumns } from '@/utils/tableQueryColumns'
 import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
@@ -67,8 +69,16 @@ const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
   busy: () => loading.value || !!selected.value,
 })
+const tableQuery = useTableQuery(inspectionQueryColumns, () => {
+  page.value = 1
+  void load()
+})
 function params(): QualityFilters {
-  return { ...applied.value, team_id: props.showAll ? applied.value.team_id : props.teamId }
+  return {
+    ...tableQuery.params.value,
+    ...applied.value,
+    team_id: props.showAll ? applied.value.team_id : props.teamId,
+  }
 }
 watch(
   [page, size],
@@ -290,6 +300,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <WorkspaceTable
       columns-key="TeamQualityFeedback-1"
+      :column-query="tableQuery.controller.value"
       v-else
       :data="rows"
       class="quality-feedback-table"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
@@ -75,7 +77,12 @@ async function switchView(value: string) {
   if (!text('search_field') || text('search_field') === 'all') query.query = text('query')
   await router.replace({ path: route.path, query })
 }
+const tableQuery = useTableQuery(inventoryQueryColumns, () => {
+  if (params.value.page !== 1)
+    void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
+})
 const params = computed<GlobalInventoryParams>(() => ({
+  ...tableQuery.params.value,
   query: text('query') || undefined,
   search_field: (text('search_field') || 'all') as GlobalInventoryParams['search_field'],
   search_operator: (text('search_operator') || 'eq') as GlobalInventoryParams['search_operator'],
@@ -693,6 +700,7 @@ function exportSource() {
       >
       <WorkspaceTable
         columns-key="SerialInventoryPage-1"
+        :column-query="tableQuery.controller.value"
         :column-settings="false"
         v-else
         :data="result?.items || []"

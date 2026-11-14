@@ -240,8 +240,8 @@ export function nodeCompletion(node: ProductionSchedule) {
 export function nodeWorkProgress(node: ProductionSchedule) {
   const progress = nodeCompletion(node)
   return {
-    label: progress.processed == null ? '已转出' : '已加工',
-    percent: progress.processed ?? progress.dispatched,
+    label: '已转出',
+    percent: progress.dispatched,
   }
 }
 

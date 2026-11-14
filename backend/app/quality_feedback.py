@@ -229,7 +229,13 @@ def list_records(
         .join(Team, Team.id == Inspection.team_id)
         .where(*conditions)
     )
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    from .table_query import query_statement
+
+    columns = inspections.inspection_table_columns()
+    stmt = query_statement(
+        stmt, Inspection.created_at.desc(), Inspection.id.desc(), columns=columns
+    )
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     pending = (
         db.scalar(
             select(func.count()).select_from(
@@ -238,11 +244,7 @@ def list_records(
         )
         or 0
     )
-    rows = db.execute(
-        stmt.order_by(Inspection.checked_at.desc(), Inspection.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).all()
+    rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).all()
     return dict(
         items=summaries(db, rows),
         total=total,

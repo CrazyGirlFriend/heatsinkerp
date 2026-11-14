@@ -109,7 +109,7 @@ const measurements = computed(() => [
           </div>
           <div>
             <dt>实际交齐</dt>
-            <dd>{{ formatDateTime(node.completed_at) }}</dd>
+            <dd>{{ formatDateTime(node.handover_completed_at || node.completed_at) }}</dd>
           </div>
         </dl>
         <div class="detail-quantities">

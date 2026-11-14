@@ -4,10 +4,16 @@ from sqlalchemy import func, select
 
 from .models import MaterialQuantityAdjustment as Work
 from .models import TeamEmployee
-from .processing_records import production_groups, record_conditions, require_processing_team
+from .processing_records import (
+    production_groups,
+    record_conditions,
+    record_table_columns,
+    require_processing_team,
+)
 from .processing_registration import SUMMARY_METRICS
 from .quantity_adjustments import record_dict
 from .record_filters import RecordFilters
+from .table_query import table_predicates
 
 
 def list_daily(
@@ -37,6 +43,7 @@ def list_daily(
         processing_task_id,
         purpose_id,
     )
+    conditions.extend(table_predicates(record_table_columns()))
     statement = production_groups(conditions)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = (

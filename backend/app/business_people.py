@@ -16,17 +16,14 @@ def list_people(db, *, query=None, page=1, page_size=100):
     statement = select(BusinessPerson)
     if query:
         statement = statement.where(literal_query(query, [BusinessPerson.name]))
-    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    from .table_query import query_statement
+
+    statement = query_statement(statement, BusinessPerson.id.desc())
+    total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     return {
         "items": [
             person_dict(person)
-            for person in db.scalars(
-                statement.order_by(
-                    BusinessPerson.active.desc(), BusinessPerson.name, BusinessPerson.id
-                )
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            )
+            for person in db.scalars(statement.offset((page - 1) * page_size).limit(page_size))
         ],
         "total": total,
         "page": page,

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
@@ -27,13 +29,33 @@ const visible = ref(true),
   loading = ref(false),
   busy = ref(false),
   error = ref('')
+const tableQuery = useTableQuery(
+  queryColumns([
+    ['流水号', 'serial_nos'],
+    ['工艺人员', 'engineering_employee_name'],
+    ['导入时间', 'created_at', 'date'],
+  ]),
+  () => {
+    page.value = 1
+    void load()
+  },
+)
 let generation = 0
 async function load() {
   const current = ++generation
   loading.value = true
   error.value = ''
   try {
-    const result = await processRouteApi.list(appliedQuery.value, page.value, 'published')
+    const result = await processRouteApi.list(
+      appliedQuery.value,
+      page.value,
+      'published',
+      'desc',
+      20,
+      'normal',
+      'all',
+      tableQuery.params.value.table_query,
+    )
     if (current !== generation) return
     items.value = result.items
     total.value = result.total
@@ -116,6 +138,7 @@ onBeforeUnmount(() => {
     </div>
     <WorkspaceTable
       columns-key="PublishedProcessRoutePicker-1"
+      :column-query="tableQuery.controller.value"
       height="100%"
       fill
       :embedded="false"

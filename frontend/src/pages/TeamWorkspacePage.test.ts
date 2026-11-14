@@ -1041,7 +1041,13 @@ describe('team workspace material ledger', () => {
       })
       await render(`/team-workspaces/${tab === 'receipts' ? 901 : 914}?tab=${tab}`)
       const table = wrapper.get('.team-table')
-      const headings = table.findAll('thead th').map((cell) => cell.text())
+      const headings = table
+        .findAll('.el-table__header > thead > tr > th')
+        .map((cell) =>
+          cell.find('.table-column-filter').exists()
+            ? cell.get('.table-column-filter').text()
+            : cell.text(),
+        )
       expect(table.classes()).toContain('single-line-table')
       expect(headings).toContain('流水号')
       expect(headings).toContain('材质')
@@ -1738,7 +1744,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.text()).not.toContain('SERIAL-STALE')
     expect(wrapper.get('h1').text()).toBe('库存明细')
     expect(wrapper.get('.team-workspace').attributes('aria-label')).toBe('检验工作台')
-    expect(wrapper.find('.team-table input[type=checkbox]').exists()).toBe(false)
+    expect(wrapper.find('.team-table tbody input[type=checkbox]').exists()).toBe(false)
   })
   it('opens a combined print after creation but requires each batch barcode for direct receiving', async () => {
     await render('/team-workspaces/914?tab=stock')
@@ -2105,7 +2111,7 @@ describe('warehouse intake workspace', () => {
     })
     expect(wrapper.text()).toContain('已入库')
     expect(wrapper.findAll('button').some((button) => button.text() === '手工入库')).toBe(false)
-    expect(wrapper.find('.team-table input[type=checkbox]').exists()).toBe(false)
+    expect(wrapper.find('.team-table tbody input[type=checkbox]').exists()).toBe(false)
   })
   it.each(teamWorkspaceProfiles)(
     'shows received batches for $name without enabling workshop manual intake',
@@ -2137,8 +2143,12 @@ describe('warehouse intake workspace', () => {
         expect(wrapper.get('.team-table').text()).toContain('TL10')
         const headings = wrapper
           .get('.team-table')
-          .findAll('thead th')
-          .map((cell) => cell.text())
+          .findAll('.el-table__header > thead > tr > th')
+          .map((cell) =>
+            cell.find('.table-column-filter').exists()
+              ? cell.get('.table-column-filter').text()
+              : cell.text(),
+          )
         expect(headings).toContain('入库时间')
         expect(headings.includes('仓位')).toBe(warehouse)
         expect(headings.includes('来源类别')).toBe(warehouse)

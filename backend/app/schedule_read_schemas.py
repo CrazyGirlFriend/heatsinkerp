@@ -40,6 +40,8 @@ class ScheduleBatchProposalResponse(ReadResponse):
 
 
 class ScheduleBatchResponse(ReadResponse):
+    handover_status: ScheduleStatus
+    handover_completed_at: str | None
     id: int
     batch_number: int
     planned_start_at: str | None
@@ -103,7 +105,18 @@ class ScheduleEventResponse(ReadResponse):
     after: dict[str, JsonValue] | None
 
 
-class ScheduleResponse(ReadResponse):
+class OrderFulfillmentResponse(ReadResponse):
+    order_quantity: int | None
+    shipped_quantity: int
+    shipment_status: Literal["unshipped", "partial", "shipped"]
+    shipment_completed_at: str | None
+    order_completed: bool
+    order_overdue: bool
+
+
+class ScheduleResponse(OrderFulfillmentResponse):
+    handover_status: ScheduleStatus
+    handover_completed_at: str | None
     id: int
     task_id: int
     task_no: str
@@ -200,7 +213,7 @@ class ScheduleReworkResponse(ReadResponse):
     state: Literal["awaiting_route", "processing", "processed"]
 
 
-class ScheduleTaskResponse(ReadResponse):
+class ScheduleTaskResponse(OrderFulfillmentResponse):
     id: int
     task_no: str
     title: str

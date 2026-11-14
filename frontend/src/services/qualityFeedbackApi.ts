@@ -1,3 +1,4 @@
+import { feedbackStates } from '@/types/qualityStatus'
 import { httpRequest } from './httpClient'
 import type { InspectionRecord } from './inspectionApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -5,7 +6,7 @@ import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 type Contract = import('@/types/generated/api').components['schemas']
 export type QualityReworkStock = Contract['QualityReworkStockResponse']
 
-export const feedbackStates = { pending: '待处理', processing: '处理中', closed: '已结束' }
+export { feedbackStates } from '@/types/qualityStatus'
 export const dispositions = {
   pending: '待判定',
   rework: '返工',

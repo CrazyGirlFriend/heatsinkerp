@@ -118,7 +118,12 @@ def list_routes(
                 ]
             )
         )
-    effective_time = func.coalesce(ProcessRoute.updated_at, ProcessRoute.created_at)
+    from .table_query import table_order, table_predicates
+
+    material_name = ProcessRoute.source_data["receipt_fields"]["material_name"]["value"].as_string()
+    columns = {**dict(ProcessRoute.__table__.columns.items()), "material_name": material_name}
+    where.extend(table_predicates(columns))
+    effective_time = ProcessRoute.created_at
     ordering = (
         (effective_time.asc(), ProcessRoute.id.asc())
         if sort_order == "asc"
@@ -132,7 +137,7 @@ def list_routes(
             .label("material_name"),
         )
         .where(*where)
-        .order_by(*ordering)
+        .order_by(*table_order(columns, *ordering))
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

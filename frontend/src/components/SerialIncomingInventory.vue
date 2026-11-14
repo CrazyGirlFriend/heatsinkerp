@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { transferQueryColumns } from '@/utils/tableQueryColumns'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
@@ -51,7 +53,15 @@ const page = computed(() => Math.max(1, Number(text('page')) || 1))
 const pageSize = computed(() =>
   [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 20,
 )
+const tableQuery = useTableQuery(transferQueryColumns, () => {
+  if (page.value !== 1)
+    void navigate({ ...route.query, page: undefined } as Record<
+      string,
+      string | number | undefined
+    >)
+})
 const params = computed<MaterialTransferListParams>(() => ({
+  ...tableQuery.params.value,
   internal_only: true,
   status: 'pending',
   query: text('query') || undefined,
@@ -365,6 +375,7 @@ function exportSource() {
     >
     <WorkspaceTable
       columns-key="SerialIncomingInventory-1"
+      :column-query="tableQuery.controller.value"
       v-else
       :data="result?.items || []"
       row-key="id"

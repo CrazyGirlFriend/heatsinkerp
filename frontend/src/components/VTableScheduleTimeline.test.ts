@@ -519,7 +519,7 @@ it('fits a selected month, drills into dates and restores the overview while pre
     expect.arrayContaining(['线切割 75%']),
   )
   expect(line.children.some((item: any) => item.attribute.image)).toBe(false)
-  const monthScale = (30 * 86400000) / 1096
+  const monthScale = (30 * 86400000) / (1400 - instance.options.taskListTable.tableWidth - 4)
   expect(instance.getCurrentMillisecondsPerPixel()).toBe(monthScale)
   expect(instance.options.rowHeight).toBeCloseTo(28.8)
   expect(instance.options.timelineHeader.scales).toEqual(
@@ -543,8 +543,12 @@ it('fits a selected month, drills into dates and restores the overview while pre
   expect(days).toHaveLength(7)
   days[3].handlers.get('click')()
   await flushPromises()
-  expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(86400000 / 1096)
-  expect(instance.scrollLeft).toBeCloseTo(4 * 1096)
+  expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(
+    86400000 / (1400 - instance.options.taskListTable.tableWidth - 4),
+  )
+  expect(instance.scrollLeft).toBeCloseTo(
+    4 * (1400 - instance.options.taskListTable.tableWidth - 4),
+  )
   expect(wrapper.get('.gantt-visible-range').text()).toBe('11-05 — 11-05')
   expect(instance.options.taskListTable.columns[0].tree).toBe(false)
   expect(instance.options.timelineHeader.scales).toEqual(
@@ -577,7 +581,9 @@ it('fits a selected month, drills into dates and restores the overview while pre
   await wrapper.get('[aria-label="返回整月"]').trigger('click')
   Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 1200 })
   resize()
-  expect(instance.getCurrentMillisecondsPerPixel()).toBe((30 * 86400000) / 896)
+  expect(instance.getCurrentMillisecondsPerPixel()).toBe(
+    (30 * 86400000) / (1200 - instance.options.taskListTable.tableWidth - 4),
+  )
   Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 1400 })
   resize()
   expect(instance.getCurrentMillisecondsPerPixel()).toBe(monthScale)
@@ -602,7 +608,9 @@ it('fits a selected month, drills into dates and restores the overview while pre
     '200',
   )
   await selectRange('2028-02-29', '2028-02-29')
-  expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(86400000 / 696)
+  expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(
+    86400000 / (1000 - instance.options.taskListTable.tableWidth - 4),
+  )
   expect(instance.scrollLeft).toBe(0)
   wrapper.unmount()
 })

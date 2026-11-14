@@ -196,6 +196,7 @@ def stock_table(team_id=None):
             MaterialTransfer.material_type,
             MaterialTransfer.source_batch_no,
             MaterialTransfer.received_at,
+            MaterialTransfer.created_at,
             MaterialTransfer.processing_role,
             MaterialTransfer.shared_group_id,
             MaterialTransfer.shared_unallocated,
@@ -321,6 +322,10 @@ def list_stock(
             )
             matches = or_(matches, stock.c.transfer_id.in_(location_matches))
         filters.append(matches)
+    from .table_query import table_order, table_predicates
+
+    columns = dict(stock.c.items())
+    filters.extend(table_predicates(columns))
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
     metadata = source_metadata(team_id)
     rows = (
@@ -328,7 +333,7 @@ def list_stock(
             select(stock, metadata)
             .outerjoin(metadata, metadata.c.lot_id == stock.c.transfer_id)
             .where(*filters)
-            .order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc())
+            .order_by(*table_order(columns, stock.c.created_at.desc(), stock.c.transfer_id.desc()))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -486,11 +491,23 @@ def list_losses(
             )
         )
         filters.append(MaterialLoss.source_transfer_id.in_(ids))
+    from .table_query import table_order, table_predicates
+
+    columns = {
+        **dict(MaterialLoss.__table__.columns.items()),
+        **{
+            key: select(getattr(MaterialTransfer, key))
+            .where(MaterialTransfer.id == MaterialLoss.source_transfer_id)
+            .scalar_subquery()
+            for key in ("serial_no", "material_name", "batch_no", "material_type")
+        },
+    }
+    filters.extend(table_predicates(columns))
     total = db.scalar(select(func.count(MaterialLoss.id)).where(*filters)) or 0
     rows = db.scalars(
         select(MaterialLoss)
         .where(*filters)
-        .order_by(MaterialLoss.created_at.desc(), MaterialLoss.id.desc())
+        .order_by(*table_order(columns, MaterialLoss.created_at.desc(), MaterialLoss.id.desc()))
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -544,12 +561,16 @@ def list_outbound_batches(
                 ],
             )
         )
+    from .table_query import table_order, table_predicates
+
+    columns = dict(mt.__table__.columns.items())
+    filters.extend(table_predicates(columns))
     total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
     items = db.scalars(
         select(mt)
         .options(*workflow.material_transfer_list_options())
         .where(*filters)
-        .order_by(mt.created_at.desc(), mt.id.desc())
+        .order_by(*table_order(columns, mt.created_at.desc(), mt.id.desc()))
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -667,12 +688,28 @@ def list_dispatches(
         filters.append(index.c.next_team_id == next_team_id)
     if status:
         filters.append(index.c.status == status)
+    from .table_query import table_order, table_predicates
+
+    matching_lines = or_(mt.dispatch_id == index.c.group_id, mt.id == index.c.single_id)
+
+    def line_value(expression):
+        return select(expression).where(matching_lines).scalar_subquery()
+
+    columns = {
+        **dict(index.c.items()),
+        "serial_no": line_value(func.group_concat(mt.serial_no)),
+        "material_name": line_value(func.group_concat(mt.material_name)),
+        "created_by": line_value(func.max(mt.created_by)),
+        "quantity": line_value(func.sum(case((mt.status != "voided", mt.quantity), else_=0))),
+        "weight": line_value(func.sum(case((mt.status != "voided", mt.weight), else_=0))),
+    }
+    filters.extend(table_predicates(columns))
     total = db.scalar(select(func.count()).select_from(index).where(*filters)) or 0
     rows = (
         db.execute(
             select(index)
             .where(*filters)
-            .order_by(index.c.created_at.desc(), index.c.dispatch_no.desc())
+            .order_by(*table_order(columns, index.c.created_at.desc(), index.c.dispatch_no.desc()))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

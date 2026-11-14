@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useLocalTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElEmpty from '@/components/AppEmpty.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElSkeleton from '@/components/AppSkeleton.vue'
@@ -84,7 +86,7 @@ const form = reactive<TeamForm>({
   kind: 'production',
 })
 
-const filteredTeams = computed(() => {
+const baseTeams = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return teams.value
     .filter((team) => {
@@ -100,6 +102,21 @@ const filteredTeams = computed(() => {
     )
 })
 
+const tableQuery = useLocalTableQuery(
+  queryColumns([
+    ['班组编码', 'code'],
+    ['班组名称', 'name'],
+    ['显示顺序', 'sort_order', 'number'],
+    ['状态', 'status'],
+  ]),
+  baseTeams,
+  (row, field) => (field === 'status' ? (row.active ? '启用' : '停用') : row[field as keyof Team]),
+  () => {
+    page.value = 1
+  },
+  (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || Number(b.id) - Number(a.id),
+)
+const filteredTeams = tableQuery.rows
 function exportSource() {
   const rows = filteredTeams.value.map((row) => ({ ...row }))
   return tableExportSource(
@@ -419,6 +436,7 @@ onMounted(() => void loadTeams())
         <span class="mobile-table-hint">左右滑动查看</span>
         <ElTable
           columns-key="TeamsPage-1"
+          :column-query="tableQuery.controller.value"
           class="business-table"
           :data="pageRows"
           row-key="id"

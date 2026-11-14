@@ -3,7 +3,7 @@
 from datetime import timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import aliased
 
@@ -113,6 +113,35 @@ def recheck_context(db, inspection_id):
 
 def hold_column_value(db, lot_id):
     return db.scalar(select(hold_column(lot_id)))
+
+
+def inspection_table_columns():
+    return {
+        **dict(Inspection.__table__.columns.items()),
+        "serial_no": MaterialTransfer.serial_no,
+        "material_name": MaterialTransfer.material_name,
+        "batch_no": MaterialTransfer.batch_no,
+        "team_name": Team.name,
+        "passed_quantity": Inspection.sample_quantity - Inspection.failed_quantity,
+        "inspection_type": case(
+            (Inspection.parent_id.is_not(None), "recheck"), else_=Inspection.kind
+        ),
+        "inspection_status": case(
+            (Inspection.released_at.is_not(None), "released"),
+            (
+                (Inspection.failed_quantity > 0)
+                & Inspection.parent_id.is_(None)
+                & Inspection.blocks_outbound.is_(True),
+                "pending",
+            ),
+            (Inspection.failed_quantity > 0, "failed"),
+            else_="passed",
+        ),
+        "problems": select(func.group_concat(InspectionProblem.name))
+        .where(InspectionProblem.inspection_id == Inspection.id)
+        .correlate(Inspection)
+        .scalar_subquery(),
+    }
 
 
 def record_dict(row, lot, team):
@@ -427,12 +456,14 @@ def list_records(
         .join(Team, Team.id == Inspection.team_id)
         .where(*conditions)
     )
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.execute(
-        stmt.order_by(Inspection.checked_at.desc(), Inspection.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).all()
+    from .table_query import query_statement
+
+    columns = inspection_table_columns()
+    stmt = query_statement(
+        stmt, Inspection.created_at.desc(), Inspection.id.desc(), columns=columns
+    )
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).all()
     return dict(
         items=[record_dict(*row) for row in rows], total=total, page=page, page_size=page_size
     )

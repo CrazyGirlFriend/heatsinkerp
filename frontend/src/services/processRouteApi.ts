@@ -80,6 +80,7 @@ export const processRouteApi = {
     pageSize = 20,
     kind: 'normal' | 'rework' | 'all' = 'normal',
     reworkScope: 'open' | 'ended' | 'all' = 'all',
+    tableQuery?: string,
   ) =>
     request<
       MaterialPage<ProcessRoute> & {
@@ -87,7 +88,7 @@ export const processRouteApi = {
         pending_rework_count?: number
       }
     >(
-      `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}${kind === 'rework' ? '&rework_scope=' + reworkScope : ''}`,
+      `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}${kind === 'rework' ? '&rework_scope=' + reworkScope : ''}${tableQuery ? '&table_query=' + encodeURIComponent(tableQuery) : ''}`,
     ),
   options: (teamId: number) =>
     request<{ tasks: TeamProcessingTask[]; purposes: TeamPurpose[] }>(`/options/${teamId}`),

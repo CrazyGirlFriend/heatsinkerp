@@ -4,6 +4,8 @@ import { computed, defineComponent, reactive } from 'vue'
 import { ElCheckbox, ElInput, ElTableColumn } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ColumnManagedTable from './ColumnManagedTable.vue'
+import TableColumnFilter from './TableColumnFilter.vue'
+import { useTableQuery } from '@/composables/useTableQuery'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import AppDetailTable from './AppDetailTable.vue'
 import { tableColumnScopeKey } from '@/utils/tableColumnLayout'
@@ -62,6 +64,33 @@ async function render(key = 'test-records') {
 }
 
 describe('shared table columns', () => {
+  it('offers query menus on fixed and normal columns without evaluating body slots early', async () => {
+    const query = useTableQuery(
+      { serial: { field: 'serial' }, quantity: { field: 'quantity', kind: 'number' } },
+      () => {},
+    )
+    wrapper = mount(
+      defineComponent({
+        components: { ColumnManagedTable, ElTableColumn },
+        setup: () => ({ query }),
+        template: `<ColumnManagedTable :column-settings="false" :column-query="query.controller.value" :data="[{serial:'A', quantity:10}]">
+        <ElTableColumn prop="serial" label="流水号" fixed/><ElTableColumn prop="quantity" label="数量"/>
+        <ElTableColumn label="操作"><template #default>查看</template></ElTableColumn>
+      </ColumnManagedTable>`,
+      }),
+      { global },
+    )
+    await flushPromises()
+    const controls = wrapper.findAllComponents(TableColumnFilter)
+    expect(controls.map((item) => item.props('label'))).toEqual(['流水号', '数量'])
+    controls[1]!.vm.$emit('apply', '5', '20')
+    controls[1]!.vm.$emit('sort', 'desc')
+    await flushPromises()
+    expect(query.state.value.filters[0]?.field).toBe('quantity')
+    expect(query.state.value.sort).toEqual({ field: 'quantity', direction: 'desc' })
+    expect(wrapper.get('.el-table__body').text()).toContain('A')
+  })
+
   it('reorders and hides columns without mixing up cells, selections or edit values', async () => {
     await render()
     await wrapper.get('input[aria-label="备注"]').setValue('已核对')

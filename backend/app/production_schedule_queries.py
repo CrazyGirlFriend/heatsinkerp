@@ -37,7 +37,7 @@ def iso(value):
     return value.replace(tzinfo=timezone.utc).isoformat() if value else None
 
 
-def progress_table(*, plan_ids=None, team_id=None, batches=False):
+def progress_table(*, plan_ids=None, team_id=None, batches=False, include_warehouse=False):
     """SQL aggregation precedes filtering/paging; cancelled transfers never fulfill."""
     transferred_at = case(
         (Transfer.entry_kind == "transfer", Transfer.created_at), else_=Transfer.dispatched_at
@@ -120,7 +120,7 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False):
         actual = actual.join(Batch, Batch.id == Delivery.schedule_batch_id)
     actual = actual.subquery("batch_actual_deliveries" if batches else "schedule_actual_deliveries")
     reached = and_(
-        actual.c.assessed,
+        True if include_warehouse else actual.c.assessed,
         or_(
             actual.c.completion_basis == "weight",
             actual.c.running_quantity >= actual.c.target_quantity,
@@ -144,7 +144,9 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False):
     )
     if batches:
         return totals
-    batch_progress = progress_table(plan_ids=plan_ids, team_id=team_id, batches=True)
+    batch_progress = progress_table(
+        plan_ids=plan_ids, team_id=team_id, batches=True, include_warehouse=include_warehouse
+    )
     batch_completion = (
         select(
             Batch.schedule_id,
@@ -176,11 +178,11 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False):
     )
 
 
-def status_expression(progress, now):
+def status_expression(progress, now, *, include_warehouse=False):
     local = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_ZONE)
     end_today = datetime.combine(local.date() + timedelta(days=1), time(), LOCAL_ZONE)
     end_today = end_today.astimezone(timezone.utc).replace(tzinfo=None)
-    batches = progress_table(batches=True)
+    batches = progress_table(batches=True, include_warehouse=include_warehouse)
 
     def batch_matches(condition):
         return (
@@ -198,7 +200,10 @@ def status_expression(progress, now):
     return case(
         (Plan.cancelled_at.is_not(None), "cancelled"),
         (
-            Plan.team_id.in_(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE)),
+            and_(
+                not include_warehouse,
+                Plan.team_id.in_(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE)),
+            ),
             "not_assessed",
         ),
         (
@@ -403,9 +408,9 @@ def task_locations(db, task_ids, plan_ids):
     return result
 
 
-def linked_batches(db, ids):
+def linked_batch_rows(ids):
     links = linked_lots(ids)
-    rows = (
+    return (
         select(
             links.c.schedule_id,
             Transfer.id.label("source_transfer_id"),
@@ -433,6 +438,10 @@ def linked_batches(db, ids):
         )
         .subquery()
     )
+
+
+def linked_batches(db, ids):
+    rows = linked_batch_rows(ids)
     result = {}
     for row in db.execute(select(rows).where(rows.c.row_number <= 100)).mappings():
         value = result.setdefault(row["schedule_id"], {"items": [], "total": row["total"]})

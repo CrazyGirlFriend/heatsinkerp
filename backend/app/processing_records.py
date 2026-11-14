@@ -560,6 +560,24 @@ def participant_pairs():
     )
 
 
+def record_table_columns():
+    participant_names = (
+        select(func.group_concat(ProcessingParticipant.name))
+        .where(ProcessingParticipant.processing_id == Adjustment.id)
+        .correlate(Adjustment)
+        .scalar_subquery()
+    )
+    return {
+        **dict(Adjustment.__table__.columns.items()),
+        "serial_no": Transfer.serial_no,
+        "material_name": Transfer.material_name,
+        "material_type": Transfer.material_type,
+        "batch_no": Transfer.batch_no,
+        "processor_name": func.coalesce(participant_names, Adjustment.processor_name),
+        "after_weight": func.coalesce(Adjustment.after_weight, Adjustment.weight_snapshot),
+    }
+
+
 def list_records(
     db,
     team_id,
@@ -587,6 +605,10 @@ def list_records(
         processing_task_id,
         purpose_id,
     )
+    from .table_query import table_order, table_predicates
+
+    columns = record_table_columns()
+    conditions.extend(table_predicates(columns))
     statement = (
         select(
             Adjustment,
@@ -686,7 +708,9 @@ def list_records(
         .all()
     )
     rows = db.execute(
-        statement.order_by(Adjustment.created_at.desc(), Adjustment.id.desc())
+        statement.order_by(
+            *table_order(columns, Adjustment.created_at.desc(), Adjustment.id.desc())
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

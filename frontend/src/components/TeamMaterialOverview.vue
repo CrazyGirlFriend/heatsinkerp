@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useLocalTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
@@ -77,10 +79,37 @@ watch(
     appliedQuery.value = ''
     stockFilter.value = filterDraft.value = 'all'
     filtersOpen.value = false
+    tableQuery.reset()
   },
 )
+const tableQuery = useLocalTableQuery(
+  queryColumns([
+    ['材质', 'label'],
+    ['物料类型', 'label'],
+    ['正常料件数', 'available_quantity', 'number'],
+    ['正常料重量 (kg)', 'available_weight', 'number'],
+    ['废料件数', 'scrap_quantity', 'number'],
+    ['废料重量 (kg)', 'scrap_weight', 'number'],
+    ['待确认件数', 'reserved_quantity', 'number'],
+    ['待确认重量 (kg)', 'reserved_weight', 'number'],
+    ['库存件数', 'owned_quantity', 'number'],
+    ['库存重量 (kg)', 'owned_weight', 'number'],
+    ['废料可处理件数', 'scrap_available_quantity', 'number'],
+    ['废料可处理重量 (kg)', 'scrap_available_weight', 'number'],
+    ['累计接收件数', 'received_quantity', 'number'],
+    ['累计接收重量 (kg)', 'received_weight', 'number'],
+    ['确认转出件数', 'dispatched_quantity', 'number'],
+    ['确认转出重量 (kg)', 'dispatched_weight', 'number'],
+    ['累计丢失件数', 'lost_quantity', 'number'],
+    ['累计丢失重量 (kg)', 'lost_weight', 'number'],
+    ['重量差异', 'shortage_weight', 'number'],
+  ]),
+  filteredEntries,
+  (row, field) => row[field as keyof typeof row],
+  () => emit('paginate', 1, props.pageSize),
+)
 const rows = computed(() =>
-  filteredEntries.value.slice((props.page - 1) * props.pageSize, props.page * props.pageSize),
+  tableQuery.rows.value.slice((props.page - 1) * props.pageSize, props.page * props.pageSize),
 )
 function exportSource() {
   const fields: [keyof MaterialBalance, string][] = [
@@ -110,7 +139,7 @@ function exportSource() {
           ['lost_weight', '累计丢失重量 (kg)'],
         ] as [keyof MaterialBalance, string][])),
   ]
-  const data = filteredEntries.value.map((row) => ({ ...row }))
+  const data = tableQuery.rows.value.map((row) => ({ ...row }))
   return tableExportSource(
     title.value,
     data.length,
@@ -162,6 +191,7 @@ defineExpose({ exportSource })
     </WorkspaceDataToolbar>
     <WorkspaceTable
       columns-key="TeamMaterialOverview-1"
+      :column-query="tableQuery.controller.value"
       :data="rows"
       class="ledger-table single-line-table"
       :class="{ 'ledger-table--empty': !rows.length }"
@@ -286,10 +316,12 @@ defineExpose({ exportSource })
     <WorkspacePagination
       :current-page="page"
       :page-size="pageSize"
-      :total="filteredEntries.length"
+      :total="tableQuery.rows.value.length"
       @current-change="emit('paginate', $event, pageSize)"
       @size-change="emit('paginate', 1, $event)"
-      >共 {{ filteredEntries.length }} 种{{ isMaterial ? '材质' : '物料类型' }}</WorkspacePagination
+      >共 {{ tableQuery.rows.value.length }} 种{{
+        isMaterial ? '材质' : '物料类型'
+      }}</WorkspacePagination
     >
   </WorkspaceDataPanel>
 </template>

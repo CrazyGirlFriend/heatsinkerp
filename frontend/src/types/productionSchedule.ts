@@ -2,6 +2,11 @@ import type { ProcessRouteStep } from './processRoute'
 import type { components } from './generated/api'
 type Contract = components['schemas']
 type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+export const shipmentStatusLabels = {
+  unshipped: '未发货',
+  partial: '部分发货',
+  shipped: '已发齐',
+} as const
 export const scheduleStatusLabels = {
   pending: '待交货',
   today: '今日到期',
@@ -79,7 +84,10 @@ export interface ScheduleBatchWrite {
   target_weight: number | null
   upstream_batch_ids: number[]
 }
-export type ScheduleBatch = OptionalFields<Contract['ScheduleBatchResponse'], 'planned_start_at'>
+export type ScheduleBatch = OptionalFields<
+  Contract['ScheduleBatchResponse'],
+  'planned_start_at' | 'handover_status' | 'handover_completed_at'
+>
 // The board also constructs batch rows locally. Keep that view projection separate
 // from the complete HTTP response without duplicating server field definitions.
 type ScheduleCore = Pick<
@@ -123,6 +131,7 @@ export type ProductionSchedule = ScheduleWrite &
   }
 
 export interface ScheduleFilters {
+  table_query?: string
   task_id?: number
   query?: string
   serial_no?: string

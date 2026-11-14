@@ -191,6 +191,11 @@ def test_predecessor_receipt_processing_split_and_return_visit_are_distinct(clie
     assert inherited["linked_batches"][0]["source_transfer_id"] == lot["id"]
     assert inherited["linked_batches"][0]["quantity"] == 1
     assert inherited["target_quantity"] == 20 and inherited["sources"] == []
+    from test_table_queries import query
+
+    filtered = client.get(URL, params={"table_query": query("source_count", "1", "1", "number")})
+    assert filtered.status_code == 200, filtered.text
+    assert middle["id"] in [row["id"] for row in filtered.json()["items"]]
     result = change(
         client,
         s,

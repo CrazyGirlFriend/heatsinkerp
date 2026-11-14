@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { transferQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import ElSelect from '@/components/AppSelect.vue'
@@ -215,11 +217,45 @@ const {
   applyListDialog,
   resetListFilters,
   applyFilters,
-  listParams,
+  listParams: baseListParams,
   receiptParams,
   dispatchParams,
   resetFiltersFromRoute,
 } = useTeamWorkspaceFilters(tab)
+const recordColumns = computed(() =>
+  tab.value === 'losses'
+    ? queryColumns([
+        ['流水号', 'serial_no'],
+        ['来源批次号', 'batch_no'],
+        ['材质', 'material_name'],
+        ['件数', 'quantity', 'number'],
+        ['重量 (kg)', 'weight', 'number'],
+        ['原因', 'reason'],
+        ['登记人', 'created_by'],
+        ['登记时间', 'created_at', 'date'],
+      ])
+    : tab.value === 'outgoing'
+      ? queryColumns([
+          ['批次号', 'dispatch_no'],
+          ['流水号', 'serial_no'],
+          ['材质', 'material_name'],
+          ['件数', 'quantity', 'number'],
+          ['重量 (kg)', 'weight', 'number'],
+          ['转料 / 登记人', 'created_by'],
+          ['登记时间', 'created_at', 'date'],
+        ])
+      : transferQueryColumns,
+)
+const tableQuery = useTableQuery(recordColumns, () => {
+  if (page.value !== 1)
+    void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
+  else void loadView()
+})
+function listParams() {
+  return { ...baseListParams(), ...tableQuery.params.value }
+}
+watch([tab, teamId], () => tableQuery.reset(), { flush: 'sync' })
+
 watch(
   [scopeReady, () => route.fullPath],
   () => {
@@ -1425,6 +1461,7 @@ onBeforeUnmount(() => {
               <div v-else class="team-table-scroll">
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-1"
+                  :column-query="tableQuery.controller.value"
                   v-if="tab === 'pending'"
                   :data="pending"
                   class="team-table single-line-table"
@@ -1514,6 +1551,7 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-2"
+                  :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'receipts'"
                   :data="receipts"
                   class="team-table single-line-table"
@@ -1632,6 +1670,7 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-3"
+                  :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'outgoing'"
                   :data="outgoing"
                   class="team-table dispatch-table single-line-table"
@@ -1742,6 +1781,7 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-4"
+                  :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'reallocations'"
                   :data="reallocations"
                   class="team-table single-line-table"
@@ -1819,6 +1859,7 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-5"
+                  :column-query="tableQuery.controller.value"
                   v-else
                   :data="losses"
                   class="team-table single-line-table"

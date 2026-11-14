@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
+import TableColumnFilter from './TableColumnFilter.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
 import { ElCheckbox } from 'element-plus'
@@ -422,8 +423,8 @@ describe('task scheduling board', () => {
     }
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
-      sort_by: 'final_due_at',
-      sort_order: 'asc',
+      sort_by: 'created_at',
+      sort_order: 'desc',
       page: 1,
       page_size: 50,
     })
@@ -435,8 +436,8 @@ describe('task scheduling board', () => {
     const exported = await data.load(new AbortController().signal, () => {})
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
-      sort_by: 'final_due_at',
-      sort_order: 'asc',
+      sort_by: 'created_at',
+      sort_order: 'desc',
       page: 1,
       page_size: 100,
     })
@@ -481,8 +482,32 @@ describe('task scheduling board', () => {
     expect(wrapper.get('[aria-label="客户发货进度"]').text()).toContain('部分发货')
     expect(wrapper.get('[aria-label="客户发货完成比例"]').attributes('aria-valuenow')).toBe('30')
     expect(wrapper.get('[aria-label="1 库房转出比例"]').attributes('aria-valuenow')).toBe('60')
-    expect(wrapper.get('[aria-label="2 轧制加工比例"]').attributes('aria-valuenow')).toBe('80')
-    expect(wrapper.get('[aria-label="3 轧制加工比例"]').attributes('aria-valuenow')).toBe('20')
+    expect(wrapper.find('[aria-label="2 轧制加工比例"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="3 轧制加工比例"]').exists()).toBe(false)
+  })
+  it('applies customer shipment and completion filters across the full result set, then resets them', async () => {
+    await render()
+    await button('筛选')
+    select('订单完成筛选').vm.$emit('update:modelValue', '0')
+    await flushPromises()
+    select('订单逾期筛选').vm.$emit('update:modelValue', '1')
+    await flushPromises()
+    await wrapper.get('input[aria-label="已发货（件）最小值"]').setValue('40')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
+    await button('应用筛选')
+    const params = vi.mocked(productionScheduleApi.tasks).mock.lastCall![0]!
+    expect(JSON.parse(params.table_query! as string).filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'order_completed', value: '0' }),
+        expect.objectContaining({ field: 'order_overdue', value: '1' }),
+        expect.objectContaining({ field: 'shipped_quantity', value: '40' }),
+      ]),
+    )
+    expect(params.page).toBe(1)
+    await button('筛选')
+    await button('重置')
+    await button('应用筛选')
+    expect(vi.mocked(productionScheduleApi.tasks).mock.lastCall![0]!.table_query).toBeUndefined()
   })
   it('stages scope, serials and people until applied, discards cancellation, and resets all conditions', async () => {
     await render('/production-schedules?serial_no=S-001')
@@ -552,10 +577,15 @@ describe('task scheduling board', () => {
     await wrapper.get('form[role="search"]').trigger('submit')
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ query: 'S-001', sort_order: 'asc', page: 1 }),
+      expect.objectContaining({
+        query: 'S-001',
+        sort_by: 'created_at',
+        sort_order: 'desc',
+        page: 1,
+      }),
     )
     await button('筛选')
-    select('最终交期排序').vm.$emit('update:modelValue', 'desc')
+    select('列表排序').vm.$emit('update:modelValue', 'final_due_at:desc')
     await flushPromises()
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
@@ -589,13 +619,19 @@ describe('task scheduling board', () => {
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort_by: 'created_at', sort_order: 'desc' }),
     )
-    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
-      prop: 'created_at',
-      order: 'ascending',
-    })
+    wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((column) => column.props('label') === '创建时间')!
+      .vm.$emit('sort', 'asc')
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort_by: 'created_at', sort_order: 'asc', page: 1 }),
+      expect.objectContaining({
+        table_query: JSON.stringify({
+          filters: [],
+          sort: { field: 'created_at', direction: 'asc' },
+        }),
+        page: 1,
+      }),
     )
   })
   it('shows each route occurrence without opening details on icon click', async () => {
@@ -677,7 +713,14 @@ describe('task scheduling board', () => {
       ]),
     )
     await render('/production-schedules', true, true)
-    const headers = () => wrapper.findAll('thead th').map((header) => header.text())
+    const headers = () =>
+      wrapper
+        .findAll('.el-table__header > thead > tr > th')
+        .map((header) =>
+          header.find('.table-column-filter').exists()
+            ? header.get('.table-column-filter').text()
+            : header.text(),
+        )
     expect(headers()).toEqual(['创建时间', '流水号', '操作'])
     const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
     settings.vm.open()
@@ -703,21 +746,34 @@ describe('task scheduling board', () => {
   it('sorts the dispatch table by final delivery through the server', async () => {
     await render()
     await wrapper.setProps({ management: true })
-    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
-      prop: 'final_due_at',
-      order: 'descending',
-    })
+    await flushPromises()
+    wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((column) => column.props('label') === '最终交期')!
+      .vm.$emit('sort', 'desc')
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort_order: 'desc', page: 1 }),
+      expect.objectContaining({
+        table_query: JSON.stringify({
+          filters: [],
+          sort: { field: 'final_due_at', direction: 'desc' },
+        }),
+        page: 1,
+      }),
     )
-    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
-      prop: 'final_due_at',
-      order: 'ascending',
-    })
+    wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((column) => column.props('label') === '最终交期')!
+      .vm.$emit('sort', 'asc')
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort_order: 'asc', page: 1 }),
+      expect.objectContaining({
+        table_query: JSON.stringify({
+          filters: [],
+          sort: { field: 'final_due_at', direction: 'asc' },
+        }),
+        page: 1,
+      }),
     )
     await button('筛选')
     expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(true)
@@ -725,7 +781,14 @@ describe('task scheduling board', () => {
     select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'overdue', sort_order: 'asc', page: 1 }),
+      expect.objectContaining({
+        status: 'overdue',
+        table_query: JSON.stringify({
+          filters: [],
+          sort: { field: 'final_due_at', direction: 'asc' },
+        }),
+        page: 1,
+      }),
     )
     expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(false)
   })
@@ -754,10 +817,11 @@ describe('task scheduling board', () => {
     })
     await render('/production-schedules?serial_no=S-001')
     await wrapper.setProps({ management: true })
-    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
-      prop: 'final_due_at',
-      order: 'descending',
-    })
+    await flushPromises()
+    wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((column) => column.props('label') === '最终交期')!
+      .vm.$emit('sort', 'desc')
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
     await flushPromises()
     await button('新建任务排期')

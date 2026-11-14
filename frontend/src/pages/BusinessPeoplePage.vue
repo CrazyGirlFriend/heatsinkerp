@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import PersonName from '@/components/PersonName.vue'
@@ -30,6 +32,20 @@ const open = ref(false),
   editing = ref<BusinessPerson | null>(null),
   name = ref(''),
   removeTarget = ref<BusinessPerson | null>(null)
+const tableQuery = useTableQuery(
+  {
+    ...queryColumns([['业务人员', 'name']]),
+    状态: {
+      field: 'active',
+      kind: 'select',
+      options: [
+        { value: '1', label: '启用' },
+        { value: '0', label: '停用' },
+      ],
+    },
+  },
+  search,
+)
 let generation = 0
 async function load() {
   const token = ++generation
@@ -37,6 +53,7 @@ async function load() {
   error.value = ''
   try {
     const result = await productionScheduleApi.people({
+      ...tableQuery.params.value,
       query: query.value.trim() || undefined,
       page: page.value,
       page_size: 20,
@@ -112,6 +129,7 @@ onMounted(load)
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <WorkspaceTable
         columns-key="BusinessPeoplePage-1"
+        :column-query="tableQuery.controller.value"
         :data="rows"
         border
         class="business-table"

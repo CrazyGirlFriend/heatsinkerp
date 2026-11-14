@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { processingQueryColumns } from '@/utils/tableQueryColumns'
 import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
 
 import ElSelect from '@/components/AppSelect.vue'
@@ -114,8 +116,13 @@ function resetFilters() {
   processorId.value = null
   taskId.value = null
 }
+const tableQuery = useTableQuery(processingQueryColumns, () => {
+  if (page.value !== 1) paginate(1)
+  else void load()
+})
 function filters() {
   return {
+    ...tableQuery.params.value,
     query: text('query') || undefined,
     processing_task_id: Number(text('processing_task_id')) || undefined,
     purpose_id: Number(text('purpose_id')) || undefined,
@@ -563,6 +570,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
       columns-key="TeamProcessingRecords-1"
+      :column-query="tableQuery.controller.value"
       v-else
       :loading="loading"
       :data="rows"

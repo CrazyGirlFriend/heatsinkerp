@@ -2677,6 +2677,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/warehouse-locations/inventory': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Inventory Catalog */
+    get: operations['inventory_catalog_api_warehouse_locations_inventory_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -7587,6 +7604,20 @@ export interface components {
       dispatched_weight: number
       /** Due At */
       due_at: string
+      /** Handover Completed At */
+      handover_completed_at: string | null
+      /**
+       * Handover Status
+       * @enum {string}
+       */
+      handover_status:
+        | 'pending'
+        | 'today'
+        | 'overdue'
+        | 'completed'
+        | 'completed_late'
+        | 'cancelled'
+        | 'not_assessed'
       /** Id */
       id: number
       /** Planned Start At */
@@ -7764,6 +7795,20 @@ export interface components {
       external_destination: string | null
       /** Final Due At */
       final_due_at: string | null
+      /** Handover Completed At */
+      handover_completed_at: string | null
+      /**
+       * Handover Status
+       * @enum {string}
+       */
+      handover_status:
+        | 'pending'
+        | 'today'
+        | 'overdue'
+        | 'completed'
+        | 'completed_late'
+        | 'cancelled'
+        | 'not_assessed'
       /** History */
       history: components['schemas']['ScheduleEventResponse'][]
       /** Id */
@@ -7782,8 +7827,14 @@ export interface components {
       next_team_name: string | null
       /** Notes */
       notes: string | null
+      /** Order Completed */
+      order_completed: boolean
       /** Order Locked */
       order_locked: boolean
+      /** Order Overdue */
+      order_overdue: boolean
+      /** Order Quantity */
+      order_quantity: number | null
       /** Pending Batches */
       pending_batches: components['schemas']['ScheduleBatchProposalResponse'][] | null
       /** Planned Start At */
@@ -7816,6 +7867,15 @@ export interface components {
       sequence_no: number
       /** Serial No */
       serial_no: string
+      /** Shipment Completed At */
+      shipment_completed_at: string | null
+      /**
+       * Shipment Status
+       * @enum {string}
+       */
+      shipment_status: 'unshipped' | 'partial' | 'shipped'
+      /** Shipped Quantity */
+      shipped_quantity: number
       /** Sources */
       sources: components['schemas']['ScheduleSourceResponse'][]
       /**
@@ -8039,6 +8099,20 @@ export interface components {
       external_destination: string | null
       /** Final Due At */
       final_due_at: string | null
+      /** Handover Completed At */
+      handover_completed_at: string | null
+      /**
+       * Handover Status
+       * @enum {string}
+       */
+      handover_status:
+        | 'pending'
+        | 'today'
+        | 'overdue'
+        | 'completed'
+        | 'completed_late'
+        | 'cancelled'
+        | 'not_assessed'
       /** Id */
       id: number
       /** Initial Due At */
@@ -8055,8 +8129,14 @@ export interface components {
       next_team_name: string | null
       /** Notes */
       notes: string | null
+      /** Order Completed */
+      order_completed: boolean
       /** Order Locked */
       order_locked: boolean
+      /** Order Overdue */
+      order_overdue: boolean
+      /** Order Quantity */
+      order_quantity: number | null
       /** Pending Batches */
       pending_batches: components['schemas']['ScheduleBatchProposalResponse'][] | null
       /** Planned Start At */
@@ -8089,6 +8169,15 @@ export interface components {
       sequence_no: number
       /** Serial No */
       serial_no: string
+      /** Shipment Completed At */
+      shipment_completed_at: string | null
+      /**
+       * Shipment Status
+       * @enum {string}
+       */
+      shipment_status: 'unshipped' | 'partial' | 'shipped'
+      /** Shipped Quantity */
+      shipped_quantity: number
       /** Sources */
       sources: components['schemas']['ScheduleSourceResponse'][]
       /**
@@ -8312,7 +8401,13 @@ export interface components {
       nodes: components['schemas']['ScheduleResponse'][]
       /** Notes */
       notes: string | null
+      /** Order Completed */
+      order_completed: boolean
       order_document: components['schemas']['RouteOrderDocumentResponse'] | null
+      /** Order Overdue */
+      order_overdue: boolean
+      /** Order Quantity */
+      order_quantity: number | null
       /** Reworks */
       reworks: components['schemas']['ScheduleReworkResponse'][]
       /** Route Changed */
@@ -8321,6 +8416,15 @@ export interface components {
       serial_no: string
       /** Shared Source */
       shared_source: boolean
+      /** Shipment Completed At */
+      shipment_completed_at: string | null
+      /**
+       * Shipment Status
+       * @enum {string}
+       */
+      shipment_status: 'unshipped' | 'partial' | 'shipped'
+      /** Shipped Quantity */
+      shipped_quantity: number
       /**
        * Status
        * @enum {string}
@@ -8368,6 +8472,12 @@ export interface components {
       nodes: components['schemas']['ScheduleResponse'][]
       /** Notes */
       notes: string | null
+      /** Order Completed */
+      order_completed: boolean
+      /** Order Overdue */
+      order_overdue: boolean
+      /** Order Quantity */
+      order_quantity: number | null
       /** Reworks */
       reworks: components['schemas']['ScheduleReworkResponse'][]
       /** Route Changed */
@@ -8376,6 +8486,15 @@ export interface components {
       serial_no: string
       /** Shared Source */
       shared_source: boolean
+      /** Shipment Completed At */
+      shipment_completed_at: string | null
+      /**
+       * Shipment Status
+       * @enum {string}
+       */
+      shipment_status: 'unshipped' | 'partial' | 'shipped'
+      /** Shipped Quantity */
+      shipped_quantity: number
       /**
        * Status
        * @enum {string}
@@ -10039,6 +10158,24 @@ export interface components {
       msg: string
       /** Error Type */
       type: string
+    }
+    /** WarehouseCatalogPage */
+    WarehouseCatalogPage: {
+      /** Items */
+      items: components['schemas']['WarehouseCatalogRow'][]
+      /** Page */
+      page: number
+      /** Page Size */
+      page_size: number
+      /** Total */
+      total: number
+    }
+    /** WarehouseCatalogRow */
+    WarehouseCatalogRow: {
+      /** Key */
+      key: string
+      location: components['schemas']['WarehouseLocationResponse'] | null
+      stock: components['schemas']['StockBatchResponse'] | null
     }
     /** WarehouseLeaseResponse */
     WarehouseLeaseResponse: {
@@ -16867,6 +17004,41 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  inventory_catalog_api_warehouse_locations_inventory_get: {
+    parameters: {
+      query?: {
+        page?: number
+        page_size?: number
+        query?: string | null
+        state?: ('occupied' | 'available' | 'pending' | 'draft' | 'disabled' | 'unassigned') | null
+        team_id?: number | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WarehouseCatalogPage']
+        }
       }
       /** @description Validation Error */
       422: {

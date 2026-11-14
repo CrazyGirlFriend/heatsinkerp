@@ -79,7 +79,9 @@ def list_purposes(*, team_id: int, _: User, db: Session):
     return [
         directory_item_dict(row)
         for row in db.scalars(
-            select(TeamPurpose).where(TeamPurpose.team_id == team_id).order_by(TeamPurpose.id)
+            select(TeamPurpose)
+            .where(TeamPurpose.team_id == team_id)
+            .order_by(TeamPurpose.id.desc())
         )
     ]
 
@@ -205,7 +207,9 @@ def list_employees(*, team_id: int, user: User, db: Session):
     return [
         directory_item_dict(row)
         for row in db.scalars(
-            select(TeamEmployee).where(TeamEmployee.team_id == team_id).order_by(TeamEmployee.id)
+            select(TeamEmployee)
+            .where(TeamEmployee.team_id == team_id)
+            .order_by(TeamEmployee.id.desc())
         )
     ]
 
@@ -224,7 +228,7 @@ def list_processing_tasks(*, team_id: int, user: User, db: Session):
         for row in db.scalars(
             select(TeamProcessingTask)
             .where(TeamProcessingTask.team_id == team_id)
-            .order_by(TeamProcessingTask.id)
+            .order_by(TeamProcessingTask.id.desc())
         )
     ]
 
@@ -238,7 +242,7 @@ def list_inspection_problems(*, team_id: int, _: User, db: Session):
         for row in db.scalars(
             select(InspectionProblemType)
             .where(InspectionProblemType.team_id == team_id)
-            .order_by(InspectionProblemType.id)
+            .order_by(InspectionProblemType.id.desc())
         )
     ]
 

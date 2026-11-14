@@ -67,10 +67,17 @@ def list_records(
     if material_type:
         filters.append(mt.material_type == material_type)
     statement = select(mt).join(origin, origin.id == mt.source_transfer_id).where(*filters)
-    total = db.scalar(select(func.count()).select_from(statement.subquery()))
+    from .table_query import query_statement
+
+    columns = {
+        **dict(mt.__table__.columns.items()),
+        "source_serial_no": origin.serial_no,
+        "source_batch_no": origin.batch_no,
+    }
+    statement = query_statement(statement, mt.created_at.desc(), mt.id.desc(), columns=columns)
+    total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery()))
     items = db.scalars(
         statement.options(*workflow.material_transfer_list_options())
-        .order_by(mt.created_at.desc(), mt.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

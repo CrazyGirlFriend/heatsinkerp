@@ -13,6 +13,7 @@ import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import DocumentViewer from '@/components/DocumentViewer.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
+import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
@@ -174,6 +175,7 @@ it('removes the previous twenty-row page immediately when requesting ten rows', 
     10,
     'normal',
     'all',
+    undefined,
   )
   expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
   finish(response(10))
@@ -184,16 +186,15 @@ it('keeps the common workspace shell without a full-width single tab or duplicat
   await render()
   expect(wrapper.get('.team-workspace__title').text()).toBe('工艺')
   expect(wrapper.get('nav[aria-label="工艺视图"]').attributes('style')).toContain('display: none')
-  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
-    '流水号',
-    '材质',
-    '工序概要',
-    '图纸',
-    '工艺人员',
-    '修改人员',
-    '更新时间',
-    '操作',
-  ])
+  expect(
+    wrapper
+      .findAll('thead th .cell')
+      .map((cell) =>
+        cell.find('.table-column-filter').exists()
+          ? cell.get('.table-column-filter').text()
+          : cell.text(),
+      ),
+  ).toEqual(['流水号', '材质', '工序概要', '图纸', '工艺人员', '修改人员', '更新时间', '操作'])
   expect(wrapper.text()).toContain('张工')
   expect(wrapper.text()).toContain('李工')
   expect(wrapper.text()).not.toContain('Word 原文核对')
@@ -423,6 +424,7 @@ it('searches only after submission and refreshes the applied query', async () =>
     20,
     'normal',
     'all',
+    undefined,
   )
 })
 it('does not expose import or roster writes to a warehouse or production account', async () => {
@@ -481,7 +483,15 @@ it('omits editing actions for a production account while keeping serial details 
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue({ ...routeFixture, state: 'published' })
   await render()
   expect(wrapper.text()).not.toContain('修改工艺')
-  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).not.toContain('操作')
+  expect(
+    wrapper
+      .findAll('thead th .cell')
+      .map((cell) =>
+        cell.find('.table-column-filter').exists()
+          ? cell.get('.table-column-filter').text()
+          : cell.text(),
+      ),
+  ).not.toContain('操作')
   await wrapper.get('button.route-serial').trigger('click')
   await flushPromises()
   expect(wrapper.getComponent(ProcessRouteEditor).props('startEditing')).toBe(false)
@@ -504,6 +514,7 @@ it('opens a rework notice for a production account with viewing permission only'
     20,
     'rework',
     'open',
+    undefined,
   )
   const editor = wrapper.getComponent(ProcessRouteEditor)
   expect(editor.props('route')?.id).toBe(reworkRouteFixture.id)
@@ -523,19 +534,22 @@ it('requests global time ordering and resets to page one on sort or size changes
     20,
     'normal',
     'all',
+    undefined,
   )
   wrapper
-    .getComponent({ name: 'ElTable' })
-    .vm.$emit('sort-change', { prop: 'updated_at', order: 'ascending' })
+    .findAllComponents(TableColumnFilter)
+    .find((column) => column.props('label') === '更新时间')!
+    .vm.$emit('sort', 'asc')
   await flushPromises()
   expect(processRouteApi.list).toHaveBeenLastCalledWith(
     '',
     1,
     undefined,
-    'asc',
+    'desc',
     20,
     'normal',
     'all',
+    JSON.stringify({ filters: [], sort: { field: 'updated_at', direction: 'asc' } }),
   )
   wrapper.getComponent(ElPagination).vm.$emit('size-change', 50)
   await flushPromises()
@@ -543,10 +557,11 @@ it('requests global time ordering and resets to page one on sort or size changes
     '',
     1,
     undefined,
-    'asc',
+    'desc',
     50,
     'normal',
     'all',
+    JSON.stringify({ filters: [], sort: { field: 'updated_at', direction: 'asc' } }),
   )
   expect(wrapper.find('.el-pagination').exists()).toBe(true)
   expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
@@ -593,18 +608,27 @@ it('separates pending rework with visible problems and teams, and opens manual a
     20,
     'rework',
     'open',
+    undefined,
   )
   for (const text of ['尺寸超差', '巡检', '待制定', '待指定'])
     expect(wrapper.text()).toContain(text)
-  expect(wrapper.get('.route-list tbody tr td').text()).toBe(pending.serial_nos[0])
-  expect(wrapper.get('.route-list tbody tr td:nth-child(5)').text()).toBe('待制定')
+  expect(wrapper.get('.route-list .el-table__body tbody tr td').text()).toBe(pending.serial_nos[0])
+  expect(wrapper.get('.route-list .el-table__body tbody tr td:nth-child(5)').text()).toBe('待制定')
   expect(wrapper.find('.route-step-node').exists()).toBe(false)
   expect(wrapper.get('.rework-problem').text()).toBe('尺寸超差')
   expect(wrapper.get('.rework-problem').attributes('title')).toBe('实测厚度偏大')
   expect(
     wrapper.findAll('[aria-label="涉及班组"] [role="listitem"]').map((item) => item.text()),
   ).toEqual(['研磨', '轧制'])
-  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
+  expect(
+    wrapper
+      .findAll('thead th .cell')
+      .map((cell) =>
+        cell.find('.table-column-filter').exists()
+          ? cell.get('.table-column-filter').text()
+          : cell.text(),
+      ),
+  ).toEqual([
     '流水号',
     '问题',
     '工艺状态',
@@ -685,7 +709,16 @@ it('shows authored rework execution teams without claiming work has finished', a
 
 it('defaults to normal engineering and clears a previous search when switching views', async () => {
   await render()
-  expect(processRouteApi.list).toHaveBeenCalledWith('', 1, undefined, 'desc', 20, 'normal', 'all')
+  expect(processRouteApi.list).toHaveBeenCalledWith(
+    '',
+    1,
+    undefined,
+    'desc',
+    20,
+    'normal',
+    'all',
+    undefined,
+  )
   await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
   await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
   await flushPromises()
@@ -699,6 +732,7 @@ it('defaults to normal engineering and clears a previous search when switching v
     20,
     'rework',
     'open',
+    undefined,
   )
   expect((wrapper.get('input[aria-label="工艺记录搜索"]').element as HTMLInputElement).value).toBe(
     '',
@@ -728,8 +762,24 @@ it('restores the normal list while revalidating, without another blank loading s
   expect(wrapper.find('.wm-skeleton').exists()).toBe(false)
   expect(wrapper.get('.route-list').attributes('aria-busy')).toBe('true')
   expect(wrapper.getComponent(WorkspacePagination).props('total')).toBe(1)
-  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toContain('材质')
-  expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).not.toContain('问题')
+  expect(
+    wrapper
+      .findAll('thead th .cell')
+      .map((cell) =>
+        cell.find('.table-column-filter').exists()
+          ? cell.get('.table-column-filter').text()
+          : cell.text(),
+      ),
+  ).toContain('材质')
+  expect(
+    wrapper
+      .findAll('thead th .cell')
+      .map((cell) =>
+        cell.find('.table-column-filter').exists()
+          ? cell.get('.table-column-filter').text()
+          : cell.text(),
+      ),
+  ).not.toContain('问题')
 
   finish({ ...normal, items: [{ ...routeFixture, serial_nos: ['S-UPDATED'] }] })
   await flushPromises()
@@ -775,6 +825,7 @@ it('does not reuse a searched page after switching back to the unfiltered view',
     20,
     'normal',
     'all',
+    undefined,
   )
 })
 
@@ -826,6 +877,7 @@ it('starts rework from pending submitted problems rather than creating an unrela
     20,
     'rework',
     'open',
+    undefined,
   )
   expect(wrapper.find('process-route-editor-stub').exists()).toBe(false)
   expect(wrapper.text()).toContain('待制定')
@@ -872,6 +924,7 @@ it('opens the requested process type and follows navigation between normal and r
     20,
     'rework',
     'open',
+    undefined,
   )
   expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('返工工艺')
   await router.push('/process-routes')
@@ -884,6 +937,7 @@ it('opens the requested process type and follows navigation between normal and r
     20,
     'normal',
     'all',
+    undefined,
   )
   expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('正常工艺')
   await router.back()

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ElTag } from 'element-plus'
+import { scheduleStatusLabels, scheduleStatusTone } from '@/types/productionSchedule'
 import { computed, ref } from 'vue'
 import AppPopover from './AppPopover.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
@@ -34,17 +36,18 @@ const progress = computed(() => nodeWorkProgress(props.node))
           <b>{{ progress.percent == null ? '—' : `${Math.round(progress.percent)}%` }}</b></span
         >
       </header>
+      <ElTag
+        class="schedule-node-state"
+        :type="scheduleStatusTone(node.handover_status || node.status)"
+        >{{ scheduleStatusLabels[node.handover_status || node.status] }}</ElTag
+      >
       <dl>
         <dt>约定转交</dt>
         <dd>{{ plannedDueLabel(node) }}</dd>
         <dt>实际交完</dt>
-        <dd>{{ formatDateTime(node.completed_at) }}</dd>
+        <dd>{{ formatDateTime(node.handover_completed_at || node.completed_at) }}</dd>
         <dt>计划数量</dt>
         <dd>{{ nodeTarget(node) || '—' }}</dd>
-        <template v-if="node.assessment_enabled !== false && node.processed_quantity != null"
-          ><dt>已加工</dt>
-          <dd>{{ formatAmount(node.processed_quantity) }} 件</dd></template
-        >
         <dt>已转出</dt>
         <dd>
           {{ formatAmount(node.dispatched_quantity) }} 件 ·
@@ -80,6 +83,9 @@ const progress = computed(() => nodeWorkProgress(props.node))
 .schedule-node-summary b {
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+.schedule-node-state {
+  margin-bottom: 12px;
 }
 .schedule-node-summary dl {
   display: grid;

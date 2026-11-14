@@ -422,8 +422,8 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
     trace = client.get(
         "/api/material-transfers", params={"serial_no": receipt["serial_no"]}
     ).json()["items"]
-    assert [row["entry_kind"] for row in trace] == ["warehouse_receipt", "transfer", "transfer"]
-    assert [row["source_transfer_id"] for row in trace] == [None, receipt["id"], line["id"]]
+    assert [row["entry_kind"] for row in trace] == ["transfer", "transfer", "warehouse_receipt"]
+    assert [row["source_transfer_id"] for row in trace] == [line["id"], receipt["id"], None]
 
 
 def test_intake_list_filters_pagination_and_weight_only_stock(client, warehouse):

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useLocalTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElEmpty from '@/components/AppEmpty.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElSkeleton from '@/components/AppSkeleton.vue'
@@ -87,7 +89,7 @@ const form = reactive<LeaderForm>({
 })
 
 const teamLeaders = computed(() => accounts.value.filter((account) => account.role === 'TEAM'))
-const filteredLeaders = computed(() => {
+const baseLeaders = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return teamLeaders.value.filter((account) => {
     const matchesQuery =
@@ -102,6 +104,28 @@ const filteredLeaders = computed(() => {
     return matchesQuery && matchesStatus && matchesTeam
   })
 })
+const tableQuery = useLocalTableQuery(
+  queryColumns([
+    ['登录账号', 'username'],
+    ['班组长', 'display_name'],
+    ['所属班组', 'team'],
+    ['状态', 'status'],
+  ]),
+  baseLeaders,
+  (row, field) =>
+    field === 'team'
+      ? row.team?.name
+      : field === 'status'
+        ? row.active
+          ? '启用'
+          : '停用'
+        : row[field as keyof Account],
+  () => {
+    page.value = 1
+  },
+  (a, b) => Number(b.id) - Number(a.id),
+)
+const filteredLeaders = tableQuery.rows
 function exportSource() {
   const rows = filteredLeaders.value.map((row) => ({ ...row }))
   return tableExportSource(
@@ -425,6 +449,7 @@ onMounted(() => void loadData())
         <span class="mobile-table-hint">左右滑动查看</span>
         <ElTable
           columns-key="AccountsPage-1"
+          :column-query="tableQuery.controller.value"
           class="business-table"
           :data="pageRows"
           row-key="id"

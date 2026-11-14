@@ -272,12 +272,18 @@ def list_receipts(
                 ],
             )
         )
+    from .table_query import table_order, table_predicates
+
+    columns = dict(MaterialTransfer.__table__.columns.items())
+    filters.extend(table_predicates(columns))
     total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
     items = db.scalars(
         select(MaterialTransfer)
         .options(*workflow.material_transfer_list_options())
         .where(*filters)
-        .order_by(MaterialTransfer.received_at.desc(), MaterialTransfer.id.desc())
+        .order_by(
+            *table_order(columns, MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc())
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

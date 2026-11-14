@@ -155,6 +155,10 @@ export function boardBarState(node: ProductionSchedule) {
 }
 
 export function boardDeliveryState(node: ProductionSchedule, now: number) {
+  if (node.handover_status && node.handover_status !== 'not_assessed') {
+    return node.handover_status
+  }
+
   if (node.assessment_enabled === false || node.status === 'not_assessed') return 'unassessed'
   if (isDelivered(node)) return node.status
   const due = scheduleTimestamp(node.due_at)

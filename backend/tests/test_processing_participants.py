@@ -39,6 +39,25 @@ def test_joint_work_filters_and_totals_count_the_work_once(client, warehouse):
         {"processor_id": first["id"]},
         {"processor_id": second["id"]},
         {"query": second["name"]},
+        {
+            "table_query": json.dumps(
+                {"filters": [{"field": "processor_name", "kind": "text", "value": second["name"]}]}
+            )
+        },
+        {
+            "table_query": json.dumps(
+                {
+                    "filters": [
+                        {
+                            "field": "processing_date",
+                            "kind": "date",
+                            "value": record["processing_date"],
+                            "end": record["processing_date"],
+                        }
+                    ]
+                }
+            )
+        },
     ]:
         records = client.get(url + "/processing-records", params=params).json()
         assert records["total"] == 1

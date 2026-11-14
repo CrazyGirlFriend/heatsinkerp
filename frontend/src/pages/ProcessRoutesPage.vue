@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
@@ -93,7 +95,6 @@ const items = ref<ProcessRoute[]>([]),
   pendingRework = ref(0),
   page = ref(1),
   pageSize = ref(20),
-  sortOrder = ref<'asc' | 'desc'>('desc'),
   query = ref(''),
   appliedQuery = ref(''),
   loading = ref(false),
@@ -119,6 +120,22 @@ function closeEditor() {
   editing.value = false
   creating.value = false
 }
+const tableQuery = useTableQuery(
+  queryColumns([
+    ['流水号', 'serial_nos'],
+    ['材质', 'material_name'],
+    ['工艺人员', 'engineering_employee_name'],
+    ['修改人员', 'modified_employee_name'],
+    ['更新时间', 'updated_at', 'date'],
+    ['轮次', 'rework_round', 'number'],
+    ['提交班组', 'requesting_team_name'],
+  ]),
+  () => {
+    page.value = 1
+    void load()
+  },
+)
+watch(routeKind, () => tableQuery.reset(), { flush: 'sync' })
 let generation = 0
 let detailGeneration = 0
 watch(
@@ -137,10 +154,11 @@ async function load() {
     appliedQuery.value,
     page.value,
     pendingOnly.value ? 'draft' : undefined,
-    sortOrder.value,
+    'desc' as const,
     pageSize.value,
     kind,
     kind === 'rework' ? reworkScope.value : 'all',
+    tableQuery.params.value.table_query,
   ] as const
   const key = JSON.stringify(params)
   const cached = viewCache.get(kind)
@@ -170,12 +188,6 @@ function saved() {
 }
 function search() {
   appliedQuery.value = query.value.trim()
-  page.value = 1
-  void load()
-}
-function sortChanged(sort: { prop: string | null; order: 'ascending' | 'descending' | null }) {
-  if (sort.prop !== 'updated_at') return
-  sortOrder.value = sort.order === 'ascending' ? 'asc' : 'desc'
   page.value = 1
   void load()
 }
@@ -441,6 +453,7 @@ onBeforeUnmount(() => {
       </WorkspaceDataToolbar>
       <WorkspaceTable
         columns-key="ProcessRoutesPage-1"
+        :column-query="tableQuery.controller.value"
         :key="routeKind"
         :loading="loading && (!hasLoadedView || items.length > 0)"
         :data="items"
@@ -448,11 +461,6 @@ onBeforeUnmount(() => {
         row-key="id"
         class="team-table route-list"
         aria-label="工艺记录"
-        :default-sort="{
-          prop: 'updated_at',
-          order: sortOrder === 'asc' ? 'ascending' : 'descending',
-        }"
-        @sort-change="sortChanged"
       >
         <ElTableColumn
           class-name="table-identity"
@@ -779,8 +787,6 @@ onBeforeUnmount(() => {
           :width="routeKind === 'rework' ? 154 : undefined"
           :min-width="routeKind === 'normal' ? 180 : undefined"
           align="center"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending']"
           ><template #default="{ row }"
             ><span class="route-updated-at">{{
               formatDateTime(row.updated_at || row.created_at)

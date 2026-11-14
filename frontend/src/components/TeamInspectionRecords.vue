@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { inspectionQueryColumns } from '@/utils/tableQueryColumns'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
@@ -85,8 +87,13 @@ const filterCount = computed(
     Number(!!applied.value.problem_type_id) +
     Number(!!applied.value.date_from || !!applied.value.date_to),
 )
+const tableQuery = useTableQuery(inspectionQueryColumns, () => {
+  page.value = 1
+  void load()
+})
 function params(): InspectionFilters {
   return {
+    ...tableQuery.params.value,
     ...applied.value,
     kind: props.kind ?? (props.sourceId ? undefined : 'patrol'),
     team_id: props.sourceId ? undefined : props.showAll ? applied.value.team_id : props.teamId,
@@ -326,6 +333,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
       columns-key="TeamInspectionRecords-1"
+      :column-query="tableQuery.controller.value"
       v-else
       :data="rows"
       class="inspection-table"

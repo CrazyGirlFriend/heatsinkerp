@@ -31,7 +31,13 @@ import ScheduleDateRange from './ScheduleDateRange.vue'
 import ScheduleBatchSummary from './ScheduleBatchSummary.vue'
 import ScheduleDeliveryMark from './ScheduleDeliveryMark.vue'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { BOARD_DAY, boardDate, boardDeliveryState, boardTeamColor } from '@/utils/scheduleBoard'
+import {
+  BOARD_DAY,
+  boardDate,
+  boardDeliveryState,
+  boardTeamColor,
+  boardQuantity,
+} from '@/utils/scheduleBoard'
 import { progressWeek } from '@/utils/scheduleProgress'
 import {
   ganttDate,
@@ -45,7 +51,7 @@ import {
   type ScheduleGanttRecord,
 } from '@/utils/scheduleGantt'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
-import { formatDateTime } from '@/utils/format'
+import { formatAmount, formatDateTime } from '@/utils/format'
 
 const props = defineProps<{
   tasks: ScheduleTask[]
@@ -172,7 +178,7 @@ function statusIcon(state: string, color: string) {
   }
   return iconCache.get(key)!
 }
-const tableWidth = 300
+const tableWidth = 456
 const headerHeight = 64
 const density = computed(() =>
   ganttDensity(
@@ -668,6 +674,42 @@ function options(scrollTop = gantt?.scrollTop || 0): GanttConstructorOptions {
           width: 84,
           style: { textAlign: 'right', padding: [0, 12, 0, 4] },
         },
+        {
+          field: 'shipment',
+          title: '客户发货 / 订单状态',
+          width: 156,
+          customLayout: ({ rect, table, col, row }) => {
+            const record = table.getRecordByCell(col, row) as ScheduleGanttRecord
+            const task = record.task
+            const rootContainer = new VRender.Group({ width: rect!.width, height: rect!.height })
+            const center = rect!.height / 2
+            rootContainer.add(
+              new VRender.Text({
+                x: 10,
+                y: center - 7,
+                text: `${formatAmount(task.shipped_quantity || 0)} / ${formatAmount(task.order_quantity ?? boardQuantity(task))} 件`,
+                fontFamily: font,
+                fontSize: 12,
+                fill: c.text,
+                textBaseline: 'middle',
+                pickable: false,
+              }),
+            )
+            rootContainer.add(
+              new VRender.Text({
+                x: 10,
+                y: center + 9,
+                text: `${task.order_completed ? '已完成' : '未完成'} · ${task.order_overdue ? '已逾期' : '未逾期'}`,
+                fontFamily: font,
+                fontSize: 11,
+                fill: task.order_overdue ? '#df4b49' : task.order_completed ? '#21956a' : c.muted,
+                textBaseline: 'middle',
+                pickable: false,
+              }),
+            )
+            return { rootContainer, renderDefault: false }
+          },
+        },
       ],
       customComputeRowHeight: ({ row, table }) =>
         row === 0
@@ -789,7 +831,14 @@ function options(scrollTop = gantt?.scrollTop || 0): GanttConstructorOptions {
               x: 6,
               y: 6,
               radius: 3,
-              fill: record.kind === 'deadline' ? c.muted : c.surface,
+              fill:
+                record.kind === 'deadline'
+                  ? record.task.order_overdue
+                    ? '#dc4545'
+                    : record.task.order_completed
+                      ? '#209669'
+                      : c.muted
+                  : c.surface,
               stroke: record.node ? boardTeamColor(record.node.team_name) : c.muted,
               lineWidth: 1.5,
               pickable: false,
@@ -1438,7 +1487,15 @@ onBeforeUnmount(() => {
           /></AppButton>
           <strong>{{ hovered.task.serial_no }}</strong
           ><span>最终交期 {{ formatDateTime(hovered.task.final_due_at) }}</span
-          ><AppButton text @click="open(hovered)">查看明细</AppButton>
+          ><span
+            >客户发货 {{ formatAmount(hovered.task.shipped_quantity || 0) }} /
+            {{ formatAmount(hovered.task.order_quantity ?? boardQuantity(hovered.task)) }} 件</span
+          >
+          <span
+            >{{ hovered.task.order_completed ? '已完成' : '未完成' }} ·
+            {{ hovered.task.order_overdue ? '已逾期' : '未逾期' }}</span
+          >
+          <AppButton text @click="open(hovered)">查看明细</AppButton>
         </div>
       </div>
     </AppPopover>

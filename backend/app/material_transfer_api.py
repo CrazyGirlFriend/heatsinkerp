@@ -210,6 +210,10 @@ def list_material_transfers(
     filters.extend(
         record_filters.predicates(MaterialTransfer.created_at, MaterialTransfer.serial_no)
     )
+    from .table_query import table_order, table_predicates
+
+    columns = dict(MaterialTransfer.__table__.columns.items())
+    filters.extend(table_predicates(columns))
     summary = None
     if include_summary:
         # Aggregate the same filtered set before pagination, in the existing count query.
@@ -232,10 +236,8 @@ def list_material_transfers(
         }
     else:
         total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
-    order_columns = (
-        (MaterialTransfer.created_at.asc(), MaterialTransfer.id.asc())
-        if serial_no is not None
-        else (MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc())
+    order_columns = table_order(
+        columns, MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc()
     )
     transfers = db.scalars(
         select(MaterialTransfer)

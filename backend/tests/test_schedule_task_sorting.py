@@ -54,7 +54,9 @@ def test_final_delivery_sort_respects_search_status_and_pagination(
         tied = task(db, team_id, "SORT-D", 2, 9, final_day=11)
         task(db, team_id, "OTHER", 1, 2, final_day=2)
     expected = [early, legacy, tied, late] if sort_order == "asc" else [late, legacy, tied, early]
-    params = dict(query="SORT-", team_id=team_id, sort_order=sort_order, page_size=2)
+    params = dict(
+        query="SORT-", team_id=team_id, sort_by="final_due_at", sort_order=sort_order, page_size=2
+    )
     if status:
         params["status"] = status
     items = []

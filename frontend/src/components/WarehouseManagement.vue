@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { queryColumns } from '@/utils/tableQueryColumns'
 import ElEmpty from '@/components/AppEmpty.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -72,10 +74,47 @@ const query = ref(''),
   appliedQuery = ref(''),
   filter = ref<WarehouseCatalogFilter>(),
   appliedFilter = ref<WarehouseCatalogFilter>()
+const tableQuery = useTableQuery(
+  {
+    ...queryColumns([
+      ['仓位', 'name'],
+      ['流水号', 'serial_no'],
+      ['在库件数', 'quantity', 'number'],
+      ['在库重量（kg）', 'weight', 'number'],
+      ['在库批次', 'received', 'number'],
+      ['待签收批次', 'pending', 'number'],
+    ]),
+    分配状态: {
+      field: 'assignment',
+      kind: 'select',
+      options: [
+        { value: 'assigned', label: '已分配' },
+        { value: 'unassigned', label: '未分配' },
+        { value: 'empty', label: '空仓位' },
+      ],
+    },
+    仓位状态: {
+      field: 'status',
+      kind: 'select',
+      options: [
+        { value: 'occupied', label: '有料' },
+        { value: 'available', label: '空闲' },
+        { value: 'pending', label: '待签收' },
+        { value: 'draft', label: '填写中' },
+        { value: 'disabled', label: '停用' },
+      ],
+    },
+  },
+  () => {
+    page.value = 1
+    void load()
+  },
+)
 function exportSource() {
   const query = appliedQuery.value,
     state = appliedFilter.value,
-    teamId = props.teamId
+    teamId = props.teamId,
+    columnQuery = tableQuery.params.value.table_query
   return tableExportSource(
     '仓位库存',
     total.value,
@@ -135,7 +174,7 @@ function exportSource() {
     ],
     (signal, progress) =>
       loadExportPages(
-        (page, pageSize) => loadWarehouseCatalog(query, page, pageSize, state, teamId),
+        (page, pageSize) => loadWarehouseCatalog(query, page, pageSize, state, teamId, columnQuery),
         signal,
         progress,
       ),
@@ -277,6 +316,7 @@ async function load(background = false) {
       pageSize.value,
       appliedFilter.value,
       props.teamId,
+      tableQuery.params.value.table_query,
     )
     if (current !== version) return
     const locations = data.items.flatMap((row) => (row.location ? [row.location] : []))
@@ -440,6 +480,7 @@ onBeforeUnmount(() => {
         <ElAlert v-if="error" :title="error" type="error" :closable="false" />
         <WatermelonDataTable
           columns-key="WarehouseManagement-1"
+          :column-query="tableQuery.controller.value"
           :data="entries"
           :loading="loading"
           fill

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTableQuery } from '@/composables/useTableQuery'
+import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -392,6 +394,9 @@ function ownershipHint(row: TeamInventoryRow) {
     `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
   return `当前剩余 ${amount(row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${amount(row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${amount(row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${amount(available.quantity, available.weight)}`
 }
+const tableQuery = useTableQuery(inventoryQueryColumns, () => {
+  if (page.value !== 1) apply({ ...filters.value, page: 1 })
+})
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
     page: page.value,
@@ -429,7 +434,7 @@ const filters = computed<TeamInventoryParams>(() => {
   if (!props.warehouse && text('purpose_id')) params.purpose_id = Number(text('purpose_id'))
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
   for (const key of ['urgent_only', 'has_loss']) if (text(key) === 'true') params[key] = true
-  return params as TeamInventoryParams
+  return { ...params, ...tableQuery.params.value } as TeamInventoryParams
 })
 function exportSource() {
   const id = props.teamId,
@@ -834,6 +839,7 @@ function syncFilterDrafts() {
   analysisDraft.value = analysisChoice.value
   daysDraft.value = days.value
 }
+watch(() => props.teamId, tableQuery.reset, { flush: 'sync' })
 watch(
   [() => props.teamId, filters],
   () => {
@@ -1198,6 +1204,7 @@ onBeforeUnmount(() => {
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <WorkspaceTable
       columns-key="TeamInventory-1"
+      :column-query="tableQuery.controller.value"
       :column-settings="false"
       v-else
       class="serial-table warehouse-table"

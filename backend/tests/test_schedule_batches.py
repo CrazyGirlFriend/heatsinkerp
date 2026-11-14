@@ -293,6 +293,13 @@ def test_each_batch_must_finish_and_date_filter_matches_early_batch(client, ware
     current = get(client, item)
     assert current["dispatched_quantity"] == 100
     assert current["remaining_quantity"] == 40
+    from test_table_queries import query
+
+    filtered = client.get(
+        URL, params={"table_query": query("remaining_quantity", "40", "40", "number")}
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert item["id"] in [row["id"] for row in filtered.json()["items"]]
     assert current["completed_at"] is None
     assert current["status"] == "overdue"
     assert current["batches"][1]["status"] == "completed"

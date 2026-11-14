@@ -17,10 +17,15 @@ const props = withDefaults(
     options?: readonly { value: string; label: string }[]
     integer?: boolean
     context?: string
+    sortable?: boolean
+    sort?: 'asc' | 'desc'
   }>(),
   { kind: 'text', value: '', end: '', options: () => [] },
 )
-const emit = defineEmits<{ apply: [value: string, end: string] }>()
+const emit = defineEmits<{
+  apply: [value: string, end: string]
+  sort: [direction?: 'asc' | 'desc']
+}>()
 const visible = ref(false),
   draft = ref(''),
   endDraft = ref(''),
@@ -38,7 +43,7 @@ const filteredOptions = computed(() =>
     option.label.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()),
   ),
 )
-const active = computed(() => Boolean(props.value || props.end))
+const active = computed(() => Boolean(props.value || props.end || props.sort))
 const invalid = computed(() => {
   if (props.kind === 'date')
     return Boolean(draft.value && endDraft.value && draft.value > endDraft.value)
@@ -55,6 +60,10 @@ async function open() {
 function close() {
   visible.value = false
   void nextTick(() => trigger.value?.ref?.focus())
+}
+function chooseSort(direction?: 'asc' | 'desc') {
+  emit('sort', direction)
+  close()
 }
 function apply(clear = false) {
   if (!clear && invalid.value) return
@@ -93,10 +102,11 @@ watch(
         :class="{ 'is-filtered': active }"
         :aria-label="`筛选${label}`"
         :aria-expanded="visible"
-        :title="active ? `${label}已筛选` : `筛选${label}`"
+        :title="sortable ? `${label}：筛选或排序` : `筛选${label}`"
         @click.stop
       >
-        {{ label }}<Filter aria-hidden="true" />
+        {{ label }}<span v-if="sort" aria-hidden="true">{{ sort === 'asc' ? '↑' : '↓' }}</span
+        ><Filter aria-hidden="true" />
       </ElButton>
     </template>
     <form
@@ -106,6 +116,15 @@ watch(
       @keydown.esc.stop.prevent="close"
     >
       <strong>{{ label }}</strong>
+      <div v-if="sortable" class="column-filter-sort" aria-label="排序方式">
+        <ElButton :type="sort === 'asc' ? 'primary' : 'default'" @click="chooseSort('asc')"
+          >升序 ↑</ElButton
+        >
+        <ElButton :type="sort === 'desc' ? 'primary' : 'default'" @click="chooseSort('desc')"
+          >降序 ↓</ElButton
+        >
+        <ElButton v-if="sort" @click="chooseSort()">默认</ElButton>
+      </div>
       <template v-if="kind === 'select'">
         <ElInput
           ref="input"
@@ -250,6 +269,13 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.column-filter-sort {
+  display: flex;
+  gap: 6px;
+}
+.column-filter-sort .el-button {
+  margin: 0;
 }
 .column-filter-range > span {
   color: var(--muted);

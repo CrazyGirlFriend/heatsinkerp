@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import TableFilterFields from './TableFilterFields.vue'
+import ScheduleShipmentProgress from './ScheduleShipmentProgress.vue'
+import type { TableColumnCondition } from '@/types/tableQuery'
+
+import { useTableQuery } from '@/composables/useTableQuery'
+import { scheduleQueryColumns } from '@/utils/tableQueryColumns'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
@@ -125,10 +131,20 @@ const filterCount = computed(
   () =>
     Number(!!filters.value.team_id) +
     Number(!!filters.value.status) +
+    tableQuery.state.value.filters.length +
     Number(!!filters.value.due_from || !!filters.value.due_to),
 )
+const draftColumns = ref<TableColumnCondition[]>([])
+const tableQuery = useTableQuery(scheduleQueryColumns, () => {
+  page.value = 1
+  void load()
+})
 function params() {
-  return { ...filters.value, team_id: props.teamId ?? filters.value.team_id }
+  return {
+    ...filters.value,
+    ...tableQuery.params.value,
+    team_id: props.teamId ?? filters.value.team_id,
+  }
 }
 watch(
   [page, pageSize],
@@ -177,6 +193,7 @@ function search() {
   void load()
 }
 function openFilters() {
+  draftColumns.value = tableQuery.state.value.filters.map((item) => ({ ...item }))
   draftTeam.value = filters.value.team_id
   draftStatus.value = filters.value.status
   draftDates.value = {
@@ -185,6 +202,7 @@ function openFilters() {
   }
 }
 function applyFilters() {
+  tableQuery.state.value.filters = draftColumns.value
   filters.value = {
     serial_no: filters.value.serial_no === query.value.trim() ? filters.value.serial_no : undefined,
     query:
@@ -199,6 +217,7 @@ function applyFilters() {
   void load()
 }
 function resetFilters() {
+  draftColumns.value = []
   draftTeam.value = undefined
   draftStatus.value = undefined
   draftDates.value = { from: '', to: '' }
@@ -419,30 +438,11 @@ function exportSource() {
     [
       { key: 'id', label: '排期编号', value: (row: ProductionSchedule) => row.id },
       { key: 'serial_no', label: '流水号', value: (row) => row.serial_no },
-      { key: 'task_no', label: '交货任务编号', value: (row) => row.task_no },
-      { key: 'task_title', label: '交货任务', value: (row) => row.task_title },
-      {
-        key: 'execution_state',
-        label: '执行情况',
-        value: (row) => (row.execution_state ? scheduleExecutionLabels[row.execution_state] : '—'),
-      },
       { key: 'quality_held', label: '质量冻结', value: (row) => (row.quality_held ? '是' : '否') },
-      {
-        key: 'completion_basis',
-        label: '计量方式',
-        value: (row) => (row.completion_basis ? completionBasisLabels[row.completion_basis] : '—'),
-      },
       { key: 'team_name', label: '交货班组', value: (row) => row.team_name },
       { key: 'destination', label: '接收去向', value: destination },
       { key: 'due_at', label: '要求交货时间', value: (row) => formatDateTime(row.due_at) },
-      { key: 'status', label: '排期状态', value: (row) => scheduleStatusLabels[row.status] },
       { key: 'quantity', label: '计划件数', value: (row) => row.target_quantity },
-      { key: 'weight', label: '计划重量（kg）', value: (row) => row.target_weight },
-      {
-        key: 'processed_quantity',
-        label: '已加工件数',
-        value: (row) => (row.assessment_enabled === false ? null : row.processed_quantity),
-      },
       { key: 'dispatched_quantity', label: '已转出件数', value: (row) => row.dispatched_quantity },
       {
         key: 'dispatched_weight',
@@ -454,17 +454,12 @@ function exportSource() {
         label: '待交件数',
         value: (row) => (row.completion_basis === 'weight' ? null : row.remaining_quantity),
       },
-      {
-        key: 'remaining_weight',
-        label: '待交重量（kg）',
-        value: (row) => (row.completion_basis === 'quantity' ? null : row.remaining_weight),
-      },
       { key: 'received_quantity', label: '下序签收件数', value: (row) => row.received_quantity },
       { key: 'received_weight', label: '下序签收重量（kg）', value: (row) => row.received_weight },
       {
         key: 'completed_at',
         label: '实际交完时间',
-        value: (row) => formatDateTime(row.completed_at),
+        value: (row) => formatDateTime(row.handover_completed_at || row.completed_at),
       },
       {
         key: 'sources',
@@ -474,6 +469,22 @@ function exportSource() {
             .map((source) => source.batch_no)
             .filter(Boolean)
             .join('、'),
+      },
+      {
+        key: 'handover_status',
+        label: '班组交付',
+        value: (row) => scheduleStatusLabels[row.handover_status || row.status],
+      },
+      { key: 'shipped_quantity', label: '客户已发货（件）', value: (row) => row.shipped_quantity },
+      {
+        key: 'order_completed',
+        label: '订单完成',
+        value: (row) => (row.order_completed ? '已完成' : '未完成'),
+      },
+      {
+        key: 'order_overdue',
+        label: '订单逾期',
+        value: (row) => (row.order_overdue ? '已逾期' : '未逾期'),
       },
       { key: 'notes', label: '排期备注', value: (row) => row.notes },
     ],
@@ -699,7 +710,12 @@ defineExpose({ exportSource, openDetail })
             ></label>
             <label class="filter-wide"
               >要求交货日期<RecordDateFilter v-model="draftDates" label="要求交货日期"
-            /></label> </FilterDialog
+            /></label>
+            <TableFilterFields
+              v-model="draftColumns"
+              :columns="scheduleQueryColumns"
+              :exclude="['team_name', 'due_at']"
+            /> </FilterDialog
         ></template>
         <template #tools
           ><TableExportButton
@@ -715,6 +731,7 @@ defineExpose({ exportSource, openDetail })
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <WorkspaceTable
         columns-key="DeliverySchedules-1"
+        :column-query="tableQuery.controller.value"
         v-else
         :data="rows"
         row-key="id"
@@ -730,9 +747,6 @@ defineExpose({ exportSource, openDetail })
           align="center"
           show-overflow-tooltip
         />
-        <ElTableColumn label="交货任务" min-width="170" align="center" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.task_title || row.task_no || '—' }}</template>
-        </ElTableColumn>
         <ElTableColumn
           v-if="!teamId"
           label="交货班组"
@@ -755,7 +769,7 @@ defineExpose({ exportSource, openDetail })
             ></template
           ></ElTableColumn
         >
-        <ElTableColumn label="计划确认" width="125" align="center"
+        <ElTableColumn label="交期填写" prop="planning_state" width="125" align="center"
           ><template #default="{ row }"
             ><ElTag :type="row.planning_state === 'confirmed' ? 'success' : 'warning'">{{
               planLabel(row as ProductionSchedule)
@@ -767,47 +781,9 @@ defineExpose({ exportSource, openDetail })
             formatDateTime(row.final_due_at)
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="订单锁定" width="100" align="center"
-          ><template #default="{ row }">{{
-            row.order_locked ? '已锁定' : '—'
-          }}</template></ElTableColumn
-        >
-        <ElTableColumn label="排期状态" min-width="120" align="center"
-          ><template #default="{ row }"
-            ><ElTag :type="scheduleStatusTone(row.status)" effect="light">{{
-              scheduleStatusLabels[row.status as ScheduleStatus]
-            }}</ElTag></template
-          ></ElTableColumn
-        >
-        <ElTableColumn label="执行情况" min-width="135" align="center">
-          <template #default="{ row }">
-            <span>{{
-              row.execution_state
-                ? scheduleExecutionLabels[
-                    row.execution_state as keyof typeof scheduleExecutionLabels
-                  ]
-                : '—'
-            }}</span>
-            <ElTag v-if="row.quality_held" type="danger" size="small" class="schedule-held"
-              >质量冻结</ElTag
-            >
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="计量方式" min-width="110" align="center">
-          <template #default="{ row }">{{
-            row.completion_basis
-              ? completionBasisLabels[row.completion_basis as keyof typeof completionBasisLabels]
-              : '—'
-          }}</template>
-        </ElTableColumn>
         <ElTableColumn label="计划件数" min-width="100" align="center"
           ><template #default="{ row }">{{
             formatAmount(row.target_quantity)
-          }}</template></ElTableColumn
-        >
-        <ElTableColumn label="已加工件数" min-width="110" align="center"
-          ><template #default="{ row }">{{
-            row.assessment_enabled === false ? '—' : formatAmount(row.processed_quantity)
           }}</template></ElTableColumn
         >
         <ElTableColumn label="已转出件数" min-width="110" align="center"
@@ -820,20 +796,38 @@ defineExpose({ exportSource, openDetail })
             formatAmount(row.completion_basis === 'weight' ? null : row.remaining_quantity)
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="计划 / 参考重量（kg）" min-width="180" align="center"
-          ><template #default="{ row }">{{
-            formatAmount(row.target_weight)
-          }}</template></ElTableColumn
+        <ElTableColumn label="班组交付" prop="handover_status" min-width="125"
+          ><template #default="{ row }"
+            ><ElTag :type="scheduleStatusTone(row.handover_status || row.status)">{{
+              scheduleStatusLabels[(row.handover_status || row.status) as ScheduleStatus]
+            }}</ElTag></template
+          ></ElTableColumn
         >
-        <ElTableColumn label="待交重量（kg）" min-width="130" align="center"
-          ><template #default="{ row }">{{
-            formatAmount(row.completion_basis === 'quantity' ? null : row.remaining_weight)
-          }}</template></ElTableColumn
+        <ElTableColumn label="客户发货" prop="shipped_quantity" min-width="190"
+          ><template #default="{ row }"
+            ><ScheduleShipmentProgress
+              :shipped="row.shipped_quantity"
+              :target="row.order_quantity"
+              :status="row.shipment_status" /></template
+        ></ElTableColumn>
+        <ElTableColumn label="订单完成" prop="order_completed" min-width="110"
+          ><template #default="{ row }"
+            ><ElTag :type="row.order_completed ? 'success' : 'info'">{{
+              row.order_completed ? '已完成' : '未完成'
+            }}</ElTag></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="订单逾期" prop="order_overdue" min-width="110"
+          ><template #default="{ row }"
+            ><ElTag :type="row.order_overdue ? 'danger' : 'info'">{{
+              row.order_overdue ? '已逾期' : '未逾期'
+            }}</ElTag></template
+          ></ElTableColumn
         >
         <ElTableColumn label="关联批次" min-width="100" align="center"
           ><template #default="{ row }">{{
-            row.linked_batches?.length || row.sources.length
-              ? `${row.linked_batches?.length || row.sources.length} 个批次`
+            row.linked_batch_count || row.sources.length
+              ? `${row.linked_batch_count || row.sources.length} 个批次`
               : row.predecessor_id
                 ? '衔接上序'
                 : '待关联'
@@ -1342,9 +1336,6 @@ defineExpose({ exportSource, openDetail })
 }
 .delivery-schedules--detail-only {
   display: contents;
-}
-.schedule-held {
-  margin-left: 6px;
 }
 .schedule-task-context {
   margin-bottom: 18px;

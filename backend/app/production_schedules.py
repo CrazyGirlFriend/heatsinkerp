@@ -1,7 +1,7 @@
 """Explicit delivery commitments, physical-lot matching and real outbound progress."""
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, or_, select, union
+from sqlalchemy import and_, case, delete, func, or_, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, lazyload
 
@@ -173,6 +173,24 @@ def summaries(db, ids, *, now=None):
     )
     linked = linked_batches(db, ids)
     availability = execution_availability(db, ids)
+    from .schedule_fulfillment import fulfillment_values
+
+    fulfillment = fulfillment_values(db, {row[0].task_id for row in rows})
+    handovers = progress_table(plan_ids=ids, include_warehouse=True)
+    handover_states = {
+        row.id: row
+        for row in db.execute(
+            select(
+                Plan.id,
+                handovers.c.completed_at,
+                status_expression(handovers, now or utcnow(), include_warehouse=True).label(
+                    "status"
+                ),
+            )
+            .outerjoin(handovers, handovers.c.schedule_id == Plan.id)
+            .where(Plan.id.in_(ids))
+        )
+    }
     result = {}
     for row in rows:
         plan = row[0]
@@ -181,6 +199,13 @@ def summaries(db, ids, *, now=None):
         sent_w = values["dispatched_weight"] or 0
         result[plan.id] = {
             "id": plan.id,
+            **{
+                key: value
+                for key, value in fulfillment[plan.task_id].items()
+                if key != "fulfillment_status"
+            },
+            "handover_status": handover_states[plan.id].status,
+            "handover_completed_at": iso(handover_states[plan.id].completed_at),
             "task_id": plan.task_id,
             "task_no": f"PQ{plan.task_id:08d}",
             "task_title": values["task_title"],
@@ -338,12 +363,95 @@ def list_plans(
         due_from=due_from,
         due_to=due_to,
     )
-    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    ids = list(
-        db.scalars(
-            statement.order_by(Plan.due_at, Plan.id).offset((page - 1) * page_size).limit(page_size)
-        )
+    from .production_schedule_queries import linked_batch_rows
+    from .schedule_fulfillment import fulfillment_table
+    from .table_query import current_table_query, query_statement
+
+    fulfillment = fulfillment_table(db)
+    next_team = aliased(Team)
+    progress = progress_table(
+        plan_ids=select(Plan.id).where(Plan.id.in_(statement)), include_warehouse=True
     )
+    sent = func.coalesce(progress.c.dispatched_quantity, 0)
+    batch_count = select(func.count(Batch.id)).where(Batch.schedule_id == Plan.id).scalar_subquery()
+    explicit_sources = (
+        select(func.count(Source.source_transfer_id))
+        .where(Source.schedule_id == Plan.id)
+        .scalar_subquery()
+    )
+    links = linked_batch_rows(select(Plan.id).where(Plan.id.in_(statement)))
+    source_count = func.coalesce(
+        select(func.max(links.c.total)).where(links.c.schedule_id == Plan.id).scalar_subquery(),
+        explicit_sources,
+    )
+    batch_progress = progress_table(batches=True, include_warehouse=True)
+    batch_remaining = (
+        select(
+            func.sum(
+                case(
+                    (Batch.target_quantity.is_(None), None),
+                    (
+                        Batch.target_quantity
+                        > func.coalesce(batch_progress.c.dispatched_quantity, 0),
+                        Batch.target_quantity
+                        - func.coalesce(batch_progress.c.dispatched_quantity, 0),
+                    ),
+                    else_=0,
+                )
+            )
+        )
+        .outerjoin(batch_progress, batch_progress.c.schedule_id == Batch.id)
+        .where(Batch.schedule_id == Plan.id)
+        .scalar_subquery()
+    )
+    columns = {
+        **dict(Plan.__table__.columns.items()),
+        **dict(fulfillment.c.items()),
+        "team_name": Team.name,
+        "destination": func.coalesce(next_team.name, Plan.external_destination),
+        "final_due_at": Task.final_due_at,
+        "planning_state": case((Plan.planning_state == "confirmed", "已填写"), else_="待填写"),
+        "dispatched_quantity": sent,
+        "remaining_quantity": func.coalesce(
+            batch_remaining,
+            case(
+                (Plan.target_quantity.is_(None), None),
+                (Plan.target_quantity > sent, Plan.target_quantity - sent),
+                else_=0,
+            ),
+        ),
+        "batch_count": batch_count,
+        "source_count": source_count,
+        "handover_status": status_expression(progress, utcnow(), include_warehouse=True),
+        "completed_at": progress.c.completed_at,
+    }
+    selected = (
+        select(Plan.id)
+        .where(Plan.id.in_(statement))
+        .join(Team, Team.id == Plan.team_id)
+        .outerjoin(next_team, next_team.id == Plan.next_team_id)
+        .outerjoin(Task, Task.id == Plan.task_id)
+        .join(fulfillment, fulfillment.c.task_id == Plan.task_id)
+    )
+    query_state = current_table_query.get()
+    query_fields = {item.field for item in query_state.filters} if query_state else set()
+    if query_state and query_state.sort:
+        query_fields.add(query_state.sort.field)
+    if query_fields & {
+        "dispatched_quantity",
+        "remaining_quantity",
+        "handover_status",
+        "completed_at",
+    }:
+        selected = selected.outerjoin(progress, progress.c.schedule_id == Plan.id)
+    statement = query_statement(
+        selected,
+        func.coalesce(Task.created_at, Plan.created_at).desc(),
+        Plan.id.desc(),
+        columns=columns,
+    )
+    total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
+    ids = list(db.scalars(statement.offset((page - 1) * page_size).limit(page_size)))
     values = summaries(db, ids)
     return {
         "items": [values[value] for value in ids],

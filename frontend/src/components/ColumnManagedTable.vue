@@ -12,6 +12,8 @@ import {
 } from 'vue'
 import { ElTable } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
+import TableColumnFilter from './TableColumnFilter.vue'
+import type { TableQueryController } from '@/types/tableQuery'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import {
   nodeChildren,
@@ -30,6 +32,7 @@ export default defineComponent({
     columnsKey: { type: String, default: '' },
     columnSettings: { type: Boolean, default: true },
     requiredColumns: { type: Array as PropType<string[]>, default: () => [] },
+    columnQuery: { type: Object as PropType<TableQueryController>, default: undefined },
   },
   setup(props, { attrs, slots }) {
     const scope = inject(tableColumnScopeKey, ref(null))
@@ -48,7 +51,7 @@ export default defineComponent({
         props.native
           ? h(engine, attrs, content)
           : h(engine, attrs, { ...slots, default: () => content })
-      if (!props.columnSettings) return renderTable(nodes)
+      if (!props.columnSettings && !props.columnQuery) return renderTable(nodes)
       const header = props.native
         ? nodeChildren(nodes.find((node) => node.type === 'thead') || h('thead'))
         : []
@@ -60,8 +63,8 @@ export default defineComponent({
       const options = entries
         .filter((entry) => !entry.pinned)
         .map(({ key, label, required }) => ({ key, label, required, defaultVisible: true }))
-      if (!options.length) return renderTable(nodes)
-      const selected = orderedTableColumns(entries, choices.value)
+      if (!options.length && !props.columnQuery) return renderTable(nodes)
+      const selected = props.columnSettings ? orderedTableColumns(entries, choices.value) : entries
       const renderControl = () =>
         h(
           'span',
@@ -97,7 +100,10 @@ export default defineComponent({
         selected.map((entry, index) => {
           const node = cloneVNode(entry.node, { key: entry.key })
           node.patchFlag = 0
-          if (index === first) {
+          const query = props.columnQuery
+          const field =
+            query?.columns[String(node.props?.prop || '')] || query?.columns[entry.label]
+          if (field || (props.columnSettings && index === first)) {
             if (node.props?.width && Number(node.props.width) < 104) node.props.width = 104
             const cellSlots = node.children as Slots | null
             node.children = {
@@ -105,12 +111,30 @@ export default defineComponent({
               _: undefined,
               header: (scope: unknown) =>
                 h('span', { class: 'table-column-heading' }, [
-                  h(
-                    'span',
-                    { class: 'table-column-heading__label' },
-                    cellSlots?.header?.(scope) || entry.label,
-                  ),
-                  renderControl(),
+                  field && query
+                    ? h(TableColumnFilter, {
+                        label: entry.label,
+                        kind: field.kind || 'text',
+                        options: field.options,
+                        value:
+                          query.state.filters.find((item) => item.field === field.field)?.value ||
+                          '',
+                        end:
+                          query.state.filters.find((item) => item.field === field.field)?.end || '',
+                        sortable: true,
+                        sort:
+                          query.state.sort?.field === field.field
+                            ? query.state.sort.direction
+                            : undefined,
+                        onApply: (value: string, end: string) => query.filter(field, value, end),
+                        onSort: (direction?: 'asc' | 'desc') => query.sort(field.field, direction),
+                      })
+                    : h(
+                        'span',
+                        { class: 'table-column-heading__label' },
+                        cellSlots?.header?.(scope) || entry.label,
+                      ),
+                  props.columnSettings && index === first ? renderControl() : null,
                 ]),
             }
             // A prop-only column originally has no slots; mark the new header as slot content.

@@ -284,7 +284,10 @@ def _create_user(payload, admin, db, password_hash):
 @router.get("/users", response_model=list[UserResponse], tags=["administration"])
 @router.get("/accounts", response_model=list[UserResponse], tags=["administration"])
 def list_users(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[dict]:
-    return [user_dict(user) for user in db.scalars(select(User).order_by(User.username)).all()]
+    return [
+        user_dict(user)
+        for user in db.scalars(select(User).order_by(User.created_at.desc(), User.id.desc())).all()
+    ]
 
 
 def _get_user_or_404(db: Session, user_id: int) -> User:

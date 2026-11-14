@@ -202,8 +202,8 @@ describe('individual operation progress', () => {
         dispatched_quantity: 40,
       }),
     ).toEqual({
-      label: '已加工',
-      percent: 60,
+      label: '已转出',
+      percent: 40,
     })
     expect(nodeCompletion({ ...weight, status: 'cancelled' })).toEqual({
       processed: null,

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import TableFilterFields from './TableFilterFields.vue'
+import ScheduleShipmentProgress from './ScheduleShipmentProgress.vue'
+import type { TableColumnCondition } from '@/types/tableQuery'
+
+import { useTableQuery } from '@/composables/useTableQuery'
+import { taskQueryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
@@ -86,14 +92,22 @@ const query = ref(initialSerial),
   }),
   filterOpen = ref(false)
 type TaskSort = 'created_at' | 'final_due_at'
-const sortBy = ref<TaskSort>(props.management ? 'created_at' : 'final_due_at')
-const sortOrder = ref<'asc' | 'desc'>(props.management ? 'desc' : 'asc')
-const draftSortOrder = ref<'asc' | 'desc'>(sortOrder.value)
+const sortBy = ref<TaskSort>('created_at')
+const sortOrder = ref<'asc' | 'desc'>('desc')
+const draftColumns = ref<TableColumnCondition[]>([])
+const tableQuery = useTableQuery(taskQueryColumns, () => {
+  page.value = 1
+  void load()
+})
+const draftSortOrder = ref(`${sortBy.value}:${sortOrder.value}`)
 const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },
   { key: 'quantity', label: '数量（件）', width: 110 },
   { key: 'delivery_batches', label: '交货批数', width: 100 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
+  { key: 'shipped_quantity', label: '客户发货', width: 190 },
+  { key: 'order_completed', label: '订单完成', width: 110 },
+  { key: 'order_overdue', label: '订单逾期', width: 110 },
   { key: 'team_planning', label: '班组排期', width: 280 },
   { key: 'created_at', label: '创建时间', width: 180 },
   { key: 'business_people', label: '业务人员', width: 140 },
@@ -141,6 +155,7 @@ const filterCount = computed(
     Number(!!filters.value.scope) +
     Number(!!filters.value.team_id) +
     Number(!!filters.value.status) +
+    tableQuery.state.value.filters.length +
     Number(!!filters.value.due_from || !!filters.value.due_to) +
     Number(!!filters.value.serial_nos?.length) +
     Number(!!filters.value.business_person_ids?.length),
@@ -164,6 +179,7 @@ async function load(background = false) {
   try {
     const params = {
       ...filters.value,
+      ...tableQuery.params.value,
       sort_by: sortBy.value,
       sort_order: sortOrder.value,
       page: props.management ? page.value : 1,
@@ -212,6 +228,7 @@ async function loadMore() {
   try {
     const result = await productionScheduleApi.tasks({
       ...filters.value,
+      ...tableQuery.params.value,
       sort_by: sortBy.value,
       sort_order: sortOrder.value,
       page: page.value + 1,
@@ -249,20 +266,10 @@ function pasteSearch(event: ClipboardEvent) {
   query.value =
     query.value.slice(0, start) + text.replace(/[\r\n\t]+/g, ' ') + query.value.slice(end)
 }
-function changeSort(by: TaskSort, order: 'asc' | 'desc') {
-  if (by === sortBy.value && order === sortOrder.value) return
-  sortBy.value = by
-  sortOrder.value = order
-  page.value = 1
-  void load()
-}
-function sortChanged(sort: { prop: string | null; order: 'ascending' | 'descending' | null }) {
-  if ((sort.prop === 'final_due_at' || sort.prop === 'created_at') && sort.order)
-    changeSort(sort.prop, sort.order === 'ascending' ? 'asc' : 'desc')
-}
 function openFilters() {
+  draftColumns.value = tableQuery.state.value.filters.map((item) => ({ ...item }))
   draftLoadSize.value = loadSize.value
-  draftSortOrder.value = sortOrder.value
+  draftSortOrder.value = `${sortBy.value}:${sortOrder.value}`
   draftScope.value = filters.value.scope
   draftTeam.value = filters.value.team_id
   draftStatus.value = filters.value.status
@@ -275,9 +282,14 @@ function openFilters() {
   filterOpen.value = true
 }
 function applyFilters() {
+  tableQuery.state.value.filters = draftColumns.value
   if (!props.management)
     loadSize.value = Math.max(1, Math.min(100, Math.round(draftLoadSize.value ?? 50)))
-  sortOrder.value = draftSortOrder.value
+  const [field, direction] = draftSortOrder.value.split(':')
+  if (sortBy.value !== field || sortOrder.value !== direction)
+    tableQuery.state.value.sort = undefined
+  sortBy.value = field as TaskSort
+  sortOrder.value = direction as 'asc' | 'desc'
   filters.value = {
     query: filters.value.query,
     scope: draftScope.value || undefined,
@@ -299,6 +311,7 @@ function applyFilters() {
   void load()
 }
 function resetFilters() {
+  draftColumns.value = []
   draftLoadSize.value = 50
   draftScope.value = undefined
   draftTeam.value = undefined
@@ -451,7 +464,12 @@ function nodeChanged() {
   if (detailId.value) void openTask(detailId.value)
 }
 function exportSource() {
-  const selected = { ...filters.value, sort_by: sortBy.value, sort_order: sortOrder.value }
+  const selected = {
+    ...filters.value,
+    ...tableQuery.params.value,
+    sort_by: sortBy.value,
+    sort_order: sortOrder.value,
+  }
   const perNode = (task: ScheduleTask, value: (node: ProductionSchedule) => string) =>
     task.nodes.map((node, index) => `${index + 1}. ${node.team_name}：${value(node)}`).join('；')
   return tableExportSource(
@@ -469,7 +487,22 @@ function exportSource() {
           task.business_person_name ||
           '未指定',
       },
-      { key: 'status', label: '任务状态', value: (task) => scheduleStatusLabels[task.status] },
+      { key: 'status', label: '订单状态', value: (task) => scheduleStatusLabels[task.status] },
+      {
+        key: 'shipped_quantity',
+        label: '客户已发货（件）',
+        value: (task) => task.shipped_quantity,
+      },
+      {
+        key: 'order_completed',
+        label: '订单完成',
+        value: (task) => (task.order_completed ? '已完成' : '未完成'),
+      },
+      {
+        key: 'order_overdue',
+        label: '订单逾期',
+        value: (task) => (task.order_overdue ? '已逾期' : '未逾期'),
+      },
       {
         key: 'final_due_at',
         label: '最终交货时间',
@@ -584,13 +617,14 @@ onBeforeUnmount(() => {
                 />
               </label>
               <label v-if="!management"
-                >最终交期排序
+                >列表排序
                 <ElSelect
                   v-if="!fullscreen && !management"
                   v-model="draftSortOrder"
-                  aria-label="最终交期排序"
-                  ><ElOption label="最终交期：由近到远" value="asc" />
-                  <ElOption label="最终交期：由远到近" value="desc" />
+                  aria-label="列表排序"
+                  ><ElOption label="创建时间：最新在前" value="created_at:desc" />
+                  <ElOption label="最终交期：由近到远" value="final_due_at:asc" />
+                  <ElOption label="最终交期：由远到近" value="final_due_at:desc" />
                 </ElSelect>
               </label>
               <label
@@ -660,9 +694,13 @@ onBeforeUnmount(() => {
                   }}</ElTag>
                 </div>
               </div>
-            </div>
-          </FilterDialog></template
-        >
+              <TableFilterFields
+                v-model="draftColumns"
+                :columns="taskQueryColumns"
+                :exclude="['serial_no', 'business_people']"
+              />
+            </div> </FilterDialog
+        ></template>
         <template v-if="management" #tools>
           <InventoryColumnSettings
             ref="columnSettings"
@@ -704,11 +742,7 @@ onBeforeUnmount(() => {
       class="dispatch-task-table"
       aria-label="调度排期列表"
       row-key="id"
-      :default-sort="{
-        prop: sortBy,
-        order: sortOrder === 'asc' ? 'ascending' : 'descending',
-      }"
-      @sort-change="sortChanged"
+      :column-query="tableQuery.controller.value"
     >
       <ElTableColumn
         v-for="column in visibleColumns"
@@ -718,8 +752,6 @@ onBeforeUnmount(() => {
         :min-width="column.width"
         :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
         :align="column.key === 'quantity' ? 'right' : 'left'"
-        :sortable="['final_due_at', 'created_at'].includes(column.key) ? 'custom' : false"
-        :sort-orders="['descending', 'ascending']"
         :show-overflow-tooltip="column.key !== 'team_planning'"
       >
         <template #default="{ row }">
@@ -739,6 +771,22 @@ onBeforeUnmount(() => {
           <template v-else-if="column.key === 'final_due_at' || column.key === 'created_at'">{{
             formatDateTime(row[column.key])
           }}</template>
+          <ScheduleShipmentProgress
+            v-else-if="column.key === 'shipped_quantity'"
+            :shipped="row.shipped_quantity"
+            :target="row.order_quantity ?? taskQuantity(row)"
+            :status="row.shipment_status"
+          />
+          <ElTag
+            v-else-if="column.key === 'order_completed'"
+            :type="row.order_completed ? 'success' : 'info'"
+            >{{ row.order_completed ? '已完成' : '未完成' }}</ElTag
+          >
+          <ElTag
+            v-else-if="column.key === 'order_overdue'"
+            :type="row.order_overdue ? 'danger' : 'info'"
+            >{{ row.order_overdue ? '已逾期' : '未逾期' }}</ElTag
+          >
           <ScheduleTeamPlanning v-else-if="column.key === 'team_planning'" :nodes="row.nodes" />
           <span v-else-if="column.key === 'business_people'" class="schedule-people">
             <template v-if="row.business_people?.length"

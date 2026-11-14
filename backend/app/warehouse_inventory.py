@@ -505,12 +505,46 @@ def list_inventory(db, team_id, filters):
                 )
             )
         )
+    from .table_query import table_order, table_predicates
+
+    columns = {
+        **dict(table.c.items()),
+        "processing_state": processing_state,
+        "pending_outgoing_quantity": table.c.reserved_quantity,
+        "pending_outgoing_weight": table.c.reserved_weight,
+        **{
+            f"dispatchable_{unit}": case(
+                (
+                    table.c.material_type.in_(SCRAP_MATERIAL_TYPES),
+                    table.c[f"scrap_available_{unit}"],
+                ),
+                else_=table.c[f"available_{unit}"],
+            )
+            for unit in ("quantity", "weight")
+        },
+    }
+    columns["team_name"] = (
+        select(Team.name)
+        .where(Team.id == (table.c.team_id if team_id is None else team_id))
+        .scalar_subquery()
+    )
+    if db.get_bind().dialect.name == "sqlite":
+        columns["stock_age"] = func.julianday(now) - func.julianday(table.c.stock_age_started_at)
+    else:
+        from sqlalchemy import literal_column
+
+        columns["stock_age"] = (
+            func.timestampdiff(literal_column("SECOND"), table.c.stock_age_started_at, now) / 86400
+        )
+    conditions.extend(table_predicates(columns))
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
     rows = (
         db.execute(
             select(table, processing_state.label("processing_state"))
             .where(*conditions)
-            .order_by(table.c.last_activity_at.desc(), table.c.group_id.desc())
+            .order_by(
+                *table_order(columns, table.c.last_activity_at.desc(), table.c.group_id.desc())
+            )
             .offset((filters.page - 1) * filters.page_size)
             .limit(filters.page_size)
         )

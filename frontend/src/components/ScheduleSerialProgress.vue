@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElTableColumn, ElTag as AppTag } from 'element-plus'
 import StatePanel from './StatePanel.vue'
 import DataTable from './watermelon/WatermelonDataTable.vue'
+import ScheduleShipmentProgress from './ScheduleShipmentProgress.vue'
 import ScheduleProgressMeter from './ScheduleProgressMeter.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleSerialProgress } from '@/types/productionSchedule'
@@ -103,6 +104,19 @@ const asNode = (row: unknown) => row as ProductionSchedule
           >最终交期 {{ formatDateTime(task.final_due_at) }}</span
         >
       </header>
+      <div class="serial-progress__numbers">
+        <ScheduleShipmentProgress
+          :shipped="task.shipped_quantity"
+          :target="task.order_quantity"
+          :status="task.shipment_status"
+        />
+        <AppTag :type="task.order_completed ? 'success' : 'info'">{{
+          task.order_completed ? '订单已完成' : '订单未完成'
+        }}</AppTag>
+        <AppTag :type="task.order_overdue ? 'danger' : 'info'">{{
+          task.order_overdue ? '订单已逾期' : '订单未逾期'
+        }}</AppTag>
+      </div>
       <DataTable
         :data="task.nodes.filter((n) => n.status !== 'cancelled')"
         row-key="id"
@@ -124,13 +138,10 @@ const asNode = (row: unknown) => row as ProductionSchedule
           ><template #default="{ row }"
             ><span v-if="row.assessment_enabled === false">—</span>
             <div v-else class="serial-progress__amount">
-              <span>{{ formatAmount(row.processed_quantity) }} 件</span
-              ><ScheduleProgressMeter
-                :percent="nodeCompletion(asNode(row)).processed"
-                :color="boardTeamColor(row.team_name)"
-                :label="`${row.sequence_no} ${row.team_name}加工比例`"
-              /></div></template
-        ></ElTableColumn>
+              <span>{{ formatAmount(row.processed_quantity) }} 件</span>
+            </div></template
+          ></ElTableColumn
+        >
         <ElTableColumn label="已转出" min-width="140"
           ><template #default="{ row }"
             ><div class="serial-progress__amount">
@@ -156,8 +167,10 @@ const asNode = (row: unknown) => row as ProductionSchedule
         >
         <ElTableColumn label="交期状态" min-width="120"
           ><template #default="{ row }"
-            ><AppTag :type="scheduleStatusTone(row.status)">{{
-              scheduleStatusLabels[row.status as keyof typeof scheduleStatusLabels]
+            ><AppTag :type="scheduleStatusTone(row.handover_status || row.status)">{{
+              scheduleStatusLabels[
+                (row.handover_status || row.status) as keyof typeof scheduleStatusLabels
+              ]
             }}</AppTag></template
           ></ElTableColumn
         >

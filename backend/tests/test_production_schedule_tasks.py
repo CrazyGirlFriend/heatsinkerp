@@ -328,9 +328,7 @@ def test_partial_flow_shows_actual_locations_and_warehouse_is_not_assessed(clien
     assert locations[s["other"]["id"]]["pending_quantity"] == 0
 
 
-def test_attention_and_completed_filters_are_server_paginated_and_exclude_warehouse(
-    client, warehouse
-):
+def test_order_attention_includes_warehouse_customer_commitment(client, warehouse):
     s = warehouse
     for title in ("第一批", "第二批"):
         payload = route(s, title=title)
@@ -340,9 +338,9 @@ def test_attention_and_completed_filters_are_server_paginated_and_exclude_wareho
     assert get(client, warehouse_only)["status"] == "not_assessed"
     assert client.get(TASKS, params={"scope": "completed"}).json()["total"] == 0
     page = client.get(TASKS, params={"scope": "attention", "page_size": 1, "page": 2}).json()
-    assert page["total"] == 2 and len(page["items"]) == 1
-    assert len(page["items"][0]["nodes"]) == 2
-    assert client.get(TASKS, params={"status": "not_assessed"}).json()["total"] == 1
+    assert page["total"] == 3 and len(page["items"]) == 1
+    assert page["items"][0]["order_overdue"]
+    assert client.get(TASKS, params={"status": "not_assessed"}).json()["total"] == 0
 
 
 def test_multiple_serial_search_combines_filters_and_paginates_whole_tasks(client, warehouse):

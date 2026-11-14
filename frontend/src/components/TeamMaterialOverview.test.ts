@@ -115,7 +115,15 @@ describe('compact material classification', () => {
         .slice(1, -1)
         .map((cell) => cell.text()),
     ).toEqual(['10', '1', '—', '—', '2', '0.2', '12', '1.2', '20', '2', '7', '0.7', '1', '0.1'])
-    expect(wrapper.findAll('th').map((cell) => cell.text())).toEqual([
+    expect(
+      wrapper
+        .findAll('th')
+        .map((cell) =>
+          cell.find('.table-column-filter').exists()
+            ? cell.get('.table-column-filter').text()
+            : cell.text(),
+        ),
+    ).toEqual([
       '材质',
       '正常料件数',
       '正常料重量 (kg)',
@@ -190,7 +198,15 @@ describe('compact material classification', () => {
     expect(wrapper.get('.ledger-table').classes()).toContain('single-line-table')
     expect(wrapper.find('input[aria-label="搜索类型库存"]').exists()).toBe(true)
     expect(wrapper.get('footer').text()).toContain('共 1 种物料类型')
-    expect(wrapper.findAll('th').map((cell) => cell.text())).toEqual([
+    expect(
+      wrapper
+        .findAll('th')
+        .map((cell) =>
+          cell.find('.table-column-filter').exists()
+            ? cell.get('.table-column-filter').text()
+            : cell.text(),
+        ),
+    ).toEqual([
       '物料类型',
       '正常料件数',
       '正常料重量 (kg)',

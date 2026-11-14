@@ -70,12 +70,7 @@ export const inspectionApi = {
   create: (body: InspectionCreate) =>
     httpRequest<InspectionRecord>('/inspections', { method: 'POST', body }),
 }
-export const inspectionStatusLabels = {
-  pending: '待处理 · 禁止转出',
-  released: '历史锁定已解除',
-  passed: '检查范围内合格',
-  failed: '发现不合格',
-}
+export { inspectionStatusLabels } from '@/types/qualityStatus'
 export const inspectionMethodLabels = { visual: '目视', microscope: '显微镜' }
 export const inspectionItemLabels = { appearance: '外观', dimension: '尺寸', weight: '重量' }
 export function inspectionProblemLabel(

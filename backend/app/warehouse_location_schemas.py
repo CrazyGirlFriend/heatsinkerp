@@ -3,6 +3,7 @@
 from typing import Literal
 
 from .read_schemas import PageResponse, ReadResponse, SharedMaterialResponse
+from .stock_read_schemas import StockBatchResponse
 
 
 class WarehouseOccupantResponse(SharedMaterialResponse):
@@ -43,3 +44,13 @@ class WarehouseLeaseResponse(ReadResponse):
     key: str
     expires_at: str
     hold_until: str
+
+
+class WarehouseCatalogRow(ReadResponse):
+    key: str
+    location: WarehouseLocationResponse | None
+    stock: StockBatchResponse | None
+
+
+class WarehouseCatalogPage(PageResponse[WarehouseCatalogRow]):
+    pass

@@ -5,7 +5,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
@@ -25,6 +25,12 @@ from .models import ProductionScheduleEvent as Event
 from .models import ProductionScheduleSource as Source
 from .models import ProductionScheduleTask as Task
 from .production_schedule_schemas import CustomerBatch, ScheduleCreate
+from .schedule_fulfillment import (
+    fulfillment_table,
+    fulfillment_values,
+    order_status,
+    target_columns,
+)
 
 
 def request_key(namespace, key):
@@ -131,39 +137,13 @@ def task_values(db, ids):
         values[row.id]["route_link"] = route_links[row.id]
         grouped.setdefault(row.task_id, []).append(values[row.id])
     result = {}
-    now = utcnow()
+    fulfillment = fulfillment_values(db, ids)
     for task, person_name in tasks:
         route = grouped.get(task.id, [])
         active = [node for node in route if node["status"] != "cancelled"]
-        assessed = [node for node in active if node.get("assessment_enabled", True)]
-        unfinished = [
-            node for node in assessed if node["status"] not in ("completed", "completed_late")
-        ]
-        if not active:
-            state = "cancelled"
-        elif not assessed:
-            state = "not_assessed"
-        elif not unfinished:
-            state = (
-                "completed_late"
-                if any(node["status"] == "completed_late" for node in active)
-                else "completed"
-            )
-        else:
-            state = (
-                "overdue"
-                if any(node["status"] == "overdue" for node in unfinished)
-                else "today"
-                if any(node["status"] == "today" for node in unfinished)
-                else "pending"
-            )
-        if task.final_due_at and assessed:
-            if unfinished and task.final_due_at < now:
-                state = "overdue"
-            elif not unfinished and any(
-                node["completed_at"] > schedules.iso(task.final_due_at) for node in assessed
-            ):
-                state = "completed_late"
+        delivery = fulfillment[task.id]
+        fulfillment_status = delivery.pop("fulfillment_status")
+        state = "cancelled" if task.cancelled_at or (route and not active) else fulfillment_status
         result[task.id] = {
             "id": task.id,
             "task_no": task.task_no,
@@ -189,6 +169,7 @@ def task_values(db, ids):
             "final_due_at": schedules.iso(task.final_due_at)
             or ((active or route)[-1]["due_at"] if route else None),
             "status": state,
+            **delivery,
             "nodes": route,
             "locations": locations.get(task.id, []),
             "shared_source": task.id in shared_tasks,
@@ -214,8 +195,8 @@ def list_tasks(
     scope=None,
     serial_nos=None,
     business_person_ids=None,
-    sort_by="final_due_at",
-    sort_order="asc",
+    sort_by="created_at",
+    sort_order="desc",
     page=1,
     page_size=20,
     **filters,
@@ -262,37 +243,59 @@ def list_tasks(
     )
     if status or scope:
         candidates = select(Plan.task_id).where(Plan.id.in_(nodes)).distinct()
-        matched = task_status_filter(candidates, status, scope)
-    total = db.scalar(select(func.count()).select_from(matched)) or 0
-    last_node = aliased(Plan)
-    final_due = func.coalesce(
-        Task.final_due_at,
-        select(last_node.due_at)
-        .where(last_node.task_id == Task.id)
-        .order_by(
-            case((last_node.cancelled_at.is_(None), 0), else_=1),
-            last_node.sequence_no.desc(),
-            last_node.id.desc(),
-        )
-        .limit(1)
-        .scalar_subquery(),
-    )
+        matched = task_status_filter(db, candidates, status, scope)
+    quantity, final_due, batch_count = target_columns(db)
+    fulfillment = fulfillment_table(db)
     sort_column = Task.created_at if sort_by == "created_at" else final_due
-    ids = list(
-        db.scalars(
-            select(matched.c.task_id)
-            .join(Task, Task.id == matched.c.task_id)
-            .order_by(
-                sort_column.is_(None),
-                sort_column.desc() if sort_order == "desc" else sort_column.asc(),
-                matched.c.task_id.desc()
-                if sort_by == "created_at" and sort_order == "desc"
-                else matched.c.task_id.asc(),
-            )
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+    from .table_query import query_statement
+
+    people = (
+        select(func.group_concat(BusinessPerson.name))
+        .join(
+            ProductionScheduleTaskPerson,
+            ProductionScheduleTaskPerson.person_id == BusinessPerson.id,
         )
+        .where(ProductionScheduleTaskPerson.task_id == Task.id)
+        .scalar_subquery()
     )
+    columns = {
+        **dict(Task.__table__.columns.items()),
+        **dict(fulfillment.c.items()),
+        "final_due_at": final_due,
+        "quantity": quantity,
+        "delivery_batches": batch_count,
+        "team_planning": case(
+            (
+                select(Plan.id)
+                .where(
+                    Plan.task_id == Task.id,
+                    Plan.cancelled_at.is_(None),
+                    Plan.planning_state != "confirmed",
+                )
+                .exists(),
+                "pending",
+            ),
+            else_="filled",
+        ),
+        "business_people": func.coalesce(
+            people,
+            select(BusinessPerson.name)
+            .where(BusinessPerson.id == Task.business_person_id)
+            .scalar_subquery(),
+        ),
+        "locked": case((Task.locked_at.is_not(None), "已锁定"), else_="未锁定"),
+    }
+    statement = query_statement(
+        select(matched.c.task_id)
+        .join(Task, Task.id == matched.c.task_id)
+        .join(fulfillment, fulfillment.c.task_id == Task.id),
+        sort_column.is_(None),
+        sort_column.desc() if sort_order == "desc" else sort_column.asc(),
+        Task.id.desc() if sort_by == "created_at" and sort_order == "desc" else Task.id.asc(),
+        columns=columns,
+    )
+    total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
+    ids = list(db.scalars(statement.offset((page - 1) * page_size).limit(page_size)))
     values = task_values(db, ids)
     return {
         "items": [values[item] for item in ids],
@@ -302,60 +305,29 @@ def list_tasks(
     }
 
 
-def task_status_filter(candidates, status, scope=None):
+def task_status_filter(db, candidates, status, scope=None):
     all_nodes = select(Plan.id).where(Plan.task_id.in_(candidates))
-    progress = schedules.progress_table(plan_ids=all_nodes)
-    node_state = schedules.status_expression(progress, utcnow())
-    assessed = and_(Plan.cancelled_at.is_(None), node_state != "not_assessed")
-    totals = (
-        select(
-            Plan.task_id,
-            func.min(Plan.due_at).label("first_due"),
-            func.max(Task.final_due_at).label("final_due"),
-            func.max(case((assessed, progress.c.completed_at), else_=None)).label("completed_at"),
-            func.sum(case((Plan.cancelled_at.is_(None), 1), else_=0)).label("active"),
-            func.sum(case((assessed, 1), else_=0)).label("assessed"),
-            func.sum(
-                case(
-                    (and_(assessed, progress.c.completed_at.is_(None)), 1),
-                    else_=0,
-                )
-            ).label("unfinished"),
-            *(
-                func.max(case((node_state == value, 1), else_=0)).label(value)
-                for value in ("overdue", "today", "completed_late")
-            ),
-        )
-        .outerjoin(progress, progress.c.schedule_id == Plan.id)
-        .join(Task, Task.id == Plan.task_id)
-        .where(Plan.task_id.in_(candidates))
-        .group_by(Plan.task_id)
-        .subquery()
-    )
-    task_state = case(
-        (totals.c.active == 0, "cancelled"),
-        (totals.c.assessed == 0, "not_assessed"),
-        (
-            and_(
-                totals.c.unfinished == 0,
-                or_(totals.c.completed_late == 1, totals.c.completed_at > totals.c.final_due),
-            ),
-            "completed_late",
-        ),
-        (totals.c.unfinished == 0, "completed"),
-        (or_(totals.c.overdue == 1, totals.c.final_due < utcnow()), "overdue"),
-        (totals.c.today == 1, "today"),
-        else_="pending",
-    )
-    statement = select(totals.c.task_id, totals.c.first_due)
+    totals = fulfillment_table(db)
+    task_state = order_status(totals)
+    statement = select(totals.c.task_id).where(totals.c.task_id.in_(candidates))
     if status:
         statement = statement.where(task_state == status)
     if scope == "completed":
         statement = statement.where(task_state.in_(("completed", "completed_late")))
     if scope == "attention":
         from .inspections import hold_column
+        from .production_schedule_queries import progress_table, status_expression
 
         lots = schedules.execution_lots(all_nodes)
+        progress = progress_table(plan_ids=all_nodes, include_warehouse=True)
+        late_handoffs = (
+            select(Plan.task_id)
+            .outerjoin(progress, progress.c.schedule_id == Plan.id)
+            .where(
+                Plan.id.in_(all_nodes),
+                status_expression(progress, utcnow(), include_warehouse=True) == "overdue",
+            )
+        )
         held = (
             select(Plan.task_id)
             .join(lots, lots.c.schedule_id == Plan.id)
@@ -370,7 +342,11 @@ def task_status_filter(candidates, status, scope=None):
         )
         statement = statement.where(
             task_state.not_in(("completed", "completed_late", "cancelled", "not_assessed")),
-            or_(task_state == "overdue", totals.c.task_id.in_(held)),
+            or_(
+                task_state == "overdue",
+                totals.c.task_id.in_(late_handoffs),
+                totals.c.task_id.in_(held),
+            ),
         )
     return statement.subquery()
 

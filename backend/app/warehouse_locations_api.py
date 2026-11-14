@@ -13,6 +13,7 @@ from .models import (
     User,
 )
 from .warehouse_location_schemas import (
+    WarehouseCatalogPage,
     WarehouseLeaseResponse,
     WarehouseLocationPage,
     WarehouseLocationResponse,
@@ -33,6 +34,24 @@ def catalog(
 ):
     return service.catalog(
         query=query, state=state, page=page, page_size=page_size, user=user, db=db
+    )
+
+
+@router.get("/inventory", response_model=WarehouseCatalogPage, response_model_exclude_unset=True)
+def inventory_catalog(
+    query: str | None = Query(default=None, max_length=80),
+    state: Literal["occupied", "available", "pending", "draft", "disabled", "unassigned"]
+    | None = None,
+    team_id: int | None = Query(default=None, ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .warehouse_catalog import list_catalog
+
+    return list_catalog(
+        db, user, query=query, state=state, team_id=team_id, page=page, page_size=page_size
     )
 
 

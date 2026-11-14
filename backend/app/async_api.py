@@ -15,6 +15,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AsyncDatabaseRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def with_table_query(request):
+            from .table_query import current_table_query, parse_table_query
+
+            token = current_table_query.set(
+                parse_table_query(request.query_params.get("table_query"))
+            )
+            try:
+                return await handler(request)
+            finally:
+                current_table_query.reset(token)
+
+        return with_table_query
+
     def __init__(self, path, endpoint, **kwargs):
         if not iscoroutinefunction(endpoint):
             operation = endpoint
