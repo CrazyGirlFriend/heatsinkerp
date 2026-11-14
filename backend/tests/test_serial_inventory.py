@@ -128,10 +128,62 @@ def test_external_outbound_does_not_create_phantom_team_inventory(client, outbou
     assert sent.status_code == 201, sent.text
     for line in sent.json()["items"]:
         before = overview(client, line["serial_no"])["items"]
+        incoming = client.get(
+            "/api/material-transfers",
+            params={"internal_only": True, "status": "pending", "serial_no": line["serial_no"]},
+        )
+        assert incoming.status_code == 200, incoming.text
+        assert incoming.json()["total"] == 0
         assert len(before) == 1
         assert before[0]["stock_quantity"] == 70 and before[0]["incoming_quantity"] == 0
         assert external_confirm(client, outbound, line).status_code == 200
         assert overview(client, line["serial_no"])["items"] == before
+
+
+@pytest.mark.parametrize("quantity", [30, 100])
+def test_global_incoming_is_separate_from_stock_and_moves_on_receipt(client, stock_setup, quantity):
+    s = stock_setup
+    lot = initialize(client, s, quantity=100, weight="10")
+    sent = dispatch(
+        client,
+        s,
+        [{"source_transfer_id": lot["id"], "quantity": quantity, "weight": quantity / 10}],
+    )
+    assert sent.status_code == 201, sent.text
+    transfer = sent.json()["items"][0]
+    params = {
+        "internal_only": True,
+        "status": "pending",
+        "serial_no": "000012",
+        "source_team_id": s["target"]["id"],
+        "next_team_id": s["third"]["id"],
+        "page_size": 1,
+    }
+    incoming = client.get("/api/material-transfers", params=params)
+    assert incoming.status_code == 200, incoming.text
+    assert incoming.json()["total"] == 1
+    row = incoming.json()["items"][0]
+    assert row["quantity"] == quantity and row["next_team"]["id"] == s["third"]["id"]
+    stock = client.get(
+        "/api/serial-inventory/stock", params={"serial_no": "000012", "availability": "current"}
+    ).json()
+    remaining = {s["target"]["id"]: 100 - quantity} if quantity < 100 else {}
+    assert {row["team_id"]: row["on_hand_quantity"] for row in stock["items"]} == remaining
+    confirmed = receipt_post(
+        client,
+        f"/api/material-transfers/{transfer['batch_no']}/confirm",
+        headers=s["third_headers"],
+        json={"idempotency_key": "incoming-receipt"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert client.get("/api/material-transfers", params=params).json()["total"] == 0
+    stock = client.get(
+        "/api/serial-inventory/stock", params={"serial_no": "000012", "availability": "current"}
+    ).json()
+    assert {row["team_id"]: row["on_hand_quantity"] for row in stock["items"]} == {
+        **remaining,
+        s["third"]["id"]: quantity,
+    }
 
 
 def test_processing_allocation_keeps_shared_remainder_and_scrap_separate(client, warehouse):

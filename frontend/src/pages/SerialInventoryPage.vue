@@ -21,6 +21,8 @@ import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
+import SerialIncomingInventory from '@/components/SerialIncomingInventory.vue'
+import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
@@ -55,6 +57,24 @@ const route = useRoute(),
 const text = (key: string) => (typeof route.query[key] === 'string' ? String(route.query[key]) : '')
 const number = (key: string) =>
   text(key) !== '' && Number.isFinite(Number(text(key))) ? Number(text(key)) : undefined
+const view = computed(() => (text('view') === 'incoming' ? 'incoming' : 'stock'))
+async function switchView(value: string) {
+  const query: Record<string, string> = { view: value }
+  for (const key of [
+    'serial_no',
+    'inventory_team_id',
+    'material_name',
+    'material_type',
+    'source_team_id',
+    'date_from',
+    'date_to',
+    'page_size',
+  ]) {
+    if (text(key)) query[key] = text(key)
+  }
+  if (!text('search_field') || text('search_field') === 'all') query.query = text('query')
+  await router.replace({ path: route.path, query })
+}
 const params = computed<GlobalInventoryParams>(() => ({
   query: text('query') || undefined,
   search_field: (text('search_field') || 'all') as GlobalInventoryParams['search_field'],
@@ -319,6 +339,10 @@ async function removeChip(keys: (keyof GlobalInventoryParams)[]) {
 }
 async function load(background = false) {
   const current = ++generation
+  if (view.value !== 'stock') {
+    loading.value = false
+    return
+  }
   loading.value = true
   error.value = ''
   refreshError.value = ''
@@ -356,6 +380,7 @@ watch(
   { immediate: true },
 )
 const live = useLiveRefresh(refresh, {
+  enabled: () => view.value === 'stock',
   busy: () => loading.value || !!detail.value || !!pending.value,
 })
 onBeforeUnmount(() => {
@@ -409,8 +434,20 @@ function exportSource() {
     <header class="inventory-header">
       <PageBackButton />
       <h1>流水号查询</h1>
+      <WatermelonFilter
+        view-switch
+        :model-value="view"
+        label="库存视图"
+        title="库存视图"
+        :options="[
+          { value: 'stock', label: '在库' },
+          { value: 'incoming', label: '待签收' },
+        ]"
+        @change="switchView"
+      />
     </header>
-    <WorkspaceDataPanel>
+    <SerialIncomingInventory v-if="view === 'incoming'" />
+    <WorkspaceDataPanel v-else>
       <WorkspaceDataToolbar
         v-model="queryDraft"
         search-label="搜索库存"

@@ -11535,6 +11535,7 @@ export interface operations {
         date_to?: string | null
         direction?: string
         include_summary?: boolean
+        internal_only?: boolean
         material_query?: string
         material_type?: string | null
         material_types?: string

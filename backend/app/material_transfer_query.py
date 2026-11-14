@@ -73,6 +73,7 @@ def search_predicate(query: str, search_field: str = "all", search_mode: str = "
 class TransferColumnFilters(BaseModel):
     """Column filters are intersected in SQL before counting and pagination."""
 
+    internal_only: bool = False
     serial_query: str = Field(default="", max_length=160)
     material_query: str = Field(default="", max_length=160)
     batch_query: str = Field(default="", max_length=160)
@@ -94,6 +95,13 @@ class TransferColumnFilters(BaseModel):
         import re
 
         filters = []
+        if self.internal_only:
+            filters.extend(
+                [
+                    MaterialTransfer.entry_kind == "transfer",
+                    MaterialTransfer.next_team_id.is_not(None),
+                ]
+            )
         for value, field in (
             (self.serial_query, "serial_no"),
             (self.material_query, "material_name"),

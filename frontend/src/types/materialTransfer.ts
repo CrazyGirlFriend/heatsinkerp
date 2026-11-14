@@ -232,6 +232,7 @@ export interface MaterialTransfer
 }
 
 export interface MaterialTransferColumnParams {
+  internal_only?: boolean
   serial_query?: string
   material_query?: string
   batch_query?: string

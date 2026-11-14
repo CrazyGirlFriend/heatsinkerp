@@ -17,6 +17,10 @@ import { ElOption } from 'element-plus'
 import TableExportButton from '@/components/TableExportButton.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
+import SerialIncomingInventory from '@/components/SerialIncomingInventory.vue'
+import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
+import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
+import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', async () => {
@@ -78,6 +82,7 @@ async function render(path = '/material-trace') {
         PageBackButton: true,
         TeamInventoryDetail: true,
         InventoryPendingDialog: true,
+        MaterialTransferDrawer: true,
         AppDialog: {
           props: ['modelValue'],
           template:
@@ -89,6 +94,140 @@ async function render(path = '/material-trace') {
   await flushPromises()
   return { page: wrapper, router }
 }
+
+it('switches a serial with no on-hand stock to receiving-team pending batches', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response([]))
+  const transfer = normalizeMaterialTransfer({
+    id: 29,
+    batch_no: 'TL-PENDING-29',
+    serial_no: '861113-29',
+    source_team: { id: 7, name: '电镀' },
+    next_team: { id: 8, name: '检验' },
+    status: 'pending',
+    entry_kind: 'transfer',
+    quantity: 800,
+    weight: 12.5,
+  })
+  vi.spyOn(materialTransferApi, 'list').mockResolvedValue({
+    items: [transfer],
+    total: 1,
+    page: 1,
+    page_size: 20,
+  })
+  const { page, router } = await render(
+    '/material-trace?serial_no=861113-29&stock_age_min=7&page=1',
+  )
+  expect(page.get('[aria-label="全厂库存明细"]').text()).not.toContain('800')
+  page.getComponent(WatermelonFilter).vm.$emit('change', 'incoming')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toMatchObject({
+    view: 'incoming',
+    serial_no: '861113-29',
+  })
+  expect(router.currentRoute.value.query).not.toHaveProperty('stock_age_min')
+  expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      serial_no: '861113-29',
+      internal_only: true,
+      status: 'pending',
+      page: 1,
+    }),
+  )
+  expect(page.find('[aria-label="全厂库存明细"]').exists()).toBe(false)
+  const table = page.get('[aria-label="全厂待签收明细"]')
+  for (const value of ['电镀', '检验', '800', '12.5', '待签收数量', 'TL-PENDING-29'])
+    expect(table.text()).toContain(value)
+  await table
+    .findAll('button')
+    .find((button) => button.text() === '明细')!
+    .trigger('click')
+  expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+    modelValue: true,
+    transfer,
+    showHistoryGroup: false,
+  })
+  vi.mocked(materialTransferApi.list).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 20,
+  })
+  page.getComponent(MaterialTransferDrawer).vm.$emit('changed', { ...transfer, status: 'received' })
+  await flushPromises()
+  expect(page.get('[aria-label="全厂待签收明细"]').text()).not.toContain('TL-PENDING-29')
+  page.getComponent(WatermelonFilter).vm.$emit('change', 'stock')
+  await flushPromises()
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ serial_no: '861113-29', availability: 'current' }),
+  )
+  expect(page.findComponent(SerialIncomingInventory).exists()).toBe(false)
+})
+
+it('keeps receiving-team filters in pending pagination and export without loading stock', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response([]))
+  vi.spyOn(materialTransferApi, 'list').mockResolvedValue({
+    items: [normalizeMaterialTransfer({ id: 1, quantity: 30 })],
+    total: 21,
+    page: 1,
+    page_size: 20,
+  })
+  const { page, router } = await render(
+    '/material-trace?view=incoming&serial_no=000012&inventory_team_id=8&source_team_id=7',
+  )
+  expect(api.stock).not.toHaveBeenCalled()
+  expect(page.find('[aria-label="滞留至少（天）"]').exists()).toBe(false)
+  page.getComponent(WorkspacePagination).vm.$emit('change', 2, 10)
+  await flushPromises()
+  expect(router.currentRoute.value.query).toMatchObject({
+    view: 'incoming',
+    inventory_team_id: '8',
+    page: '2',
+    page_size: '10',
+  })
+  expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      next_team_id: '8',
+      source_team_id: '7',
+      serial_no: '000012',
+      status: 'pending',
+      internal_only: true,
+      page: 2,
+      page_size: 10,
+    }),
+  )
+  const source = page.getComponent(TableExportButton).props('source')()!
+  expect(source.title).toBe('全厂待签收明细')
+  const filter = page.getComponent(FilterDialog)
+  await filter.get('button').trigger('click')
+  const receiver = page
+    .findAllComponents(AppSelect)
+    .find((select) => select.find('[aria-label="接收班组"]').exists())!
+  receiver.vm.$emit('update:modelValue', '2')
+  filter.vm.$emit('apply')
+  await flushPromises()
+  expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+    expect.objectContaining({ next_team_id: '2', page: 1, status: 'pending' }),
+  )
+  vi.mocked(materialTransferApi.list).mockResolvedValueOnce({
+    items: [normalizeMaterialTransfer({ id: 1, quantity: 30 })],
+    total: 1,
+    page: 1,
+    page_size: 100,
+  })
+  const exported = await source.load(new AbortController().signal, () => {})
+  expect(exported[0]).toMatchObject({ quantity: 30 })
+  expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      next_team_id: '8',
+      source_team_id: '7',
+      serial_no: '000012',
+      internal_only: true,
+      status: 'pending',
+      page: 1,
+      page_size: 100,
+    }),
+  )
+})
 
 it('loads all teams immediately and opens the existing inventory detail for the selected team', async () => {
   vi.spyOn(api, 'stock').mockResolvedValue(response())
