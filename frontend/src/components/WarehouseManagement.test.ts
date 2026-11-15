@@ -123,6 +123,20 @@ async function nextPage() {
 }
 
 describe('warehouse management', () => {
+  it('places column settings above both warehouse and batch tables', async () => {
+    vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValue(
+      catalogPage({ items: [occupied(1)], total: 1 }),
+    )
+    await render()
+    const toolbar = wrapper.get('.wm-warehouse-toolbar')
+    expect(toolbar.findAll('button').filter((button) => button.text() === '显示列')).toHaveLength(1)
+    expect(wrapper.find('th .table-column-settings').exists()).toBe(false)
+    await open('A-1')
+    expect(wrapper.get('.warehouse-detail-controls').text()).toContain('显示列')
+    expect(wrapper.findAll('button').filter((button) => button.text() === '显示列')).toHaveLength(2)
+    expect(wrapper.find('th .table-column-settings').exists()).toBe(false)
+  })
+
   it('exports every filtered warehouse page with current states and excludes unsigned stock from totals', async () => {
     await render()
     const source = wrapper.getComponent(TableExportButton).props('source')()!

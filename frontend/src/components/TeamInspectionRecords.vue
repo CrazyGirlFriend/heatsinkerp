@@ -45,6 +45,7 @@ const props = defineProps<{
 const title = computed(() =>
   props.kind === 'inspection' ? '检验' : props.sourceId ? '检查' : '巡检',
 )
+const columnSettingsTarget = ref<HTMLElement | null>(null)
 const feedbackId = ref<number>()
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
@@ -327,6 +328,7 @@ onBeforeUnmount(() => {
           /></label>
         </FilterDialog>
       </template>
+      <template #query-actions><div ref="columnSettingsTarget" /></template>
       <template #tools
         ><TableExportButton
           :source="exportSource"
@@ -347,8 +349,9 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
       columns-key="TeamInspectionRecords-1"
+      :column-settings-target="columnSettingsTarget"
       :column-query="tableQuery.controller.value"
-      v-else
+      v-show="!error"
       :data="rows"
       class="inspection-table"
       row-key="id"

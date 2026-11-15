@@ -43,6 +43,8 @@ import { useBatchSelection } from '@/composables/useBatchSelection'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
+const columnSettingsTarget = ref<HTMLElement | null>(null)
+const detailColumnSettingsTarget = ref<HTMLElement | null>(null)
 const props = defineProps<{
   canManage: boolean
   canDispatch?: boolean
@@ -456,6 +458,7 @@ onBeforeUnmount(() => {
             }
           "
         >
+          <template #query-actions><div ref="columnSettingsTarget" /></template>
           <template #tools>
             <TableExportButton
               :source="exportSource"
@@ -480,6 +483,7 @@ onBeforeUnmount(() => {
         <ElAlert v-if="error" :title="error" type="error" :closable="false" />
         <WatermelonDataTable
           columns-key="WarehouseManagement-1"
+          :column-settings-target="columnSettingsTarget"
           :column-query="tableQuery.controller.value"
           :data="entries"
           :loading="loading"
@@ -686,6 +690,7 @@ onBeforeUnmount(() => {
                   { value: 'pending', label: `待签收 ${pending(detail).length}` },
                 ]"
               />
+              <div ref="detailColumnSettingsTarget" />
               <div class="warehouse-detail-totals">
                 <span
                   >库存件数<strong>{{ amount(detail, 'quantity') }}</strong></span
@@ -720,6 +725,7 @@ onBeforeUnmount(() => {
             </BatchSelectionBar>
             <WatermelonDataTable
               columns-key="WarehouseManagement-2"
+              :column-settings-target="detailColumnSettingsTarget"
               :data="detailBatches"
               row-key="key"
               empty-text="暂无批次"

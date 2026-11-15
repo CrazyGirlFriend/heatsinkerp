@@ -53,6 +53,7 @@ function changeState(value: string) {
           >重置</WatermelonButton
         >
       </template>
+      <template #query-actions><slot name="query-actions" /></template>
       <template #tools><slot name="tools" /></template>
       <template #actions><slot name="actions" /></template>
       <template #primary-actions><slot name="primary-actions" /></template>

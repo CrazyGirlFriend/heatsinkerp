@@ -215,3 +215,17 @@ it('offers disabled categories for historical queries and clears them on reset',
     expect.objectContaining({ problem_type_id: undefined }),
   )
 })
+
+it('keeps inspection column settings in the toolbar when there are no records', async () => {
+  vi.mocked(inspectionApi.records).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
+  await render()
+  const control = button('显示列')
+  expect(control).toBeDefined()
+  expect(control.element.closest('table')).toBeNull()
+  expect(wrapper.find('th .table-column-settings').exists()).toBe(false)
+})

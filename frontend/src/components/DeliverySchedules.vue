@@ -92,6 +92,7 @@ const teams = computed(() =>
     (team) => team.active && ['warehouse', 'production'].includes(team.kind || ''),
   ),
 )
+const columnSettingsTarget = ref<HTMLElement | null>(null)
 const rows = ref<ProductionSchedule[]>([]),
   total = ref(0),
   loading = ref(false),
@@ -730,6 +731,7 @@ defineExpose({ exportSource, openDetail })
               :exclude="['team_name', 'due_at']"
             /> </FilterDialog
         ></template>
+        <template #query-actions><div ref="columnSettingsTarget" /></template>
         <template #tools
           ><TableExportButton
             v-if="!teamId"
@@ -744,8 +746,9 @@ defineExpose({ exportSource, openDetail })
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <WorkspaceTable
         columns-key="DeliverySchedules-1"
+        :column-settings-target="columnSettingsTarget"
         :column-query="tableQuery.controller.value"
-        v-else
+        v-show="!error"
         :data="rows"
         row-key="id"
         class="schedule-table"

@@ -95,6 +95,14 @@ import {
   transferExportFields,
 } from '@/utils/teamTableExport'
 
+const columnSettingsTarget = ref<HTMLElement | null>(null)
+const emptyListTitle = computed(() => {
+  if (tab.value === 'pending') return '暂无来料待签收'
+  if (tab.value === 'outgoing') return '暂无出库记录'
+  if (tab.value === 'receipts') return '暂无入库记录'
+  if (tab.value === 'reallocations') return '暂无转投记录'
+  return '暂无丢失记录'
+})
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -1308,6 +1316,7 @@ onBeforeUnmount(() => {
                 @search="applyFilters()"
                 @refresh="loadView()"
               >
+                <template #query-actions><div ref="columnSettingsTarget" /></template>
                 <template #filters
                   ><FilterDialog
                     v-slot="{ appendTo }"
@@ -1449,31 +1458,17 @@ onBeforeUnmount(() => {
                 :description="loadError"
                 @retry="loadView"
               />
-              <StatePanel
-                v-else-if="!total"
-                state="empty"
-                :title="
-                  tab === 'pending'
-                    ? '暂无来料待签收'
-                    : tab === 'outgoing'
-                      ? '暂无出库记录'
-                      : tab === 'receipts'
-                        ? '暂无入库记录'
-                        : tab === 'reallocations'
-                          ? '暂无转投记录'
-                          : '暂无丢失记录'
-                "
-                description="可以调整搜索条件或刷新记录。"
-              />
-              <div v-else class="team-table-scroll">
+              <div v-show="!loading && !loadError" class="team-table-scroll">
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-1"
+                  :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   v-if="tab === 'pending'"
                   :data="pending"
                   class="team-table single-line-table"
                   row-key="id"
                 >
+                  <template #empty>{{ emptyListTitle }}</template>
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
                       ><ElButton
@@ -1558,12 +1553,14 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-2"
+                  :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'receipts'"
                   :data="receipts"
                   class="team-table single-line-table"
                   row-key="id"
                 >
+                  <template #empty>{{ emptyListTitle }}</template>
                   <ElTableColumn
                     v-if="isWarehouse"
                     prop="warehouse_location"
@@ -1677,6 +1674,7 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-3"
+                  :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'outgoing'"
                   :data="outgoing"
@@ -1684,6 +1682,7 @@ onBeforeUnmount(() => {
                   row-key="batch_no"
                   @selection-change="selectedPrintRows = $event"
                 >
+                  <template #empty>{{ emptyListTitle }}</template>
                   <ElTableColumn type="selection" width="48" />
                   <ElTableColumn label="批次号" min-width="190"
                     ><template #default="{ row }"
@@ -1788,12 +1787,14 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-4"
+                  :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   v-else-if="tab === 'reallocations'"
                   :data="reallocations"
                   class="team-table single-line-table"
                   row-key="id"
                 >
+                  <template #empty>{{ emptyListTitle }}</template>
                   <ElTableColumn
                     prop="source_serial_no"
                     label="原流水号"
@@ -1866,12 +1867,14 @@ onBeforeUnmount(() => {
                 </WorkspaceTable>
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-5"
+                  :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   v-else
                   :data="losses"
                   class="team-table single-line-table"
                   row-key="id"
                 >
+                  <template #empty>{{ emptyListTitle }}</template>
                   <ElTableColumn
                     prop="loss_no"
                     label="丢失记录号"

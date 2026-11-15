@@ -64,6 +64,36 @@ async function render(key = 'test-records') {
 }
 
 describe('shared table columns', () => {
+  it('keeps toolbar settings after hiding the first column and restores them on remount', async () => {
+    const page = defineComponent({
+      components: { ColumnManagedTable, ElTableColumn },
+      setup: () => ({ target: ref<HTMLElement | null>(null) }),
+      template: `<section><div class="toolbar" ref="target"/>
+        <ColumnManagedTable columns-key="toolbar-test" :column-settings-target="target" :data="[]">
+          <ElTableColumn prop="serial" label="流水号"/>
+          <ElTableColumn prop="quantity" label="数量"/>
+          <ElTableColumn prop="material" label="材质"/>
+        </ColumnManagedTable></section>`,
+    })
+    wrapper = mount(page, { global })
+    await flushPromises()
+    expect(wrapper.get('.toolbar').text()).toContain('显示列')
+    const settings = await open()
+    settings
+      .findAllComponents(ElCheckbox)
+      .find((item) => item.text() === '流水号')!
+      .vm.$emit('update:modelValue', false)
+    await apply()
+    expect(header()).toEqual(['数量', '材质'])
+    expect(wrapper.get('.toolbar').findAll('button[aria-label="显示列"]')).toHaveLength(1)
+    wrapper.unmount()
+    wrapper = mount(page, { global })
+    await flushPromises()
+    expect(header()).toEqual(['数量', '材质'])
+    expect(wrapper.get('.toolbar').text()).toContain('显示列')
+    expect(wrapper.find('th .table-column-settings').exists()).toBe(false)
+  })
+
   it('offers query menus on fixed and normal columns without evaluating body slots early', async () => {
     const query = useTableQuery(
       { serial: { field: 'serial' }, quantity: { field: 'quantity', kind: 'number' } },

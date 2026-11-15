@@ -234,6 +234,44 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it.each([901, 914, 900])(
+    'keeps one column button above empty lists for team %s',
+    async (teamId) => {
+      state.auth.currentUser.team_id = teamId
+      vi.mocked(materialTransferApi.list).mockResolvedValue({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 10,
+      })
+      const router = await render(`/team-workspaces/${teamId}?tab=pending`)
+      for (const [tab, emptyText] of Object.entries({
+        pending: '暂无来料待签收',
+        receipts: '暂无入库记录',
+        outgoing: '暂无出库记录',
+        reallocations: '暂无转投记录',
+        losses: '暂无丢失记录',
+      })) {
+        await router.replace(`/team-workspaces/${teamId}?tab=${tab}`)
+        await flushPromises()
+        const buttons = wrapper
+          .get('.team-list-panel')
+          .findAll('button')
+          .filter((button) => button.text() === '显示列')
+        expect(buttons, tab).toHaveLength(1)
+        expect(buttons[0]!.element.closest('table'), tab).toBeNull()
+        expect(wrapper.find('th .table-column-settings').exists(), tab).toBe(false)
+        expect(wrapper.get('.el-table__empty-text').text(), tab).toBe(emptyText)
+        await buttons[0]!.trigger('click')
+        await flushPromises()
+        expect(wrapper.find('[aria-label="表格显示列"]').exists(), tab).toBe(true)
+        const cancel = wrapper.findAll('button').find((button) => button.text() === '取消')!
+        await cancel.trigger('click')
+        await flushPromises()
+      }
+    },
+  )
+
   it('opens the shared team dashboard and carries its selected state into inventory', async () => {
     const router = await render('/team-workspaces/914?tab=dashboard')
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914, true)

@@ -639,3 +639,11 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.emitted('dispatch')?.[0]?.[1]).toBe(100)
   })
 })
+
+it('shows the team delivery column control above the list', async () => {
+  await render()
+  const control = button('显示列')
+  expect(control).toBeDefined()
+  expect(control.element.closest('table')).toBeNull()
+  expect(wrapper.get('.schedule-table').find('th .table-column-settings').exists()).toBe(false)
+})
