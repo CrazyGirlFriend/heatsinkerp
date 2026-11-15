@@ -116,6 +116,11 @@ const editing = ref(false),
   editingSchedule = ref<ProductionSchedule | null>(null)
 const batchNo = ref(''),
   batchOpen = ref(false)
+const batchAllocation = computed(() =>
+  batchOpen.value
+    ? detail.value?.sources.find((source) => source.batch_no === batchNo.value)
+    : undefined,
+)
 let generation = 0,
   detailGeneration = 0,
   taskGeneration = 0
@@ -236,6 +241,31 @@ function noticeBatchClass({ row }: { row: { id: number } }) {
 }
 const noticeTarget = ref<NoticeTarget | null>(null)
 const detailOpened = ref(false)
+const taskRoute = ref<HTMLOListElement>()
+watch(
+  [detailOpened, taskRoute, () => detail.value?.id],
+  () => {
+    const container = taskRoute.value
+    const current = container?.querySelector<HTMLElement>('.is-current')
+    if (
+      !detailOpened.value ||
+      !container ||
+      !current ||
+      container.scrollWidth <= container.clientWidth
+    )
+      return
+    const bounds = container.getBoundingClientRect()
+    const item = current.getBoundingClientRect()
+    container.scrollLeft = Math.max(
+      0,
+      Math.min(
+        container.scrollWidth - container.clientWidth,
+        container.scrollLeft + item.left - bounds.left + (item.width - container.clientWidth) / 2,
+      ),
+    )
+  },
+  { flush: 'post' },
+)
 const expandedEvents = ref<number[]>([])
 let stopNoticeFocus: (() => void) | undefined
 let landingGeneration = 0
@@ -856,7 +886,14 @@ defineExpose({ exportSource, openDetail })
         >
         <ElTableColumn label="操作" width="150" fixed="right" align="center"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton></template
+            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton
+            ><ElButton
+              v-if="canPlan(row as ProductionSchedule)"
+              link
+              type="primary"
+              @click="editRouteNode(row as ProductionSchedule)"
+              >编辑</ElButton
+            ></template
           ></ElTableColumn
         >
       </WorkspaceTable>
@@ -911,7 +948,12 @@ defineExpose({ exportSource, openDetail })
             <p v-if="taskError" role="alert">
               {{ taskError }} <ElButton link @click="loadTask(detail.task_id)">重试</ElButton>
             </p>
-            <ol v-if="taskContext" class="schedule-task-route" aria-label="整项任务交货路线">
+            <ol
+              v-if="taskContext"
+              ref="taskRoute"
+              class="schedule-task-route"
+              aria-label="整项任务交货路线"
+            >
               <li v-for="node in taskContext.nodes" :key="node.id">
                 <div
                   class="schedule-task-route__node"
@@ -927,7 +969,8 @@ defineExpose({ exportSource, openDetail })
                   >
                     <span class="schedule-task-route__sequence">{{ node.sequence_no }}</span>
                     <strong>{{ node.team_name }}</strong>
-                    <small v-if="canDispatch && node.team_id === teamId">本班组</small>
+                    <small v-if="node.id === detail.id">当前查看</small>
+                    <small v-else-if="canDispatch && node.team_id === teamId">本班组</small>
                   </ElButton>
                   <ElButton
                     v-if="canPlan(node)"
@@ -1099,7 +1142,17 @@ defineExpose({ exportSource, openDetail })
             >
           </ElTable>
           <div class="schedule-section-heading">
-            <h3>关联物料</h3>
+            <h3>来料明细</h3>
+            <ElButton
+              v-if="
+                canDispatch &&
+                detail.team_id === teamId &&
+                !['cancelled', 'completed', 'completed_late'].includes(detail.status)
+              "
+              link
+              @click="prepareDispatch(detail)"
+              >转出物料</ElButton
+            >
             <RouterLink
               :to="{
                 path: `/team-workspaces/${detail.team_id}`,
@@ -1109,69 +1162,39 @@ defineExpose({ exportSource, openDetail })
             >
           </div>
           <ElTable
-            columns-key="DeliverySchedules-4"
-            :data="detail.sources"
+            columns-key="DeliverySchedules-5"
+            :data="detail.linked_batches || []"
+            row-key="source_transfer_id"
             class="business-table"
-            :empty-text="detail.predecessor_id ? '随上序来料' : '暂无关联批次'"
+            aria-label="来料明细"
           >
-            <ElTableColumn label="来源批次" min-width="200" align="center"
+            <template #empty>暂无来料</template>
+            <ElTableColumn label="来料批次" min-width="200" align="center"
               ><template #default="{ row }"
-                ><ElButton
-                  v-if="row.batch_no"
-                  link
-                  type="primary"
-                  @click="viewBatch(row.batch_no)"
-                  >{{ row.batch_no }}</ElButton
-                ><span v-else>—</span></template
+                ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
+                  row.batch_no
+                }}</ElButton></template
               ></ElTableColumn
             >
-            <ElTableColumn label="分配计划件数" min-width="140" align="center"
+            <ElTableColumn label="材质" prop="material_name" min-width="110" align="center" />
+            <ElTableColumn label="来料件数" min-width="100" align="center"
               ><template #default="{ row }">{{
                 formatAmount(row.quantity)
               }}</template></ElTableColumn
             >
-            <ElTableColumn label="分配计划重量（kg）" min-width="160" align="center"
+            <ElTableColumn label="来料重量（kg）" min-width="130" align="center"
               ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn
             >
-          </ElTable>
-          <template v-if="detail.linked_batches?.length">
-            <div class="schedule-section-heading">
-              <h3>来料记录</h3>
-            </div>
-            <ElTable
-              columns-key="DeliverySchedules-5"
-              :data="detail.linked_batches"
-              class="business-table"
+            <ElTableColumn label="入库 / 签收时间" min-width="180" align="center"
+              ><template #default="{ row }">{{
+                formatDateTime(row.received_at)
+              }}</template></ElTableColumn
             >
-              <ElTableColumn label="来料批次" min-width="200" align="center"
-                ><template #default="{ row }"
-                  ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
-                    row.batch_no
-                  }}</ElButton></template
-                ></ElTableColumn
-              >
-              <ElTableColumn label="材质" prop="material_name" min-width="110" align="center" />
-              <ElTableColumn label="来料件数" min-width="100" align="center"
-                ><template #default="{ row }">{{
-                  formatAmount(row.quantity)
-                }}</template></ElTableColumn
-              >
-              <ElTableColumn label="来料重量（kg）" min-width="130" align="center"
-                ><template #default="{ row }">{{
-                  formatAmount(row.weight)
-                }}</template></ElTableColumn
-              >
-              <ElTableColumn label="签收时间" min-width="170" align="center"
-                ><template #default="{ row }">{{
-                  formatDateTime(row.received_at)
-                }}</template></ElTableColumn
-              >
-              <ElTableColumn label="来料状态" min-width="120" align="center"
-                ><template #default="{ row }"
-                  ><MaterialTransferStatus :status="row.status as TransferStatus" /></template
-              ></ElTableColumn>
-            </ElTable>
-          </template>
+            <ElTableColumn label="来料状态" min-width="120" align="center"
+              ><template #default="{ row }"
+                ><MaterialTransferStatus :status="row.status as TransferStatus" /></template
+            ></ElTableColumn>
+          </ElTable>
           <div class="schedule-section-heading">
             <h3>转出记录</h3>
           </div>
@@ -1264,17 +1287,7 @@ defineExpose({ exportSource, openDetail })
             detail.planning_state === 'pending' ? '填写交期' : '修改批次计划'
           }}</ElButton>
         </div>
-        <ElButton
-          v-if="
-            detail &&
-            canDispatch &&
-            detail.team_id === teamId &&
-            !['cancelled', 'completed', 'completed_late'].includes(detail.status)
-          "
-          type="primary"
-          @click="prepareDispatch(detail)"
-          >出库</ElButton
-        ><ElButton @click="closeDetail">关闭</ElButton></template
+        <ElButton type="primary" @click="closeDetail">确认</ElButton></template
       >
     </AppDialog>
     <ScheduleBatchEditor
@@ -1283,7 +1296,21 @@ defineExpose({ exportSource, openDetail })
       @close="editing = false"
       @saved="saved"
     />
-    <MaterialTransferDrawer v-model="batchOpen" :batch-no="batchNo" />
+    <MaterialTransferDrawer v-model="batchOpen" :batch-no="batchNo">
+      <template v-if="batchAllocation && detail" #context>
+        <ElDescriptions title="本排期计划分配" :column="2" border>
+          <ElDescriptionsItem label="所属排期" :span="2">
+            {{ detail.serial_no }} · {{ detail.team_name }} · 排期 #{{ detail.id }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="分配计划件数">{{
+            formatAmount(batchAllocation.quantity)
+          }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="分配计划重量（kg）">{{
+            formatAmount(batchAllocation.weight)
+          }}</ElDescriptionsItem>
+        </ElDescriptions>
+      </template>
+    </MaterialTransferDrawer>
     <AppDialog
       :model-value="!!dispatchTarget"
       title="选择本次出库物料"
@@ -1402,8 +1429,13 @@ defineExpose({ exportSource, openDetail })
   font-size: 12px;
 }
 .schedule-task-route__node.is-current {
-  border-color: var(--primary);
-  background: var(--wm-hover, var(--primary-soft));
+  border-color: var(--wm-info-text, var(--primary));
+  background: var(--wm-info-bg, var(--primary-soft));
+  box-shadow: inset 0 0 0 1px var(--wm-info-text, var(--primary));
+}
+.schedule-task-route__node.is-current .schedule-task-route__heading,
+.schedule-task-route__node.is-current .schedule-task-route__heading small {
+  color: var(--wm-info-text, var(--primary));
 }
 .schedule-task-route .el-button {
   width: 100%;

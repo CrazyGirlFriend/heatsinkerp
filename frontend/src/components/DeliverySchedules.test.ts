@@ -8,6 +8,7 @@ import { h, reactive } from 'vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import AppDialog from './AppDialog.vue'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
+import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened } from '@/utils/noticeFocus'
 vi.mock('@/services/businessNoticeApi', async (original) => ({
@@ -162,7 +163,11 @@ async function render(manage = false, detail = false, withinShell = false, detai
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
-        MaterialTransferDrawer: true,
+        MaterialTransferDrawer: {
+          props: ['modelValue', 'batchNo'],
+          template:
+            '<div v-if="modelValue" data-testid="batch-detail"><slot name="context"/></div>',
+        },
         ScheduleBatchEditor: true,
       },
     },
@@ -181,6 +186,99 @@ function button(text: string) {
   return wrapper.findAll('button').find((item) => item.text() === text)!
 }
 describe('delivery schedule workbench', () => {
+  it('shows one incoming row per batch with actual quantities and moves allocations into batch details', async () => {
+    const received = {
+      source_transfer_id: 10,
+      batch_no: 'TL-原板',
+      material_name: 'W80',
+      quantity: 100,
+      weight: 10,
+      received_at: '2026-10-22T05:00:00Z',
+      status: 'received',
+    }
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue({
+      ...record(),
+      sources: [{ source_transfer_id: 10, batch_no: 'TL-原板', quantity: 40, weight: 4 }],
+      linked_batches: [
+        received,
+        {
+          ...received,
+          source_transfer_id: 11,
+          batch_no: 'TL-后续来料',
+          received_at: null,
+          status: 'pending',
+        },
+      ],
+    })
+    await render(false, true)
+    const headings = wrapper.findAll('h3').map((item) => item.text())
+    expect(headings).toContain('来料明细')
+    expect(headings).toContain('分批排期')
+    expect(headings).not.toContain('关联物料')
+    expect(headings).not.toContain('来料记录')
+    const incoming = wrapper.get('[aria-label="来料明细"]')
+    const rows = incoming.findAll('tbody tr')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.findAll('td').map((cell) => cell.text())).toEqual([
+      'TL-原板',
+      'W80',
+      '100',
+      '10',
+      formatDateTime(received.received_at),
+      '已接收',
+    ])
+    expect(rows[1]!.text()).toContain('待签收')
+    expect(rows[1]!.findAll('td')[4]!.text()).toBe('—')
+    expect(wrapper.text()).not.toContain('分配计划件数')
+    await button('TL-原板').trigger('click')
+    const batch = wrapper.getComponent(MaterialTransferDrawer)
+    expect(batch.props('batchNo')).toBe('TL-原板')
+    const allocation = wrapper.get('[data-testid="batch-detail"]')
+    expect(allocation.text()).toContain('本排期计划分配')
+    expect(allocation.text()).toContain('排期 #5')
+    expect(allocation.findAll('.el-descriptions__content').map((cell) => cell.text())).toEqual([
+      '805881-5 · 轧制 · 排期 #5',
+      '40',
+      '4',
+    ])
+    batch.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    await button('TL-后续来料').trigger('click')
+    expect(batch.props('batchNo')).toBe('TL-后续来料')
+    expect(wrapper.get('[data-testid="batch-detail"]').text()).not.toContain('本排期计划分配')
+  })
+  it('shows received material even when no source allocation was specified', async () => {
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue({
+      ...record(),
+      sources: [],
+      linked_batches: [
+        {
+          source_transfer_id: 10,
+          batch_no: 'TL-来料',
+          material_name: 'Mo70Cu30',
+          quantity: 100,
+          weight: 100,
+          received_at: '2026-11-15T12:49:00Z',
+          status: 'received',
+        },
+      ],
+    })
+    await render(false, true)
+    const incoming = wrapper.get('[aria-label="来料明细"]')
+    expect(incoming.findAll('tbody tr')).toHaveLength(1)
+    expect(incoming.text()).toContain('TL-来料')
+    expect(incoming.text()).toContain('Mo70Cu30')
+    expect(incoming.text()).not.toContain('暂无')
+    expect(wrapper.text()).not.toContain('暂无关联批次')
+  })
+  it('keeps a clear incoming empty state without displaying plan quantities as received material', async () => {
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue({ ...record(), linked_batches: [] })
+    await render(false, true)
+    const incoming = wrapper.get('[aria-label="来料明细"]')
+    expect(incoming.text()).toContain('暂无来料')
+    expect(incoming.findAll('tbody tr')).toHaveLength(0)
+    expect(incoming.text()).not.toContain('TL-原板')
+  })
   function mockTaskRoute(overrides: Partial<ProductionSchedule> = {}) {
     const first = { ...record(), task_id: 11, planning_state: 'pending' as const, ...overrides }
     const other = { ...first, id: 6, team_id: 3, team_name: '研磨', sequence_no: 2 }
@@ -210,6 +308,147 @@ describe('delivery schedule workbench', () => {
     vi.spyOn(productionScheduleApi, 'task').mockResolvedValue(task)
     return task
   }
+  it.each([true, false])(
+    'reveals the exact selected occurrence whether the route loads before the dialog opens: %s',
+    async (routeFirst) => {
+      const task = mockTaskRoute()
+      task.nodes = Array.from({ length: 8 }, (_, index) => ({
+        ...task.nodes[0]!,
+        id: index + 5,
+        sequence_no: index + 1,
+        team_id: index === 0 || index === 7 ? 2 : 3,
+        team_name: index === 0 || index === 7 ? '轧制' : '研磨',
+      }))
+      let finishRoute!: (value: ScheduleTask) => void
+      vi.mocked(productionScheduleApi.task).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRoute = resolve
+          }),
+      )
+      vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('schedule-task-route') ? 480 : 0
+      })
+      vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('schedule-task-route') ? 1600 : 0
+      })
+      const originalRect = Element.prototype.getBoundingClientRect
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: Element,
+      ) {
+        if (this.classList.contains('schedule-task-route'))
+          return { left: 100, width: 480 } as DOMRect
+        if (this.classList.contains('schedule-task-route__node')) {
+          const container = this.closest('.schedule-task-route')!
+          return {
+            left:
+              100 +
+              (Number(this.getAttribute('data-schedule-id')) - 5) * 200 -
+              container.scrollLeft,
+            width: 180,
+          } as DOMRect
+        }
+        return originalRect.call(this)
+      })
+      await render()
+      await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(12)
+      const dialog = wrapper
+        .findAllComponents(AppDialog)
+        .find((item) => item.classes().includes('schedule-detail'))!
+      if (routeFirst) {
+        finishRoute(task)
+        await flushPromises()
+        expect(wrapper.get('.schedule-task-route').element.scrollLeft).toBe(0)
+        dialog.vm.$emit('opened')
+      } else {
+        dialog.vm.$emit('opened')
+        await flushPromises()
+        expect(wrapper.find('.schedule-task-route').exists()).toBe(false)
+        finishRoute(task)
+      }
+      await flushPromises()
+      expect(wrapper.get('.schedule-task-route').element.scrollLeft).toBe(1120)
+      expect(wrapper.get('[data-schedule-id="12"]').classes()).toContain('is-current')
+      expect(wrapper.get('[data-schedule-id="12"] [aria-current="step"]').text()).toContain(
+        '当前查看',
+      )
+      expect(wrapper.get('[data-schedule-id="5"]').classes()).not.toContain('is-current')
+      await wrapper.get('[data-schedule-id="8"] .schedule-task-route__heading').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('.schedule-task-route').element.scrollLeft).toBe(450)
+      expect(wrapper.get('.schedule-task-route .is-current').attributes('data-schedule-id')).toBe(
+        '8',
+      )
+      expect(wrapper.findAll('.schedule-task-route [aria-current="step"]')).toHaveLength(1)
+      expect(wrapper.get('.schedule-task-route').element.scrollTop).toBe(0)
+      await wrapper.get('[data-schedule-id="5"] .schedule-task-route__heading').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('.schedule-task-route').element.scrollLeft).toBe(0)
+      expect(wrapper.get('.schedule-task-route .is-current').attributes('data-schedule-id')).toBe(
+        '5',
+      )
+    },
+  )
+  it('edits the listed team occurrence using the latest schedule and refreshes after saving', async () => {
+    const task = mockTaskRoute({ planning_state: 'confirmed' })
+    await render()
+    const fresh = { ...task.nodes[0]!, version: 4, due_at: '2026-10-23T08:00:00Z' }
+    task.nodes[0] = fresh
+    await button('编辑').trigger('click')
+    await flushPromises()
+    expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(5)
+    expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule')).toEqual(fresh)
+    const saved = { ...fresh, version: 5, due_at: '2026-10-24T08:00:00Z' }
+    task.nodes[0] = saved
+    vi.mocked(productionScheduleApi.list).mockResolvedValue({
+      items: [saved],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    wrapper.getComponent(ScheduleBatchEditor).vm.$emit('saved', saved)
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(wrapper.get('.schedule-table').text()).toContain(formatDateTime(saved.due_at))
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it('does not open the editor when dispatch locked the order after the list was loaded', async () => {
+    const task = mockTaskRoute()
+    await render()
+    task.nodes[0] = { ...task.nodes[0]!, order_locked: true }
+    await button('编辑').trigger('click')
+    await flushPromises()
+    expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(5)
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+  })
+  it('does not offer list editing to another team or a read-only user', async () => {
+    mockTaskRoute({ team_id: 3, team_name: '研磨' })
+    await render()
+    expect(button('编辑')).toBeUndefined()
+    wrapper.unmount()
+    mockTaskRoute()
+    state.auth.isTeamAccount = false
+    await render()
+    expect(button('编辑')).toBeUndefined()
+  })
+  it('confirms viewing the details without saving a plan or dispatching material', async () => {
+    mockTaskRoute()
+    const save = vi.spyOn(productionScheduleApi, 'saveBatches')
+    await render(false, true)
+    expect(button('出库')).toBeUndefined()
+    expect(button('转出物料').element.closest('.schedule-section-heading')).not.toBeNull()
+    await button('确认').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.schedule-detail').exists()).toBe(false)
+    expect(productionScheduleApi.sources).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(wrapper.emitted('dispatch')).toBeUndefined()
+    expect(wrapper.emitted('changed')).toBeUndefined()
+  })
   it('opens the route before planning and edits the exact occurrence of the owning team', async () => {
     const task = mockTaskRoute()
     await render()
@@ -220,7 +459,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
     expect(wrapper.find('.schedule-detail__manage').exists()).toBe(false)
     expect(wrapper.find('[data-schedule-id="6"] .schedule-task-route__plan').exists()).toBe(false)
-    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain('本班组')
+    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain('当前查看')
     await wrapper.get('[data-schedule-id="7"] .schedule-task-route__plan').trigger('click')
     await flushPromises()
     expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(7)
@@ -245,6 +484,7 @@ describe('delivery schedule workbench', () => {
     async (overrides) => {
       mockTaskRoute(overrides)
       await render(false, true)
+      expect(button('编辑')).toBeUndefined()
       expect(wrapper.find('.schedule-task-route__plan').exists()).toBe(false)
       expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
     },
@@ -272,7 +512,7 @@ describe('delivery schedule workbench', () => {
         }),
     )
     await wrapper.get('[data-schedule-id="7"] .schedule-task-route__plan').trigger('click')
-    await button('关闭').trigger('click')
+    await button('确认').trigger('click')
     finish(task.nodes[2]!)
     await flushPromises()
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
@@ -450,11 +690,11 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.text()).toContain('第一批交货')
     expect(wrapper.text()).toContain('按件数')
     expect(wrapper.text()).toContain('部分交货')
-    expect(button('出库')).toBeDefined()
+    expect(button('转出物料')).toBeDefined()
     await wrapper.get('[aria-label="整项任务交货路线"] li:nth-child(2) button').trigger('click')
     await flushPromises()
     expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(6)
-    expect(button('出库')).toBeUndefined()
+    expect(button('转出物料')).toBeUndefined()
     expect(wrapper.emitted('dispatch')).toBeUndefined()
   })
   it('keeps the refreshed task route when an earlier detail request resolves late', async () => {
@@ -616,7 +856,7 @@ describe('delivery schedule workbench', () => {
   })
   it('opens the only available processed batch directly instead of reusing a consumed input batch', async () => {
     await render(false, true)
-    await button('出库').trigger('click')
+    await button('转出物料').trigger('click')
     await flushPromises()
     expect(productionScheduleApi.sources).toHaveBeenCalledWith(
       expect.objectContaining({ schedule_id: 5, team_id: 2, serial_no: '805881-5' }),
@@ -631,7 +871,7 @@ describe('delivery schedule workbench', () => {
       page_size: 10,
     })
     await render(false, true)
-    await button('出库').trigger('click')
+    await button('转出物料').trigger('click')
     await flushPromises()
     expect(wrapper.emitted('dispatch')).toBeUndefined()
     const row = wrapper.findAll('tbody tr').find((item) => item.text().includes('TL-产出100'))!

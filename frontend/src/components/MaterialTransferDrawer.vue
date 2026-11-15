@@ -789,6 +789,7 @@ watch(
           </template>
         </MaterialTransferDocumentFields>
       </div>
+      <slot name="context" />
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location">
         <label>入库仓位</label
         ><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong
