@@ -49,29 +49,31 @@ def test_grouping_pagination_and_exact_source_drilldown(client, warehouse):
         idempotency_key="f",
     )
     rows = inventory(client, s)
-    assert rows["total"] == 5
+    assert rows["total"] == 6
     row = next(item for item in rows["items"] if item["group_id"] == first["id"])
-    assert row["serial_no"] == "000128" and row["batch_count"] == 2
-    assert row["on_hand_quantity"] == 20 and row["on_hand_weight"] == 2
+    assert row["serial_no"] == "000128" and row["batch_count"] == 1
+    assert row["batch_no"] == first["batch_no"]
+    assert row["warehouse_location"] == first["warehouse_location"]
+    assert row["on_hand_quantity"] == 10 and row["on_hand_weight"] == 1
     assert row["receipt_source"] == "external" and row["source_name"] == "供应商 A"
     assert {item["transfer"]["id"] for item in sources(client, s, first["id"])["items"]} == {
         first["id"],
-        second["id"],
     }
     assert sources(client, s, other_source["id"])["total"] == 1
     pages = [inventory(client, s, page=i, page_size=2) for i in (1, 2, 3)]
-    assert [len(page["items"]) for page in pages] == [2, 2, 1]
-    assert len({row["group_id"] for page in pages for row in page["items"]}) == 5
+    assert [len(page["items"]) for page in pages] == [2, 2, 2]
+    assert len({row["group_id"] for page in pages for row in page["items"]}) == 6
+    assert sources(client, s, second["id"])["total"] == 1
     assert inventory(client, s, material_type="scrap_chips")["items"][0]["on_hand_weight"] == 0.6
-    assert inventory(client, s, availability="available")["total"] == 4
+    assert inventory(client, s, availability="available")["total"] == 5
     assert (
         inventory(client, s, search_field="on_hand_quantity", search_operator="gte", query="20")[
             "total"
         ]
-        == 1
+        == 0
     )
     assert inventory(client, s, search_field="source", query="供应商 B")["total"] == 1
-    assert inventory(client, s, query="000128")["total"] == 5
+    assert inventory(client, s, query="000128")["total"] == 6
 
 
 def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, warehouse):
@@ -196,7 +198,7 @@ def test_return_provenance_stays_separate_and_literal_search(client, warehouse):
     assert sources(client, s, original["id"])["total"] == 1
 
 
-def test_conflicting_customer_metadata_is_searchable_but_not_silently_chosen(client, warehouse):
+def test_each_batch_retains_its_own_searchable_customer_metadata(client, warehouse):
     s = warehouse
     intake(client, s, customer_code="CUSTOMER-A", finished_quantity=10)
     intake(client, s, customer_code="CUSTOMER-B", finished_quantity=20, idempotency_key="other")
@@ -208,8 +210,9 @@ def test_conflicting_customer_metadata_is_searchable_but_not_silently_chosen(cli
         result = inventory(client, s, **params)
         assert result["total"] == 1
         row = result["items"][0]
-        assert row["customer_code"] is None and row["customer_code_count"] == 2
-        assert row["on_hand_quantity"] == 200  # Full group, not just the matching intake.
+        assert row["customer_code"] in ("CUSTOMER-A", "CUSTOMER-B")
+        assert row["customer_code_count"] == 1
+        assert row["on_hand_quantity"] == 100
     assert inventory(client, s, query="21", search_field="finished_quantity")["total"] == 0
 
 

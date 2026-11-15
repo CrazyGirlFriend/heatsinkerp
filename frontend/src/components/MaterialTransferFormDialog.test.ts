@@ -10,6 +10,7 @@ import {
   normalizeMaterialTransfer,
 } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import {
   materialDocumentTextFields,
@@ -439,6 +440,13 @@ describe('material transfer document form', () => {
     expect(materialTransferApi.update).not.toHaveBeenCalled()
     expect(wrapper.get('[data-validation-field="materialType"]').classes()).toContain('is-error')
     wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
+    await submit()
+    expect(materialTransferApi.update).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-validation-field="warehouseLocation"]').classes()).toContain(
+      'is-error',
+    )
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'B-02')
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:reservationKey', 'location-B-02')
     await submit()
     expect(materialTransferApi.update).toHaveBeenCalledWith(
       'TL20260906000001',

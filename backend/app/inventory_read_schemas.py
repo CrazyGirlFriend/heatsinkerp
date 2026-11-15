@@ -10,6 +10,8 @@ from .serial_urgency_schemas import UrgencyResponse
 class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     group_id: int
     serial_no: str
+    batch_no: str | None
+    warehouse_location: str | None
     process_route_id: int | None
     rework_route_id: int | None
     process_step_index: int | None

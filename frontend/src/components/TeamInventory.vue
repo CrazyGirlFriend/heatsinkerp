@@ -279,6 +279,7 @@ const columns = computed(() =>
     .filter(
       (column) =>
         !['processing_role', 'owned_quantity', 'owned_weight'].includes(column.key) &&
+        (props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key)) &&
         (column.key !== 'process_route' || props.processing),
     )
     .map((column) => ({
@@ -320,7 +321,9 @@ const columns = computed(() =>
 const requiredColumnKeys = computed(() =>
   props.processing
     ? ['on_hand_quantity', 'process_route', 'rework', 'stock_status', 'material_name']
-    : ['on_hand_quantity', 'material_name'],
+    : props.warehouse
+      ? ['batch_no', 'warehouse_location', 'on_hand_quantity', 'material_name']
+      : ['on_hand_quantity', 'material_name'],
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
@@ -328,6 +331,7 @@ const selectableColumns = computed(() =>
 const searchColumns = computed(() =>
   warehouseSearchColumns
     .filter((column) => !['owned_quantity', 'owned_weight'].includes(column.key))
+    .filter((column) => props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key))
     .map((column) =>
       column.key === 'source'
         ? { ...column, label: props.warehouse ? '来源' : '上序班组' }
@@ -353,8 +357,11 @@ const searchedColumn = computed(() =>
 )
 const visibleColumns = computed(() => {
   const saved = [
+    ...(props.warehouse ? [columns.value.find((column) => column.key === 'batch_no')!] : []),
     { ...warehouseSerialColumn, width: 200 },
-    ...requiredColumnKeys.value.map((key) => columns.value.find((column) => column.key === key)!),
+    ...requiredColumnKeys.value
+      .filter((key) => key !== 'batch_no')
+      .map((key) => columns.value.find((column) => column.key === key)!),
     ...columnChoices.value
       .filter(
         (choice) =>
@@ -440,8 +447,11 @@ function exportSource() {
   const id = props.teamId,
     params = { ...filters.value }
   const fields = [
+    ...(props.warehouse ? [columns.value.find((column) => column.key === 'batch_no')!] : []),
     warehouseSerialColumn,
-    ...columns.value.filter((column) => !column.key.startsWith('shortage_')),
+    ...columns.value.filter(
+      (column) => column.key !== 'batch_no' && !column.key.startsWith('shortage_'),
+    ),
   ].map((column) => ({
     key: column.key,
     label: column.label,
@@ -822,7 +832,7 @@ function syncFilterDrafts() {
   sourceDraft.value = text('receipt_source') as WarehouseSource | ''
   typeDraft.value = text('material_type')
   materialDraft.value = text('material_name')
-  fieldDraft.value = warehouseSearchColumns.some((column) => column.key === text('search_field'))
+  fieldDraft.value = searchColumns.value.some((column) => column.key === text('search_field'))
     ? (text('search_field') as WarehouseSearchField)
     : 'all'
   operatorDraft.value =
@@ -935,7 +945,7 @@ onBeforeUnmount(() => {
           aria-label="库存明细搜索"
           :placeholder="
             fieldDraft === 'all'
-              ? '流水号、材质、业务或来源'
+              ? '批次号、流水号、仓库或材质'
               : `搜索${searchColumns.find((column) => column.key === fieldDraft)?.label}`
           "
           clearable
@@ -1240,7 +1250,10 @@ onBeforeUnmount(() => {
         :label="column.label"
         :min-width="column.width"
         :fixed="
-          ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
+          (warehouse
+            ? ['batch_no', 'serial_no', searchedColumn?.key]
+            : ['serial_no', 'on_hand_quantity', searchedColumn?.key]
+          ).includes(column.key)
             ? 'left'
             : undefined
         "

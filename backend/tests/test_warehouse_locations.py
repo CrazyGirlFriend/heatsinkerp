@@ -32,6 +32,11 @@ def dispatch(client, setup, source, key, *, returning=False):
                     "source_transfer_id": source["id"],
                     "quantity": source["quantity"],
                     "weight": source["weight"],
+                    **(
+                        location(client, setup, "B-02", headers=setup["other_headers"])
+                        if returning
+                        else {}
+                    ),
                 }
             ],
         },
@@ -73,10 +78,8 @@ def test_intake_location_persists_in_detail_stock_audit_and_retry(client, wareho
         item = result["items"][0]
         assert item.get("transfer", item)["warehouse_location"] == "A区-01"
     assert (
-        intake(client, warehouse, idempotency_key="blank", warehouse_location=" ").json()[
-            "warehouse_location"
-        ]
-        is None
+        intake(client, warehouse, idempotency_key="blank", warehouse_location=" ").status_code
+        == 422
     )
     assert (
         intake(client, warehouse, idempotency_key="long", warehouse_location="A" * 81).status_code
@@ -112,13 +115,13 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
     payload = {
         "idempotency_key": "received-back",
         "expected_version": 1,
-        **location(client, warehouse, "B-02"),
+        "warehouse_location": "B-02",
     }
     assert receipt_post(client, url, json=payload).status_code == 403
     result = receipt_post(client, url, headers=warehouse["headers"], json=payload)
     assert result.status_code == 200, result.text
     assert result.json()["warehouse_location"] == "B-02"
-    assert result.json()["history"][-1]["changes"]["warehouse_location"]["after"] == "B-02"
+    assert returning["warehouse_location"] == "B-02"
     assert (
         receipt_post(client, url, headers=warehouse["headers"], json=payload).json()
         == result.json()

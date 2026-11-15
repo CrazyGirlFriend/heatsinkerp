@@ -459,7 +459,8 @@ const validation = useDialogValidation(() => {
     if (!sludgeWeight(1, form.percent)) issues.percent = '请填写有效材料占比'
     if (!issues.gross && !issues.percent) issues.gross = '折算重量须达到 0.000001 kg'
   }
-  if (form.warehouseLocation.length > 80) issues.warehouseLocation = '仓位不能超过 80 个字符'
+  if (!form.warehouseLocation.trim()) issues.warehouseLocation = '请选择入库仓位'
+  else if (form.warehouseLocation.length > 80) issues.warehouseLocation = '仓位不能超过 80 个字符'
   if (
     enteredQuantity.value == null ||
     !Number.isInteger(enteredQuantity.value) ||
@@ -915,7 +916,9 @@ onBeforeUnmount(() => {
             label="入库仓位"
             :error="fieldErrors.warehouseLocation"
             class="form-field--long"
+            required
             ><WarehouseLocationSelect
+              required
               v-model="form.warehouseLocation"
               v-model:reservation-key="form.warehouseLocationKey"
               :team-id="teamId"

@@ -22,6 +22,7 @@ from sender_helpers import sender_post
 from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -49,6 +50,12 @@ def warehouse(client):
 
 
 def intake(client, setup, **overrides):
+    if "warehouse_location" not in overrides:
+        key = overrides.get("idempotency_key", "warehouse-intake-1")
+        locations = setup.setdefault("intake_locations", {})
+        if key not in locations:
+            locations[key] = select_location(client, setup)
+        overrides = {**locations[key], **overrides}
     return client.post(
         setup["url"],
         headers=setup["headers"],
@@ -142,7 +149,14 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
             json={
                 "next_team_id": warehouse["team"]["id"],
                 "idempotency_key": key,
-                "lines": [{"source_transfer_id": previous["id"], "quantity": 0, "weight": weight}],
+                "lines": [
+                    {
+                        "source_transfer_id": previous["id"],
+                        "quantity": 0,
+                        "weight": weight,
+                        **select_location(client, warehouse, headers=warehouse["other_headers"]),
+                    }
+                ],
             },
         )
 
@@ -199,7 +213,7 @@ def test_disabled_warehouse_actor_cannot_intake_with_existing_token(client, ware
         )
         target.active = False
         db.commit()
-    assert intake(client, warehouse).status_code == 401
+    assert intake(client, warehouse, warehouse_location=None).status_code == 401
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 
@@ -235,6 +249,7 @@ def test_intake_allows_optional_notes(client, warehouse, notes):
         "quantity": 10,
         "weight": 2,
         "idempotency_key": "optional-notes",
+        **select_location(client, warehouse),
     }
     if notes is not None:
         payload["notes"] = notes
@@ -397,7 +412,14 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
         json={
             "next_team_id": warehouse["team"]["id"],
             "idempotency_key": "return-to-warehouse",
-            "lines": [{"source_transfer_id": line["id"], "quantity": 10, "weight": 1}],
+            "lines": [
+                {
+                    "source_transfer_id": line["id"],
+                    "quantity": 10,
+                    "weight": 1,
+                    **select_location(client, warehouse, headers=warehouse["other_headers"]),
+                }
+            ],
         },
     )
     assert back.status_code == 201, back.text
@@ -528,6 +550,7 @@ def test_intake_without_serial_keeps_material_available_for_later_assignment(
         "quantity": 100,
         "weight": 10,
         "idempotency_key": "anonymous-intake",
+        **select_location(client, warehouse),
     }
     if serial is not None:
         payload["serial_no"] = serial

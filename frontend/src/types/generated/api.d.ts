@@ -3385,6 +3385,8 @@ export interface components {
       available_weight: number
       /** Batch Count */
       batch_count: number
+      /** Batch No */
+      batch_no: string | null
       /** Current Batch Count */
       current_batch_count: number
       /** Customer Code */
@@ -3560,6 +3562,8 @@ export interface components {
       /** Transfer Specification */
       transfer_specification: string
       urgency: components['schemas']['UrgencyResponse']
+      /** Warehouse Location */
+      warehouse_location: string | null
       /** Weight Difference */
       weight_difference: number
     }
@@ -4042,6 +4046,8 @@ export interface components {
       available_weight: number
       /** Batch Count */
       batch_count: number
+      /** Batch No */
+      batch_no: string | null
       /** Current Batch Count */
       current_batch_count: number
       /** Customer Code */
@@ -4211,6 +4217,8 @@ export interface components {
       /** Transfer Specification */
       transfer_specification: string
       urgency: components['schemas']['UrgencyResponse']
+      /** Warehouse Location */
+      warehouse_location: string | null
       /** Weight Difference */
       weight_difference: number
     }
@@ -14631,6 +14639,8 @@ export interface operations {
           | 'external_pending_quantity'
           | 'external_pending_weight'
           | 'source_batch_no'
+          | 'batch_no'
+          | 'warehouse_location'
           | 'shortage_weight'
           | 'processing_registered_quantity'
           | 'processing_registered_weight'
@@ -15145,6 +15155,8 @@ export interface operations {
           | 'external_pending_quantity'
           | 'external_pending_weight'
           | 'source_batch_no'
+          | 'batch_no'
+          | 'warehouse_location'
           | 'shortage_weight'
           | 'processing_registered_quantity'
           | 'processing_registered_weight'

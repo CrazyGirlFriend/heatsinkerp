@@ -25,6 +25,8 @@ export type WarehouseSource =
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
+  batch_no?: string | null
+  warehouse_location?: string | null
   delivery_schedule?: InventoryScheduleSummary
   rework_pending?: boolean
   rework_count?: number
@@ -155,6 +157,20 @@ function extraValue(row: TeamInventoryRow, key: (typeof extraKeys)[number]) {
   return key === 'finished_quantity' ? amount(row[key]) : row[key] || '—'
 }
 export const warehouseColumns = [
+  {
+    key: 'batch_no',
+    label: '批次号',
+    width: 210,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) => row.batch_no || '—',
+  },
+  {
+    key: 'warehouse_location',
+    label: '仓库',
+    width: 140,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) => row.warehouse_location || '未分配仓位',
+  },
   {
     key: 'material_name',
     label: '材质',

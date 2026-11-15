@@ -9,7 +9,7 @@ from app.database import SessionLocal
 from app.models import WarehousePlacement
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from test_transfer_list_loading import read_statements
 from test_warehouse_location_locks import claim, create_slot, state
 from test_warehouse_locations import dispatch, location
@@ -221,6 +221,9 @@ def test_external_submission_completes_and_releases_physical_slot_once(client, w
 def test_concurrent_assignments_only_one_batch_claims_slot(client, warehouse):
     first = intake(client, warehouse).json()
     second = intake(client, warehouse, idempotency_key="second").json()
+    # Historical unassigned stock can still be placed after arrival.
+    with SessionLocal.begin() as db:
+        db.execute(delete(WarehousePlacement))
     slot, barrier = create_slot(client), Barrier(2)
 
     def run(source):

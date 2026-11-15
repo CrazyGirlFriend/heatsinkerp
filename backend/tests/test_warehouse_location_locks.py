@@ -88,7 +88,12 @@ def test_intake_consumes_lease_and_late_close_cannot_free_stock(client, warehous
     assert release(client, slot, warehouse["headers"], lease["key"]).status_code == 204
     assert state(client, slot)["status"] == "occupied"
     assert claim(client, slot, warehouse["other_headers"]).status_code == 409
-    assert intake(client, warehouse, idempotency_key="no-location").status_code == 201
+    assert (
+        intake(
+            client, warehouse, idempotency_key="no-location", warehouse_location=None
+        ).status_code
+        == 422
+    )
 
 
 def test_warehouse_account_can_maintain_its_slots(client, warehouse):
@@ -282,7 +287,12 @@ def test_expired_and_foreign_keys_cannot_be_used_to_submit(client, warehouse):
         db.get(WarehouseLocation, slot["id"]).reserved_until = utcnow() - timedelta(seconds=1)
     assert intake(client, warehouse, **selected).status_code == 409
     assert (
-        intake(client, warehouse, warehouse_location_reservation_key=lease["key"]).status_code
+        intake(
+            client,
+            warehouse,
+            warehouse_location=None,
+            warehouse_location_reservation_key=lease["key"],
+        ).status_code
         == 422
     )
     assert state(client, slot)["status"] == "available"
@@ -335,7 +345,21 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
             for k, v in {**payload, "idempotency_key": "second"}.items()
             if not k.startswith("warehouse_location")
         },
+    )
+    assert second.status_code == 422, second.text
+    # Preserve coverage for editing historical transfers without a position.
+    second = sender_post(
+        client,
+        "/api/material-transfers",
+        headers=warehouse["other_headers"],
+        json={
+            **payload,
+            "idempotency_key": "historical",
+            **location(client, warehouse, "C-01", headers=warehouse["other_headers"]),
+        },
     ).json()
+    with SessionLocal.begin() as db:
+        db.get(MaterialTransfer, second["id"]).warehouse_location = None
     selected = location(client, warehouse, "B-01", headers=warehouse["other_headers"])
     updated = client.patch(
         "/api/material-transfers/" + second["batch_no"],

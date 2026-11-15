@@ -510,7 +510,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             )
             from .warehouse_locations import consume
 
-            location_name = consume(db, target, payload, user)
+            location_name = consume(db, target, payload, user, required=True)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
                 **purpose_snapshot(db, target.id, payload.purpose_id),
@@ -698,7 +698,12 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     purpose["purpose_id"],
                     purpose["purpose_name"],
                 )
-        if "warehouse_location" in supplied:
+        target_changed_to_warehouse = (
+            "next_team_id" in supplied
+            and before["next_team_id"] != transfer.next_team_id
+            and target.code == WAREHOUSE_TEAM_CODE
+        )
+        if "warehouse_location" in supplied or target_changed_to_warehouse:
             if (
                 transfer.warehouse_location
                 and payload.warehouse_location != transfer.warehouse_location
@@ -711,7 +716,14 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     getattr(payload, field) if field in supplied else getattr(transfer, field)
                     for field in ("serial_no", "material_name", "material_type")
                 )
-                transfer.warehouse_location = consume(db, target, payload, user, identity=identity)
+                transfer.warehouse_location = consume(
+                    db,
+                    target,
+                    payload,
+                    user,
+                    identity=identity,
+                    required=target_changed_to_warehouse,
+                )
         if transfer.warehouse_location and supplied.intersection(
             {"serial_no", "material_name", "material_type"}
         ):

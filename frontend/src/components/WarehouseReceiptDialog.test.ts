@@ -111,6 +111,13 @@ async function fill() {
   await amount('入库件数', 0)
   await amount('入库重量', 0.005)
   await wrapper.get('textarea[aria-label="入库说明"]').setValue('  实物到货登记  ')
+  await chooseLocation()
+}
+async function chooseLocation() {
+  const location = wrapper.getComponent(WarehouseLocationSelect)
+  location.vm.$emit('update:modelValue', 'A区-01')
+  location.vm.$emit('update:reservationKey', 'receipt-location-key')
+  await flushPromises()
 }
 async function submit() {
   await wrapper.get('form').trigger('submit')
@@ -118,6 +125,27 @@ async function submit() {
 }
 
 describe('warehouse manual receipt', () => {
+  it('requires a location even when the serial is unknown', async () => {
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="流水号"]').setValue('')
+    const location = wrapper.getComponent(WarehouseLocationSelect)
+    location.vm.$emit('update:modelValue', '')
+    location.vm.$emit('update:reservationKey', '')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请选择入库仓位')
+    await chooseLocation()
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({
+        serial_no: '',
+        warehouse_location: 'A区-01',
+      }),
+    )
+  })
   it.each(['成品规格', '转料规格'])('retains %s validation on physical receipts', async (label) => {
     await render()
     await fill()
@@ -198,6 +226,7 @@ describe('warehouse manual receipt', () => {
     await amount('入库件数', 3)
     await amount('入库重量', 1.5)
     await wrapper.get('textarea[aria-label="入库说明"]').setValue('实物到货')
+    await chooseLocation()
     await submit()
     expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
       901,
@@ -772,6 +801,7 @@ describe('库房关联已发布工艺', () => {
       .find((item) => item.find('input[aria-label="物料类型"]').exists())!
       .vm.$emit('update:modelValue', 'raw_material')
     await flushPromises()
+    await chooseLocation()
     await confirmImported()
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
@@ -816,6 +846,7 @@ describe('库房关联已发布工艺', () => {
       .vm.$emit('update:modelValue', 'raw_material')
     await flushPromises()
     await reviewImportedRoute()
+    await chooseLocation()
     await confirmImported()
     await submit()
     const rejected = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
@@ -875,6 +906,7 @@ describe('库房关联已发布工艺', () => {
       .find((item) => item.find('input[aria-label="物料类型"]').exists())!
       .vm.$emit('update:modelValue', 'raw_material')
     await wrapper.get('input[aria-label="流水号"]').setValue('ORDER-01')
+    await chooseLocation()
     await confirmImported()
     await submit()
     expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()

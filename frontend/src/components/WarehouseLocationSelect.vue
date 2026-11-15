@@ -23,6 +23,7 @@ const props = withDefaults(
     teamId: number
     active?: boolean
     disabled?: boolean
+    required?: boolean
     serialNo?: string
     materialName?: string
     materialType?: string
@@ -320,13 +321,13 @@ onBeforeUnmount(() => {
       :model-value="modelValue"
       :disabled="disabled || choosing"
       aria-label="入库仓位"
-      placeholder="选择仓位（选填）"
+      :placeholder="required ? '请选择入库仓位' : '选择仓位（选填）'"
       filterable
       clearable
       remote
       :remote-method="search"
       :loading="loading || choosing"
-      no-data-text="暂无可用仓位，可不填写"
+      :no-data-text="required ? '暂无可用仓位，请先在仓库管理中设置' : '暂无可用仓位，可不填写'"
       @visible-change="
         (open) => {
           if (open) search()
@@ -385,9 +386,9 @@ onBeforeUnmount(() => {
       >已锁定 · {{ countdown }} 后释放<span v-if="remainingSeconds <= 60">，请及时提交</span></small
     >
     <small v-if="error" class="location-error" role="alert">{{ error }}</small>
-    <small v-else-if="loaded && !items.length && !modelValue" role="status"
-      >暂无可用仓位，可不填写</small
-    >
+    <small v-else-if="loaded && !items.length && !modelValue" role="status">{{
+      required ? '暂无可用仓位，请先在仓库管理中设置' : '暂无可用仓位，可不填写'
+    }}</small>
   </div>
 </template>
 

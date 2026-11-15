@@ -170,9 +170,32 @@ async function submit() {
 async function destination(id = 3) {
   wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id)
   await flushPromises()
+  if (id === 1) {
+    wrapper.findAllComponents(WarehouseLocationSelect).forEach((location, index) => {
+      location.vm.$emit('update:modelValue', `测试仓位-${index + 1}`)
+      location.vm.$emit('update:reservationKey', `location-${index + 1}`)
+    })
+    await flushPromises()
+  }
 }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('blocks a warehouse return if any line has no location', async () => {
+    await render()
+    await destination(1)
+    const missing = wrapper.findAllComponents(WarehouseLocationSelect)[1]!
+    missing.vm.$emit('update:modelValue', '')
+    missing.vm.$emit('update:reservationKey', '')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请选择入库仓位')
+    missing.vm.$emit('update:modelValue', 'B-02')
+    missing.vm.$emit('update:reservationKey', 'selected-B-02')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
+  })
   it('blocks a normal handoff with missing dimensions and opens its dimension field', async () => {
     const lot = source()
     lot.transfer.transfer_specification = null
@@ -1231,6 +1254,11 @@ describe('source batch dispatch and loss drafts', () => {
       .vm.$emit('update:modelValue', 'waste')
     await wrapper.get('textarea').setValue('加工废料回库')
     await flushPromises()
+    wrapper.findAllComponents(WarehouseLocationSelect).forEach((location, index) => {
+      location.vm.$emit('update:modelValue', `回库-${index + 1}`)
+      location.vm.$emit('update:reservationKey', `return-location-${index + 1}`)
+    })
+    await flushPromises()
     expect(wrapper.text()).toContain('本次转出比账面剩余多 0.001 kg')
     expect(wrapper.text()).toContain('在允许的 1 kg 误差范围内')
     await submit()
@@ -1239,8 +1267,20 @@ describe('source batch dispatch and loss drafts', () => {
       expect.objectContaining({
         next_team_id: 1,
         lines: [
-          { source_transfer_id: 10, quantity: 80, weight: 8, material_type: 'semi_finished' },
-          { source_transfer_id: 10, quantity: 21, weight: 2.001, material_type: 'waste' },
+          expect.objectContaining({
+            source_transfer_id: 10,
+            quantity: 80,
+            weight: 8,
+            material_type: 'semi_finished',
+            warehouse_location: '回库-1',
+          }),
+          expect.objectContaining({
+            source_transfer_id: 10,
+            quantity: 21,
+            weight: 2.001,
+            material_type: 'waste',
+            warehouse_location: '回库-2',
+          }),
         ],
       }),
     )

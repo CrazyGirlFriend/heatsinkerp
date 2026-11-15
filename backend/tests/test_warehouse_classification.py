@@ -12,6 +12,7 @@ from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -21,6 +22,17 @@ def base(setup, workshop=False):
 
 
 def dispatch(client, setup, lines, workshop=False, **extra):
+    if workshop and extra.get("next_team_id", setup["team"]["id"]) == setup["team"]["id"]:
+        locations = setup.setdefault("return_locations", {})
+        selected = []
+        for index, line in enumerate(lines):
+            if "warehouse_location" not in line:
+                key = (extra.get("idempotency_key", "workshop-dispatch"), index)
+                if key not in locations:
+                    locations[key] = select_location(client, setup, headers=setup["other_headers"])
+                line = {**line, **locations[key]}
+            selected.append(line)
+        lines = selected
     return sender_post(
         client,
         base(setup, workshop) + "/dispatches",
@@ -332,7 +344,8 @@ def test_signed_gaps_preserve_normal_and_scrap_filters_even_when_totals_cancel(c
         for resource in ("inventory", "serials"):
             result = client.get(base(s) + "/" + resource, params={"availability": availability})
             assert result.status_code == 200, result.text
-            assert result.json()["total"] == 1
-            row = result.json()["items"][0]
-            assert row["serial_no"] == serial and row["on_hand_weight"] == 0
-            assert row["shortage_weight"] == 1
+            rows = result.json()["items"]
+            assert result.json()["total"] == (2 if resource == "inventory" else 1)
+            assert all(row["serial_no"] == serial for row in rows)
+            assert sum(row["on_hand_weight"] for row in rows) == 0
+            assert sum(row["shortage_weight"] for row in rows) == 1

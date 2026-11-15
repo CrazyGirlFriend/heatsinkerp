@@ -602,6 +602,8 @@ const validation = useDialogValidation(() => {
     }
     if (!isLoss.value && warehouse.value && !line.materialType)
       add('materialType', '请选择物料类型')
+    if (!isLoss.value && warehouse.value && !line.warehouseLocation.trim())
+      add('warehouseLocation', '请选择入库仓位')
     if (!isLoss.value && lineSchedules(line).length > 1 && !line.scheduleId)
       add('scheduleId', '请选择本次转出对应的交货排期')
     if (
@@ -1713,8 +1715,14 @@ watch(
                   />
                 </ElFormItem>
               </AppDisclosure>
-              <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"
+              <ElFormItem
+                v-if="!isLoss && warehouse"
+                label="入库仓位"
+                class="dialog-field-wide"
+                :error="lineError(line, 'warehouseLocation')"
+                required
                 ><WarehouseLocationSelect
+                  required
                   v-model="line.warehouseLocation"
                   v-model:reservation-key="line.warehouseLocationKey"
                   :team-id="Number(form.nextTeamId)"

@@ -23,12 +23,20 @@ from .material_analytics import (
 )
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
-from .models import MaterialLoss, MaterialTransfer, Team, utcnow
+from .models import (
+    MaterialLoss,
+    MaterialTransfer,
+    Team,
+    WarehouseLocation,
+    WarehousePlacement,
+    utcnow,
+)
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
+from .team_constants import WAREHOUSE_TEAM_CODE
 
 mt = MaterialTransfer
 WarehouseSearchField = Literal[
@@ -45,6 +53,8 @@ WarehouseSearchField = Literal[
     "external_pending_quantity",
     "external_pending_weight",
     "source_batch_no",
+    "batch_no",
+    "warehouse_location",
     "shortage_weight",
     "processing_registered_quantity",
     "processing_registered_weight",
@@ -105,7 +115,7 @@ class WarehouseInventoryFilters(SerialFilters):
         }.get(self.search_field, self.search_field)
         if field.startswith(("owned_", "in_transit_", "external_pending_", "processing_")):
             field = "available_weight" if field.endswith("_weight") else "available_quantity"
-        if field == "source_batch_no":
+        if field in ("source_batch_no", "batch_no", "warehouse_location"):
             field = "serial_no"
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
         return self
@@ -133,6 +143,7 @@ def origin_columns(include_team=False, registered=None):
     return {
         **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
+        "batch_no": case((mt.next_team_code == WAREHOUSE_TEAM_CODE, mt.batch_no)),
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
         "process_route_id": mt.process_route_id,
@@ -171,6 +182,16 @@ def warehouse_groups(team_id, filters):
     # Group the joined processing columns directly. A correlated scalar subquery
     # in GROUP BY is not recognized as deterministic by MySQL ONLY_FULL_GROUP_BY.
     origins = origin_columns(include_team=team_id is None, registered=registered)
+    placements = (
+        select(
+            WarehousePlacement.transfer_id,
+            func.group_concat(WarehouseLocation.name).label("names"),
+        )
+        .join(WarehouseLocation, WarehouseLocation.id == WarehousePlacement.location_id)
+        .where(or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0))
+        .group_by(WarehousePlacement.transfer_id)
+        .subquery()
+    )
     moves = (
         select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at"))
         .where(
@@ -230,6 +251,14 @@ def warehouse_groups(team_id, filters):
         select(
             *(column.label(name) for name, column in origins.items()),
             func.min(mt.id).label("group_id"),
+            func.max(
+                case(
+                    (
+                        mt.next_team_code == WAREHOUSE_TEAM_CODE,
+                        func.coalesce(placements.c.names, "未分配仓位"),
+                    ),
+                )
+            ).label("warehouse_location"),
             func.count(mt.id).label("batch_count"),
             func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
             func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
@@ -255,6 +284,7 @@ def warehouse_groups(team_id, filters):
         )
         .select_from(stock)
         .join(mt, mt.id == stock.c.transfer_id)
+        .outerjoin(placements, placements.c.transfer_id == mt.id)
         .outerjoin(moves, moves.c.lot_id == mt.id)
         .outerjoin(losses, losses.c.lot_id == mt.id)
         .outerjoin(registered, registered.c.lot_id == mt.id)
@@ -406,6 +436,8 @@ def list_inventory(db, team_id, filters):
         if field == "urgency":
             urgent = table.c.serial_no.in_(urgent_serials())
             conditions.append(urgent if term == "urgent" else ~urgent)
+        elif field in ("batch_no", "warehouse_location"):
+            conditions.append(literal_query(term, [table.c[field]]))
         elif field in ("last_activity_at", "oldest_received_at"):
             start, end = day_bounds(date.fromisoformat(term))
             conditions.append(and_(table.c[field] >= start, table.c[field] < end))
@@ -449,6 +481,8 @@ def list_inventory(db, team_id, filters):
                     table.c[name]
                     for name in (
                         "serial_no",
+                        "batch_no",
+                        "warehouse_location",
                         "material_name",
                         "transfer_specification",
                         "purpose_name",

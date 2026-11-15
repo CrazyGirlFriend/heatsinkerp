@@ -239,6 +239,8 @@ const validationIssues = computed(() => {
   else if (serialNo.length > 80) add('serialNo', '流水号不能超过 80 个字符')
   if ((!isEditing.value || toWarehouse.value) && !form.materialType)
     add('materialType', toWarehouse.value ? '转入库房前请选择物料类型' : '请选择物料类型')
+  if (toWarehouse.value && !form.warehouseLocation.trim())
+    add('warehouseLocation', '请选择入库仓位')
   if (!external.value) {
     if (form.nextTeamId === '') add('nextTeamId', '请选择接收班组')
     else if (String(form.nextTeamId) === String(sourceTeam.value?.id))
@@ -812,12 +814,19 @@ onBeforeUnmount(() => {
           >
             历史废泥未记录比例，沿用原账重，不自动折算。
           </p>
-          <ElFormItem v-if="toWarehouse" label="入库仓位" class="form-field--full"
+          <ElFormItem
+            v-if="toWarehouse"
+            label="入库仓位"
+            class="form-field--full"
+            required
+            :error="fieldErrors.warehouseLocation"
+            data-validation-field="warehouseLocation"
             ><strong v-if="editingSnapshot?.warehouse_location">{{
               editingSnapshot.warehouse_location
             }}</strong
             ><WarehouseLocationSelect
               v-else
+              required
               v-model="form.warehouseLocation"
               v-model:reservation-key="form.warehouseLocationKey"
               :team-id="Number(form.nextTeamId)"

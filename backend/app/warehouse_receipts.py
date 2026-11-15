@@ -146,6 +146,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 payload,
                 user,
                 identity=(serial_no, payload.material_name, payload.material_type),
+                required=True,
             )
             now = utcnow()
             receipt = MaterialTransfer(

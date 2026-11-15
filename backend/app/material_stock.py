@@ -641,9 +641,10 @@ def create_dispatch(db, team_id, payload, user):
             db.flush()
             items = []
             consumed_locations = {}
-            for line_index, (line, batch_no) in enumerate(
-                zip(payload.lines, batch_numbers, strict=True)
-            ):
+            location_names = []
+            # Consume every lease before staging transfers. A partial location
+            # flush must not run placement hooks against transfers without IDs.
+            for line in payload.lines:
                 from .warehouse_locations import consume
 
                 lot = lots[line.source_transfer_id]
@@ -659,7 +660,19 @@ def create_dispatch(db, team_id, payload, user):
                     user,
                     identity=(line.serial_no or lot.serial_no, lot.material_name, kind),
                     consumed=consumed_locations,
+                    required=True,
                 )
+                location_names.append(location_name)
+            for line_index, (line, batch_no) in enumerate(
+                zip(payload.lines, batch_numbers, strict=True)
+            ):
+                lot = lots[line.source_transfer_id]
+                kind = (
+                    line.material_type
+                    if "material_type" in line.model_fields_set
+                    else lot.material_type
+                )
+                location_name = location_names[line_index]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
                 if (
                     not lot.serial_no

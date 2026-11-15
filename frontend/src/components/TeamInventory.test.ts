@@ -147,7 +147,9 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, mode.warehouse, false)
     await wrapper.setProps(mode)
     expect(headers()).toEqual([
+      ...(mode.warehouse ? ['批次号'] : []),
       '流水号',
+      ...(mode.warehouse ? ['仓库'] : []),
       '数量（件）',
       ...(mode.processing ? ['工艺工序', '返工情况', '加工状态'] : []),
       '材质',
@@ -170,7 +172,7 @@ describe('warehouse grouped stock', () => {
       ]),
     )
   })
-  it('keeps warehouse quantity beside the serial and pinned even when old column preferences hide it', async () => {
+  it('keeps batch, serial, location and quantity visible despite old column preferences', async () => {
     localStorage.setItem(
       'heatsink.warehouse-columns.v1:42:901',
       JSON.stringify([
@@ -186,7 +188,7 @@ describe('warehouse grouped stock', () => {
       user: { id: 42 },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    expect(headers().slice(0, 3)).toEqual(['流水号', '数量（件）', '材质'])
+    expect(headers().slice(0, 5)).toEqual(['批次号', '流水号', '仓库', '数量（件）', '材质'])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
     expect(wrapper.findAll('thead th')[1]!.classes()).toContain('el-table-fixed-column--left')
     expect(wrapper.findAll('[data-field="on_hand_quantity"]').map((cell) => cell.text())).toEqual(
@@ -1848,11 +1850,20 @@ describe('warehouse grouped stock', () => {
   })
   it('repeats serial and material in independent cells on every stock row without merging', async () => {
     await render()
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '物料类型', '实际尺寸', '操作'])
+    expect(headers()).toEqual([
+      '批次号',
+      '流水号',
+      '仓库',
+      '数量（件）',
+      '材质',
+      '物料类型',
+      '实际尺寸',
+      '操作',
+    ])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
     const rowCells = () =>
       wrapper.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
-    expect(rowCells().map((cells) => [cells[0], cells[2]])).toEqual(
+    expect(rowCells().map((cells) => [cells[1], cells[4]])).toEqual(
       data().map((row) => [row.serial_no, row.material_name]),
     )
     expect(
@@ -1861,7 +1872,7 @@ describe('warehouse grouped stock', () => {
         .some((cell) => cell.find('.inventory-material').exists()),
     ).toBe(false)
     await wrapper.setProps({ fullscreen: true })
-    expect(rowCells().map((cells) => [cells[0], cells[2]])).toEqual(
+    expect(rowCells().map((cells) => [cells[1], cells[4]])).toEqual(
       data().map((row) => [row.serial_no, row.material_name]),
     )
     expect(wrapper.findAll('tr.serial-group-start')).toHaveLength(0)
@@ -2047,7 +2058,9 @@ describe('warehouse grouped stock', () => {
     await applyModal()
     expect(headers()).toEqual([
       '客户编号',
+      '批次号',
       '流水号',
+      '仓库',
       '数量（件）',
       '材质',
       '重量（kg）',
@@ -2059,7 +2072,16 @@ describe('warehouse grouped stock', () => {
       .find((item) => item.text().includes('首列显示'))!
       .vm.$emit('close', new MouseEvent('click'))
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '重量（kg）', '来源', '操作'])
+    expect(headers()).toEqual([
+      '批次号',
+      '流水号',
+      '仓库',
+      '数量（件）',
+      '材质',
+      '重量（kg）',
+      '来源',
+      '操作',
+    ])
   })
   it('validates numeric queries before requesting grouped amounts', async () => {
     await render()

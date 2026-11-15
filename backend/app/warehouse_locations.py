@@ -496,11 +496,13 @@ def release(db, location_id, key, user):
         _db_conflict(exc)
 
 
-def consume(db, team, payload, user, *, identity=None, consumed=None):
+def consume(db, team, payload, user, *, identity=None, consumed=None, required=False):
     """Replace a live form lease with a document in the caller's transaction."""
     name = payload.warehouse_location
     key = payload.warehouse_location_reservation_key
     if not name:
+        if required and team is not None and team.code == WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "请选择入库仓位，没有可用仓位时请先在仓库管理中设置")
         if key:
             raise HTTPException(422, "请选择仓位或清除仓位锁")
         return None
