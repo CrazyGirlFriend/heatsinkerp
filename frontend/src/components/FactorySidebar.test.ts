@@ -147,13 +147,13 @@ describe('three-level team navigation', () => {
     expect(current().attributes('aria-description')).toBe('当前页面所属模块')
     expect(wrapper.findAll('.factory-nav__current-badge')).toHaveLength(1)
     expect(current().get('.factory-nav__current-badge').text()).toBe('当前')
-    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click')
+    await wrapper.get('[aria-label="生产管理"] > .el-sub-menu__title').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/7?tab=stock')
     expect(current().attributes('aria-expanded')).toBe('false')
     expect(current().find('.factory-nav__current-badge').exists()).toBe(true)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('电镀 / 库存')
-    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click')
+    await wrapper.get('[aria-label="生产管理"] > .el-sub-menu__title').trigger('click')
     await flushPromises()
     expect(current().attributes('aria-label')).toBe('班组工作台')
     for (const [path, module] of [
@@ -214,16 +214,16 @@ describe('three-level team navigation', () => {
   })
 
   it('restores a deliberately folded branch after remounting', async () => {
-    const { wrapper } = await renderSidebar('/factory-stock')
-    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click')
+    const { wrapper } = await renderSidebar('/dispatch-schedules')
+    await wrapper.get('[aria-label="生产管理"] > .el-sub-menu__title').trigger('click')
     expect(useSidebarStore(appPinia).opened).toEqual([])
     wrapper.unmount()
-    const restored = await renderSidebar('/factory-stock')
-    expect(restored.wrapper.get('[aria-label="全厂总览"]').attributes('aria-expanded')).toBe(
+    const restored = await renderSidebar('/dispatch-schedules')
+    expect(restored.wrapper.get('[aria-label="生产管理"]').attributes('aria-expanded')).toBe(
       'false',
     )
     expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe(
-      '全厂数据分析',
+      '调度工作台',
     )
   })
 
@@ -329,10 +329,9 @@ describe('three-level team navigation', () => {
     const groups = wrapper
       .findAllComponents(ElSubMenu)
       .filter((group) =>
-        ['factory', 'management', 'teams', 'materials', 'settings'].includes(group.props('index')),
+        ['management', 'teams', 'materials', 'settings'].includes(group.props('index')),
       )
     expect(groups.map((group) => group.props('index'))).toEqual([
-      'factory',
       'management',
       'teams',
       'materials',
@@ -471,10 +470,10 @@ describe('three-level team navigation', () => {
     expect(teamGroup.attributes('aria-expanded')).toBe('false')
     await teamGroup.get('.el-sub-menu__title').trigger('click')
     expect(teamGroup.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(5)
+    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(4)
   })
 
-  it('keeps exactly the same five parent groups when the entire sidebar collapses', async () => {
+  it('keeps the overview link and four parent groups when the entire sidebar collapses', async () => {
     const { wrapper } = await renderSidebar()
     await wrapper.setProps({ compact: true })
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(true)
@@ -483,7 +482,7 @@ describe('three-level team navigation', () => {
         .findAllComponents(ElSubMenu)
         .map((group) => group.props('index'))
         .filter((index) => !index.startsWith('team-') && index !== 'engineering'),
-    ).toEqual(['factory', 'management', 'teams', 'materials', 'settings'])
+    ).toEqual(['management', 'teams', 'materials', 'settings'])
     await wrapper.setProps({ compact: false })
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(false)
     expect(
@@ -491,7 +490,7 @@ describe('three-level team navigation', () => {
         .findAllComponents(ElSubMenu)
         .map((group) => group.props('index'))
         .filter((index) => !index.startsWith('team-') && index !== 'engineering'),
-    ).toEqual(['factory', 'management', 'teams', 'materials', 'settings'])
+    ).toEqual(['management', 'teams', 'materials', 'settings'])
   })
 
   it('routes leaf selections to the existing pages', async () => {
@@ -538,37 +537,36 @@ describe('three-level team navigation', () => {
         .findAllComponents(ElSubMenu)
         .map((group) => group.props('index'))
         .filter((index) => !index.startsWith('team-') && index !== 'engineering'),
-    ).toEqual(['factory', 'management', 'teams', 'materials'])
+    ).toEqual(['management', 'teams', 'materials'])
     expect(wrapper.find('[aria-label="班组管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="班组长管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="流水号查询"]').exists()).toBe(false)
   })
 
-  it('removes the team material inventory entry and selects analysis for legacy bookmarks', async () => {
-    const { wrapper, router } = await renderSidebar('/factory-stock')
-    await wrapper.setProps({ illustrated: true })
-    const group = wrapper
-      .findAllComponents(ElSubMenu)
-      .find((item) => item.props('index') === 'factory')!
-    expect(group.attributes('aria-expanded')).toBe('true')
-    expect(group.findAllComponents(ElMenuItem).map((item) => item.props('index'))).toEqual([
-      '/factory-analysis',
-      '/production-schedules',
-    ])
-    expect(wrapper.find('[aria-label="班组材质库存"]').exists()).toBe(false)
-    const analysis = group
-      .findAllComponents(ElMenuItem)
-      .find((item) => item.props('index') === '/factory-analysis')!
-    expect(analysis.getComponent(FactoryNavIcon).props('name')).toBe('analysis')
-    expect(analysis.get('.el-icon').classes()).toContain('factory-nav__team-icon')
-    expect(analysis.get('.el-icon').attributes('aria-hidden')).toBe('true')
-    expect(router.currentRoute.value.path).toBe('/factory-analysis')
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('全厂数据分析')
-    await wrapper.get('[aria-label="生产排期"]').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/production-schedules')
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('生产排期')
-  })
+  it.each([false, true])(
+    'opens analysis directly from the top-level overview (compact: %s)',
+    async (compact) => {
+      const { wrapper, router } = await renderSidebar('/factory-stock', compact)
+      await wrapper.setProps({ illustrated: true })
+      const overview = wrapper
+        .findAllComponents(ElMenuItem)
+        .find((item) => item.props('index') === '/factory-analysis')!
+      expect(overview.element.parentElement?.classList.contains('el-menu')).toBe(true)
+      expect(overview.getComponent(FactoryNavIcon).props('name')).toBe('overview')
+      expect(wrapper.find('[aria-label="生产排期"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="全厂数据分析"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="班组材质库存"]').exists()).toBe(false)
+      expect(router.currentRoute.value.path).toBe('/factory-analysis')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('全厂总览')
+      expect(useSidebarStore(appPinia).opened).toEqual([])
+      await router.push('/dispatch-schedules')
+      await flushPromises()
+      await overview.trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.path).toBe('/factory-analysis')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('全厂总览')
+    },
+  )
 })
 
 it('places shared and reallocation records at the same flow-query menu level', async () => {

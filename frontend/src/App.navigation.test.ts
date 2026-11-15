@@ -210,7 +210,7 @@ describe('application navigation shell', () => {
       expect(
         wrapper
           .get('.factory-nav .el-menu')
-          .findAll(':scope > .el-sub-menu')
+          .findAll(':scope > .el-menu-item, :scope > .el-sub-menu')
           .map((group) => group.attributes('aria-label')),
       ).toEqual(['全厂总览', '生产管理', '班组工作台', '流转查询', '系统设置'])
       expect(wrapper.find('.factory-nav--overview').exists()).toBe(false)

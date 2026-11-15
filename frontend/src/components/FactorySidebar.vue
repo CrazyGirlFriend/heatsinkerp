@@ -103,7 +103,7 @@ const activeIndex = computed(() => {
   return route.path
 })
 const routeGroups = computed(() => [
-  activeGroup.value,
+  ...(activeGroup.value === 'factory' ? [] : [activeGroup.value]),
   ...(currentTeam.value ? [`team-${currentTeam.value.id}`] : []),
   ...(route.path === '/process-routes' ? ['engineering'] : []),
 ])
@@ -123,7 +123,6 @@ const waitingForDirectory = computed(
   () => route.path.startsWith('/team-workspaces/') && !teamDirectory.loaded,
 )
 const groupIndexes = computed(() => [
-  'factory',
   'management',
   'engineering',
   'teams',
@@ -293,16 +292,17 @@ const materialLinks = computed(() => [
         @open="onOpen"
         @close="onClose"
       >
-        <ElSubMenu
-          index="factory"
-          data-nav-index="factory"
+        <ElMenuItem
+          index="/factory-analysis"
           aria-label="全厂总览"
+          :aria-current="route.path === '/factory-analysis' ? 'page' : undefined"
           :class="{ 'factory-nav__current': activeGroup === 'factory' }"
           :aria-description="activeGroup === 'factory' ? '当前页面所属模块' : undefined"
         >
+          <ElIcon class="factory-nav__module-icon" aria-hidden="true"
+            ><FactoryNavIcon name="overview"
+          /></ElIcon>
           <template #title
-            ><ElIcon class="factory-nav__module-icon" aria-hidden="true"
-              ><FactoryNavIcon name="overview" /></ElIcon
             ><span>全厂总览</span
             ><span
               v-if="activeGroup === 'factory' && !compact"
@@ -311,23 +311,7 @@ const materialLinks = computed(() => [
               >当前</span
             ></template
           >
-          <ElMenuItem
-            index="/factory-analysis"
-            aria-label="全厂数据分析"
-            :aria-current="route.path === '/factory-analysis' ? 'page' : undefined"
-            ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
-              ><FactoryNavIcon name="analysis" /></ElIcon
-            ><span>全厂数据分析</span></ElMenuItem
-          >
-          <ElMenuItem
-            index="/production-schedules"
-            aria-label="生产排期"
-            :aria-current="route.path === '/production-schedules' ? 'page' : undefined"
-            ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
-              ><FactoryNavIcon name="schedule" /></ElIcon
-            ><span>生产排期</span></ElMenuItem
-          >
-        </ElSubMenu>
+        </ElMenuItem>
         <ElSubMenu
           index="management"
           data-nav-index="management"

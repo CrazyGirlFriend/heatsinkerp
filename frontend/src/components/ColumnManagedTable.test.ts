@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { computed, defineComponent, reactive } from 'vue'
-import { ElCheckbox, ElInput, ElTableColumn } from 'element-plus'
+import { computed, defineComponent, reactive, ref } from 'vue'
+import { ElCheckbox, ElInput, ElPopover, ElTableColumn } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ColumnManagedTable from './ColumnManagedTable.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
@@ -88,7 +88,71 @@ describe('shared table columns', () => {
     await flushPromises()
     expect(query.state.value.filters[0]?.field).toBe('quantity')
     expect(query.state.value.sort).toEqual({ field: 'quantity', direction: 'desc' })
+    expect(controls[1]!.props('value')).toBe('5')
+    expect(controls[1]!.props('end')).toBe('20')
+    expect(controls[1]!.props('sort')).toBe('desc')
     expect(wrapper.get('.el-table__body').text()).toContain('A')
+  })
+
+  it('restores selected lock filters even when no rows match and clears their active state', async () => {
+    const rows = ref([{ locked: '未锁定' }])
+    const query = useTableQuery(
+      {
+        locked: {
+          field: 'locked',
+          kind: 'select',
+          options: [
+            { value: '已锁定', label: '已锁定' },
+            { value: '未锁定', label: '未锁定' },
+          ],
+        },
+      },
+      () => {
+        rows.value = []
+      },
+    )
+    wrapper = mount(
+      defineComponent({
+        components: { ColumnManagedTable, ElTableColumn },
+        setup: () => ({ query, rows }),
+        template: `<ColumnManagedTable :column-settings="false" :column-query="query.controller.value" :data="rows">
+          <ElTableColumn prop="locked" label="订单锁定"/>
+        </ColumnManagedTable>`,
+      }),
+      { global },
+    )
+    await flushPromises()
+    const filter = wrapper.getComponent(TableColumnFilter)
+    const reopen = async () => {
+      filter.getComponent(ElPopover).vm.$emit('update:visible', true)
+      await flushPromises()
+    }
+    const checked = () => (filter.get('input[value="已锁定"]').element as HTMLInputElement).checked
+    await reopen()
+    await filter.get('input[value="已锁定"]').setValue(true)
+    await filter.get('form').trigger('submit')
+    await flushPromises()
+    expect(rows.value).toEqual([])
+    expect(JSON.parse(query.params.value.table_query!).filters[0]?.value).toBe('已锁定')
+    expect(filter.get('.table-column-filter').classes()).toContain('is-filtered')
+    await reopen()
+    expect(checked()).toBe(true)
+    await filter.get('input[value="已锁定"]').setValue(false)
+    await filter
+      .findAll('button')
+      .find((button) => button.text() === '取消')!
+      .trigger('click')
+    await reopen()
+    expect(checked()).toBe(true)
+    await filter
+      .findAll('button')
+      .find((button) => button.text() === '清除')!
+      .trigger('click')
+    await flushPromises()
+    expect(query.state.value.filters).toEqual([])
+    expect(filter.get('.table-column-filter').classes()).not.toContain('is-filtered')
+    await reopen()
+    expect(checked()).toBe(false)
   })
 
   it('reorders and hides columns without mixing up cells, selections or edit values', async () => {

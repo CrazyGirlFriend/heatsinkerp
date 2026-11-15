@@ -117,8 +117,10 @@ export default defineComponent({
             node.children = {
               ...cellSlots,
               _: undefined,
-              header: (scope: unknown) =>
-                h('span', { class: 'table-column-heading' }, [
+              header: (scope: unknown) => {
+                // Element Plus retains column slots; read the current query when rendering them.
+                const query = props.columnQuery
+                return h('span', { class: 'table-column-heading' }, [
                   field && query
                     ? h(TableColumnFilter, {
                         label: entry.label,
@@ -143,7 +145,8 @@ export default defineComponent({
                         cellSlots?.header?.(scope) || entry.label,
                       ),
                   props.columnSettings && index === first ? renderControl() : null,
-                ]),
+                ])
+              },
             }
             // A prop-only column originally has no slots; mark the new header as slot content.
             node.shapeFlag = (node.shapeFlag & ~(8 | 16)) | 32

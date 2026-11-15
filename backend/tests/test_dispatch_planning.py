@@ -121,6 +121,15 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
     )
     assert locked.status_code == 200, locked.text
     locked = locked.json()
+    assert locked["locked_at"]
+    assert client.get(f"{URL}/tasks/{task['id']}").json()["locked_at"] == locked["locked_at"]
+    lock_filter = json.dumps(
+        {"filters": [{"field": "locked", "kind": "select", "value": "已锁定"}]}
+    )
+    listed = client.get(URL + "/tasks", params={"table_query": lock_filter})
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["locked_at"] == locked["locked_at"]
     current = client.get(endpoint).json()
     changed["expected_version"] = current["version"]
     for headers in [dispatcher, warehouse["other_headers"]]:
@@ -138,6 +147,9 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
         lockurl, headers=dispatcher, json={"expected_version": locked["version"], "locked": False}
     )
     assert unlock.status_code == 200
+    assert unlock.json()["locked_at"] is None
+    assert client.get(f"{URL}/tasks/{task['id']}").json()["locked_at"] is None
+    assert client.get(URL + "/tasks", params={"table_query": lock_filter}).json()["total"] == 0
     changed["expected_version"] = client.get(endpoint).json()["version"]
     assert (
         client.put(
