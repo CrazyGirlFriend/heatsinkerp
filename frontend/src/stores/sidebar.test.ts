@@ -55,7 +55,7 @@ describe('sidebar preferences', () => {
       'heatsink-sidebar:1:ADMIN',
       JSON.stringify({
         compact: true,
-        opened: ['factory', 'teams', 'team-8', 'team-invalid'],
+        opened: ['factory', 'engineering', 'teams', 'team-8', 'team-invalid'],
         page: '/team-workspaces/8?tab=history',
       }),
     )

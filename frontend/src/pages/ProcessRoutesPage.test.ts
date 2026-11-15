@@ -148,16 +148,27 @@ it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-e
       })
       expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(false)
       expect(processRouteApi.list).not.toHaveBeenCalled()
-      await router.push('/process-routes')
+      await router.push('/process-routes?kind=rework')
       await flushPromises()
       expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
       expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(true)
       expect(processRouteApi.list).toHaveBeenCalled()
+      await wrapper
+        .get('form[role="search"]')
+        .findAll('button')
+        .find((button) => button.text() === '班组管理')!
+        .trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.query).toEqual({ kind: 'rework', tab: 'settings' })
+      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(true)
       await router.back()
       await flushPromises()
-      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(true)
+      expect(router.currentRoute.value.query).toEqual({ kind: 'rework' })
+      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
+      expect(wrapper.get('[aria-label="工艺类型"]').text()).toContain('返工工艺')
     } else {
       expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(true)
+      expect(wrapper.findAll('button').some((button) => button.text() === '班组管理')).toBe(false)
     }
   },
 )

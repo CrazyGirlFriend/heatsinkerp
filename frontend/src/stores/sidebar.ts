@@ -34,7 +34,7 @@ export const useSidebarStore = defineStore('sidebar', () => {
             ? saved.opened.filter(
                 (item: unknown) =>
                   typeof item === 'string' &&
-                  /^(management|teams|materials|settings|engineering|team-\d+)$/.test(item),
+                  /^(management|teams|materials|settings|team-\d+)$/.test(item),
               )
             : []
           page.value = typeof saved.page === 'string' ? saved.page.split('?')[0] : ''

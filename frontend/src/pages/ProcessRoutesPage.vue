@@ -23,7 +23,7 @@ import {
   watch,
   nextTick,
 } from 'vue'
-import { ArrowDown, Plus } from '@element-plus/icons-vue'
+import { ArrowDown, Plus, Setting } from '@element-plus/icons-vue'
 import { ElIcon, ElTag, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -463,6 +463,14 @@ onBeforeUnmount(() => {
             class="route-pending-filter"
             @click="createRework"
             >仅看待制定</ElButton
+          >
+        </template>
+        <template #actions>
+          <ElButton
+            v-if="canEdit && team"
+            :icon="Setting"
+            @click="router.push({ query: { ...location.query, tab: 'settings' } })"
+            >班组管理</ElButton
           >
         </template>
         <template #primary-actions>

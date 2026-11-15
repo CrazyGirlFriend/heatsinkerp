@@ -59,14 +59,6 @@ const activeGroup = computed(() =>
           : 'teams',
 )
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
-const engineeringTeam = computed(() =>
-  teamDirectory.items.find(
-    (team) => team.active && team.code === 'FACTORY-PROCESS' && team.kind === 'engineering',
-  ),
-)
-const canManageEngineering = computed(
-  () => engineeringTeam.value && capabilities(engineeringTeam.value)[5],
-)
 function capabilities(team: Team) {
   const warehouse = team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
   const manageSettings =
@@ -96,16 +88,11 @@ const currentSection = computed(() =>
 const activeIndex = computed(() => {
   if (currentTeam.value && currentSection.value)
     return `team-${currentTeam.value.id}:${teamWorkspaceModuleFor(currentSection.value)?.value}`
-  if (route.path === '/process-routes')
-    return route.query.tab === 'settings' && canManageEngineering.value
-      ? 'engineering:settings'
-      : 'engineering:design'
   return route.path
 })
 const routeGroups = computed(() => [
   ...(activeGroup.value === 'factory' ? [] : [activeGroup.value]),
   ...(currentTeam.value ? [`team-${currentTeam.value.id}`] : []),
-  ...(route.path === '/process-routes' ? ['engineering'] : []),
 ])
 function modulesFor(team: Team) {
   return teamWorkspaceModulesFor(...capabilities(team))
@@ -124,7 +111,6 @@ const waitingForDirectory = computed(
 )
 const groupIndexes = computed(() => [
   'management',
-  'engineering',
   'teams',
   ...workspaces.value.flatMap(({ team }) => (team ? [`team-${team.id}`] : [])),
   'materials',
@@ -330,35 +316,15 @@ const materialLinks = computed(() => [
               >当前</span
             ></template
           >
-          <ElSubMenu
-            index="engineering"
-            data-nav-index="engineering"
+          <ElMenuItem
+            index="/process-routes"
             aria-label="工艺工作台"
-            class="factory-nav__team"
+            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
           >
-            <template #title
-              ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
-                ><FactoryNavIcon name="records" /></ElIcon
-              ><span>工艺</span></template
-            >
-            <ElMenuItem
-              index="engineering:design"
-              :route="{ path: '/process-routes' }"
-              class="factory-nav__workspace-link"
-              aria-label="工艺设计"
-              :aria-current="activeIndex === 'engineering:design' ? 'page' : undefined"
-              >工艺设计</ElMenuItem
-            >
-            <ElMenuItem
-              v-if="canManageEngineering"
-              index="engineering:settings"
-              :route="{ path: '/process-routes', query: { tab: 'settings' } }"
-              class="factory-nav__workspace-link"
-              aria-label="工艺 / 班组管理"
-              :aria-current="activeIndex === 'engineering:settings' ? 'page' : undefined"
-              >班组管理</ElMenuItem
-            >
-          </ElSubMenu>
+            <ElIcon class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="records" /></ElIcon
+            ><span>工艺</span>
+          </ElMenuItem>
           <ElMenuItem
             index="/business-people"
             aria-label="业务班组"

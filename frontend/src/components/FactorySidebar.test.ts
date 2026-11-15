@@ -91,7 +91,7 @@ describe('three-level team navigation', () => {
     expect(useSidebarStore(appPinia).opened).toEqual(['management'])
   })
   it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-error'])(
-    'exposes the engineering management menu for the permitted %s account',
+    'keeps engineering as a direct entry without a management submenu for %s',
     async (account) => {
       signIn(account === 'administrator' ? 'ADMIN' : 'TEAM')
       if (account !== 'administrator' && account !== 'other-team')
@@ -102,16 +102,16 @@ describe('three-level team navigation', () => {
         { id: 9, code: 'FACTORY-PROCESS', name: '工艺', kind: 'engineering', active: true },
       ]
       const { wrapper, router } = await renderSidebar('/process-routes')
-      const allowed = ['administrator', 'engineering'].includes(account)
-      expect(wrapper.find('[aria-label="工艺 / 班组管理"]').exists()).toBe(allowed)
-      if (!allowed) return
-      await wrapper.get('[aria-label="工艺 / 班组管理"]').trigger('click')
+      expect(wrapper.find('[aria-label="工艺 / 班组管理"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="工艺设计"]').exists()).toBe(false)
+      expect(wrapper.get('[aria-label="工艺工作台"]').classes()).toContain('el-menu-item')
+      await router.push('/process-routes?tab=settings')
       await flushPromises()
-      expect(router.currentRoute.value.fullPath).toBe('/process-routes?tab=settings')
-      expect(wrapper.get('[aria-current=page]').text()).toBe('班组管理')
-      await router.back()
+      expect(wrapper.get('[aria-current=page]').text()).toBe('工艺')
+      await wrapper.get('[aria-label="工艺工作台"]').trigger('click')
       await flushPromises()
-      expect(wrapper.get('[aria-current=page]').text()).toBe('工艺设计')
+      expect(router.currentRoute.value.fullPath).toBe('/process-routes')
+      expect(useSidebarStore(appPinia).opened).toEqual(['management'])
     },
   )
   it.each(['ADMIN', 'TEAM'] as const)(
@@ -444,18 +444,18 @@ describe('three-level team navigation', () => {
 
   it('uses one engineering design entry for normal and rework routes, including browser back', async () => {
     const { wrapper, router } = await renderSidebar('/process-routes')
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺')
     expect(wrapper.find('[aria-label="正常工艺"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="返工工艺"]').exists()).toBe(false)
     await router.push('/process-routes?kind=rework')
     await flushPromises()
     expect(router.currentRoute.value.query.kind).toBe('rework')
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺')
     await router.back()
     await flushPromises()
-    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺设计')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('工艺')
     await router.push('/factory-analysis')
-    await wrapper.get('[aria-label="工艺设计"]').trigger('click')
+    await wrapper.get('[aria-label="工艺工作台"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/process-routes')
   })
