@@ -6,6 +6,7 @@ import AppDetailTable from './AppDetailTable.vue'
 import FactoryNavIcon from './FactoryNavIcon.vue'
 import { boardTeamColor } from '@/utils/scheduleBoard'
 import { formatAmount } from '@/utils/format'
+import { dashboardNumber } from '@/utils/factoryDashboard'
 import type { FactoryTeam } from '@/types/factoryOverview'
 import type { Metric } from '@/types/materialAnalytics'
 
@@ -33,6 +34,11 @@ const maxStock = computed(() =>
 function amount(team: FactoryTeam, state: string) {
   if (!team.processing) return null
   return team.processing.find((row) => row.state === state)?.[props.metric] ?? 0
+}
+function formatMetric(value: number | null | undefined) {
+  return props.metric === 'weight' && value != null && Number.isFinite(value)
+    ? dashboardNumber(value, 3)
+    : formatAmount(value)
 }
 </script>
 <template>
@@ -89,7 +95,7 @@ function amount(team: FactoryTeam, state: string) {
               class="team-stock-value"
               :aria-label="`${team.name}在库${metric === 'quantity' ? '件数' : '重量'}`"
               @click="$emit('open', team)"
-              >{{ formatAmount(team.balance?.[`on_hand_${metric}`]) }}</AppButton
+              >{{ formatMetric(team.balance?.[`on_hand_${metric}`]) }}</AppButton
             >
             <span class="team-stock-track" aria-hidden="true"
               ><i
@@ -120,7 +126,7 @@ function amount(team: FactoryTeam, state: string) {
                 :disabled="!team.id || !team.processing"
                 :aria-label="`${team.name}${state.label}`"
                 @click="$emit('open', team, state.key)"
-                ><i aria-hidden="true" />{{ formatAmount(amount(team, state.key)) }}</AppButton
+                ><i aria-hidden="true" />{{ formatMetric(amount(team, state.key)) }}</AppButton
               >
             </td></template
           >
