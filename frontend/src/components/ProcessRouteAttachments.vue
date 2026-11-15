@@ -24,6 +24,7 @@ const props = withDefaults(
     pendingDrawings?: File[]
     editable?: boolean
     disabled?: boolean
+    lazy?: boolean
   }>(),
   { documents: () => ['order', 'word', 'drawing'], orderThumbnail: true },
 )
@@ -108,6 +109,7 @@ defineExpose({ open })
         :key="drawing.id"
         class="route-attachment-card"
         title="图纸"
+        :lazy="lazy"
       >
         <ProcessRouteDrawingPreview :route-id="route.id" :drawing="drawing" thumbnail />
         <template v-if="editable" #actions>
@@ -127,6 +129,7 @@ defineExpose({ open })
         class="route-attachment-card"
         title="图纸"
         source="待保存"
+        :lazy="lazy"
       >
         <ProcessRouteDrawingPreview :route-id="route.id" :file="file" thumbnail />
         <template v-if="editable" #actions>

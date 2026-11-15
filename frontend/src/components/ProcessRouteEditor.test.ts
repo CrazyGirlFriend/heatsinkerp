@@ -112,6 +112,8 @@ async function render(
     },
   })
   await flushPromises()
+  wrapper.getComponent(AppDialog).vm.$emit('opened')
+  await flushPromises()
   if (!published && !viewOnly && !startEditing) await click('修改工艺')
 }
 async function click(text: string) {
@@ -432,6 +434,8 @@ async function renderNew() {
     },
   })
   await flushPromises()
+  wrapper.getComponent(AppDialog).vm.$emit('opened')
+  await flushPromises()
 }
 async function files(label: string, values: File[]) {
   const input = wrapper.get(`input[aria-label="${label}"]`)
@@ -699,8 +703,10 @@ it('uses a compact marker for unrecognized rows and flags imported missing value
   await render(false, route)
   await wrapper.get('.route-issue-summary').trigger('click')
   await flushPromises()
-  expect(document.querySelector('[aria-label="原稿含未识别行"]')?.getAttribute('title')).toBe(
-    '原表 1 · 第 99 行未识别',
+  await vi.waitFor(() =>
+    expect(document.querySelector('[aria-label="原稿含未识别行"]')?.getAttribute('title')).toBe(
+      '原表 1 · 第 99 行未识别',
+    ),
   )
   expect(wrapper.findAll('.route-cell--issue')).toHaveLength(4)
   expect(wrapper.text()).not.toContain('列数不完整')
@@ -732,8 +738,8 @@ it('locates a warning in the original and keeps both original duplicate rows', a
   expect(wrapper.get('.route-issue-summary').text()).toContain('2 处待核对')
   await wrapper.get('.route-issue-summary').trigger('click')
   await flushPromises()
+  await vi.waitFor(() => expect(document.querySelectorAll('.route-issue-choice')).toHaveLength(2))
   const choices = document.querySelectorAll<HTMLButtonElement>('.route-issue-choice')
-  expect(choices).toHaveLength(2)
   choices[1]!.click()
   await flushPromises()
   expect(wrapper.getComponent(WordDocumentPreview).props('sourceRow')).toBe('1:3')
@@ -876,4 +882,24 @@ it('retries a failed original-route read without replacing the rework instructio
   expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
   expect((instructions.element as HTMLTextAreaElement).value).toBe('返工后逐件测厚')
   expect(processRouteApi.save).not.toHaveBeenCalled()
+})
+
+it('keeps attachment previews unmounted until the dialog has finished opening', async () => {
+  wrapper = mount(ProcessRouteEditor, {
+    props: { route: structuredClone(routeFixture), viewOnly: true },
+    global: {
+      stubs: {
+        AppDialog: { template: '<div><slot /></div>' },
+        RouterLink: true,
+        WordDocumentPreview: originalStub('WordDocumentPreview', openWord),
+        ProcessRouteDrawingPreview: originalStub('ProcessRouteDrawingPreview', openDrawing),
+      },
+    },
+  })
+  await flushPromises()
+  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+  expect(wrapper.text()).toContain('正在加载附件预览')
+  wrapper.getComponent(AppDialog).vm.$emit('opened')
+  await flushPromises()
+  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(true)
 })

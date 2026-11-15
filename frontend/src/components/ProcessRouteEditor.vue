@@ -35,6 +35,11 @@ import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/type
 const props = defineProps<{ route?: ProcessRoute; viewOnly?: boolean; startEditing?: boolean }>()
 const emit = defineEmits<{ opened: []; close: []; saved: [] }>()
 const visible = ref(true)
+const previewsReady = ref(false)
+function opened() {
+  previewsReady.value = true
+  emit('opened')
+}
 function blankStep(sequence = 0): ProcessRouteStep {
   return {
     sequence_no: sequence,
@@ -126,6 +131,7 @@ const modifying = computed(
   () => !!draft.value.parent_id || (editingSaved.value && draft.value.state === 'published'),
 )
 const editorMain = ref<HTMLElement>()
+const stepColumnSettingsTarget = ref<HTMLElement | null>(null)
 const instructionInputs = ref<InstanceType<typeof ElInput>[]>([])
 let editorObserver: ResizeObserver | undefined
 let resizeFrame = 0
@@ -531,7 +537,7 @@ function prepareStepTeams() {
   })
 }
 onMounted(async () => {
-  await directory.refreshTeamDirectory()
+  if (!directory.items.length) await directory.refreshTeamDirectory()
   if (!readonly.value) prepareStepTeams()
 })
 </script>
@@ -547,7 +553,7 @@ onMounted(async () => {
     :show-close="!busy"
     :close-on-press-escape="!busy"
     @closed="emit('close')"
-    @opened="emit('opened')"
+    @opened="opened"
   >
     <template #header="{ titleId, titleClass }">
       <div class="route-dialog-heading">
@@ -620,7 +626,9 @@ onMounted(async () => {
               ><ElButton link @click="loadSourceRoute">重新读取</ElButton>
             </div>
             <ProcessRouteAttachments
+              v-if="previewsReady"
               ref="attachments"
+              lazy
               :route="draft"
               :source-route="sourceRoute"
               :documents="['word', 'drawing']"
@@ -632,6 +640,7 @@ onMounted(async () => {
               @remove-drawing="removeDrawing"
               @remove-pending-drawing="removePending"
             />
+            <AsyncStatus v-else label="正在加载附件预览…" />
           </div>
         </template>
         <CompactFormSection title="工艺信息" aria-label="工艺基本信息">
@@ -893,6 +902,7 @@ onMounted(async () => {
           </div>
           <CompactFormSection title="工序明细">
             <template #actions>
+              <div ref="stepColumnSettingsTarget" />
               <AppPopover
                 v-if="issueCount"
                 v-model:visible="issuesOpen"
@@ -945,6 +955,7 @@ onMounted(async () => {
               <div class="route-step-table-wrap">
                 <AppDetailTable
                   columns-key="ProcessRouteEditor-2"
+                  :column-settings-target="stepColumnSettingsTarget"
                   :required-columns="['序号', '执行班组', '工艺要求', '计划加工数量']"
                   class="route-step-table"
                   :class="{ 'route-step-table--readonly': readonly }"

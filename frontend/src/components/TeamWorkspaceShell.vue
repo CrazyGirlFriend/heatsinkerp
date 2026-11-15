@@ -251,22 +251,24 @@ onBeforeUnmount(() => {
     <div v-show="!fullscreen" class="team-workspace__navigation-bar">
       <div class="team-workspace__heading page-heading-start">
         <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
-        <template v-if="moduleLabel"
-          ><span class="team-workspace__divider" aria-hidden="true">/</span>
-          <nav
-            v-if="appearance === 'watermelon' && sections.length > 1"
-            :aria-label="`${title}${moduleLabel}视图`"
-          >
-            <WatermelonFilter
-              view-switch
-              :model-value="modelValue"
-              :label="sectionLabel"
-              :title="`${title}${moduleLabel}视图`"
-              :options="navigationOptions"
-              @change="selectSection"
-            />
-          </nav>
-          <span v-else class="team-workspace__module">{{ moduleLabel }}</span></template
+        <slot name="heading-view"
+          ><template v-if="moduleLabel"
+            ><span class="team-workspace__divider" aria-hidden="true">/</span>
+            <nav
+              v-if="appearance === 'watermelon' && sections.length > 1"
+              :aria-label="`${title}${moduleLabel}视图`"
+            >
+              <WatermelonFilter
+                view-switch
+                :model-value="modelValue"
+                :label="sectionLabel"
+                :title="`${title}${moduleLabel}视图`"
+                :options="navigationOptions"
+                @change="selectSection"
+              />
+            </nav>
+            <span v-else class="team-workspace__module">{{ moduleLabel }}</span></template
+          ></slot
         >
       </div>
       <nav

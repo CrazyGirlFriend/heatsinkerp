@@ -183,6 +183,8 @@ describe('workspace with in-page navigation', () => {
     )
     expect(wrapper.findAll('.team-workspace__export')).toHaveLength(1)
     expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
+    await wrapper.get('[aria-label="更多操作"]').trigger('click')
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(true))
     await wrapper.get('[aria-label="班组设置"]').trigger('click')
     expect(wrapper.emitted('settings')).toEqual([[]])
     await wrapper.get('.team-workspace__export').trigger('click')

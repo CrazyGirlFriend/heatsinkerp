@@ -7,13 +7,22 @@ import ElSelect from '@/components/AppSelect.vue'
 import { ElOption } from 'element-plus'
 import { reworkProgressLabels, type ReworkProgress } from '@/types/processRoute'
 import AppPopover from '@/components/AppPopover.vue'
-import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
+import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
+import AsyncStatus from '@/components/AsyncStatus.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  nextTick,
+} from 'vue'
 import { ArrowDown, Plus } from '@element-plus/icons-vue'
 import { ElIcon, ElTag, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -23,7 +32,6 @@ import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFoc
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
-import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import DocumentViewer from '@/components/DocumentViewer.vue'
 import { boardTeamColor } from '@/utils/scheduleBoard'
 import { useAuthStore } from '@/stores/auth'
@@ -31,6 +39,8 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, ProcessRouteDrawing, ProcessRouteStep } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
+const loadEditor = () => import('@/components/ProcessRouteEditor.vue')
+const ProcessRouteEditor = defineAsyncComponent(loadEditor)
 const location = useRoute()
 const router = useRouter()
 const noticeSection = ref('')
@@ -60,14 +70,15 @@ function changeReworkScope() {
   page.value = 1
   void load()
 }
-const newMenuOpen = ref(false),
-  pendingOnly = ref(false)
+const pendingOnly = ref(false)
+const columnSettingsTarget = ref<HTMLElement | null>(null)
+const openingId = ref<number | null>(null)
+const preparingEditor = ref(false)
 function clearPending() {
   pendingOnly.value = false
   void load()
 }
 function createRework() {
-  newMenuOpen.value = false
   routeKind.value = 'rework'
   void router.replace({ query: { ...location.query, kind: 'rework' } })
   pendingOnly.value = true
@@ -78,6 +89,7 @@ function createRework() {
 }
 function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
+  if (openingId.value !== null || preparingEditor.value) closeEditor()
   pendingOnly.value = false
   reworkScope.value = 'open'
   routeKind.value = kind
@@ -107,16 +119,31 @@ type RoutePage = Awaited<ReturnType<typeof processRouteApi.list>>
 const viewCache = new Map<string, { key: string; result: RoutePage }>()
 const hasLoadedView = ref(false)
 const initialLoading = computed(() => loading.value && !hasLoadedView.value)
-function create() {
+async function create() {
   if (!canEdit.value) return
-  newMenuOpen.value = false
-  creating.value = true
+  if (routeKind.value === 'rework') {
+    createRework()
+    return
+  }
+  const request = ++detailGeneration
+  preparingEditor.value = true
+  error.value = ''
+  try {
+    await loadEditor()
+    if (request === detailGeneration) creating.value = true
+  } catch {
+    if (request === detailGeneration) error.value = '表单加载失败，请重试'
+  } finally {
+    if (request === detailGeneration) preparingEditor.value = false
+  }
 }
 function closeEditor() {
   stopNoticeFocus?.()
   noticeSection.value = ''
   ++detailGeneration
   selected.value = null
+  openingId.value = null
+  preparingEditor.value = false
   editing.value = false
   creating.value = false
 }
@@ -279,15 +306,18 @@ async function open(id: number, startEditing = false) {
   noticeSection.value = ''
   stopNoticeFocus?.()
   const request = ++detailGeneration
+  openingId.value = id
   error.value = ''
   try {
-    const result = await processRouteApi.detail(id)
+    const [result] = await Promise.all([processRouteApi.detail(id), loadEditor()])
     if (request === detailGeneration) {
       editing.value = startEditing && canEdit.value
       selected.value = result
     }
   } catch (e) {
     if (request === detailGeneration) error.value = e instanceof Error ? e.message : '工艺读取失败'
+  } finally {
+    if (request === detailGeneration) openingId.value = null
   }
 }
 async function openReworkNotice() {
@@ -335,7 +365,6 @@ watch(
 watch(managingTeam, (managing) => {
   closeEditor()
   closeDrawing()
-  newMenuOpen.value = false
   if (managing) {
     ++generation
     loading.value = false
@@ -344,7 +373,13 @@ watch(managingTeam, (managing) => {
 })
 useLiveRefresh(load, {
   teamId: () => (team.value ? Number(team.value.id) : undefined),
-  busy: () => managingTeam.value || loading.value || !!selected.value || creating.value,
+  busy: () =>
+    managingTeam.value ||
+    loading.value ||
+    openingId.value !== null ||
+    preparingEditor.value ||
+    !!selected.value ||
+    creating.value,
 })
 onMounted(() => {
   routeMedia?.addEventListener('change', resizeRouteSummary)
@@ -366,6 +401,21 @@ onBeforeUnmount(() => {
     :model-value="managingTeam ? 'settings' : 'process-routes'"
     engineering
   >
+    <template v-if="!managingTeam" #heading-view>
+      <span class="team-workspace__divider" aria-hidden="true">/</span>
+      <nav aria-label="工艺类型">
+        <WatermelonFilter
+          view-switch
+          :model-value="routeKind"
+          title="工艺类型"
+          :options="[
+            { value: 'normal', label: '正常工艺' },
+            { value: 'rework', label: '返工工艺', count: canEdit ? pendingRework : 0 },
+          ]"
+          @change="changeKind($event as 'normal' | 'rework')"
+        />
+      </nav>
+    </template>
     <TeamBusinessDialog
       v-if="managingTeam && team"
       :model-value="true"
@@ -391,18 +441,11 @@ onBeforeUnmount(() => {
         @search="search"
         @refresh="load"
       >
-        <template #leading>
-          <WatermelonSegmented
-            :model-value="routeKind"
-            label="工艺类型"
-            :options="[
-              { value: 'normal', label: '正常工艺' },
-              { value: 'rework', label: '返工工艺', count: canEdit ? pendingRework : 0 },
-            ]"
-            @change="changeKind($event as 'normal' | 'rework')"
-          />
-        </template>
+        <template #query-actions><div ref="columnSettingsTarget" /></template>
         <template #status>
+          <AsyncStatus v-if="openingId !== null" label="正在打开工艺…">
+            <ElButton link @click="closeEditor">取消</ElButton>
+          </AsyncStatus>
           <ElSelect
             v-if="routeKind === 'rework'"
             v-model="reworkScope"
@@ -423,29 +466,21 @@ onBeforeUnmount(() => {
           >
         </template>
         <template #primary-actions>
-          <div v-if="canEdit" class="workspace-toolbar-actions">
-            <AppPopover
-              v-model:visible="newMenuOpen"
-              trigger="click"
-              width="170"
-              placement="bottom-end"
-            >
-              <template #reference
-                ><ElButton type="primary" :icon="Plus" :disabled="initialLoading"
-                  >新建工艺</ElButton
-                ></template
-              >
-              <div class="new-route-options">
-                <ElButton @click="create">正常工艺</ElButton
-                ><ElButton @click="createRework">返工工艺</ElButton>
-              </div>
-            </AppPopover>
-          </div></template
-        >
+          <ElButton
+            v-if="canEdit"
+            type="primary"
+            :icon="Plus"
+            :loading="preparingEditor"
+            :disabled="initialLoading"
+            @click="create"
+            >{{ routeKind === 'rework' ? '制定返工工艺' : '新建工艺' }}</ElButton
+          >
+        </template>
       </WorkspaceDataToolbar>
       <WorkspaceTable
         columns-key="ProcessRoutesPage-1"
         :column-query="tableQuery.controller.value"
+        :column-settings-target="columnSettingsTarget"
         :key="routeKind"
         :loading="loading && (!hasLoadedView || items.length > 0)"
         :data="items"
@@ -464,6 +499,7 @@ onBeforeUnmount(() => {
             ><ElButton
               v-if="row.serial_nos[0]"
               class="route-serial"
+              :loading="openingId === row.id"
               type="primary"
               link
               @click="open(row.id)"
@@ -800,6 +836,7 @@ onBeforeUnmount(() => {
             ><ElButton
               size="small"
               class="route-record-action"
+              :loading="openingId === row.id"
               @click="open(row.id, row.route_kind !== 'rework' || row.state !== 'published')"
               >{{
                 row.route_kind === 'rework'
@@ -847,13 +884,6 @@ onBeforeUnmount(() => {
   margin-left: 8px;
 }
 
-.new-route-options {
-  display: grid;
-  gap: 6px;
-}
-.new-route-options .el-button {
-  margin: 0;
-}
 .process-workspace {
   --route-ink: var(--text);
   --route-secondary: var(--muted);
