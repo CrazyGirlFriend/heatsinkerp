@@ -334,7 +334,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     team = require_processing_team(db, lot.next_team_id)
     from .processing_parameters import recorded_parameters
 
-    parameters = recorded_parameters(payload, team.code)
+    parameters = recorded_parameters(payload, team.code, db=db, team_id=team.id)
     if lot.material_type in WEIGHT_ONLY_TYPES:
         raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
     balance = db.scalar(

@@ -1110,20 +1110,8 @@ onBeforeUnmount(() => {
     @update:model-value="selectSection"
     @fullscreen-change="fullscreen = $event"
   >
-    <template
-      v-if="
-        canWrite && hasProcessing && (team?.code !== 'FACTORY-QC' || tab !== 'quality-feedback')
-      "
-      #messages
-    >
-      <ElButton
-        @click="
-          team?.code === 'FACTORY-QC'
-            ? selectSection('quality-feedback')
-            : (reworkRequestOpen = true)
-        "
-        >提交返工问题</ElButton
-      >
+    <template v-if="canWrite && hasProcessing" #messages>
+      <ElButton @click="reworkRequestOpen = true">提交问题</ElButton>
     </template>
     <template v-if="syncMessage" #fullscreen-status
       ><span role="status" :title="syncMessage">{{
@@ -1175,6 +1163,7 @@ onBeforeUnmount(() => {
           @update:model-value="!$event && selectSection('stock')"
           :team-id="teamId"
           :team-name="title"
+          :team-code="team?.code"
           :initial-tab="route.query.management_tab === 'production' ? 'production' : 'employees'"
           :processing-tasks="hasProcessing"
           :inspection-problems="team?.code === 'FACTORY-QC'"
@@ -1242,13 +1231,6 @@ onBeforeUnmount(() => {
           kind="inspection"
           :fullscreen="fullscreen"
         />
-        <TeamInspectionRecords
-          v-else-if="tab === 'inspections'"
-          :key="teamId"
-          :team-id="teamId"
-          :show-all="team?.code === 'FACTORY-QC'"
-          :fullscreen="fullscreen"
-        />
         <TeamProcessingRecords
           v-else-if="tab === 'processing'"
           :key="teamId"
@@ -1308,10 +1290,10 @@ onBeforeUnmount(() => {
                   tab === 'reallocations'
                     ? '搜索原流水号、目标流水号或批次号'
                     : tab === 'outgoing'
-                      ? '搜索批次、流水号、业务或去向'
+                      ? '搜索批次号、流水号、业务或去向'
                       : tab === 'losses'
-                        ? '搜索批次、流水号或材质'
-                        : '搜索批次、流水号、材质或业务'
+                        ? '搜索批次号、流水号或材质'
+                        : '搜索批次号、流水号、材质或业务'
                 "
                 @search="applyFilters()"
                 @refresh="loadView()"
@@ -1965,7 +1947,7 @@ onBeforeUnmount(() => {
         @close="reworkRequestOpen = false"
         @saved="
           () => {
-            showToast('返工问题已提交工艺班组')
+            showToast('问题已提交工艺班组')
             void loadView()
           }
         "

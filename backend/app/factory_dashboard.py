@@ -58,7 +58,20 @@ def serial_index():
 
 def serial_page(db, query="", page=1, page_size=50):
     table = serial_index()
-    predicates = [literal_query(query.strip(), [table.c.serial_no])] if query.strip() else []
+    predicates = (
+        [
+            or_(
+                literal_query(query.strip(), [table.c.serial_no]),
+                table.c.serial_no.in_(
+                    select(mt.serial_no).where(
+                        mt.status != "voided", literal_query(query.strip(), [mt.batch_no])
+                    )
+                ),
+            )
+        ]
+        if query.strip()
+        else []
+    )
     total = db.scalar(select(func.count()).select_from(table).where(*predicates)) or 0
     items = db.execute(
         select(table)
@@ -708,10 +721,21 @@ def delivery_rows(db, today):
 
 
 def get_deliveries(*, query: str = "", page: int = 1, page_size: int = 30, db: Session):
+    batch_serials = (
+        set(
+            db.scalars(
+                select(mt.serial_no).where(
+                    mt.status != "voided", literal_query(query, [mt.batch_no])
+                )
+            )
+        )
+        if query.strip()
+        else set()
+    )
     rows = [
         r
         for r in delivery_rows(db, local_day(utcnow()))
-        if query.casefold() in r["serial_no"].casefold()
+        if query.strip().casefold() in r["serial_no"].casefold() or r["serial_no"] in batch_serials
     ]
     return {
         "items": rows[(page - 1) * page_size : page * page_size],

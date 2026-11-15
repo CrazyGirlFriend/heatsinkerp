@@ -55,7 +55,13 @@ def test_split_work_counts_outputs_and_scrap_without_changing_the_input_quantity
             "split",
             input_quantity=7,
             outputs=[
-                dict(role="produced", quantity=60, weight=60, material_type="semi_finished"),
+                dict(
+                    role="produced",
+                    quantity=60,
+                    weight=60,
+                    material_type="semi_finished",
+                    transfer_specification="20 × 10 × 2 mm",
+                ),
                 dict(role="remaining", quantity=3, weight=30, material_type="semi_finished"),
                 dict(role="scrap", quantity=0, weight=10, material_type="scrap_chips"),
             ],
@@ -94,3 +100,17 @@ def test_client_cannot_select_a_different_processing_capability(team, mode):
 def test_invalid_work_is_rejected_before_any_persistence(changes, message):
     with pytest.raises(ProcessingRuleError, match=message):
         normalize(production(**changes))
+
+
+def test_split_work_requires_the_dimensions_the_operator_enters():
+    with pytest.raises(ProcessingRuleError, match="实际尺寸"):
+        normalize(
+            production(
+                "split",
+                input_quantity=10,
+                outputs=[
+                    dict(role="produced", quantity=60, weight=100, material_type="semi_finished")
+                ],
+            ),
+            "FACTORY-WIRE",
+        )

@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
 from test_warehouse_receipts import migration
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -71,6 +72,7 @@ def outbound(client, request):
                 "weight": "10.000",
                 "notes": "手工入库",
                 "idempotency_key": f"intake-{i}",
+                **select_location(client, {"headers": headers[warehouse["id"]]}),
             },
         )
         assert response.status_code == 201, response.text

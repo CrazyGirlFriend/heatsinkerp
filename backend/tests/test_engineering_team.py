@@ -11,6 +11,37 @@ from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 URL = "/api/process-routes"
 
 
+def author(client):
+    """Use a real engineering account when shared fixtures write a route."""
+    from app.models import Team
+    from sqlalchemy import select
+
+    if hasattr(client, "engineering_author"):
+        return client.engineering_author
+    with SessionLocal() as db:
+        team_id = db.scalar(select(Team.id).where(Team.code == "FACTORY-PROCESS"))
+    if team_id is None:
+        response = client.post(
+            "/api/teams", json={"code": "FACTORY-PROCESS", "name": "工艺", "kind": "engineering"}
+        )
+        assert response.status_code == 201, response.text
+        team_id = response.json()["id"]
+    _, headers = _leader(client, "fixture-route-author", team_id)
+    people = client.get(f"/api/team-materials/{team_id}/employees", headers=headers).json()
+    if people:
+        employee_id = people[0]["id"]
+    else:
+        response = client.post(
+            f"/api/team-materials/{team_id}/employees",
+            headers=headers,
+            json={"name": "工艺测试员"},
+        )
+        assert response.status_code == 201, response.text
+        employee_id = response.json()["id"]
+    client.engineering_author = (headers, employee_id)
+    return client.engineering_author
+
+
 @pytest.fixture()
 def engineering(client):
     team = client.post(

@@ -158,7 +158,7 @@ describe('workspace with in-page navigation', () => {
       title: '检验',
       warehouse: false,
       appearance: 'watermelon',
-      modelValue: 'inspections',
+      modelValue: 'inspection-results',
       processing: true,
       inspection: true,
     })
@@ -167,7 +167,7 @@ describe('workspace with in-page navigation', () => {
         .getComponent(WatermelonFilter)
         .props('options')
         .map((option: { label: string }) => option.label),
-    ).toEqual(['检验记录', '质量反馈', '巡检记录'])
+    ).toEqual(['检验记录', '质量反馈'])
   })
   it('keeps export, fullscreen and settings after the query controls without duplicates', async () => {
     nativeFullscreen()
@@ -200,7 +200,7 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.find('.team-workspace__export').exists()).toBe(false)
     expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
   })
-  it.each(['delivery-schedule', 'inspections', 'inspection-results', 'process-routes'])(
+  it.each(['delivery-schedule', 'inspection-results', 'process-routes'])(
     'retains settings, messages and fullscreen for %s without a legacy toolbar',
     async (modelValue) => {
       nativeFullscreen()
@@ -216,13 +216,13 @@ describe('workspace with in-page navigation', () => {
           settings: true,
         },
         slots: {
-          messages: '<button data-message>提交返工问题</button>',
+          messages: '<button data-message>提交问题</button>',
         },
       })
       await flushPromises()
       expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
       expect(wrapper.findAll('[data-message]')).toHaveLength(1)
-      if (['inspections', 'inspection-results'].includes(modelValue))
+      if (modelValue === 'inspection-results')
         expect(wrapper.get('nav').text()).toContain('质量反馈3')
       else expect(wrapper.get('nav').isVisible()).toBe(false)
       if (engineering) {

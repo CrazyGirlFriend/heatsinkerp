@@ -21,6 +21,7 @@ import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
 import AutofillBadge from './AutofillBadge.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { useAuthStore } from '@/stores/auth'
+import { canMaintainProcessRoute } from '@/utils/processRoutePermissions'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { formatDateTime } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -96,6 +97,14 @@ const serials = computed(() =>
   [primarySerial.value.trim(), ...draft.value.serial_nos.slice(1)].filter(Boolean),
 )
 const sourceRoute = ref<ProcessRoute>()
+const materialName = computed(() =>
+  String(
+    draft.value.source_data.receipt_fields?.material_name?.value ??
+      draft.value.rework_request?.material_name ??
+      sourceRoute.value?.source_data.receipt_fields?.material_name?.value ??
+      '',
+  ),
+)
 const sourceLoading = ref(false)
 const sourceError = ref('')
 let sourceGeneration = 0
@@ -269,13 +278,7 @@ const busy = ref(false),
 const directory = useTeamDirectoryStore()
 const auth = useAuthStore()
 const canMaintain = computed(
-  () =>
-    !props.viewOnly &&
-    !auth.currentUserError &&
-    auth.currentUser?.active !== false &&
-    (auth.isAdmin ||
-      (auth.currentUser?.team?.code === 'FACTORY-PROCESS' &&
-        auth.currentUser.team.kind === 'engineering')),
+  () => !props.viewOnly && !auth.currentUserError && canMaintainProcessRoute(auth.currentUser),
 )
 const readonly = computed(() => !canMaintain.value || !editingSaved.value)
 watch(
@@ -643,7 +646,11 @@ onMounted(async () => {
             <AsyncStatus v-else label="正在加载附件预览…" />
           </div>
         </template>
-        <CompactFormSection title="工艺信息" aria-label="工艺基本信息">
+        <CompactFormSection
+          title="工艺信息"
+          aria-label="工艺基本信息"
+          :class="{ 'route-info--readonly': readonly }"
+        >
           <ElFormItem
             label="流水号"
             class="route-serials form-field--medium"
@@ -721,12 +728,10 @@ onMounted(async () => {
                 /></ElIcon>
               </ElTooltip>
             </template>
-            <strong v-if="readonly" class="route-person-value">{{
-              draft.source_data.receipt_fields?.material_name?.value || '—'
-            }}</strong>
+            <strong v-if="readonly" class="route-person-value">{{ materialName || '—' }}</strong>
             <ElInput
               v-else
-              :model-value="String(draft.source_data.receipt_fields?.material_name?.value || '')"
+              :model-value="materialName"
               aria-label="材质"
               placeholder="填写材质"
               maxlength="160"
@@ -1417,6 +1422,12 @@ onMounted(async () => {
   margin-bottom: 14px;
   border: 1px solid var(--el-color-danger-light-7);
   border-radius: 12px;
+}
+.route-info--readonly :deep(.compact-form-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+}
+.route-info--readonly :deep(.compact-form-grid > .el-form-item) {
+  grid-column: auto;
 }
 .route-serial-value {
   color: var(--primary);

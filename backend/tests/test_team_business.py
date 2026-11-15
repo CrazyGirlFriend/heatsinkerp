@@ -20,6 +20,7 @@ from test_material_stock import dispatch, loss, receive_lot, totals
 from test_material_stock import stock_setup as stock_setup
 from test_material_transfers import _create, _setup_three_teams
 from test_warehouse_receipts import migration
+from warehouse_test_locations import select_location
 
 
 def url(s, role="target", suffix="purposes"):
@@ -141,6 +142,45 @@ def test_upstream_chooses_destination_purpose_and_snapshot_survives_rename_disab
     )
 
 
+@pytest.mark.parametrize("legacy_task_active", [True, False])
+def test_warehouse_intake_needs_no_task_even_with_legacy_directory(client, legacy_task_active):
+    s = _setup_three_teams(client)
+    old = purpose(client, s, name="旧库房任务")
+    if not legacy_task_active:
+        assert (
+            client.patch(
+                url(s) + f"/{old['id']}",
+                headers=s["target_headers"],
+                json={"name": old["name"], "active": False, "expected_version": 1},
+            ).status_code
+            == 200
+        )
+    with SessionLocal.begin() as db:
+        team = db.get(Team, s["target"]["id"])
+        team.kind = "warehouse"
+        team.code = "FACTORY-WAREHOUSE"
+    location = client.post("/api/warehouse-locations", json={"name": "无任务入库测试仓位"})
+    assert location.status_code == 201, location.text
+    reserved = client.post(
+        f"/api/warehouse-locations/{location.json()['id']}/reservation",
+        headers=s["source_headers"],
+        json={"key": "warehouse-no-task"},
+    )
+    assert reserved.status_code == 200, reserved.text
+    result = _create(
+        client,
+        s,
+        material_type="finished",
+        warehouse_location="无任务入库测试仓位",
+        warehouse_location_reservation_key="warehouse-no-task",
+    )
+    assert result.status_code == 201, result.text
+    assert result.json()["purpose_id"] is None
+    assert result.json()["purpose_name"] is None
+    # Removing the requirement must not delete the historical task directory.
+    assert client.get(url(s)).json()[0]["id"] == old["id"]
+
+
 def test_each_outbound_batch_has_its_own_purpose_and_bad_line_rolls_back(client, stock_setup):
     s = stock_setup
     lot = receive_lot(client, s)
@@ -173,11 +213,20 @@ def test_business_search_uses_historical_names_and_literal_wildcards(
     lot = receive_lot(client, s)
     chosen = purpose(client, s, "去毛刺_100%", role="third")
     other = purpose(client, s, "去毛刺X100Y", role="third")
+    location = (
+        select_location(client, s, headers=s["stock_headers"]) if warehouse_destination else {}
+    )
     response = dispatch(
         client,
         s,
         [
-            {"source_transfer_id": lot["id"], "quantity": 10, "weight": 1, "purpose_id": item["id"]}
+            {
+                "source_transfer_id": lot["id"],
+                "quantity": 10,
+                "weight": 1,
+                "purpose_id": item["id"],
+                **location,
+            }
             for item in (chosen, other)
         ],
     )

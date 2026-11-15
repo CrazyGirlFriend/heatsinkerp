@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .process_route_read_schemas import RouteExecutionContextResponse
+from .process_route_read_schemas import ReworkProgressResponse, RouteExecutionContextResponse
 from .read_schemas import PageResponse, ReadResponse
 
 Disposition = Literal["pending", "rework", "shipment", "transfer", "reallocate", "scrap", "other"]
@@ -182,7 +182,31 @@ class QualityFeedbackDetailResponse(QualityFeedbackResponse):
     rechecks: list[InspectionRecordResponse]
 
 
-class QualityFeedbackPageResponse(PageResponse[QualityFeedbackResponse]):
+class TeamProblemResponse(ReadResponse):
+    """A team report is the rework request itself, not a fabricated inspection."""
+
+    id: int
+    kind: Literal["team_report"]
+    serial_no: str
+    batch_no: str
+    source_transfer_id: int
+    material_name: str | None
+    team_id: int
+    team_name: str
+    checked_at: str
+    notes: str
+    failed_quantity: int
+    weight: float
+    created_by: str
+    involved_teams: list[FeedbackTeamResponse]
+    feedback_status: Literal["pending", "processing", "closed"]
+    disposition: Literal["rework"]
+    route_state: Literal["draft", "published"]
+    rework_round: int
+    rework_progress: ReworkProgressResponse
+
+
+class QualityFeedbackPageResponse(PageResponse[QualityFeedbackResponse | TeamProblemResponse]):
     pending_count: int
 
 

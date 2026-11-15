@@ -43,7 +43,7 @@ const props = defineProps<{
   kind?: InspectionRecord['kind']
 }>()
 const title = computed(() =>
-  props.kind === 'inspection' ? '检验' : props.sourceId ? '检查' : '巡检',
+  props.kind === 'patrol' ? '历史巡检' : props.sourceId ? '检查' : '检验',
 )
 const columnSettingsTarget = ref<HTMLElement | null>(null)
 const feedbackId = ref<number>()
@@ -96,7 +96,7 @@ function params(): InspectionFilters {
   return {
     ...tableQuery.params.value,
     ...applied.value,
-    kind: props.kind ?? (props.sourceId ? undefined : 'patrol'),
+    kind: props.kind ?? (props.sourceId ? undefined : 'inspection'),
     team_id: props.sourceId ? undefined : props.showAll ? applied.value.team_id : props.teamId,
     source_transfer_id: props.sourceId ?? sourceFilter.value,
   }
@@ -132,7 +132,7 @@ async function load(background = false) {
     if (token === generation) {
       if (background) throw e
       rows.value = []
-      error.value = e instanceof Error ? e.message : '巡检记录读取失败'
+      error.value = e instanceof Error ? e.message : '检查记录读取失败'
     }
   } finally {
     if (token === generation) loading.value = false
@@ -182,6 +182,7 @@ function changeSize(value: number) {
   changePage(1)
 }
 function register(row?: InspectionRecord) {
+  if (!row && (props.kind === 'patrol' || props.sourceId)) return
   recheck.value = row || null
   registration.value = true
 }
@@ -219,7 +220,7 @@ function exportSource() {
       { key: 'passed_quantity', label: '检查合格件数', value: (row) => row.passed_quantity },
       { key: 'failed_quantity', label: '检查不合格件数', value: (row) => row.failed_quantity },
       { key: 'status', label: '处理状态', value: (row) => inspectionStatusLabels[row.status] },
-      { key: 'scope', label: '检验范围', value: (row) => (row.scope === 'full' ? '全检' : '抽检') },
+      { key: 'scope', label: '检验方式', value: (row) => (row.scope === 'full' ? '全检' : '抽检') },
       {
         key: 'methods',
         label: '检查手段',
@@ -234,7 +235,7 @@ function exportSource() {
       { key: 'weight_result', label: '重量要求与实测', value: (row) => row.weight_result },
       { key: 'notes', label: '检查与处理说明', value: (row) => row.notes },
       { key: 'problems', label: '检验问题', value: inspectionProblemLabel },
-      { key: 'parent_id', label: '原巡检记录编号', value: (row) => row.parent_id },
+      { key: 'parent_id', label: '原检查记录编号', value: (row) => row.parent_id },
       { key: 'batch_no', label: '批次号', value: (row) => row.batch_no },
     ],
     (signal, progress) =>
@@ -279,7 +280,7 @@ onBeforeUnmount(() => {
       v-model="query"
       :loading="loading"
       search-label="检查搜索"
-      placeholder="流水号、批次、材质或检验人"
+      placeholder="流水号、批次号、材质或检验人"
       :refresh-label="`刷新${title}记录`"
       @search="search"
       @refresh="load()"
@@ -336,7 +337,10 @@ onBeforeUnmount(() => {
           :context="JSON.stringify(params())"
       /></template>
       <template #primary-actions
-        ><ElButton v-if="canWrite && !sourceId" type="primary" @click="register()"
+        ><ElButton
+          v-if="canWrite && !sourceId && kind !== 'patrol'"
+          type="primary"
+          @click="register()"
           >{{ title }}登记</ElButton
         ></template
       >
@@ -390,7 +394,7 @@ onBeforeUnmount(() => {
           row.parent_id ? '复检' : row.kind === 'inspection' ? '检验' : '巡检'
         }}</template></ElTableColumn
       >
-      <ElTableColumn label="检验范围" width="90" align="center"
+      <ElTableColumn label="检验方式" width="120" align="center"
         ><template #default="{ row }">{{
           row.scope === 'full' ? '全检' : '抽检'
         }}</template></ElTableColumn
@@ -445,7 +449,7 @@ onBeforeUnmount(() => {
     <InspectionRegistrationDialog
       v-if="registration && canWrite && qc"
       :inspection-team-id="Number(qc.id)"
-      :kind="kind || 'patrol'"
+      :kind="kind || 'inspection'"
       :initial-team-id="kind === 'inspection' ? teamId : showAll ? applied.team_id : teamId"
       :recheck="recheck"
       @close="registration = false"
@@ -493,7 +497,7 @@ onBeforeUnmount(() => {
         ><ElDescriptionsItem label="登记账号"
           ><PersonName :name="detail.created_by"
         /></ElDescriptionsItem>
-        <ElDescriptionsItem label="范围">{{
+        <ElDescriptionsItem label="检验方式">{{
           detail.scope === 'full' ? '全检' : '抽检'
         }}</ElDescriptionsItem>
         <ElDescriptionsItem label="检查手段">{{

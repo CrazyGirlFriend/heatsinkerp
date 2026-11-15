@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import AppDetailTable from './AppDetailTable.vue'
-import ElSelect from '@/components/AppSelect.vue'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
+import WatermelonDialog from './watermelon/WatermelonDialog.vue'
+import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
+import WatermelonSearch from './watermelon/WatermelonSearch.vue'
+import WatermelonPagination from './watermelon/WatermelonPagination.vue'
 import { formatAmount as amount } from '@/utils/format'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElOption } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import {
   locationState,
@@ -37,7 +41,15 @@ const emit = defineEmits<{
   busyChange: [value: boolean]
 }>()
 const items = ref<WarehouseLocation[]>([]),
-  lease = ref<WarehouseLease | null>(null)
+  lease = ref<WarehouseLease | null>(null),
+  selection = ref<WarehouseLocation>()
+const pickerOpen = ref(false),
+  pickerMounted = ref(false),
+  query = ref(''),
+  appliedQuery = ref(''),
+  page = ref(1),
+  total = ref(0)
+const columnTools = ref<HTMLElement | null>(null)
 const loading = ref(false),
   choosing = ref(false),
   loaded = ref(false),
@@ -52,9 +64,12 @@ const material = computed<WarehouseMaterial | undefined>(() =>
       }
     : undefined,
 )
-const materialKey = computed(() => JSON.stringify(material.value))
 const owner = Symbol('warehouse-line')
-const selectedStock = computed(() => items.value.find((item) => item.name === props.modelValue))
+const selectedStock = computed(() =>
+  selection.value?.name === props.modelValue
+    ? selection.value
+    : items.value.find((item) => item.name === props.modelValue),
+)
 const currentStock = computed(
   () => selectedStock.value?.batches.filter((batch) => batch.status === 'received') || [],
 )
@@ -65,23 +80,9 @@ const currentQuantity = computed(() =>
 const currentWeight = computed(() =>
   amount(currentStock.value.reduce((sum, batch) => sum + batch.weight, 0)),
 )
-let defaultAttempted = false
-function compatible(item: WarehouseLocation) {
-  return (
-    !!material.value &&
-    item.batches.length > 0 &&
-    item.batches.every(
-      (batch) =>
-        batch.serial_no === material.value!.serial_no &&
-        batch.material_name === material.value!.material_name &&
-        batch.material_type === material.value!.material_type,
-    )
-  )
-}
 function selectable(item: WarehouseLocation) {
   const shared = props.leaseGroup?.get(item.id)
-  if (shared) return item.active && shared.material === materialKey.value
-  return item.active && !item.draft_locked && (item.status === 'available' || compatible(item))
+  return item.active && (!item.draft_locked || !!shared || lease.value?.id === item.id)
 }
 const remainingSeconds = computed(() =>
   lease.value?.hold_until
@@ -116,7 +117,7 @@ async function release(value: WarehouseLease | null) {
       /* The bounded lease also releases after a lost connection. */
     })
 }
-async function search(query = '') {
+async function search(searchQuery = appliedQuery.value) {
   const version = ++searchVersion,
     team = props.teamId
   if (!team || !props.active) return
@@ -124,22 +125,18 @@ async function search(query = '') {
   try {
     const result = await teamMaterialApi.warehouseLocations(
       team,
-      query.slice(0, 80),
+      searchQuery.slice(0, 80),
       props.modelValue,
       material.value,
+      page.value,
     )
     if (version !== searchVersion || !props.active) return
-    items.value = result.items
+    items.value = [...result.items]
+    total.value = result.total ?? result.items.length
     loaded.value = true
-    for (const shared of props.leaseGroup?.values() || []) {
-      if (
-        shared.material === materialKey.value &&
-        !items.value.some((item) => item.id === shared.slot.id)
-      )
-        items.value.push(shared.slot)
-    }
     // A saved uncertain submission keeps its original key for safe retries.
     const selected = items.value.find((item) => item.name === props.modelValue)
+    if (selected) selection.value = selected
     if (!lease.value && selected && props.reservationKey)
       lease.value = {
         id: selected.id,
@@ -148,21 +145,28 @@ async function search(query = '') {
         expires_at: '',
         hold_until: '',
       }
-    if (!query && material.value && !props.modelValue && !props.disabled && !defaultAttempted) {
-      defaultAttempted = true
-      const available = items.value.filter(selectable)
-      const preferred =
-        available.find(compatible) ||
-        available.find((item) => props.leaseGroup?.get(item.id)?.material === materialKey.value) ||
-        available[0]
-      if (preferred) void choose(preferred.name)
-    }
   } catch (failure) {
     if (version === searchVersion)
       error.value = failure instanceof Error ? failure.message : '仓位读取失败，请重新展开重试'
   } finally {
     if (version === searchVersion) loading.value = false
   }
+}
+function openPicker() {
+  pickerMounted.value = true
+  pickerOpen.value = true
+  query.value = appliedQuery.value = ''
+  page.value = 1
+  void search()
+}
+function findLocations() {
+  appliedQuery.value = query.value.trim()
+  page.value = 1
+  void search()
+}
+function changePage(value: number) {
+  page.value = value
+  void search()
 }
 async function choose(name: string) {
   if (props.disabled || choosing.value) return
@@ -177,7 +181,10 @@ async function choose(name: string) {
     await search()
     return
   }
-  if (previous?.name === name) return
+  if (previous?.name === name) {
+    pickerOpen.value = false
+    return
+  }
   const item = items.value.find((item) => item.name === name && selectable(item))
   if (!item) {
     error.value = '该仓位已不可选，请刷新后重新选择'
@@ -190,9 +197,7 @@ async function choose(name: string) {
   if (props.leaseGroup) {
     const entry = shared || {
       key: claimKey,
-      material: materialKey.value,
       owners: new Set<symbol>(),
-      slot: item,
     }
     entry.owners.add(owner)
     props.leaseGroup.set(item.id, entry)
@@ -204,6 +209,8 @@ async function choose(name: string) {
       return
     }
     lease.value = claimed
+    selection.value = item
+    pickerOpen.value = false
     scheduleDeadline()
     emit('update:modelValue', claimed.name)
     emit('update:reservationKey', claimed.key)
@@ -267,6 +274,7 @@ function cleanup() {
   ++searchVersion
   clearTimeout(deadlineTimer)
   loading.value = false
+  pickerOpen.value = false
   busy(false)
   const previous = lease.value
   lease.value = null
@@ -278,7 +286,7 @@ function pagehide() {
   emit('update:reservationKey', '')
 }
 watch(
-  () => [props.active, props.teamId, materialKey.value],
+  () => [props.active, props.teamId],
   () => {
     const selected = lease.value
     cleanup()
@@ -287,10 +295,12 @@ watch(
       emit('update:reservationKey', '')
     }
     items.value = []
+    selection.value = undefined
+    page.value = 1
+    appliedQuery.value = ''
     loaded.value = false
     error.value = ''
-    defaultAttempted = false
-    if (props.active) void search()
+    if (props.active) void search(props.modelValue)
   },
   { immediate: true },
 )
@@ -317,51 +327,121 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="warehouse-location-select">
-    <ElSelect
-      :model-value="modelValue"
-      :disabled="disabled || choosing"
-      aria-label="入库仓位"
-      :placeholder="required ? '请选择入库仓位' : '选择仓位（选填）'"
-      filterable
-      clearable
-      remote
-      :remote-method="search"
-      :loading="loading || choosing"
-      :no-data-text="required ? '暂无可用仓位，请先在仓库管理中设置' : '暂无可用仓位，可不填写'"
-      @visible-change="
-        (open) => {
-          if (open) search()
-        }
-      "
-      @update:model-value="choose(String($event || ''))"
-    >
-      <ElOption
-        v-for="item in items"
-        :key="item.id"
-        :value="item.name"
-        :label="item.name"
-        :disabled="!selectable(item) && lease?.id !== item.id"
-        ><span>{{ item.name }}</span
-        ><small>{{
-          lease?.id === item.id
-            ? '本单已锁定'
-            : compatible(item)
-              ? '同类库存'
-              : locationState[item.status]
-        }}</small></ElOption
+    <div class="location-selection">
+      <WatermelonButton
+        class="location-trigger"
+        :disabled="disabled || choosing"
+        aria-label="入库仓位"
+        aria-haspopup="dialog"
+        :aria-expanded="pickerOpen"
+        @click="openPicker"
+        >{{ modelValue || (required ? '请选择入库仓位' : '选择仓位（选填）') }}
+        <span class="location-trigger-hint">{{
+          modelValue ? '更换' : '查看仓位列表'
+        }}</span></WatermelonButton
       >
-    </ElSelect>
+      <WatermelonButton
+        v-if="modelValue"
+        :disabled="disabled || choosing"
+        aria-label="清除入库仓位"
+        @click="choose('')"
+        >清除</WatermelonButton
+      >
+    </div>
+    <WatermelonDialog
+      v-if="pickerMounted"
+      v-model="pickerOpen"
+      title="选择入库仓位"
+      width="min(1100px, 94vw)"
+      :close-on-click-modal="!choosing"
+      :close-on-press-escape="!choosing"
+      :show-close="!choosing"
+    >
+      <p class="location-picker-hint">
+        空仓位和已有料的仓位均可选择。查看现有物料后，选择本批料要存放的仓位。
+      </p>
+      <div class="location-picker-tools">
+        <WatermelonSearch
+          v-model="query"
+          label="搜索入库仓位"
+          placeholder="仓位、流水号、批次号或材质"
+          :maxlength="80"
+          :disabled="choosing"
+          @search="findLocations"
+        />
+        <span ref="columnTools" />
+      </div>
+      <p v-if="error" class="location-error" role="alert">{{ error }}</p>
+      <WatermelonDataTable
+        :data="items"
+        :loading="loading"
+        columns-key="WarehouseLocationSelect-picker"
+        :column-settings-target="columnTools"
+        :required-columns="['仓位', '现有物料']"
+        row-key="id"
+        max-height="440"
+      >
+        <ElTableColumn label="仓位" prop="name" min-width="130" />
+        <ElTableColumn label="状态" width="110">
+          <template #default="{ row }">{{
+            lease?.id === row.id
+              ? '本单已选'
+              : row.draft_locked
+                ? '填写中'
+                : row.status === 'locked'
+                  ? '待签收'
+                  : locationState[row.status as WarehouseLocation['status']]
+          }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="现有物料" min-width="330">
+          <template #default="{ row }">
+            <div v-if="row.batches.length" class="location-materials">
+              <div v-for="batch in row.batches" :key="batch.id">
+                <strong>{{ batch.serial_no || '无流水号' }}</strong>
+                · {{ batch.material_name || '—' }} · {{ materialTypeLabel(batch.material_type) }}
+                <small
+                  >{{ batch.batch_no }} · {{ amount(batch.quantity) }} 件 ·
+                  {{ amount(batch.weight) }} kg ·
+                  {{ batch.status === 'received' ? '在库' : '待签收' }}</small
+                >
+              </div>
+            </div>
+            <span v-else>空仓位</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" width="108" fixed="right">
+          <template #default="{ row }">
+            <WatermelonButton
+              class="location-choice"
+              :data-location="row.name"
+              :disabled="disabled || choosing || loading || !selectable(row as WarehouseLocation)"
+              @click="choose(row.name)"
+              >{{ modelValue === row.name ? '已选择' : '选择' }}</WatermelonButton
+            >
+          </template>
+        </ElTableColumn>
+        <template #empty>暂无可选仓位，请更换搜索条件或先在仓库管理中设置</template>
+      </WatermelonDataTable>
+      <WatermelonPagination
+        :total="total"
+        :current-page="page"
+        :page-size="20"
+        :show-size="false"
+        :disabled="loading || choosing"
+        @current-change="changePage"
+      />
+    </WatermelonDialog>
     <div v-if="selectedStock?.batches.length" class="location-stock">
       <strong>当前库存 {{ currentQuantity }} 件 · {{ currentWeight }} kg</strong>
-      <span
-        >{{ selectedStock.batches[0]?.serial_no }} · {{ selectedStock.batches[0]?.material_name }} ·
-        {{ materialTypeLabel(selectedStock.batches[0]?.material_type) }}</span
-      >
+      <span>此仓位已有 {{ selectedStock.batches.length }} 批物料</span>
       <div class="location-batches">
         <AppDetailTable columns-key="WarehouseLocationSelect-1" class="business-table">
           <thead>
             <tr>
               <th>批次号</th>
+              <th>流水号</th>
+              <th>材质</th>
+              <th>物料类型</th>
               <th>件数</th>
               <th>重量（kg）</th>
               <th>状态</th>
@@ -370,6 +450,9 @@ onBeforeUnmount(() => {
           <tbody>
             <tr v-for="batch in selectedStock.batches" :key="batch.id">
               <td>{{ batch.batch_no }}</td>
+              <td>{{ batch.serial_no || '—' }}</td>
+              <td>{{ batch.material_name || '—' }}</td>
+              <td>{{ materialTypeLabel(batch.material_type) }}</td>
               <td>{{ amount(batch.quantity) }}</td>
               <td>{{ amount(batch.weight) }}</td>
               <td>{{ batch.status === 'received' ? '在库' : '待签收' }}</td>
@@ -410,21 +493,47 @@ onBeforeUnmount(() => {
 .warehouse-location-select > .location-countdown-warning {
   color: var(--wm-warning-text, #aa6c19);
 }
-.warehouse-location-select > .location-error {
+.location-error {
   color: var(--danger);
 }
-.el-select {
-  width: 100%;
-}
-.el-select-dropdown__item {
+.location-selection,
+.location-picker-tools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
 }
-.el-select-dropdown__item small {
+.location-trigger {
+  flex: 1;
+  min-width: 0;
+  justify-content: space-between;
+}
+.location-trigger :deep(.wm-button-label) {
+  width: 100%;
+  justify-content: space-between;
+}
+.location-trigger-hint,
+.location-picker-hint,
+.location-materials small {
   color: var(--subtle);
   font-size: 12px;
+}
+.location-picker-tools {
+  margin: 16px 0;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.location-picker-tools .wm-search {
+  flex: 1;
+  min-width: min(260px, 100%);
+}
+.location-materials > div + div {
+  margin-top: 8px;
+}
+.location-materials {
+  white-space: normal;
+}
+.location-materials small {
+  display: block;
 }
 .location-stock {
   margin-top: 8px;

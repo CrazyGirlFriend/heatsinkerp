@@ -10,6 +10,10 @@ depends_on = None
 
 
 def upgrade():
+    columns = {
+        item["name"]
+        for item in sa.inspect(op.get_bind()).get_columns("material_quantity_adjustments")
+    }
     for name, data_type in (
         ("furnace_no", sa.String(80)),
         ("temperature_requirement", sa.String(160)),
@@ -17,7 +21,10 @@ def upgrade():
         ("holding_minutes", sa.Integer()),
         ("machine_no", sa.String(80)),
     ):
-        op.add_column("material_quantity_adjustments", sa.Column(name, data_type, nullable=True))
+        if name not in columns:
+            op.add_column(
+                "material_quantity_adjustments", sa.Column(name, data_type, nullable=True)
+            )
 
 
 def downgrade():

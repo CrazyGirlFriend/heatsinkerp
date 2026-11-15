@@ -457,7 +457,7 @@ onBeforeUnmount(() => {
       <ElDescriptionsItem label="物料类型">{{
         materialTypeLabel(group.material_type || null)
       }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="加工任务">{{
+      <ElDescriptionsItem v-if="!warehouse" label="加工任务">{{
         group.purpose_name || '未指定任务'
       }}</ElDescriptionsItem>
       <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{

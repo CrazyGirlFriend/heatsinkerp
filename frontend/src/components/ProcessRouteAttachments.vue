@@ -105,11 +105,11 @@ defineExpose({ open })
     </DocumentCard>
     <template v-if="documents.includes('drawing')">
       <DocumentCard
-        v-for="drawing in route.drawings"
+        v-for="(drawing, index) in route.drawings"
         :key="drawing.id"
         class="route-attachment-card"
         title="图纸"
-        :lazy="lazy"
+        :lazy="lazy && index > 0"
       >
         <ProcessRouteDrawingPreview :route-id="route.id" :drawing="drawing" thumbnail />
         <template v-if="editable" #actions>
@@ -129,7 +129,7 @@ defineExpose({ open })
         class="route-attachment-card"
         title="图纸"
         source="待保存"
-        :lazy="lazy"
+        :lazy="lazy && (index > 0 || !!route.drawings?.length)"
       >
         <ProcessRouteDrawingPreview :route-id="route.id" :file="file" thumbnail />
         <template v-if="editable" #actions>

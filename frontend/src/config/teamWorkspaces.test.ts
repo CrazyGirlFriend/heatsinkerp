@@ -147,6 +147,11 @@ describe('shared workspace navigation', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false)).toBe('stock')
   })
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
+    expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, false)).toBe('quality-feedback')
+    expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, true)).toBe('stock')
+    expect(
+      teamWorkspaceSectionsFor(false, false, true, true, true).map((item) => item.value),
+    ).not.toContain('inspections')
     expect(resolveTeamWorkspaceSection({ tab: 'dashboard' }, false)).toBe('dashboard')
     expect(resolveTeamWorkspaceSection({ tab: 'dashboard' }, true)).toBe('dashboard')
     expect(teamWorkspaceSectionPath(7, 'dashboard')).toBe('/team-workspaces/7?tab=dashboard')

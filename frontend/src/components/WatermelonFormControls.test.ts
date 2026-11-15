@@ -59,7 +59,16 @@ describe('warehouse form controls', () => {
       await wrapper.get('input[aria-label="工艺搜索"]').setValue('691236')
       await wrapper.get('input[aria-label="工艺搜索"]').trigger('keydown', { key: 'Enter' })
       await flushPromises()
-      expect(processRouteApi.list).toHaveBeenLastCalledWith('691236', 1, 'published')
+      expect(processRouteApi.list).toHaveBeenLastCalledWith(
+        '691236',
+        1,
+        'published',
+        'desc',
+        20,
+        'normal',
+        'all',
+        undefined,
+      )
       const select = wrapper.findAll('button').find((button) => button.text() === '选择')!
       await select.trigger('click')
       await flushPromises()

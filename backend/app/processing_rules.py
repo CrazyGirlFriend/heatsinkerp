@@ -65,6 +65,10 @@ def prepare_split(lot, payload, q, w):
             raise ProcessingRuleError(422, "整批加工的投入件数应等于本批未加工件数")
         if payload.quantity <= 0:
             raise ProcessingRuleError(422, "请填写实际加工产出件数")
+    elif any(
+        line.role == "produced" and not line.transfer_specification for line in payload.outputs
+    ):
+        raise ProcessingRuleError(422, "请填写已加工产出的实际尺寸")
     return payload, input_quantity
 
 

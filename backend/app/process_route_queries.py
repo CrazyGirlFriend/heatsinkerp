@@ -1,6 +1,6 @@
 """Process-route catalogue reads and imported step-to-team lookup."""
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import aliased
 
 from .models import (
@@ -12,6 +12,7 @@ from .models import (
     ProcessRouteDrawing,
     ProcessRoutePath,
     ProcessRoutePolicy,
+    SharedMaterialMember,
     Team,
 )
 from .process_route_documents import document, drawing_document
@@ -48,6 +49,29 @@ def list_routes(
                         ProcessRoute.requesting_team_name,
                     ],
                 ),
+                select(MaterialTransfer.id)
+                .where(
+                    or_(
+                        MaterialTransfer.process_route_id == ProcessRoute.id,
+                        MaterialTransfer.rework_route_id == ProcessRoute.id,
+                        and_(
+                            ProcessRoute.route_kind == "normal",
+                            MaterialTransfer.serial_no.in_(
+                                select(ProcessRoutePath.serial_no)
+                                .where(ProcessRoutePath.route_id == ProcessRoute.id)
+                                .correlate(ProcessRoute)
+                            ),
+                        ),
+                        MaterialTransfer.shared_group_id.in_(
+                            select(SharedMaterialMember.group_id)
+                            .where(SharedMaterialMember.process_route_id == ProcessRoute.id)
+                            .correlate(ProcessRoute)
+                        ),
+                    ),
+                    MaterialTransfer.status != "voided",
+                    literal_query(query.strip(), [MaterialTransfer.batch_no]),
+                )
+                .exists(),
                 select(MaterialTransfer.id)
                 .where(
                     MaterialTransfer.id == ProcessRoute.rework_source_transfer_id,

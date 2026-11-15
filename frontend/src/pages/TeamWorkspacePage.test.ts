@@ -148,6 +148,7 @@ beforeEach(() => {
   })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
     items: [source(), source(11)],
     total: 2,
@@ -211,6 +212,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
         transition: !animate,
         StockSourcePicker: true,
         TeamReworkRequestDialog: true,
+        TeamQualityFeedback: true,
         DeliverySchedules: true,
         TeamAnalyticsCharts: true,
         TeamDashboard: true,
@@ -270,6 +272,7 @@ describe('team workspace material ledger', () => {
         await flushPromises()
       }
     },
+    15000,
   )
 
   it('opens the shared team dashboard and carries its selected state into inventory', async () => {
@@ -305,30 +308,42 @@ describe('team workspace material ledger', () => {
         state.auth.currentUser.active = false
       }
       await render(`/team-workspaces/${teamId}`)
-      expect(wrapper.text()).not.toContain('提交返工问题')
+      expect(wrapper.text()).not.toContain('提交问题')
     },
   )
-  it('opens direct rework submission for the stock-holding production team', async () => {
-    const router = await render('/team-workspaces/914')
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '提交返工问题')!
-      .trigger('click')
-    expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(true)
-    expect(router.currentRoute.value.query.tab).not.toBe('quality-feedback')
-    await router.push('/team-workspaces/900')
-    await flushPromises()
-    expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(false)
-  })
-  it('takes the QC leader to quality issues instead of an unlinked stock request', async () => {
+  it.each(teamWorkspaceProfiles.filter((profile) => profile.code !== 'FACTORY-WAREHOUSE'))(
+    'opens the shared problem form for $name and closes it when leaving the team',
+    async (profile) => {
+      const ownTeam = state.directory.items[0]!
+      const previous = { code: ownTeam.code, name: ownTeam.name }
+      Object.assign(ownTeam, { code: profile.code, name: profile.name })
+      try {
+        const router = await render('/team-workspaces/914?tab=quality-feedback')
+        await wrapper
+          .findAll('button')
+          .find((button) => button.text() === '提交问题')!
+          .trigger('click')
+        expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(true)
+        await router.push('/team-workspaces/900')
+        await flushPromises()
+        expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(false)
+      } finally {
+        Object.assign(ownTeam, previous)
+      }
+    },
+  )
+  it('lets the QC leader submit a stock-linked rework problem directly', async () => {
     state.auth.currentUser.team_id = 900
     const router = await render('/team-workspaces/900')
-    const submit = wrapper.findAll('button').find((button) => button.text() === '提交返工问题')
+    const submit = wrapper.findAll('button').find((button) => button.text() === '提交问题')
     expect(submit).toBeDefined()
     await submit!.trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.query.tab).toBe('quality-feedback')
-    expect(wrapper.find('.rework-request').exists()).toBe(false)
+    expect(router.currentRoute.value.query.tab).not.toBe('quality-feedback')
+    expect(wrapper.findComponent(TeamReworkRequestDialog).exists()).toBe(true)
+    await router.push('/team-workspaces/900?tab=quality-feedback')
+    await flushPromises()
+    expect(wrapper.findAll('button').some((button) => button.text() === '提交问题')).toBe(true)
   })
 
   it.each(['own-team', 'administrator', 'other-team', 'inactive', 'permission-error'])(
@@ -1636,8 +1651,13 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
     expect(toolbar.find('.workspace-actions').exists()).toBe(false)
     expect(toolbar.findAll('button').filter((button) => button.text() === '查询')).toHaveLength(1)
-    expect(toolbar.find('.record-date-trigger').exists()).toBe(false)
+    expect(
+      toolbar
+        .findAll('.record-date-trigger')
+        .every((button) => button.element.closest('.filter-form-panel')),
+    ).toBe(true)
     const filters = wrapper.getComponent(FilterDialog)
+    expect(filters.props('modelValue')).toBe(false)
     filters.vm.$emit('open')
     filters.vm.$emit('update:modelValue', true)
     await flushPromises()

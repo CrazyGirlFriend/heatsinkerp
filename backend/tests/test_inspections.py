@@ -1,6 +1,7 @@
 """Quality checks and feedback preserve physical stock and production totals."""
 
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 from app.database import SessionLocal
@@ -48,11 +49,34 @@ def inspection(client, warehouse):
     )
 
 
+def historical_check(client, *, headers, json):
+    """Seed pre-retirement patrol records; live rechecks still use the actual policy."""
+    if json.get("kind", "patrol") == "patrol" and not json.get("parent_id"):
+        with patch("app.inspections.require_current_kind"):
+            return client.post("/api/inspections", headers=headers, json=json)
+    return client.post("/api/inspections", headers=headers, json=json)
+
+
 def create_check(client, inspection, **overrides):
     _, _, headers, body = inspection
     if overrides.get("failed_quantity") == 0:
         overrides.setdefault("problem_type_ids", [])
-    return client.post("/api/inspections", headers=headers, json={**body, **overrides})
+    return historical_check(client, headers=headers, json={**body, **overrides})
+
+
+def test_retired_patrol_rejects_new_records_but_preserves_old_reads_and_retries(client, inspection):
+    s, _, headers, body = inspection
+    before = client.get(base(s, True) + "/overview").json()["totals"]
+    for payload in (body, {**body, "kind": "patrol"}):
+        response = client.post("/api/inspections", headers=headers, json=payload)
+        assert response.status_code == 410, response.text
+        assert "提交返工问题" in response.json()["detail"]
+    assert client.get("/api/inspections").json()["total"] == 0
+    assert client.get(base(s, True) + "/overview").json()["totals"] == before
+    legacy = create_check(client, inspection).json()
+    replay = client.post("/api/inspections", headers=headers, json=body)
+    assert replay.status_code == 201 and replay.json()["id"] == legacy["id"]
+    assert client.get(f"/api/quality-feedback/{legacy['id']}", headers=headers).status_code == 200
 
 
 def decide(client, headers, row, **extra):

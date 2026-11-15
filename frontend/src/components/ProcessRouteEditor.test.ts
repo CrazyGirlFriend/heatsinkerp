@@ -5,6 +5,7 @@ import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import AppDialog from './AppDialog.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
+import DocumentCard from './DocumentCard.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { routeFixture as baseRouteFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 import { defineComponent, h } from 'vue'
@@ -51,11 +52,23 @@ vi.mock('@/stores/teamDirectory', () => ({
     refreshTeamDirectory: async () => {},
   }),
 }))
+const authState = vi.hoisted(() => ({ role: 'TEAM', active: true, teamActive: true }))
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, currentUser: { active: true }, currentUserError: '' }),
+  useAuthStore: () => ({
+    isAdmin: authState.role === 'ADMIN',
+    currentUser: {
+      active: authState.active,
+      role: authState.role,
+      team: { code: 'FACTORY-PROCESS', kind: 'engineering', active: authState.teamActive },
+    },
+    currentUserError: '',
+  }),
 }))
 let wrapper: VueWrapper
 beforeEach(() => {
+  authState.role = 'TEAM'
+  authState.active = true
+  authState.teamActive = true
   vi.spyOn(processRouteApi, 'reworkRounds').mockResolvedValue([])
   openWord.mockReset()
   openDrawing.mockReset()
@@ -123,6 +136,35 @@ async function click(text: string) {
     .trigger('click')
   await flushPromises()
 }
+it.each([
+  { kind: 'normal', published: false },
+  { kind: 'normal', published: true },
+  { kind: 'rework', published: false },
+  { kind: 'rework', published: true },
+])(
+  'keeps $kind ($published) read-only for an administrator even with direct-edit flags',
+  async ({ kind, published }) => {
+    authState.role = 'ADMIN'
+    await render(published, kind === 'normal' ? routeFixture : reworkRouteFixture, false, true)
+    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+    const buttons = wrapper.findAll('button').map((button) => button.text())
+    for (const action of ['修改工艺', '修改返工工艺', '保存工艺', '提交工艺']) {
+      expect(buttons).not.toContain(action)
+    }
+    expect(processRouteApi.options).not.toHaveBeenCalled()
+    expect(processRouteApi.save).not.toHaveBeenCalled()
+    expect(processRouteApi.publish).not.toHaveBeenCalled()
+    expect(processRouteApi.revise).not.toHaveBeenCalled()
+  },
+)
+it('keeps engineering read-only when its team is inactive', async () => {
+  authState.teamActive = false
+  await render(false, routeFixture, false, true)
+  expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
+  expect(wrapper.findAll('button').map((button) => button.text())).not.toContain('保存工艺')
+  expect(processRouteApi.options).not.toHaveBeenCalled()
+})
 it('preserves original text and saves the version before publication', async () => {
   await render()
   expect(wrapper.text()).not.toContain('导入提醒')
@@ -255,6 +297,50 @@ it('shows the authored rework scope and instructions in the same form without mo
     wrapper.findAll('button').some((button) => /修改返工工艺|保存工艺/.test(button.text())),
   ).toBe(false)
   expect(processRouteApi.save).not.toHaveBeenCalled()
+})
+it('shows the rework lot material before its original route finishes loading', async () => {
+  vi.mocked(processRouteApi.detail).mockReturnValue(new Promise(() => {}))
+  const route = {
+    ...reworkRouteFixture,
+    rework_request: { ...reworkRouteFixture.rework_request!, material_name: '铜钼 CuMo70' },
+  }
+  await render(true, route, true)
+  expect(wrapper.get('.route-material-field').text()).toContain('铜钼 CuMo70')
+  expect(wrapper.text()).toContain('加载原工艺')
+  expect(processRouteApi.save).not.toHaveBeenCalled()
+  wrapper.unmount()
+  await render(false, route, false, true)
+  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe(
+    '铜钼 CuMo70',
+  )
+  await wrapper.get('input[aria-label="材质"]').setValue('CuMo80')
+  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe('CuMo80')
+  await wrapper.get('input[aria-label="材质"]').setValue('')
+  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe('')
+})
+it('preserves explicitly entered rework material ahead of the lot material', async () => {
+  await render(
+    true,
+    {
+      ...reworkRouteFixture,
+      rework_request: { ...reworkRouteFixture.rework_request!, material_name: 'CuMo70' },
+      source_data: {
+        ...reworkRouteFixture.source_data,
+        receipt_fields: {
+          material_name: {
+            value: 'CuMo80',
+            label: '材质',
+            source_row: '',
+            source_label: '材质',
+            source_kind: 'manual',
+          },
+        },
+      },
+    },
+    true,
+  )
+  expect(wrapper.get('.route-material-field').text()).toContain('CuMo80')
+  expect(wrapper.get('.route-material-field').text()).not.toContain('CuMo70')
 })
 it('carries quality problems and teams into manual rework engineering with inherited drawings', async () => {
   const drawing = { id: 91, filename: 'S-001图纸.pdf', size_bytes: 100 }
@@ -573,6 +659,10 @@ it('shows original and drawing thumbnails together in details without a tabbed p
   })
   expect(wrapper.find('.route-original-panel').exists()).toBe(false)
   expect(wrapper.findAll('.route-attachment-card')).toHaveLength(3)
+  const drawingCards = wrapper
+    .findAllComponents(DocumentCard)
+    .filter((card) => card.props('title') === '图纸')
+  expect(drawingCards.map((card) => card.props('lazy'))).toEqual([false, true])
   expect(wrapper.getComponent(WordDocumentPreview).props('thumbnail')).toBe('')
   expect(
     wrapper

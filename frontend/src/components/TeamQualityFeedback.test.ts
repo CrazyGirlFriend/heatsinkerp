@@ -8,7 +8,11 @@ import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import TableExportButton from './TableExportButton.vue'
 import TableFilterFields from './TableFilterFields.vue'
-import { qualityFeedbackApi, type QualityFeedback } from '@/services/qualityFeedbackApi'
+import {
+  qualityFeedbackApi,
+  type QualityFeedback,
+  type TeamProblem,
+} from '@/services/qualityFeedbackApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 const route = vi.hoisted(() => ({ query: {} as Record<string, string> }))
 vi.mock('vue-router', () => ({ useRoute: () => route }))
@@ -74,6 +78,11 @@ async function render(showAll = false) {
     global: {
       stubs: {
         QualityFeedbackDetail: true,
+        TeamProblemDetail: {
+          name: 'TeamProblemDetail',
+          props: ['routeId'],
+          template: '<div class="team-problem-detail" />',
+        },
         AppDialog: {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
@@ -132,6 +141,59 @@ it('lists cross-team issues without a team constraint and keeps disposition filt
     .find((item) => item.text() === '查看 / 处理')!
     .trigger('click')
   expect(wrapper.getComponent(QualityFeedbackDetail).props('issueId')).toBe(1)
+})
+
+it('keeps team reports distinct from inspection IDs and opens their linked rework detail', async () => {
+  const report: TeamProblem = {
+    id: record.id,
+    kind: 'team_report',
+    serial_no: '691236-50',
+    batch_no: 'TL-REWORK',
+    source_transfer_id: 42,
+    material_name: 'MoCu70',
+    team_id: 2,
+    team_name: '轧制',
+    checked_at: record.checked_at,
+    notes: '精轧后厚度偏大',
+    failed_quantity: 20,
+    weight: 2,
+    created_by: '轧制班组长',
+    involved_teams: [{ team_id: 2, name: '轧制', replied: true }],
+    feedback_status: 'pending',
+    disposition: 'rework',
+    route_state: 'draft',
+    rework_round: 1,
+    rework_progress: {
+      quantity: 20,
+      completed_quantity: 0,
+      passed_quantity: 0,
+      state: 'awaiting_route',
+      inspections: [],
+    },
+  }
+  vi.mocked(qualityFeedbackApi.records).mockResolvedValue({
+    items: [report, record],
+    total: 2,
+    pending_count: 2,
+  })
+  await render(true)
+  expect(wrapper.text()).toContain('班组反馈')
+  expect(wrapper.text()).toContain('未填写')
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  const exported = await source.load(new AbortController().signal, vi.fn())
+  expect(exported[0]).toMatchObject({
+    kind: '班组反馈',
+    scope: '—',
+    sample_quantity: '',
+    problems: report.notes,
+  })
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '查看 / 处理')!
+    .trigger('click')
+  await flushPromises()
+  expect(wrapper.getComponent({ name: 'TeamProblemDetail' }).props('routeId')).toBe(report.id)
+  expect(wrapper.findComponent(QualityFeedbackDetail).exists()).toBe(false)
 })
 it('opens the exact issue from a quality notification and passes its navigation key', async () => {
   route.query = { issue: '42', business_notice: 'quality:8', notice: 'quality-landing' }

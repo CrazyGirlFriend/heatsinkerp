@@ -12,6 +12,7 @@ from .models import (
     InspectionProblemType,
     Team,
     TeamEmployee,
+    TeamEquipment,
     TeamProcessingTask,
     TeamPurpose,
     TeamSettingEvent,
@@ -55,10 +56,16 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
     if purpose_id is None:
         # Unconfigured teams and historical clients remain usable. Once a team
         # configures its vocabulary, new handoffs cannot bypass it (even if all
-        # options have subsequently been disabled).
+        # options have subsequently been disabled). Warehouses have no processing
+        # tasks, including when a historical purpose directory still exists.
         if (
             required
-            and db.scalar(select(TeamPurpose.id).where(TeamPurpose.team_id == team_id).limit(1))
+            and db.scalar(
+                select(TeamPurpose.id)
+                .join(Team, Team.id == TeamPurpose.team_id)
+                .where(TeamPurpose.team_id == team_id, Team.kind != "warehouse")
+                .limit(1)
+            )
             is not None
         ):
             raise HTTPException(422, "请选择下序班组的加工任务；无可用选项时请联系该班组长")
@@ -96,6 +103,7 @@ def save_directory_item(
     employee=False,
     processing_task=False,
     inspection_problem=False,
+    equipment=False,
 ):
     model, label, action = (
         (TeamEmployee, "员工", "employee_changed")
@@ -104,6 +112,8 @@ def save_directory_item(
     )
     if processing_task:
         model, label, action = TeamProcessingTask, "加工任务", "processing_task_changed"
+    if equipment:
+        model, label, action = TeamEquipment, "设备", "equipment_changed"
     if inspection_problem:
         if user.role != "TEAM" or not user.team or user.team.code != INSPECTION_TEAM_CODE:
             raise HTTPException(403, "仅检验班组长可以维护检验问题")
@@ -123,6 +133,11 @@ def save_directory_item(
                 raise HTTPException(404, "未找到班组")
             if not team.active:
                 raise HTTPException(403, "班组已停用")
+            if equipment:
+                from .processing_parameters import EQUIPMENT_FIELDS
+
+                if team.code not in EQUIPMENT_FIELDS:
+                    raise HTTPException(422, "本班组不配置加工设备")
             if processing_task and (
                 team.code not in PROCESSING_TEAM_CODES or team.kind != "production"
             ):
@@ -145,7 +160,12 @@ def save_directory_item(
                 row.version += 1
                 row.updated_at = utcnow()
             db.flush()
-            if not employee and not inspection_problem and team.code in PROCESSING_TEAM_CODES:
+            if (
+                not employee
+                and not inspection_problem
+                and not equipment
+                and team.code in PROCESSING_TEAM_CODES
+            ):
                 if processing_task:
                     purpose = db.get(TeamPurpose, row.purpose_id) if row.purpose_id else None
                     if purpose is None:
@@ -273,3 +293,21 @@ def authorize_opening(*, payload: OpeningAuthorization, team_id: int, user: User
                 )
             )
     return {"enabled": payload.enabled}
+
+
+def list_equipment(*, team_id: int, user: User, db: Session):
+    from .processing_parameters import EQUIPMENT_FIELDS
+
+    if user.role != "ADMIN":
+        require_actor(user, team_id)
+    team = require_team(db, team_id)
+    if team.code not in EQUIPMENT_FIELDS:
+        raise HTTPException(422, "本班组不配置加工设备")
+    return [
+        directory_item_dict(row)
+        for row in db.scalars(
+            select(TeamEquipment)
+            .where(TeamEquipment.team_id == team_id)
+            .order_by(TeamEquipment.id.desc())
+        )
+    ]

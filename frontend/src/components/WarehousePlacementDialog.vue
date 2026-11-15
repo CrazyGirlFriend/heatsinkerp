@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
             :loading="slotsLoading"
             :aria-busy="slotsLoading || undefined"
             aria-label="选择空闲仓位"
-            placeholder="选择或搜索仓位"
+            placeholder="搜索仓位、流水号、批次号或材质"
             :disabled="saving"
             ><ElOption
               v-for="slot in slots"

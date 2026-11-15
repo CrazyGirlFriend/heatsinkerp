@@ -132,14 +132,26 @@ describe('team business settings', () => {
       expect(teamMaterialApi.inspectionProblems).not.toHaveBeenCalled()
     },
   )
-  it('does not show or load processing tasks for warehouse settings', async () => {
+  it('keeps warehouse personnel and opening stock without receiving or processing tasks', async () => {
     wrapper = mount(TeamBusinessDialog, {
       props: { modelValue: true, teamId: 2, processingTasks: false },
       global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
     })
     await flushPromises()
     expect(wrapper.text()).not.toContain('加工任务')
+    expect(wrapper.text()).not.toContain('接收任务')
+    expect(wrapper.find('input[aria-label="新增员工名称"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('初始库存')
     expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
+    expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
+    wrapper.unmount()
+    wrapper = mount(TeamBusinessDialog, {
+      props: { modelValue: true, teamId: 2, processingTasks: false, initialTab: 'opening' },
+      global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    })
+    await flushPromises()
+    expect(wrapper.find('input[aria-label="第1行流水号"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="初始库存加工任务"]').exists()).toBe(false)
   })
   it('maintains task names and activation with versions, separately from businesses', async () => {
     vi.mocked(teamMaterialApi.processingTasks).mockResolvedValue([
@@ -440,3 +452,41 @@ it('registers weight-only opening stock without requesting or retaining pieces f
     expect.any(String),
   )
 })
+
+it.each(['FACTORY-ANNEAL', 'FACTORY-ROLL', 'FACTORY-GRIND', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'])(
+  'manages equipment for %s using the shared directory',
+  async (teamCode) => {
+    const equipment = { id: 3, team_id: 2, name: '01号设备', active: true, version: 1 }
+    vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([equipment])
+    vi.spyOn(teamMaterialApi, 'saveEquipment').mockResolvedValue({ ...equipment, version: 2 })
+    await render('equipment')
+    await wrapper.setProps({ teamCode })
+    await flushPromises()
+    expect(wrapper.text()).toContain('设备管理')
+    await wrapper.get('#tab-equipment').trigger('click')
+    await flushPromises()
+    expect((wrapper.get('input[aria-label="设备名称 3"]').element as HTMLInputElement).value).toBe(
+      '01号设备',
+    )
+    await wrapper.get('input[aria-label="新增设备名称"]').setValue('02号设备')
+    await click('新增设备')
+    expect(teamMaterialApi.saveEquipment).toHaveBeenCalledWith(
+      2,
+      { name: '02号设备', active: true },
+      undefined,
+    )
+    expect(teamMaterialApi.saveProcessingTask).not.toHaveBeenCalled()
+  },
+)
+
+it.each(['FACTORY-WAREHOUSE', 'FACTORY-PLATE', 'FACTORY-QC'])(
+  'does not expose equipment for %s',
+  async (teamCode) => {
+    const lookup = vi.spyOn(teamMaterialApi, 'equipment')
+    await render()
+    await wrapper.setProps({ teamCode })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('设备管理')
+    expect(lookup).not.toHaveBeenCalled()
+  },
+)

@@ -82,7 +82,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 async function render(
-  props: { teamId: number; showAll?: boolean; sourceId?: number } = { teamId: 8, showAll: true },
+  props: {
+    teamId: number
+    showAll?: boolean
+    sourceId?: number
+    kind?: InspectionRecord['kind']
+  } = { teamId: 8, showAll: true },
 ) {
   wrapper = mount(TeamInspectionRecords, {
     props,
@@ -113,6 +118,10 @@ it('clears the old twenty-row inspection page before the ten-row response arrive
     response(params?.page_size || 10),
   )
   await render()
+  expect(inspectionApi.records).toHaveBeenCalledWith(
+    expect.objectContaining({ kind: 'inspection' }),
+  )
+  expect(button('检验登记')).toBeDefined()
   wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
   await flushPromises()
   expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
@@ -127,8 +136,9 @@ it('clears the old twenty-row inspection page before the ten-row response arrive
   await flushPromises()
   expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
 })
-it('shows QC cross-team inspection records and rechecks without choosing the batch again', async () => {
-  await render()
+it('keeps historical patrol records and rechecks without offering new patrol registration', async () => {
+  await render({ teamId: 8, showAll: true, kind: 'patrol' })
+  expect(button('历史巡检登记')).toBeUndefined()
   expect(inspectionApi.records).toHaveBeenCalledWith(
     expect.objectContaining({ team_id: undefined }),
   )
@@ -141,7 +151,7 @@ it('keeps production users read-only and scopes their record list', async () => 
   state.auth.currentUser = { team_id: 2, active: true }
   await render({ teamId: 2 })
   expect(inspectionApi.records).toHaveBeenCalledWith(expect.objectContaining({ team_id: 2 }))
-  expect(button('巡检登记')).toBeUndefined()
+  expect(button('检验登记')).toBeUndefined()
   expect(button('复检')).toBeUndefined()
   await button('本批记录').trigger('click')
   await flushPromises()
@@ -151,6 +161,7 @@ it('keeps production users read-only and scopes their record list', async () => 
 })
 it('includes upstream checks when opened from a current stock lot', async () => {
   await render({ teamId: 8, sourceId: 42 })
+  expect(button('检查登记')).toBeUndefined()
   expect(inspectionApi.records).toHaveBeenCalledWith(
     expect.objectContaining({ team_id: undefined, source_transfer_id: 42, kind: undefined }),
   )

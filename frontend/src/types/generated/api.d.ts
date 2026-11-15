@@ -1671,6 +1671,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/quality-feedback/team-problems/{route_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Team Problem */
+    get: operations['team_problem_api_quality_feedback_team_problems__route_id__get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/receipt-documents/{document_id}': {
     parameters: {
       query?: never
@@ -1979,6 +1996,41 @@ export interface paths {
     head?: never
     /** Update Employee */
     patch: operations['update_employee_api_team_materials__team_id__employees__employee_id__patch']
+    trace?: never
+  }
+  '/api/team-materials/{team_id}/equipment': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Equipment */
+    get: operations['list_equipment_api_team_materials__team_id__equipment_get']
+    put?: never
+    /** Create Equipment */
+    post: operations['create_equipment_api_team_materials__team_id__equipment_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/team-materials/{team_id}/equipment/{equipment_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update Equipment */
+    patch: operations['update_equipment_api_team_materials__team_id__equipment__equipment_id__patch']
     trace?: never
   }
   '/api/team-materials/{team_id}/inspection-problems': {
@@ -2713,6 +2765,8 @@ export interface components {
       completed_quantity?: number | null
       /** Completed Weight */
       completed_weight?: number | string | null
+      /** Equipment Id */
+      equipment_id?: number | null
       /** Expected Revision */
       expected_revision: number
       /** Furnace No */
@@ -6032,6 +6086,8 @@ export interface components {
       completed_quantity?: number | null
       /** Completed Weight */
       completed_weight?: number | string | null
+      /** Equipment Id */
+      equipment_id?: number | null
       /** Expected Revision */
       expected_revision: number
       /** Furnace No */
@@ -6138,6 +6194,8 @@ export interface components {
       created_by: string
       /** Delta Quantity */
       delta_quantity: number
+      /** Equipment Id */
+      equipment_id?: number | null
       /** Finished Quantity */
       finished_quantity: number | null
       /** Furnace No */
@@ -6663,7 +6721,10 @@ export interface components {
     /** QualityFeedbackPageResponse */
     QualityFeedbackPageResponse: {
       /** Items */
-      items: components['schemas']['QualityFeedbackResponse'][]
+      items: (
+        | components['schemas']['QualityFeedbackResponse']
+        | components['schemas']['TeamProblemResponse']
+      )[]
       /** Page */
       page: number
       /** Page Size */
@@ -6938,6 +6999,8 @@ export interface components {
       created_by: string
       /** Delta Quantity */
       delta_quantity: number
+      /** Equipment Id */
+      equipment_id?: number | null
       /** Furnace No */
       furnace_no: string | null
       /** Holding Minutes */
@@ -7236,6 +7299,8 @@ export interface components {
       inspection_kind: ('patrol' | 'inspection') | null
       /** Inspector Name */
       inspector_name: string | null
+      /** Material Name */
+      material_name?: string | null
       /** Original Schedule Id */
       original_schedule_id: number | null
       /** Original Task Id */
@@ -7323,6 +7388,8 @@ export interface components {
     }
     /** ReworkTaskRecordResponse */
     ReworkTaskRecordResponse: {
+      /** Completed Quantity */
+      completed_quantity?: number | null
       /** Process Route Id */
       process_route_id?: number | null
       /** Process Step Index */
@@ -7331,16 +7398,28 @@ export interface components {
       process_step_instructions?: string | null
       /** Process Step Name */
       process_step_name: string | null
+      /** Processing Date */
+      processing_date?: string | null
       /** Processing Task Id */
       processing_task_id?: number | null
       /** Processing Task Name */
       processing_task_name: string | null
+      /** Processor Name */
+      processor_name?: string | null
       /** Purpose Id */
       purpose_id?: number | null
       /** Purpose Name */
       purpose_name?: string | null
       /** Rework Of Id */
       rework_of_id: number
+      /** Rework Round */
+      rework_round?: number | null
+      /** Team Id */
+      team_id?: number | null
+      /** Team Name */
+      team_name?: string | null
+      /** Work Kind */
+      work_kind?: ('initial' | 'rework') | null
     }
     /** RouteDispatchOrderResponse */
     RouteDispatchOrderResponse: {
@@ -9457,6 +9536,61 @@ export interface components {
       count: number
       /** Quantity */
       quantity: number
+      /** Weight */
+      weight: number
+    }
+    /**
+     * TeamProblemResponse
+     * @description A team report is the rework request itself, not a fabricated inspection.
+     */
+    TeamProblemResponse: {
+      /** Batch No */
+      batch_no: string
+      /** Checked At */
+      checked_at: string
+      /** Created By */
+      created_by: string
+      /**
+       * Disposition
+       * @constant
+       */
+      disposition: 'rework'
+      /** Failed Quantity */
+      failed_quantity: number
+      /**
+       * Feedback Status
+       * @enum {string}
+       */
+      feedback_status: 'pending' | 'processing' | 'closed'
+      /** Id */
+      id: number
+      /** Involved Teams */
+      involved_teams: components['schemas']['FeedbackTeamResponse'][]
+      /**
+       * Kind
+       * @constant
+       */
+      kind: 'team_report'
+      /** Material Name */
+      material_name: string | null
+      /** Notes */
+      notes: string
+      rework_progress: components['schemas']['ReworkProgressResponse']
+      /** Rework Round */
+      rework_round: number
+      /**
+       * Route State
+       * @enum {string}
+       */
+      route_state: 'draft' | 'published'
+      /** Serial No */
+      serial_no: string
+      /** Source Transfer Id */
+      source_transfer_id: number
+      /** Team Id */
+      team_id: number
+      /** Team Name */
+      team_name: string
       /** Weight */
       weight: number
     }
@@ -14031,7 +14165,7 @@ export interface operations {
       query?: {
         date_from?: string | null
         date_to?: string | null
-        kind?: ('patrol' | 'inspection') | null
+        kind?: ('patrol' | 'inspection' | 'team_report') | null
         page?: number
         page_size?: number
         problem_type_id?: number | null
@@ -14190,6 +14324,37 @@ export interface operations {
           'application/json':
             | components['schemas']['PageResponse_QualityReworkStockResponse_']
             | components['schemas']['QuantityAdjustmentContextResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  team_problem_api_quality_feedback_team_problems__route_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        route_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamProblemResponse']
         }
       }
       /** @description Validation Error */
@@ -14951,6 +15116,108 @@ export interface operations {
       header?: never
       path: {
         employee_id: number
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DirectoryItemInput']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamDirectoryItemResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_equipment_api_team_materials__team_id__equipment_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamDirectoryItemResponse'][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  create_equipment_api_team_materials__team_id__equipment_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DirectoryItemInput']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamDirectoryItemResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  update_equipment_api_team_materials__team_id__equipment__equipment_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        equipment_id: number
         team_id: number
       }
       cookie?: never
@@ -16333,6 +16600,7 @@ export interface operations {
         limit?: number
         material_name?: string | null
         material_type?: string | null
+        page?: number
         query?: string | null
         selected?: string | null
         serial_no?: string | null

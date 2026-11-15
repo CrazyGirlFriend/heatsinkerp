@@ -1,4 +1,4 @@
-"""Optional team parameters remain attached to the actual processing event."""
+"""Required team parameters remain attached to the actual processing event."""
 
 import importlib.util
 from pathlib import Path
@@ -47,7 +47,9 @@ def test_anneal_parameters_persist_per_record_without_inheriting_previous_values
     remainder = next(row for row in saved["outputs"] if row["role"] == "remaining")
     second = work(client, s, remainder, employee, idempotency_key="another-furnace")
     assert second.status_code == 201, second.text
-    assert all(second.json()[key] is None for key in ANNEAL_FIELDS)
+    assert second.json()["furnace_no"] == "测试炉1"
+    assert second.json()["actual_temperature_c"] == 925
+    assert second.json()["holding_minutes"] == 30
     records = client.get(url + "/processing-records").json()
     assert records["parameter_fields"] == ANNEAL_FIELDS
     assert records["total"] == 2
@@ -71,7 +73,13 @@ def test_machine_number_applies_only_to_supported_teams(client, warehouse, code)
         else {
             "input_quantity": 10,
             "outputs": [
-                dict(role="produced", material_type="semi_finished", quantity=10, weight=100)
+                dict(
+                    role="produced",
+                    material_type="semi_finished",
+                    quantity=10,
+                    weight=100,
+                    transfer_specification="20 × 10 × 2 mm",
+                )
             ],
         }
     )
@@ -98,16 +106,19 @@ def test_invalid_parameters_do_not_change_stock_and_zero_temperature_is_recorded
         {"holding_minutes": 61, "processing_minutes": 60},
         {"furnace_no": "x" * 81},
         {"machine_no": "M-03"},
+        {"processing_minutes": None},
+        *[{key: None} for key in ANNEAL_FIELDS],
+        {"furnace_no": " "},
     ]:
         result = work(client, s, lot, employee, **params)
         assert result.status_code == 422, result.text
     assert client.get(base(s, True) + "/processing-records").json()["total"] == 0
     result = work(
-        client, s, lot, employee, actual_temperature_c=0, furnace_no=" ", holding_minutes=30
+        client, s, lot, employee, actual_temperature_c=0, furnace_no="02炉", holding_minutes=30
     )
     assert result.status_code == 201, result.text
     assert result.json()["actual_temperature_c"] == 0
-    assert result.json()["furnace_no"] is None
+    assert result.json()["furnace_no"] == "02炉"
     assert result.json()["completed_quantity"] == 10
 
 

@@ -155,6 +155,7 @@ describe('warehouse management', () => {
     const rows = await source.load(new AbortController().signal, () => undefined)
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ quantity: 2, weight: 0.000123, received: 1, pending: 1 })
+    expect(rows[0]).not.toHaveProperty('assignment')
     expect(rows[1]).toMatchObject({ status: '填写中', quantity: 0, weight: 0 })
     expect(catalog.loadWarehouseCatalog).toHaveBeenLastCalledWith(
       '',
@@ -164,6 +165,93 @@ describe('warehouse management', () => {
       undefined,
       undefined,
     )
+  })
+  it('dispatches received stock directly from a warehouse row and excludes unavailable batches', async () => {
+    vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValue(
+      catalogPage({
+        items: [
+          occupied(1),
+          occupied(2, [
+            batch(21),
+            batch(22, 0, 3),
+            { ...batch(23), status: 'pending' },
+            batch(24, 0, 0),
+          ]),
+          { ...slot, id: 3, name: '空仓' },
+        ],
+        total: 3,
+      }),
+    )
+    await render(true, true)
+    const bulk = wrapper
+      .get('.wm-warehouse-toolbar')
+      .findAll('button')
+      .find((button) => button.text() === '批量转出')!
+    expect(bulk.attributes('disabled')).toBeDefined()
+    await wrapper.get('[aria-label="转出仓位 A-1 的物料"]').trigger('click')
+    expect(wrapper.emitted('dispatch')?.[0]).toEqual(['TL1'])
+    await wrapper.get('label[aria-label="选择仓位 A-1"] input').setValue(true)
+    await wrapper.get('[aria-label="转出仓位 A-2 的物料"]').trigger('click')
+    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[21, 22]])
+    expect(wrapper.get('[aria-label="转出仓位 空仓 的物料"]').attributes('disabled')).toBeDefined()
+    expect(
+      wrapper.get('label[aria-label="选择仓位 空仓"] input').attributes('disabled'),
+    ).toBeDefined()
+    expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
+    await wrapper.setProps({ canDispatch: false })
+    expect(wrapper.find('[aria-label="转出仓位 A-1 的物料"]').exists()).toBe(false)
+    expect(wrapper.get('.wm-warehouse-toolbar').text()).not.toContain('批量转出')
+  })
+
+  it('selects warehouse rows across pages, deduplicates batches and supports clearing from the toolbar', async () => {
+    vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValueOnce(
+      catalogPage({
+        items: [occupied(1, [batch(11), batch(12)]), occupied(2, [batch(12)])],
+        total: 21,
+      }),
+    )
+    await render(true, true)
+    await wrapper.get('label[aria-label="选择本页可转出物料"] input').setValue(true)
+    expect(wrapper.get('.wm-warehouse-toolbar').text()).toContain('批量转出（2 批）')
+    vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValueOnce(
+      catalogPage({ items: [occupied(21)], total: 21 }),
+    )
+    await nextPage()
+    await wrapper.get('label[aria-label="选择仓位 A-21"] input').setValue(true)
+    await click('批量转出（3 批）')
+    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[11, 12, 21]])
+    await click('清空选择')
+    expect(wrapper.get('.wm-warehouse-toolbar').text()).not.toContain('批量转出（')
+    expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
+  })
+
+  it('limits page selection to the existing 100-batch dispatch limit', async () => {
+    vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValue(
+      catalogPage({
+        items: [
+          occupied(
+            1,
+            Array.from({ length: 80 }, (_, index) => batch(index + 1)),
+          ),
+          occupied(
+            2,
+            Array.from({ length: 80 }, (_, index) => batch(index + 81)),
+          ),
+        ],
+        total: 2,
+      }),
+    )
+    await render(true, true)
+    await wrapper.get('label[aria-label="选择本页可转出物料"] input').setValue(true)
+    await click('批量转出（100 批）')
+    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([
+      Array.from({ length: 100 }, (_, index) => index + 1),
+    ])
+    expect(wrapper.find('label[aria-label="选择本页可转出物料"] .is-indeterminate').exists()).toBe(
+      true,
+    )
+    await wrapper.get('label[aria-label="选择本页可转出物料"] input').setValue(false)
+    expect(wrapper.get('.wm-warehouse-toolbar').text()).not.toContain('批量转出（')
   })
   it('omits selection for empty slots and resets to the first page when the page size changes', async () => {
     const items = Array.from({ length: 61 }, (_, index) => ({
@@ -183,7 +271,7 @@ describe('warehouse management', () => {
     )
     await render(true, true)
     expect(wrapper.get('.warehouse-table th').text()).toBe('仓位')
-    expect(wrapper.find('[aria-label="选择本页未分配物料"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="选择本页可转出物料"]').exists()).toBe(false)
     expect(wrapper.get('.wm-pagination').text()).toContain('共 61 条')
     expect(wrapper.get('.wm-pagination').text()).toContain('第 1 / 4 页')
     await nextPage()
@@ -338,7 +426,12 @@ describe('warehouse management', () => {
     wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
     await flushPromises()
     expect(wrapper.getComponent(BatchSelectionBar).props('count')).toBe(3)
-    await click('批量出库')
+    await wrapper
+      .get('.warehouse-detail-selection')
+      .findAll('button')
+      .find((button) => button.text() === '批量转出')!
+      .trigger('click')
+    await flushPromises()
     expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[11, 12, 21]])
     await open('A-21')
     wrapper.getComponent(BatchSelectionBar).vm.$emit('clear')
@@ -373,9 +466,13 @@ describe('warehouse management', () => {
     )
     await wrapper.setProps({ refreshKey: 1 })
     await flushPromises()
-    expect(wrapper.findAll('button').some((button) => button.text().startsWith('批量出库'))).toBe(
-      false,
-    )
+    expect(
+      wrapper
+        .get('.wm-warehouse-toolbar')
+        .findAll('button')
+        .find((button) => button.text() === '批量转出')!
+        .attributes('disabled'),
+    ).toBeDefined()
     await wrapper.setProps({ canManage: false })
     expect(wrapper.find('.warehouse-table').exists()).toBe(false)
     expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
@@ -508,13 +605,14 @@ describe('warehouse management', () => {
     await flushPromises()
     const tableRows = wrapper.findAll('.warehouse-table .el-table__body tr')
     expect(tableRows).toHaveLength(3)
-    expect(tableRows[0]!.text()).toContain('S8未分配')
-    expect(tableRows[0]!.findAll('td')[5]!.text()).toBe('10')
-    expect(tableRows[1]!.text()).toContain('S8已分配')
-    expect(tableRows[1]!.findAll('td')[5]!.text()).toBe('70')
+    expect(wrapper.get('.warehouse-table thead').text()).not.toContain('分配状态')
+    expect(tableRows[0]!.text()).toContain('S8')
+    expect(tableRows[0]!.findAll('td')[4]!.text()).toBe('10')
+    expect(tableRows[1]!.text()).toContain('S8')
+    expect(tableRows[1]!.findAll('td')[4]!.text()).toBe('70')
     expect(wrapper.find('[aria-label="仓位视图"]').exists()).toBe(false)
-    await wrapper.get('label[aria-label="选择本页未分配物料"] input').setValue(true)
-    await click('批量出库（1）')
+    await wrapper.get('label[aria-label="选择本页可转出物料"] input').setValue(true)
+    await click('批量转出（1 批）')
     expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[8]])
     await open('A-1')
     wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
@@ -560,7 +658,7 @@ describe('warehouse management', () => {
     const checkbox = wrapper.get('label[aria-label="选择未分配物料 TL18"] input')
     expect(checkbox.attributes('disabled')).toBeUndefined()
     await checkbox.setValue(true)
-    await click('批量出库（1）')
+    await click('批量转出（1 批）')
     expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[18]])
   })
   it('does not request the catalog for an unrelated team account', async () => {

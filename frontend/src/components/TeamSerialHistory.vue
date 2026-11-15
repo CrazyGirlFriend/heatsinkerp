@@ -67,7 +67,7 @@ async function load(background = false) {
 }
 function search() {
   if (!serial.value.trim()) {
-    error.value = '请输入完整流水号'
+    error.value = '请输入完整流水号或批次号'
     return
   }
   result.value = null
@@ -125,7 +125,7 @@ if (serial.value) search()
     <WorkspaceDataToolbar
       v-model="serial"
       search-label="历史流水号"
-      placeholder="输入完整流水号"
+      placeholder="输入完整流水号或批次号"
       :maxlength="80"
       :search-on-clear="false"
       :loading="loading"

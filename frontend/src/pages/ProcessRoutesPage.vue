@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
 import { queryColumns } from '@/utils/tableQueryColumns'
+import FilterDialog from '@/components/FilterDialog.vue'
+import TableFilterFields from '@/components/TableFilterFields.vue'
+import type { TableColumnCondition } from '@/types/tableQuery'
 import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { ElOption } from 'element-plus'
-import { reworkProgressLabels, type ReworkProgress } from '@/types/processRoute'
 import AppPopover from '@/components/AppPopover.vue'
 import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import AsyncStatus from '@/components/AsyncStatus.vue'
@@ -39,8 +41,13 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, ProcessRouteDrawing, ProcessRouteStep } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
+import { canMaintainProcessRoute } from '@/utils/processRoutePermissions'
 const loadEditor = () => import('@/components/ProcessRouteEditor.vue')
 const ProcessRouteEditor = defineAsyncComponent(loadEditor)
+const PendingReworkPicker = defineAsyncComponent(
+  () => import('@/components/PublishedProcessRoutePicker.vue'),
+)
+const selectingRework = ref(false)
 const location = useRoute()
 const router = useRouter()
 const noticeSection = ref('')
@@ -53,35 +60,33 @@ const team = computed(() =>
     (item) => item.active && item.code === 'FACTORY-PROCESS' && item.kind === 'engineering',
   ),
 )
-const canEdit = computed(
-  () =>
-    !auth.currentUserError &&
-    auth.currentUser?.active !== false &&
-    (auth.isAdmin ||
-      (auth.isTeamAccount && String(auth.currentUser?.team_id) === String(team.value?.id))),
+const canEdit = computed(() => !auth.currentUserError && canMaintainProcessRoute(auth.currentUser))
+const canManageTeam = computed(
+  () => !auth.currentUserError && auth.currentUser?.active && (auth.isAdmin || canEdit.value),
 )
 const managingTeam = computed(
-  () => location.query.tab === 'settings' && canEdit.value && !!team.value,
+  () => location.query.tab === 'settings' && canManageTeam.value && !!team.value,
 )
 const routeKind = ref<'normal' | 'rework'>(location.query.kind === 'rework' ? 'rework' : 'normal')
 const reworkScope = ref<'open' | 'ended' | 'all'>('open')
-function changeReworkScope() {
-  pendingOnly.value = false
-  page.value = 1
-  void load()
-}
-const pendingOnly = ref(false)
+const routeState = ref<'draft' | 'published'>()
+const pendingOnly = computed(() => routeState.value === 'draft')
+const filtersOpen = ref(false)
+const draftScope = ref<'open' | 'ended' | 'all'>('open')
+const draftState = ref<'draft' | 'published'>()
+const draftColumns = ref<TableColumnCondition[]>([])
 const columnSettingsTarget = ref<HTMLElement | null>(null)
 const openingId = ref<number | null>(null)
 const preparingEditor = ref(false)
 function clearPending() {
-  pendingOnly.value = false
+  routeState.value = undefined
+  page.value = 1
   void load()
 }
-function createRework() {
+function showPendingRework() {
   routeKind.value = 'rework'
   void router.replace({ query: { ...location.query, kind: 'rework' } })
-  pendingOnly.value = true
+  routeState.value = 'draft'
   reworkScope.value = 'open'
   page.value = 1
   query.value = appliedQuery.value = ''
@@ -89,8 +94,10 @@ function createRework() {
 }
 function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
+  selectingRework.value = false
   if (openingId.value !== null || preparingEditor.value) closeEditor()
-  pendingOnly.value = false
+  filtersOpen.value = false
+  routeState.value = undefined
   reworkScope.value = 'open'
   routeKind.value = kind
   if ((location.query.kind === 'rework' ? 'rework' : 'normal') !== kind)
@@ -122,7 +129,7 @@ const initialLoading = computed(() => loading.value && !hasLoadedView.value)
 async function create() {
   if (!canEdit.value) return
   if (routeKind.value === 'rework') {
-    createRework()
+    selectingRework.value = true
     return
   }
   const request = ++detailGeneration
@@ -131,6 +138,23 @@ async function create() {
   try {
     await loadEditor()
     if (request === detailGeneration) creating.value = true
+  } catch {
+    if (request === detailGeneration) error.value = '表单加载失败，请重试'
+  } finally {
+    if (request === detailGeneration) preparingEditor.value = false
+  }
+}
+async function designRework(route: ProcessRoute) {
+  selectingRework.value = false
+  if (!canEdit.value || routeKind.value !== 'rework') return
+  const request = ++detailGeneration
+  preparingEditor.value = true
+  error.value = ''
+  try {
+    await loadEditor()
+    if (request !== detailGeneration) return
+    editing.value = true
+    selected.value = route
   } catch {
     if (request === detailGeneration) error.value = '表单加载失败，请重试'
   } finally {
@@ -147,21 +171,50 @@ function closeEditor() {
   editing.value = false
   creating.value = false
 }
-const tableQuery = useTableQuery(
-  queryColumns([
+const filterColumns = computed(() => ({
+  ...queryColumns([
     ['流水号', 'serial_nos'],
-    ['材质', 'material_name'],
     ['工艺人员', 'engineering_employee_name'],
     ['修改人员', 'modified_employee_name'],
     ['更新时间', 'updated_at', 'date'],
-    ['轮次', 'rework_round', 'number'],
-    ['提交班组', 'requesting_team_name'],
   ]),
-  () => {
-    page.value = 1
-    void load()
-  },
+  ...queryColumns(
+    routeKind.value === 'rework'
+      ? [
+          ['轮次', 'rework_round', 'number'],
+          ['提交班组', 'requesting_team_name'],
+        ]
+      : [['材质', 'material_name']],
+  ),
+}))
+const tableQuery = useTableQuery(filterColumns, () => {
+  page.value = 1
+  void load()
+})
+const filterCount = computed(
+  () =>
+    tableQuery.state.value.filters.length +
+    (routeKind.value === 'rework'
+      ? Number(reworkScope.value !== 'all') + Number(!!routeState.value)
+      : 0),
 )
+function openFilters() {
+  draftColumns.value = tableQuery.state.value.filters.map((item) => ({ ...item }))
+  draftScope.value = reworkScope.value
+  draftState.value = routeState.value
+}
+function resetFilters() {
+  draftColumns.value = []
+  draftScope.value = 'all'
+  draftState.value = undefined
+}
+function applyFilters() {
+  tableQuery.state.value.filters = draftColumns.value.map((item) => ({ ...item }))
+  reworkScope.value = draftScope.value
+  routeState.value = routeKind.value === 'rework' ? draftState.value : undefined
+  filtersOpen.value = false
+  search()
+}
 watch(routeKind, () => tableQuery.reset(), { flush: 'sync' })
 let generation = 0
 let detailGeneration = 0
@@ -180,7 +233,7 @@ async function load() {
   const params = [
     appliedQuery.value,
     page.value,
-    pendingOnly.value ? 'draft' : undefined,
+    routeState.value,
     'desc' as const,
     pageSize.value,
     kind,
@@ -363,6 +416,7 @@ watch(
   (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
 )
 watch(managingTeam, (managing) => {
+  selectingRework.value = false
   closeEditor()
   closeDrawing()
   if (managing) {
@@ -378,6 +432,7 @@ useLiveRefresh(load, {
     loading.value ||
     openingId.value !== null ||
     preparingEditor.value ||
+    selectingRework.value ||
     !!selected.value ||
     creating.value,
 })
@@ -435,39 +490,67 @@ onBeforeUnmount(() => {
         :placeholder="
           routeKind === 'rework'
             ? '搜索流水号、批次号、问题、班组或工艺人员'
-            : '搜索流水号、工艺人员'
+            : '搜索流水号、批次号、工艺人员'
         "
         refresh-label="刷新工艺记录"
         @search="search"
         @refresh="load"
       >
+        <template #filters>
+          <FilterDialog
+            v-model="filtersOpen"
+            v-slot="{ appendTo }"
+            :count="filterCount"
+            @open="openFilters"
+            @apply="applyFilters"
+            @reset="resetFilters"
+          >
+            <template v-if="routeKind === 'rework'">
+              <label>
+                返工范围
+                <ElSelect v-model="draftScope" :append-to="appendTo" aria-label="返工范围筛选">
+                  <ElOption value="open" label="未结束" />
+                  <ElOption value="ended" label="已复检" />
+                  <ElOption value="all" label="全部轮次" />
+                </ElSelect>
+              </label>
+              <label>
+                工艺状态
+                <ElSelect
+                  v-model="draftState"
+                  :append-to="appendTo"
+                  clearable
+                  placeholder="全部"
+                  aria-label="工艺状态筛选"
+                >
+                  <ElOption value="draft" label="未填写" />
+                  <ElOption value="published" label="已制定" />
+                </ElSelect>
+              </label>
+            </template>
+            <TableFilterFields
+              v-model="draftColumns"
+              :columns="filterColumns"
+              :append-to="appendTo"
+            />
+          </FilterDialog>
+        </template>
         <template #query-actions><div ref="columnSettingsTarget" /></template>
         <template #status>
           <AsyncStatus v-if="openingId !== null" label="正在打开工艺…">
             <ElButton link @click="closeEditor">取消</ElButton>
           </AsyncStatus>
-          <ElSelect
-            v-if="routeKind === 'rework'"
-            v-model="reworkScope"
-            aria-label="返工处理范围"
-            style="width: 120px"
-            @change="changeReworkScope"
-          >
-            <ElOption value="open" label="未结束" />
-            <ElOption value="ended" label="已复检" />
-            <ElOption value="all" label="全部轮次" />
-          </ElSelect>
-          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待制定</ElTag>
+          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">未填写</ElTag>
           <ElButton
             v-else-if="routeKind === 'rework' && canEdit && pendingRework"
             class="route-pending-filter"
-            @click="createRework"
-            >仅看待制定</ElButton
+            @click="showPendingRework"
+            >仅看未填写</ElButton
           >
         </template>
         <template #actions>
           <ElButton
-            v-if="canEdit && team"
+            v-if="canManageTeam && team"
             :icon="Setting"
             @click="router.push({ query: { ...location.query, tab: 'settings' } })"
             >班组管理</ElButton
@@ -549,17 +632,10 @@ onBeforeUnmount(() => {
               :type="row.state === 'published' ? 'success' : 'warning'"
               class="route-rework-status"
               :class="{ 'route-rework-ready': row.state === 'published' }"
-              >{{ row.state === 'published' ? '已制定' : '待制定' }}</ElTag
+              >{{ row.state === 'published' ? '已制定' : '未填写' }}</ElTag
             ></template
           >
         </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="处理进度" width="120" align="center"
-          ><template #default="{ row }">{{
-            row.rework_progress
-              ? reworkProgressLabels[row.rework_progress.state as ReworkProgress['state']]
-              : '—'
-          }}</template></ElTableColumn
-        >
         <ElTableColumn v-if="routeKind === 'normal'" label="材质" width="120">
           <template #default="{ row }">
             <span :class="{ 'route-empty': !row.material_name }">{{
@@ -672,7 +748,7 @@ onBeforeUnmount(() => {
               </template>
             </div>
             <span v-else class="route-empty">{{
-              routeKind === 'rework' && row.state !== 'published' ? '待制定' : '—'
+              routeKind === 'rework' && row.state !== 'published' ? '未填写' : '—'
             }}</span>
           </template>
         </ElTableColumn>
@@ -793,12 +869,6 @@ onBeforeUnmount(() => {
             <span v-else class="route-empty">待指定</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="加工件数" width="100" align="right"
-          ><template #default="{ row }"
-            >{{ row.rework_progress?.completed_quantity ?? 0 }} /
-            {{ row.rework_request?.quantity }}</template
-          ></ElTableColumn
-        >
         <ElTableColumn
           label="工艺人员"
           :width="routeKind === 'rework' ? 110 : undefined"
@@ -868,6 +938,12 @@ onBeforeUnmount(() => {
       >
     </WorkspaceDataPanel>
     <template #dialogs>
+      <PendingReworkPicker
+        v-if="selectingRework && canEdit"
+        pending-rework
+        @selected="designRework"
+        @close="selectingRework = false"
+      />
       <DocumentViewer
         v-if="drawingUrl"
         :title="drawingTitle"

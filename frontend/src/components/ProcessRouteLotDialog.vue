@@ -122,7 +122,7 @@ onMounted(load)
           <ElFormItem class="form-field--long" label="关联工艺" required>
             <ElSelect
               v-model="selected"
-              placeholder="搜索并选择工艺"
+              placeholder="按流水号或批次号搜索工艺"
               filterable
               remote
               :remote-method="search"

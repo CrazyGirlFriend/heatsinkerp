@@ -262,6 +262,9 @@ describe('factory production and quality reporting', () => {
 
   it('uses weighted actual checked quantities and keeps full inspections/rechecks separate', async () => {
     await render('quality')
+    expect(selection('检查来源').props('modelValue')).toBe('inspection')
+    selection('检查来源').vm.$emit('update:modelValue', 'patrol')
+    await flushPromises()
     let values = wrapper.findAllComponents(AnimatedMetric).map((metric) => metric.props('value'))
     expect(values[0]).toBe(2)
     expect(wrapper.text()).toContain('受检材质')

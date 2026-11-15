@@ -250,11 +250,6 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
       : null
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
-const purposes = useTeamPurposes(() =>
-  props.modelValue && !isLoss.value && !external.value && form.nextTeamId
-    ? Number(form.nextTeamId)
-    : null,
-)
 watch(
   () => [form.nextTeamId, form.entryKind],
   () => {
@@ -313,6 +308,11 @@ const warehouse = computed(
     !external.value &&
     destinations.value.find((team) => String(team.id) === String(form.nextTeamId))?.kind ===
       'warehouse',
+)
+const purposes = useTeamPurposes(() =>
+  props.modelValue && !isLoss.value && !external.value && !warehouse.value && form.nextTeamId
+    ? Number(form.nextTeamId)
+    : null,
 )
 const totalQuantity = computed(() =>
   lines.value.reduce((sum, line) => sum + (Number(enteredQuantity(line)) || 0), 0),
@@ -642,10 +642,13 @@ const validation = useDialogValidation(() => {
         ).length
       )
         add('processingParameters', '请检查加工参数')
-      if (!validProcessingMinutes(draft.minutes)) add('processingMinutes', '请填写大于零的加工时长')
+      if ((draft.structured && draft.minutes == null) || !validProcessingMinutes(draft.minutes))
+        add('processingMinutes', '请填写大于零的加工时长')
       if (draft.structured && (!draft.date || draft.date > factoryToday()))
         add('processingDate', '请填写实际加工日期')
       if (processingTeam.value && !draft.status) add('processingStatus', '请选择加工进度')
+      if (draft.structured && !draft.reason.trim())
+        add('processingReason', '请填写备注，无特殊情况请填无')
       if (draft.reason.trim().length > 2000) add('processingReason', '内容过长')
     }
   }
@@ -907,7 +910,9 @@ async function submit() {
       ...(line.specification !== line.originalSpecification
         ? { transfer_specification: line.specification.trim() }
         : {}),
-      ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}),
+      ...(!external.value && !warehouse.value && line.purposeId
+        ? { purpose_id: line.purposeId }
+        : {}),
       ...(line.materialType ? { material_type: line.materialType } : {}),
     })),
   }
@@ -1408,6 +1413,57 @@ watch(
                 v-if="processing[Number(line.source.transfer.id)]"
                 class="processing-count source-inputs dialog-form-grid"
               >
+                <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
+                  <TeamEmployeeInput
+                    v-if="processing[Number(line.source.transfer.id)]!.structured"
+                    :people="processing[Number(line.source.transfer.id)]!.employees"
+                    multiple
+                    :team-id="teamId"
+                    label="加工人"
+                    :invalid="!!lineError(line, 'processorName')"
+                    @update:people="selectProcessor(Number(line.source.transfer.id), $event)"
+                  />
+                  <ProcessingPersonInput
+                    v-else
+                    v-model="processing[Number(line.source.transfer.id)]!.processorName"
+                    :options="processing[Number(line.source.transfer.id)]!.processorOptions"
+                    :label="`${line.source.transfer.batch_no}加工人`"
+                  />
+                </ElFormItem>
+                <ElFormItem
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  label="加工时长"
+                  required
+                  :error="lineError(line, 'processingMinutes')"
+                >
+                  <ProcessingDurationInput
+                    v-model="processing[Number(line.source.transfer.id)]!.minutes"
+                    :disabled="saving"
+                    :invalid="!!lineError(line, 'processingMinutes')"
+                  />
+                </ElFormItem>
+                <ProcessingParameterFields
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  v-model="processing[Number(line.source.transfer.id)]!.parameters"
+                  :team-id="teamId"
+                  :fields="processing[Number(line.source.transfer.id)]!.context?.parameter_fields"
+                  :total-minutes="processing[Number(line.source.transfer.id)]!.minutes"
+                  :submitted="!!lineError(line, 'processingParameters')"
+                  :disabled="saving"
+                />
+                <ElFormItem
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  label="实际加工日期"
+                  required
+                  :error="lineError(line, 'processingDate')"
+                >
+                  <ElInput
+                    v-model="processing[Number(line.source.transfer.id)]!.date"
+                    type="date"
+                    aria-label="实际加工日期"
+                    :max="factoryToday()"
+                  />
+                </ElFormItem>
                 <p
                   v-if="processing[Number(line.source.transfer.id)]!.loading"
                   class="dialog-field-hint dialog-field-wide"
@@ -1428,6 +1484,22 @@ watch(
                     :precision="0"
                     controls-position="right"
                 /></ElFormItem>
+                <ElFormItem
+                  :label="
+                    processing[Number(line.source.transfer.id)]!.structured
+                      ? '备注'
+                      : '备注（选填）'
+                  "
+                  :required="processing[Number(line.source.transfer.id)]!.structured"
+                  :error="lineError(line, 'processingReason')"
+                  ><ElInput
+                    v-model="processing[Number(line.source.transfer.id)]!.reason"
+                    type="textarea"
+                    :rows="2"
+                    aria-label="加工备注"
+                    maxlength="2000"
+                    placeholder="无特殊情况请填无"
+                /></ElFormItem>
                 <ProcessingTaskFields
                   v-if="processing[Number(line.source.transfer.id)]!.context?.task_required != null"
                   v-model:task-id="processing[Number(line.source.transfer.id)]!.taskId"
@@ -1442,8 +1514,11 @@ watch(
                   v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading"
                   label="本批加工进度"
                   :error="lineError(line, 'processingStatus')"
-                  required
+                  :required="!processing[Number(line.source.transfer.id)]!.structured"
+                  ><span v-if="processing[Number(line.source.transfer.id)]!.structured"
+                    >全部完成</span
                   ><ElSelect
+                    v-else
                     v-model="processing[Number(line.source.transfer.id)]!.status"
                     :aria-label="`${line.source.transfer.batch_no}本批加工进度`"
                     ><ElOption
@@ -1456,64 +1531,7 @@ watch(
                         value === 'partial'
                       " /></ElSelect
                 ></ElFormItem>
-                <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
-                  <TeamEmployeeInput
-                    v-if="processing[Number(line.source.transfer.id)]!.structured"
-                    :people="processing[Number(line.source.transfer.id)]!.employees"
-                    multiple
-                    :team-id="teamId"
-                    label="加工人"
-                    :invalid="!!lineError(line, 'processorName')"
-                    @update:people="selectProcessor(Number(line.source.transfer.id), $event)"
-                  />
-                  <ProcessingPersonInput
-                    v-else
-                    v-model="processing[Number(line.source.transfer.id)]!.processorName"
-                    :options="processing[Number(line.source.transfer.id)]!.processorOptions"
-                    :label="`${line.source.transfer.batch_no}加工人`"
-                  />
-                </ElFormItem>
-                <ElFormItem
-                  v-if="processing[Number(line.source.transfer.id)]!.structured"
-                  label="实际加工日期"
-                  required
-                  :error="lineError(line, 'processingDate')"
-                >
-                  <ElInput
-                    v-model="processing[Number(line.source.transfer.id)]!.date"
-                    type="date"
-                    aria-label="实际加工日期"
-                    :max="factoryToday()"
-                  />
-                </ElFormItem>
-                <ElFormItem
-                  v-if="processing[Number(line.source.transfer.id)]!.structured"
-                  label="加工时长（选填）"
-                  :error="lineError(line, 'processingMinutes')"
-                >
-                  <ProcessingDurationInput
-                    v-model="processing[Number(line.source.transfer.id)]!.minutes"
-                    :disabled="saving"
-                    :invalid="!!lineError(line, 'processingMinutes')"
-                  />
-                </ElFormItem>
-                <ProcessingParameterFields
-                  v-if="processing[Number(line.source.transfer.id)]!.structured"
-                  v-model="processing[Number(line.source.transfer.id)]!.parameters"
-                  :fields="processing[Number(line.source.transfer.id)]!.context?.parameter_fields"
-                  :total-minutes="processing[Number(line.source.transfer.id)]!.minutes"
-                  :submitted="!!lineError(line, 'processingParameters')"
-                  :disabled="saving"
-                />
-                <ElFormItem label="备注（选填）" :error="lineError(line, 'processingReason')"
-                  ><ElInput
-                    v-model="processing[Number(line.source.transfer.id)]!.reason"
-                    type="textarea"
-                    :rows="2"
-                    aria-label="加工备注"
-                    maxlength="2000"
-                    placeholder="例如：1 块切成 20 件"
-                /></ElFormItem>
+
                 <p class="dialog-field-hint dialog-field-wide">
                   此处登记本批全部加工完成，与本次出库一起保存。部分加工请先从库存登记，分别选择已加工与未加工库存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
                     link
@@ -1622,7 +1640,7 @@ watch(
                     :value="type.value" /></ElSelect
               ></ElFormItem>
               <ElFormItem
-                v-if="!isLoss && !external"
+                v-if="!isLoss && !external && !warehouse"
                 class="source-purpose-field"
                 label="下序接收任务"
                 :error="lineError(line, 'purposeId')"

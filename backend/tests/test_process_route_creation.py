@@ -220,7 +220,12 @@ def test_drawing_count_limit_and_cross_route_access(client, warehouse, engineeri
     drawing = route["drawings"][0]
     path = f"{URL}/{foreign['id']}/drawings/{drawing['id']}"
     assert client.get(path).status_code == 404
-    assert client.delete(path, params={"version": foreign["version"]}).status_code == 404
+    assert (
+        client.delete(
+            path, headers=engineering["headers"], params={"version": foreign["version"]}
+        ).status_code
+        == 404
+    )
 
 
 @pytest.mark.parametrize("missing", ["word", "drawing", "invalid_word", "invalid_drawing"])

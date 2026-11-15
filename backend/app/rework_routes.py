@@ -100,6 +100,7 @@ def request_documents(db, routes):
             select(
                 MaterialTransfer.id,
                 MaterialTransfer.batch_no,
+                MaterialTransfer.material_name,
                 MaterialTransfer.next_team_id,
                 MaterialTransfer.next_team_name,
                 MaterialTransfer.quantity,
@@ -161,6 +162,7 @@ def request_documents(db, routes):
         result[route.id] = {
             "source_transfer_id": lot.id,
             "batch_no": lot.batch_no,
+            "material_name": lot.material_name,
             "team_id": lot.next_team_id,
             "team_name": lot.next_team_name,
             "quantity": lot.quantity,
@@ -210,8 +212,30 @@ def require_requester(user):
     return team
 
 
+def request_work_record(record, team_name):
+    """Human-readable operation snapshots for team and QC problem forms."""
+    return dict(
+        rework_of_id=record.id,
+        team_id=record.team_id,
+        team_name=team_name,
+        process_route_id=record.process_route_id,
+        process_step_index=record.process_step_index,
+        process_step_name=record.process_step_name,
+        process_step_instructions=record.process_step_instructions,
+        processing_task_name=record.processing_task_name,
+        processing_date=record.processing_date.isoformat() if record.processing_date else None,
+        processor_name="、".join(person.name for person in record.participants)
+        or record.processor_name,
+        completed_quantity=record.completed_quantity,
+        work_kind=record.work_kind,
+        rework_round=record.rework_round,
+    )
+
+
 def source_stock(db, user, query="", page=1, lot_id=None):
     """Direct requests select physical stock held by the submitting team."""
+    from .quality_feedback import is_qc
+
     team = require_requester(user)
     stmt = (
         select(MaterialTransfer, Balance)
@@ -239,19 +263,20 @@ def source_stock(db, user, query="", page=1, lot_id=None):
         result = context(db, team.id, lot.id)
         path = relatives([lot.id], ancestors=True, name="team_rework_history")
         ids = set(db.scalars(select(path.c.id)))
-        records = db.scalars(
-            select(Work)
-            .where(Work.source_transfer_id.in_(ids), Work.processing_status.is_not(None))
+        records = db.execute(
+            select(Work, Team.name)
+            .join(Team, Team.id == Work.team_id)
+            .where(
+                Work.source_transfer_id.in_(ids),
+                Work.processing_status.is_not(None),
+                *([] if is_qc(user) else [Work.team_id == team.id]),
+            )
             .order_by(Work.id.desc())
             .limit(100)
         )
         result["rework_task_records"] = [
-            dict(
-                rework_of_id=record.id,
-                process_step_name=record.process_step_name,
-                processing_task_name=record.processing_task_name,
-            )
-            for record in records
+            request_work_record(record, team_name)
+            for record, team_name in records
             if not record.outputs
             or any(item["id"] in ids and item["role"] == "produced" for item in record.outputs)
         ]
@@ -355,6 +380,8 @@ def request_rework(db, payload, user):
             )
             if work is None:
                 raise HTTPException(422, "原加工记录不属于本批物料")
+            if not is_qc(user) and work.team_id != team.id:
+                raise HTTPException(403, "只能反馈本班组的工艺记录")
             if work.outputs:
                 descendants = set(db.scalars(select(path.c.id)))
                 if not any(

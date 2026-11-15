@@ -546,6 +546,7 @@ onMounted(() => void loadTeams())
       v-model="businessOpen"
       :team-id="Number(businessTeam.id)"
       :team-name="businessTeam.name"
+      :team-code="businessTeam.code"
       initial-tab="employees"
       :processing-tasks="!isWarehouse(businessTeam) && businessTeam.kind !== 'engineering'"
       :employees-only="businessTeam.kind === 'engineering'"

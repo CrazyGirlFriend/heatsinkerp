@@ -430,9 +430,14 @@ describe('material transfer document form', () => {
   })
 
   it('uses warehouse kind for an optional inbound explanation and requires an explicit type on warehouse edits', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+      { id: 31, team_id: 1, name: '旧库房任务', active: false, version: 1 },
+    ])
     await render(fixture({ material_type: null }))
     wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 1)
     await flushPromises()
+    expect(wrapper.find('input[aria-label="接收任务"]').exists()).toBe(false)
+    expect(teamMaterialApi.purposes).not.toHaveBeenCalledWith(1)
     expect(wrapper.get('textarea[aria-label="入库说明"]').attributes('placeholder')).toContain(
       '转回库房',
     )
@@ -451,6 +456,9 @@ describe('material transfer document form', () => {
     expect(materialTransferApi.update).toHaveBeenCalledWith(
       'TL20260906000001',
       expect.objectContaining({ material_type: 'semi_finished', next_team_id: 1, notes: null }),
+    )
+    expect(vi.mocked(materialTransferApi.update).mock.lastCall?.[1]).not.toHaveProperty(
+      'purpose_id',
     )
   })
 

@@ -2,7 +2,7 @@
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import CompactFormSection from './CompactFormSection.vue'
 import WeightInput from './WeightInput.vue'
 import { ElForm, ElFormItem, ElOption } from 'element-plus'
@@ -12,12 +12,40 @@ import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { processRouteApi } from '@/services/processRouteApi'
 import { materialRequestKey } from '@/utils/materialStock'
 const props = defineProps<{
-  context: QuantityAdjustmentContext
+  context?: QuantityAdjustmentContext
+  loading?: boolean
   inspectionId?: number
   initialReason?: string
 }>()
 const emit = defineEmits<{ changed: []; busy: [boolean] }>()
-const original = ref(props.context.rework_of_id || null)
+const original = ref(props.context?.rework_of_id || null)
+type WorkRecord = NonNullable<QuantityAdjustmentContext['rework_task_records']>[number]
+const selectedRecord = computed(() =>
+  props.context?.rework_task_records?.find((record) => record.rework_of_id === original.value),
+)
+function recordTitle(record: WorkRecord) {
+  return [
+    record.team_name,
+    record.process_step_name || record.processing_task_name || '历史工艺记录',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+function recordSummary(record: WorkRecord) {
+  return [
+    record.processing_task_name ? `加工任务：${record.processing_task_name}` : '',
+    record.work_kind === 'rework'
+      ? `第 ${record.rework_round || 1} 轮返工`
+      : record.work_kind === 'initial'
+        ? '正常加工'
+        : '',
+    record.processing_date,
+    record.processor_name,
+    record.completed_quantity != null ? `已加工 ${record.completed_quantity} 件` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
 const quantity = ref<number>(),
   weight = ref<number>(),
   reason = ref(props.initialReason || '')
@@ -26,10 +54,24 @@ const busy = ref(false),
   submitted = ref(false)
 let key = '',
   fingerprint = ''
+watch(
+  () => props.context,
+  (context) => {
+    original.value = context?.rework_of_id || null
+    quantity.value = undefined
+    weight.value = undefined
+    error.value = ''
+    submitted.value = false
+    key = ''
+    fingerprint = ''
+  },
+)
 async function save() {
   submitted.value = true
   if (
     busy.value ||
+    props.loading ||
+    !props.context ||
     !original.value ||
     quantity.value == null ||
     weight.value == null ||
@@ -61,7 +103,7 @@ async function save() {
     await processRouteApi.requestRework({ ...body, idempotency_key: key })
     emit('changed')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '返工事项登记失败'
+    error.value = e instanceof Error ? e.message : '问题提交失败'
   } finally {
     busy.value = false
     emit('busy', false)
@@ -69,52 +111,77 @@ async function save() {
 }
 </script>
 <template>
-  <section class="rework-request" aria-label="提交返工问题">
+  <section class="rework-request" aria-label="提交问题">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
-      <CompactFormSection title="返工信息">
+      <CompactFormSection title="问题信息">
+        <slot name="source" :submitted="submitted" />
         <ElFormItem
           class="form-field--long"
-          label="原加工记录"
+          label="工艺记录"
           required
-          :error="submitted && !original ? '请选择原加工记录' : ''"
+          :error="submitted && context && !original ? '请选择工艺记录' : ''"
         >
-          <ElSelect v-model="original" aria-label="返工原加工记录" placeholder="选择需要返工的工序">
+          <ElSelect
+            v-model="original"
+            aria-label="工艺记录"
+            popper-class="problem-work-menu"
+            :disabled="!context || loading"
+            :loading="loading"
+            :placeholder="context ? '选择发现问题的工艺记录' : '请先选择问题批次'"
+          >
             <ElOption
-              v-for="record in context.rework_task_records"
+              v-for="record in context?.rework_task_records"
               :key="record.rework_of_id"
               :value="record.rework_of_id"
-              :label="`${record.process_step_name || record.processing_task_name || '加工'} · #${record.rework_of_id}`"
-            />
+              :label="recordTitle(record)"
+              class="problem-work-option"
+            >
+              <strong>{{ recordTitle(record) }}</strong>
+              <span v-if="recordSummary(record)">{{ recordSummary(record) }}</span>
+              <span v-if="record.process_step_instructions">{{
+                record.process_step_instructions
+              }}</span>
+            </ElOption>
             <ElOption
               v-if="
                 original &&
-                !context.rework_task_records?.some((row) => row.rework_of_id === original)
+                !context?.rework_task_records?.some((row) => row.rework_of_id === original)
               "
               :value="original"
-              :label="`原加工记录 #${original}`"
+              label="工艺记录（历史信息未登记）"
             />
           </ElSelect>
         </ElFormItem>
         <ElFormItem
           class="form-field--medium"
-          label="返工件数"
+          label="问题件数"
           required
-          :error="submitted && (!quantity || quantity <= 0) ? '请填写返工件数' : ''"
+          :error="submitted && context && (!quantity || quantity <= 0) ? '请填写问题件数' : ''"
           ><ElInputNumber
             v-model="quantity"
             :min="1"
-            :max="context.quantity"
+            :max="context?.quantity"
+            :disabled="!context || loading"
             :precision="0"
-            aria-label="返工件数"
+            aria-label="问题件数"
         /></ElFormItem>
         <ElFormItem
           class="form-field--medium"
-          label="返工重量"
+          label="问题重量"
           required
-          :error="submitted && (!weight || weight <= 0) ? '请填写返工重量' : ''"
-          ><WeightInput v-model="weight" :max="context.weight" ariaLabel="返工重量"
+          :error="submitted && context && (!weight || weight <= 0) ? '请填写问题重量' : ''"
+          ><WeightInput
+            v-model="weight"
+            :max="context?.weight"
+            :disabled="!context || loading"
+            ariaLabel="问题重量"
         /></ElFormItem>
+        <div v-if="selectedRecord" class="form-field--full work-record-detail">
+          <strong>{{ recordTitle(selectedRecord) }}</strong>
+          <span v-if="recordSummary(selectedRecord)">{{ recordSummary(selectedRecord) }}</span>
+          <p>{{ selectedRecord.process_step_instructions || '历史记录未保存工艺要求' }}</p>
+        </div>
         <ElFormItem
           class="form-field--full"
           label="问题描述"
@@ -129,13 +196,16 @@ async function save() {
         /></ElFormItem>
       </CompactFormSection>
       <footer>
-        <ElButton type="primary" :loading="busy" native-type="submit">提交问题</ElButton>
+        <ElButton type="primary" :loading="busy" :disabled="loading" native-type="submit"
+          >提交问题</ElButton
+        >
       </footer>
     </ElForm>
   </section>
 </template>
 <style scoped>
 .rework-request {
+  container: form-fields / inline-size;
   margin-top: 12px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -151,5 +221,41 @@ footer {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
+}
+.work-record-detail {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-alt, var(--surface));
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.work-record-detail span {
+  color: var(--muted);
+}
+.work-record-detail p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+</style>
+
+<style>
+.problem-work-menu .el-select-dropdown__item.problem-work-option {
+  height: auto;
+  min-height: 40px;
+  padding-block: 10px;
+  white-space: normal;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.problem-work-option strong,
+.problem-work-option span {
+  display: block;
+}
+.problem-work-option span {
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 </style>

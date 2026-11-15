@@ -166,6 +166,17 @@ class TeamEmployee(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class TeamEquipment(Base):
+    __tablename__ = "team_equipment"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_equipment_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class TeamProcessingTask(Base):
     __tablename__ = "team_processing_tasks"
     __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_processing_task_name"),)
@@ -710,6 +721,9 @@ class MaterialQuantityAdjustment(Base):
     )
     processor_group_key: Mapped[str | None] = mapped_column(String(1024))
     processing_minutes: Mapped[int | None] = mapped_column(Integer)
+    equipment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_equipment.id", name="fk_mqa_equipment", ondelete="RESTRICT"), index=True
+    )
     furnace_no: Mapped[str | None] = mapped_column(String(80))
     temperature_requirement: Mapped[str | None] = mapped_column(String(160))
     actual_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))

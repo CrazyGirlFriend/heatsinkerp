@@ -115,6 +115,20 @@ async function search(serial = '000012') {
 }
 
 describe('team serial history', () => {
+  it('accepts a batch number and displays the resolved serial history', async () => {
+    await render()
+    expect(wrapper.get('input[aria-label="历史流水号"]').attributes('placeholder')).toContain(
+      '批次号',
+    )
+    await search('TL202611150001')
+    expect(teamMaterialApi.serialHistory).toHaveBeenLastCalledWith(2, {
+      serial_no: 'TL202611150001',
+      date_from: '',
+      date_to: '',
+    })
+    expect(wrapper.findComponent(TeamFlowTimeline).exists()).toBe(true)
+  })
+
   it('includes pending outbound in the current stock header while retaining historical events', async () => {
     const history = result()
     history.groups.forEach((group) => {

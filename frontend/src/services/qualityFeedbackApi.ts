@@ -1,6 +1,6 @@
 import { feedbackStates } from '@/types/qualityStatus'
 import { httpRequest } from './httpClient'
-import type { InspectionRecord } from './inspectionApi'
+import { inspectionProblemLabel, type InspectionRecord } from './inspectionApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 
 type Contract = import('@/types/generated/api').components['schemas']
@@ -22,11 +22,20 @@ export type QualityFeedbackDetail = QualityFeedback &
   Pick<Contract['QualityFeedbackDetailResponse'], 'events'> & {
     rechecks: InspectionRecord[]
   }
+export type TeamProblem = Contract['TeamProblemResponse']
+export type QualityRow = QualityFeedback | TeamProblem
+export const qualitySourceLabels = {
+  inspection: '检验',
+  patrol: '历史巡检',
+  team_report: '班组反馈',
+}
+export const qualityProblemLabel = (row: QualityRow) =>
+  row.kind === 'team_report' ? row.notes : inspectionProblemLabel(row)
 export interface QualityFilters {
   problem_type_id?: number
   team_id?: number
   query?: string
-  kind?: InspectionRecord['kind']
+  kind?: QualityRow['kind']
   status?: keyof typeof feedbackStates
   date_from?: string
   date_to?: string
@@ -46,7 +55,7 @@ export interface QualityDecision extends Write {
 }
 export const qualityFeedbackApi = {
   records: (params: QualityFilters) =>
-    httpRequest<{ items: QualityFeedback[]; total: number; pending_count: number }>(
+    httpRequest<{ items: QualityRow[]; total: number; pending_count: number }>(
       `/quality-feedback?${new URLSearchParams(
         Object.entries(params)
           .filter(([, v]) => v != null && v !== '')
@@ -54,6 +63,7 @@ export const qualityFeedbackApi = {
       )}`,
     ),
   detail: (id: number) => httpRequest<QualityFeedbackDetail>(`/quality-feedback/${id}`),
+  teamProblem: (id: number) => httpRequest<TeamProblem>(`/quality-feedback/team-problems/${id}`),
   reworkStock: (id: number, page = 1) =>
     httpRequest<{ items: QualityReworkStock[]; total: number }>(
       `/quality-feedback/${id}/rework-stock?page=${page}`,

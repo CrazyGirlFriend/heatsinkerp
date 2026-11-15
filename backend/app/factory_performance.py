@@ -512,6 +512,13 @@ def report(
     if team_id is not None and team_id not in {team.id for team in teams}:
         raise HTTPException(404, "未找到统计班组")
     selected = [team for team in teams if team_id is None or team.id == team_id]
+    if serial_no:
+        batch_serial = db.scalar(
+            select(MaterialTransfer.serial_no).where(
+                MaterialTransfer.batch_no == serial_no.strip(), MaterialTransfer.status != "voided"
+            )
+        )
+        serial_no = batch_serial or serial_no
     return {
         "period": period,
         "period_dates": [day.isoformat() for day in period_dates(dates, period)],

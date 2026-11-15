@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { ElOption, ElSelect } from 'element-plus'
+import WatermelonPagination from './watermelon/WatermelonPagination.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -43,6 +43,14 @@ afterEach(async () => {
 })
 async function render(extra = {}) {
   wrapper = mount(WarehouseLocationSelect, {
+    global: {
+      stubs: {
+        WatermelonDialog: {
+          props: ['modelValue'],
+          template: '<div v-if="modelValue"><slot /></div>',
+        },
+      },
+    },
     props: {
       modelValue: '',
       teamId: 1,
@@ -58,7 +66,13 @@ async function render(extra = {}) {
   await flushPromises()
 }
 async function choose(name = slot.name) {
-  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', name)
+  if (!name) {
+    await wrapper.get('[aria-label="清除入库仓位"]').trigger('click')
+  } else {
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    await wrapper.get(`[data-location="${name}"]`).trigger('click')
+  }
   await flushPromises()
 }
 
@@ -108,7 +122,7 @@ describe('warehouse location selector', () => {
       },
     ],
   }
-  it('defaults to matching stock ahead of an empty slot and shows physical stock separately from pending arrivals', async () => {
+  it('requires an explicit list selection and shows existing batches before choosing an occupied slot', async () => {
     vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [slot, filled] })
     vi.mocked(warehouseLocationApi.reserve).mockImplementation(async (id, key) => ({
       ...claim,
@@ -117,6 +131,16 @@ describe('warehouse location selector', () => {
       key,
     }))
     await render(material)
+    expect(wrapper.props('modelValue')).toBe('')
+    expect(warehouseLocationApi.reserve).not.toHaveBeenCalled()
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('TL10')
+    expect(wrapper.text()).toContain('TL11')
+    expect(wrapper.text()).toContain('YS-007')
+    expect(wrapper.text()).toContain('材料1')
+    await wrapper.get(`[data-location="${filled.name}"]`).trigger('click')
+    await flushPromises()
     expect(wrapper.props('modelValue')).toBe(filled.name)
     expect(warehouseLocationApi.reserve).toHaveBeenCalledWith(2, expect.any(String), {
       serial_no: 'YS-007',
@@ -128,7 +152,7 @@ describe('warehouse location selector', () => {
     expect(wrapper.text()).toContain('TL11')
     expect(wrapper.text()).toContain('待签收')
   })
-  it('releases the old selection when material changes and rejects incompatible existing stock', async () => {
+  it('allows different material in an occupied slot and preserves the selection when material changes', async () => {
     vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [filled] })
     vi.mocked(warehouseLocationApi.reserve).mockImplementation(async (id, key) => ({
       ...claim,
@@ -136,14 +160,15 @@ describe('warehouse location selector', () => {
       name: filled.name,
       key,
     }))
-    await render(material)
+    await render({ ...material, materialName: '铝' })
+    await choose(filled.name)
     const oldKey = wrapper.props('reservationKey')
     await wrapper.setProps({ materialType: 'finished' })
     await flushPromises()
-    expect(warehouseLocationApi.release).toHaveBeenCalledWith(2, oldKey, true)
-    expect(wrapper.props('modelValue')).toBe('')
+    expect(warehouseLocationApi.release).not.toHaveBeenCalled()
+    expect(wrapper.props('modelValue')).toBe(filled.name)
+    expect(wrapper.props('reservationKey')).toBe(oldKey)
     expect(warehouseLocationApi.reserve).toHaveBeenCalledTimes(1)
-    expect(wrapper.getComponent(ElOption).props('disabled')).toBe(true)
   })
   it('shares one key between compatible lines in a form and releases only after both close', async () => {
     const group: WarehouseLeaseGroup = new Map()
@@ -153,10 +178,23 @@ describe('warehouse location selector', () => {
       key,
     }))
     await render({ ...material, leaseGroup: group })
+    await choose()
     const second = mount(WarehouseLocationSelect, {
+      global: {
+        stubs: {
+          WatermelonDialog: {
+            props: ['modelValue'],
+            template: '<div v-if="modelValue"><slot /></div>',
+          },
+        },
+      },
       props: { modelValue: '', teamId: 1, ...material, leaseGroup: group },
     })
     try {
+      await flushPromises()
+      await second.get('[aria-label="入库仓位"]').trigger('click')
+      await flushPromises()
+      await second.get(`[data-location="${slot.name}"]`).trigger('click')
       await flushPromises()
       const calls = vi.mocked(warehouseLocationApi.reserve).mock.calls
       expect(calls).toHaveLength(2)
@@ -172,7 +210,25 @@ describe('warehouse location selector', () => {
       second.unmount()
     }
   })
-  it('does not reuse a stale empty option reserved by another material line in the same form', async () => {
+  it('shows busy and disabled slots but prevents selecting them', async () => {
+    vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({
+      items: [
+        { ...filled, draft_locked: true },
+        { ...slot, active: false, status: 'disabled' },
+      ],
+    })
+    await render()
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('填写中')
+    expect(wrapper.text()).toContain('TL10')
+    for (const button of wrapper.findAll('.location-choice')) {
+      expect(button.attributes('disabled')).toBeDefined()
+      await button.trigger('click')
+    }
+    expect(warehouseLocationApi.reserve).not.toHaveBeenCalled()
+  })
+  it('shares a chosen slot between different material lines in the same form', async () => {
     const group: WarehouseLeaseGroup = new Map()
     vi.mocked(warehouseLocationApi.reserve).mockImplementation(async (id, key) => ({
       ...claim,
@@ -180,7 +236,16 @@ describe('warehouse location selector', () => {
       key,
     }))
     await render({ ...material, leaseGroup: group })
+    await choose()
     const second = mount(WarehouseLocationSelect, {
+      global: {
+        stubs: {
+          WatermelonDialog: {
+            props: ['modelValue'],
+            template: '<div v-if="modelValue"><slot /></div>',
+          },
+        },
+      },
       props: {
         modelValue: '',
         teamId: 1,
@@ -191,9 +256,14 @@ describe('warehouse location selector', () => {
     })
     try {
       await flushPromises()
-      expect(warehouseLocationApi.reserve).toHaveBeenCalledTimes(1)
-      expect(second.getComponent(ElOption).props('disabled')).toBe(true)
-      expect(second.emitted('update:modelValue')).toBeUndefined()
+      await second.get('[aria-label="入库仓位"]').trigger('click')
+      await flushPromises()
+      await second.get(`[data-location="${slot.name}"]`).trigger('click')
+      await flushPromises()
+      const calls = vi.mocked(warehouseLocationApi.reserve).mock.calls
+      expect(calls).toHaveLength(2)
+      expect(calls[0]![1]).toBe(calls[1]![1])
+      expect(second.emitted('update:modelValue')).toEqual([[slot.name]])
     } finally {
       second.unmount()
     }
@@ -206,11 +276,10 @@ describe('warehouse location selector', () => {
       }),
     )
     await render()
-    expect(wrapper.getComponent(ElSelect).props('allowCreate')).toBe(false)
     await choose()
     expect(warehouseLocationApi.reserve).toHaveBeenCalledWith(1, expect.any(String), undefined)
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
-    expect(wrapper.getComponent(ElSelect).props('disabled')).toBe(true)
+    expect(wrapper.get('[aria-label="入库仓位"]').attributes('disabled')).toBeDefined()
     resolve(claim)
     await flushPromises()
     expect(wrapper.emitted('update:modelValue')).toEqual([[slot.name]])
@@ -318,7 +387,9 @@ describe('warehouse location selector', () => {
     vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [] })
     await render()
     expect(wrapper.text()).toContain('暂无可用仓位，可不填写')
-    await choose('未建档仓位')
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.location-choice')).toHaveLength(0)
     expect(warehouseLocationApi.reserve).not.toHaveBeenCalled()
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
@@ -336,7 +407,35 @@ describe('warehouse location selector', () => {
     await flushPromises()
     resolve({ items: [slot] })
     await flushPromises()
-    expect(wrapper.findAllComponents(ElOption)).toHaveLength(0)
+    expect(wrapper.findAll('.location-choice')).toHaveLength(0)
+  })
+
+  it('searches existing material and requests later pages without losing the selected slot', async () => {
+    vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [slot], total: 45 })
+    await render()
+    await choose()
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    wrapper.getComponent(WatermelonPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(teamMaterialApi.warehouseLocations).toHaveBeenLastCalledWith(
+      1,
+      '',
+      slot.name,
+      undefined,
+      2,
+    )
+    await wrapper.get('input[aria-label="搜索入库仓位"]').setValue('铜钼')
+    await wrapper.get('input[aria-label="搜索入库仓位"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(teamMaterialApi.warehouseLocations).toHaveBeenLastCalledWith(
+      1,
+      '铜钼',
+      slot.name,
+      undefined,
+      1,
+    )
+    expect(wrapper.props('modelValue')).toBe(slot.name)
   })
 
   it('cleans up on pagehide and cannot free a later committed document with another key', async () => {

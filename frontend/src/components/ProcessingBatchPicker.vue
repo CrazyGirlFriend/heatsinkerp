@@ -4,7 +4,7 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElTableColumn } from 'element-plus'
+import { ElTableColumn, ElTag } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import StatePanel from './StatePanel.vue'
@@ -109,6 +109,18 @@ onBeforeUnmount(() => {
       <ElTableColumn label="流水号" min-width="150" show-overflow-tooltip
         ><template #default="{ row }">{{ row.transfer.serial_no }}</template></ElTableColumn
       >
+      <ElTableColumn label="工艺性质" min-width="155" align="center">
+        <template #default="{ row }">
+          <ElTag
+            v-if="row.transfer.rework_route_id || row.transfer.rework_pending"
+            :type="row.transfer.rework_route_ready ? 'warning' : 'info'"
+            >{{
+              row.transfer.rework_route_ready ? '返工工艺 · 已制定' : '返工工艺 · 未填写'
+            }}</ElTag
+          >
+          <span v-else>正常工艺</span>
+        </template>
+      </ElTableColumn>
       <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip
         ><template #default="{ row }">{{
           materialTypeLabel(row.transfer.material_type)
@@ -158,7 +170,7 @@ onBeforeUnmount(() => {
           ><ElButton
             link
             type="primary"
-            :disabled="loading"
+            :disabled="loading || (row.transfer.rework_pending && !row.transfer.rework_route_ready)"
             @click="emit('selected', Number(row.transfer.id))"
             >选择</ElButton
           ></template

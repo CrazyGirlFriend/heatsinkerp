@@ -1,11 +1,11 @@
-"""Compatible batches share managed slots; open forms retain exclusive draft locks."""
+"""Independent batches share managed slots; open forms retain exclusive draft locks."""
 
 from datetime import timedelta, timezone
 from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -82,7 +82,6 @@ def place_stock(db, location_id, payload, user):
                 or location.version != payload.expected_version
             ):
                 raise HTTPException(409, "仓位已改变，请刷新后重试")
-            require_compatible(db, location, material_identity(lot))
             if leased(location):
                 raise HTTPException(409, "该仓位已被其他表单锁定")
             balance = db.scalar(
@@ -293,40 +292,10 @@ def list_locations(
         .exists()
     )
     if available_only:
-        compatible = ~busy
-        if identity and all(identity):
-            mismatch = (
-                select(WarehousePlacement.transfer_id)
-                .join(
-                    Transfer,
-                    Transfer.id == WarehousePlacement.transfer_id,
-                )
-                .where(
-                    WarehousePlacement.location_id == WarehouseLocation.id,
-                    or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
-                    or_(
-                        *(
-                            getattr(Transfer, field).is_distinct_from(value)
-                            for field, value in zip(
-                                ("serial_no", "material_name", "material_type"),
-                                identity,
-                                strict=True,
-                            )
-                        )
-                    ),
-                )
-                .exists()
-            )
-            compatible = ~mismatch
-        free = and_(
-            WarehouseLocation.active.is_(True),
-            compatible,
-            or_(
-                WarehouseLocation.reserved_until.is_(None),
-                WarehouseLocation.reserved_until <= utcnow(),
-            ),
-        )
-        conditions.append(or_(free, WarehouseLocation.name == selected) if selected else free)
+        # The picker lists active slots, including busy ones, and displays their
+        # draft locks. Reservation still checks ownership when a slot is chosen.
+        active = WarehouseLocation.active.is_(True)
+        conditions.append(or_(active, WarehouseLocation.name == selected) if selected else active)
     if query and query.strip():
         material_match = (
             select(WarehousePlacement.transfer_id)
@@ -344,7 +313,7 @@ def list_locations(
             .exists()
         )
         name_match = literal_query(query, [WarehouseLocation.name])
-        conditions.append(name_match if available_only else or_(name_match, material_match))
+        conditions.append(or_(name_match, material_match))
     if state:
         # Filter before pagination; pending documents and form leases are distinct markers.
         draft = and_(
@@ -377,8 +346,6 @@ def list_locations(
         )
     total = db.scalar(select(func.count()).select_from(WarehouseLocation).where(*conditions))
     order = [WarehouseLocation.name]
-    if identity and all(identity):
-        order.insert(0, case((busy, 0), else_=1))
     locations = db.scalars(
         select(WarehouseLocation)
         .where(*conditions)
@@ -400,33 +367,14 @@ def list_locations(
 
 
 def require_free(db, location):
-    require_compatible(db, location, None)
-
-
-def require_compatible(db, location, identity, *, exclude_transfer_id=None):
     try:
-        rows = [
-            row
-            for row in occupants(db, [location.id], locking=True)
-            if row["id"] != exclude_transfer_id
-        ]
+        rows = occupants(db, [location.id], locking=True)
     except OperationalError as exc:
         from .material_stock import _db_conflict
 
         _db_conflict(exc)
-    if rows and (
-        not identity
-        or not all(identity)
-        or any(
-            tuple(
-                (row[field] or "").strip()
-                for field in ("serial_no", "material_name", "material_type")
-            )
-            != identity
-            for row in rows
-        )
-    ):
-        raise HTTPException(409, "该仓位已有不同流水号、材质或类型的物料，请重新选择仓位")
+    if rows:
+        raise HTTPException(409, "该仓位仍有在库或待签收物料，不能停用")
 
 
 def clear_lease(location):
@@ -447,15 +395,14 @@ def reserve(db, location_id, key, user, identity=None):
             team = warehouse(db, location.team_id)
             if not team.active or not location.active:
                 raise HTTPException(409, "该仓位已停用，请重新选择")
-            require_compatible(db, location, identity)
             same = location.reservation_key == key and location.reserved_by_user_id == user.id
             if leased(location) and not same:
-                raise HTTPException(409, "该仓位已被其他表单锁定，请重新选择空仓位")
+                raise HTTPException(409, "该仓位已被其他表单锁定，请重新选择仓位")
             # These lease columns store whole seconds in MySQL. Floor before
             # returning a deadline so a reread cannot round it up on heartbeat.
             now = utcnow().replace(microsecond=0)
             if same and location.reserved_deadline and location.reserved_deadline <= now:
-                raise HTTPException(409, "仓位已锁定满 10 分钟，请重新选择空仓位")
+                raise HTTPException(409, "仓位已锁定满 10 分钟，请重新选择仓位")
             if not same or location.reserved_deadline is None:
                 location.reserved_deadline = now + timedelta(seconds=DRAFT_SECONDS)
             location.reservation_key, location.reserved_by_user_id = key, user.id
@@ -518,22 +465,20 @@ def consume(db, team, payload, user, *, identity=None, consumed=None, required=F
     location = lock_location(db, location_id)
     if not location.active or location.name != name:
         raise HTTPException(409, "仓位已改变，请重新选择")
-    identity = identity or material_identity(payload)
-    require_compatible(db, location, identity)
     # Only lines in this single atomic dispatch may reuse the consumed form lock.
     if consumed is not None and location.id in consumed:
-        if consumed[location.id] != (key, identity):
-            raise HTTPException(409, "同一仓位只能存放相同流水号、材质和类型的物料")
+        if consumed[location.id] != key:
+            raise HTTPException(409, "同一仓位的选择已失效，请重新选择仓位")
         return location.name
     if (
         not leased(location)
         or location.reservation_key != key
         or location.reserved_by_user_id != user.id
     ):
-        raise HTTPException(409, "仓位选择已失效，请重新选择空仓位后提交")
+        raise HTTPException(409, "仓位选择已失效，请重新选择仓位后提交")
     clear_lease(location)
     if consumed is not None:
-        consumed[location.id] = (key, identity)
+        consumed[location.id] = key
     db.flush([location])
     return location.name
 

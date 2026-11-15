@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from app.database import SessionLocal
-from app.models import ProcessRoute
+from app.models import MaterialTransfer, ProcessRoute
 from sqlalchemy import func, select
 from test_engineered_rework import save_plan
 from test_inspections import create_check
@@ -77,6 +77,12 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
     assert unchanged["feedback_status"] == issue["feedback_status"]
     assert unchanged["blocks_outbound"] == issue["blocks_outbound"]
     scope = route["rework_request"]
+    with SessionLocal() as db:
+        material_name = db.get(MaterialTransfer, lot["id"]).material_name
+    assert material_name and scope["material_name"] == material_name
+    detail = client.get(f"/api/process-routes/{route['id']}").json()
+    assert detail["rework_request"]["material_name"] == material_name
+    assert not detail["source_data"].get("receipt_fields")
     assert scope["problem_names"] == ["表面划伤"]
     assert scope["problem_notes"] == "表面划伤明显"
     assert scope["problem_teams"] == [{"id": s["other"]["id"], "name": s["other"]["name"]}]
@@ -85,6 +91,7 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
         rows = client.get("/api/process-routes", params={"kind": "rework", "query": query}).json()
         assert [row["id"] for row in rows["items"]] == [route["id"]]
         assert rows["items"][0]["rework_request"]["problem_names"] == ["表面划伤"]
+        assert rows["items"][0]["rework_request"]["material_name"] == material_name
     saved = save_plan(client, s, route, instructions="轻磨除划伤，不得减薄超过0.01mm")
     for team_id, actor in (
         (scope["requesting_team_id"], headers),

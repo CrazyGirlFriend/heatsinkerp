@@ -164,7 +164,9 @@ describe('warehouse grouped stock', () => {
     expect(optional).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: 'on_hand_weight', defaultVisible: false }),
-        expect.objectContaining({ key: 'purpose_name', defaultVisible: false }),
+        ...(mode.warehouse
+          ? []
+          : [expect.objectContaining({ key: 'purpose_name', defaultVisible: false })]),
         ...(mode.processing
           ? []
           : [expect.objectContaining({ key: 'rework', defaultVisible: false })]),
@@ -800,6 +802,18 @@ describe('warehouse grouped stock', () => {
       ).exportSource()
       expect(source.fields.some((field) => field.key === 'processing_role')).toBe(false)
       if (warehouse) {
+        expect(headers()).not.toContain('加工任务')
+        expect(
+          settings
+            .props('columns')
+            .some((column: { key: string }) => column.key === 'purpose_name'),
+        ).toBe(false)
+        expect(source.fields.some((field) => field.key === 'purpose_name')).toBe(false)
+        expect(
+          select('库存搜索字段')
+            .findAllComponents(ElOption)
+            .some((option) => option.props('value') === 'purpose_name'),
+        ).toBe(false)
         expect(
           select('库存来源筛选')
             .findAllComponents(ElOption)
@@ -1172,13 +1186,20 @@ describe('warehouse grouped stock', () => {
       expect.objectContaining({ material_type: 'finished' }),
     )
   })
-  it('leaves warehouse filters unchanged and ignores workshop business parameters there', async () => {
-    await render('/team-workspaces/901?tab=stock&purpose_id=11')
+  it('ignores historical warehouse task filters without hiding stock', async () => {
+    await render(
+      '/team-workspaces/901?tab=stock&purpose_id=11&search_field=purpose_name&query=旧任务',
+    )
     expect(select('库存加工任务筛选')).toBeUndefined()
     expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
     expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty(
       'purpose_id',
     )
+    expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty('query')
+    expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty(
+      'search_field',
+    )
+    expect(select('库存搜索字段').props('modelValue')).toBe('all')
   })
   it('keeps inventory usable when business options fail and retries explicitly', async () => {
     vi.mocked(teamMaterialApi.purposes).mockRejectedValueOnce(new Error('offline'))
@@ -1979,7 +2000,7 @@ describe('warehouse grouped stock', () => {
     )
     expect(router.currentRoute.value.query.receipt_source).toBe('internal')
   })
-  it('shows purpose and weight-only balance without pretending production is complete', async () => {
+  it('keeps workshop purpose and weight-only balance without pretending production is complete', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
       items: [
         warehouseFixture({
@@ -2003,7 +2024,7 @@ describe('warehouse grouped stock', () => {
       page: 1,
       page_size: 10,
     })
-    await render()
+    await render(undefined, true, false)
     expect(wrapper.text()).not.toContain('去毛刺')
     await showColumns('purpose_name', 'on_hand_weight')
     expect(wrapper.text()).toContain('去毛刺')

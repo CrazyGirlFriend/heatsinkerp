@@ -61,8 +61,8 @@ it('binds the quality issue and real lot while requiring explicit rework amounts
   expect(wrapper.find('[aria-label="关联质量问题"]').exists()).toBe(false)
   await wrapper.get('form').trigger('submit')
   expect(request).not.toHaveBeenCalled()
-  await wrapper.get('input[aria-label="返工件数"]').setValue('4')
-  await wrapper.get('input[aria-label="返工重量"]').setValue('40')
+  await wrapper.get('input[aria-label="问题件数"]').setValue('4')
+  await wrapper.get('input[aria-label="问题重量"]').setValue('40')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(request).toHaveBeenCalledWith(

@@ -198,6 +198,11 @@ def record_dict(row, lot, team):
     )
 
 
+def require_current_kind(payload):
+    if payload.kind == "patrol" and payload.parent_id is None:
+        raise HTTPException(410, "巡检登记已停用，请由物料所在班组长提交返工问题")
+
+
 def create(db, payload, user):
     from . import material_stock as stock
     from .material_transfer_workflow import _require_team_actor, require_team_employee
@@ -205,7 +210,7 @@ def create(db, payload, user):
 
     actor_team = _require_team_actor(user)
     if actor_team.code != INSPECTION_TEAM_CODE:
-        raise HTTPException(403, "仅检验班组可登记巡检和检验结果")
+        raise HTTPException(403, "仅检验班组可登记检验结果")
     digest = stock.fingerprint(payload)
 
     def replay(row):
@@ -221,6 +226,7 @@ def create(db, payload, user):
             )
             if prior is not None:
                 return replay(prior)
+            require_current_kind(payload)
         with db.begin():
             lot = stock.lock_lot(db, payload.source_transfer_id)
             prior = db.scalar(

@@ -17,6 +17,7 @@ from .quality_schemas import (
     QualityFeedbackDetailResponse,
     QualityFeedbackPageResponse,
     QualityReworkStockResponse,
+    TeamProblemResponse,
 )
 from .read_schemas import PageResponse
 
@@ -27,7 +28,7 @@ router = AsyncAPIRouter(prefix="/api/quality-feedback", tags=["quality feedback"
 def records(
     team_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
-    kind: Literal["patrol", "inspection"] | None = None,
+    kind: Literal["patrol", "inspection", "team_report"] | None = None,
     status: Literal["pending", "processing", "closed"] | None = None,
     problem_type_id: int | None = Query(default=None, ge=1),
     date_from: date | None = None,
@@ -53,6 +54,17 @@ def records(
             page_size=page_size,
         ),
         schema=QualityFeedbackPageResponse,
+    )
+
+
+@router.get("/team-problems/{route_id}", response_model=TeamProblemResponse)
+def team_problem(
+    route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    from .quality_team_problems import detail
+
+    return team_read_response(
+        db, lambda session: detail(session, route_id, user), schema=TeamProblemResponse
     )
 
 

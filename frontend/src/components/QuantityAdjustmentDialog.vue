@@ -128,6 +128,11 @@ type OutputDraft = {
 }
 const employees = ref<TeamEmployee[]>([])
 const processingMinutes = ref<number>()
+const processingMinutesValid = computed(
+  () =>
+    (!structured.value || processingMinutes.value != null) &&
+    validProcessingMinutes(processingMinutes.value),
+)
 const parameters = ref<ProcessingParameters>({})
 const parameterFields = computed(() => processingParameterFields(snapshot.value?.parameter_fields))
 const parameterErrors = computed(() =>
@@ -138,6 +143,7 @@ const parameterErrors = computed(() =>
   ),
 )
 const processingDate = ref(factoryToday())
+const editingProcessingDate = ref(false)
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
 const taskId = ref<number | null>(null),
@@ -219,11 +225,13 @@ function addOutput(role: ProcessingRole = 'produced') {
         : snapshot.value?.material_type && !isScrapType(snapshot.value.material_type)
           ? snapshot.value.material_type
           : 'semi_finished',
-    specification: '',
+    specification: role === 'remaining' ? snapshot.value?.transfer_specification || '' : '',
     specificationValid: true,
   })
 }
 function outputRoleChanged(line: OutputDraft) {
+  if (line.role === 'remaining') line.specification = snapshot.value?.transfer_specification || ''
+  if (line.role === 'scrap') line.specification = ''
   if (
     line.role === 'remaining' &&
     snapshot.value?.material_type &&
@@ -256,7 +264,11 @@ function outputError(line: OutputDraft, field: 'quantity' | 'weight' | 'specific
       outputQuantity(line)! < 0 ||
       outputQuantity(line)! > 2147483647
     )
-  if (field === 'specification') return !line.specificationValid
+  if (field === 'specification')
+    return (
+      line.role === 'produced' &&
+      (!line.specificationValid || (structured.value && !line.specification.trim()))
+    )
   return line.material_type === 'sludge'
     ? !sludgeWeight(line.gross, line.percent)
     : line.weight == null ||
@@ -384,7 +396,7 @@ async function save() {
       (!employees.value.length ||
         !processingDate.value ||
         processingDate.value > factoryToday())) ||
-    !validProcessingMinutes(processingMinutes.value) ||
+    !processingMinutesValid.value ||
     (structured.value && Object.keys(parameterErrors.value).length > 0) ||
     (structured.value &&
       !unitProcessing.value &&
@@ -404,6 +416,7 @@ async function save() {
     count! < 0 ||
     count! > 2147483647 ||
     (props.processing && !structured.value && progressInvalid.value) ||
+    (structured.value && !reason.value.trim()) ||
     reason.value.trim().length > 2000
   ) {
     await nextTick()
@@ -510,6 +523,7 @@ watch(
     taskId.value = purposeId.value = originalRecordId.value = null
     taskFieldsValid.value = true
     processingDate.value = factoryToday()
+    editingProcessingDate.value = false
     inputQuantity.value = completedWeight.value = undefined
     reason.value = error.value = requestKey = fingerprint = ''
     progress.value = 'partial'
@@ -583,34 +597,6 @@ onBeforeUnmount(() => {
       </template>
       <div :class="{ 'processing-workspace': processing }">
         <section class="processing-work-order">
-          <h3 v-if="processing" class="processing-section-title">工单信息</h3>
-          <ElDescriptions :column="2" border class="quantity-summary">
-            <ElDescriptionsItem v-if="processing" label="流水号">{{
-              sharedSerialLabel(snapshot)
-            }}</ElDescriptionsItem>
-            <ElDescriptionsItem v-if="processing" label="物料类型">{{
-              materialTypeLabel(snapshot.material_type || null)
-            }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="来源批次" :span="2">{{
-              snapshot.batch_no
-            }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
-            <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
-            <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{
-              snapshot.transfer_specification || '—'
-            }}</ElDescriptionsItem>
-          </ElDescriptions>
-          <SharedMaterialInfo :item="snapshot" />
-          <section v-if="processing && snapshot.process_route" class="processing-current-step">
-            <header>
-              <strong
-                >{{ snapshot.process_route.sequence_no }} ·
-                {{ snapshot.process_route.step_name }}</strong
-              ><span>当前工序</span>
-            </header>
-            <p>{{ snapshot.process_route.instructions || '未填写工艺要求' }}</p>
-          </section>
-
           <ElAlert
             v-if="isRework && snapshot.rework_route_id && !snapshot.rework_route_ready"
             title="待工艺人员制定返工工艺"
@@ -635,7 +621,7 @@ onBeforeUnmount(() => {
             ref="formRef"
             class="processing-registration-form"
             label-position="top"
-            :show-message="false"
+            :show-message="true"
             :disabled="saving || loading"
             @submit.prevent="save"
           >
@@ -643,146 +629,6 @@ onBeforeUnmount(() => {
               只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。
             </p>
             <CompactFormSection :title="processing ? '加工登记' : '件数调整'">
-              <ElFormItem
-                class="form-field--full"
-                v-if="processing && snapshot.processing_schedules?.length"
-                label="交货排期"
-                required
-                :class="{ 'is-error': submitted && scheduleMissing }"
-              >
-                <ElSelect
-                  v-model="scheduleId"
-                  :disabled="snapshot.production_schedule_locked"
-                  aria-label="交货排期"
-                  placeholder="选择本次加工对应的排期"
-                >
-                  <ElOption
-                    v-for="plan in snapshot.processing_schedules"
-                    :key="plan.id"
-                    :value="plan.id"
-                    :label="`${plan.task_title || plan.task_no} · ${formatDateTime(plan.due_at)} · ${plan.target_quantity ?? '—'} 件`"
-                  />
-                </ElSelect>
-                <div v-if="selectedSchedule" class="processing-plan-summary">
-                  <span
-                    >计划 <b>{{ selectedSchedule.target_quantity ?? '—' }}</b> 件</span
-                  >
-                  <span
-                    >已转出 <b>{{ selectedSchedule.dispatched_quantity }}</b> 件</span
-                  >
-                  <span
-                    >待交 <b>{{ selectedSchedule.remaining_quantity ?? '—' }}</b> 件</span
-                  >
-                </div>
-              </ElFormItem>
-
-              <ProcessingTaskFields
-                v-if="processing && snapshot.task_required != null"
-                v-model:task-id="taskId"
-                v-model:purpose-id="purposeId"
-                v-model:rework-record-id="originalRecordId"
-                :team-id="teamId"
-                :context="snapshot"
-                :hide-route-instructions="processing"
-                :rework="isRework"
-                :rework-record-fixed="!!reworkRecordId || snapshot.rework_pending === true"
-                :submitted="submitted"
-                :disabled="saving || loading"
-                @validity="taskFieldsValid = $event"
-              />
-              <ElFormItem
-                :label="unitProcessing ? '本次完成件数' : '加工后本批未转出总件数'"
-                class="form-field--medium"
-                required
-                :class="{
-                  'is-error':
-                    submitted &&
-                    (!Number.isSafeInteger(detailed ? outputTotal : quantity) ||
-                      (detailed ? outputTotal : quantity!) < 0 ||
-                      (unitProcessing && (!quantity || quantity > snapshot.quantity)) ||
-                      (detailed ? outputTotal : quantity!) > 2147483647),
-                }"
-                ><strong v-if="processing && detailed" class="dialog-readonly"
-                  >{{ outputTotal }} 件（明细合计）</strong
-                ><ElInputNumber
-                  v-else
-                  v-model="quantity"
-                  :aria-label="unitProcessing ? '本次完成件数' : '加工后未转出件数'"
-                  :min="0"
-                  :max="2147483647"
-                  :precision="0"
-                  controls-position="right"
-                  ><template #suffix
-                    ><span class="dialog-input-unit">件</span></template
-                  ></ElInputNumber
-                ></ElFormItem
-              >
-              <ElFormItem
-                v-if="processing && !structured"
-                label="本批加工进度"
-                required
-                :class="{ 'is-error': submitted && progressInvalid }"
-                ><ElSelect v-model="progress" aria-label="本批加工进度"
-                  ><ElOption
-                    v-for="(label, value) in processingProgressLabels"
-                    :key="value"
-                    :value="value"
-                    :label="label" /></ElSelect
-                ><small
-                  v-if="detailed && activeOutputs.some((line) => line.role === 'remaining')"
-                  class="dialog-field-hint"
-                  >仍有未加工余料，请选择部分加工。</small
-                ></ElFormItem
-              >
-              <ElFormItem
-                v-if="unitProcessing"
-                label="本次完成重量"
-                required
-                :class="{
-                  'is-error': submitted && (completedWeight == null || completedWeight < 0),
-                }"
-              >
-                <WeightInput v-model="completedWeight" ariaLabel="本次完成重量" />
-                <small class="dialog-field-hint"
-                  >部分{{ isRework ? '返工' : '加工' }}请核对本次重量，剩余部分保留为{{
-                    isRework ? '待返工' : '未加工'
-                  }}库存。</small
-                >
-              </ElFormItem>
-              <ElFormItem
-                v-if="structured && !unitProcessing"
-                label="本次投入件数"
-                class="form-field--medium"
-                required
-                :class="{
-                  'is-error': submitted && (!inputQuantity || inputQuantity > snapshot.quantity),
-                }"
-              >
-                <ElInputNumber
-                  v-model="inputQuantity"
-                  :min="1"
-                  :max="snapshot.quantity"
-                  :precision="0"
-                  aria-label="本次投入件数"
-                  controls-position="right"
-                />
-              </ElFormItem>
-              <ElFormItem
-                v-if="structured"
-                label="实际加工日期"
-                required
-                :class="{
-                  'is-error': submitted && (!processingDate || processingDate > factoryToday()),
-                }"
-              >
-                <ElDatePicker
-                  v-model="processingDate"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  aria-label="实际加工日期"
-                  :clearable="false"
-                />
-              </ElFormItem>
               <ElFormItem
                 label="加工人"
                 required
@@ -810,19 +656,101 @@ onBeforeUnmount(() => {
               </ElFormItem>
               <ElFormItem
                 v-if="structured"
-                label="加工时长（选填）"
-                :error="
-                  submitted && !validProcessingMinutes(processingMinutes)
-                    ? '请填写大于零的加工时长'
-                    : undefined
-                "
+                label="加工时长"
+                required
+                :show-message="true"
+                :error="submitted && !processingMinutesValid ? '请填写大于零的加工时长' : undefined"
               >
                 <ProcessingDurationInput
                   v-model="processingMinutes"
-                  :invalid="submitted && !validProcessingMinutes(processingMinutes)"
+                  :invalid="submitted && !processingMinutesValid"
                   :disabled="saving"
                 />
               </ElFormItem>
+              <ProcessingParameterFields
+                v-if="structured"
+                v-model="parameters"
+                :team-id="teamId"
+                :fields="snapshot.parameter_fields"
+                :total-minutes="processingMinutes"
+                :submitted="submitted"
+                :disabled="saving"
+              />
+              <ElFormItem
+                v-if="!(processing && detailed)"
+                :label="unitProcessing ? '本次完成件数' : '加工后本批未转出总件数'"
+                class="form-field--medium"
+                required
+                :class="{
+                  'is-error':
+                    submitted &&
+                    (!Number.isSafeInteger(detailed ? outputTotal : quantity) ||
+                      (detailed ? outputTotal : quantity!) < 0 ||
+                      (unitProcessing && (!quantity || quantity > snapshot.quantity)) ||
+                      (detailed ? outputTotal : quantity!) > 2147483647),
+                }"
+                ><ElInputNumber
+                  v-model="quantity"
+                  :aria-label="unitProcessing ? '本次完成件数' : '加工后未转出件数'"
+                  :min="0"
+                  :max="2147483647"
+                  :precision="0"
+                  controls-position="right"
+                  ><template #suffix
+                    ><span class="dialog-input-unit">件</span></template
+                  ></ElInputNumber
+                ></ElFormItem
+              >
+              <ElFormItem
+                v-if="structured && !unitProcessing"
+                label="本次投入件数"
+                class="form-field--medium"
+                required
+                :class="{
+                  'is-error': submitted && (!inputQuantity || inputQuantity > snapshot.quantity),
+                }"
+              >
+                <ElInputNumber
+                  v-model="inputQuantity"
+                  :min="1"
+                  :max="snapshot.quantity"
+                  :precision="0"
+                  aria-label="本次投入件数"
+                  controls-position="right"
+                />
+              </ElFormItem>
+              <ElFormItem
+                v-if="unitProcessing"
+                label="本次完成重量"
+                required
+                :class="{
+                  'is-error': submitted && (completedWeight == null || completedWeight < 0),
+                }"
+              >
+                <WeightInput v-model="completedWeight" ariaLabel="本次完成重量" />
+                <small class="dialog-field-hint"
+                  >部分{{ isRework ? '返工' : '加工' }}请核对本次重量，剩余部分保留为{{
+                    isRework ? '待返工' : '未加工'
+                  }}库存。</small
+                >
+              </ElFormItem>
+              <ElFormItem
+                v-if="processing && !structured"
+                label="本批加工进度"
+                required
+                :class="{ 'is-error': submitted && progressInvalid }"
+                ><ElSelect v-model="progress" aria-label="本批加工进度"
+                  ><ElOption
+                    v-for="(label, value) in processingProgressLabels"
+                    :key="value"
+                    :value="value"
+                    :label="label" /></ElSelect
+                ><small
+                  v-if="detailed && activeOutputs.some((line) => line.role === 'remaining')"
+                  class="dialog-field-hint"
+                  >仍有未加工余料，请选择部分加工。</small
+                ></ElFormItem
+              >
               <ElFormItem
                 v-if="processing && !detailed && !unitProcessing"
                 label="加工后实际尺寸（选填）"
@@ -833,17 +761,16 @@ onBeforeUnmount(() => {
                   label="加工后实际尺寸"
                   @validity-change="specificationValid = $event"
               /></ElFormItem>
-              <ProcessingParameterFields
-                v-if="structured"
-                v-model="parameters"
-                :fields="snapshot.parameter_fields"
-                :total-minutes="processingMinutes"
-                :submitted="submitted"
-                :disabled="saving"
-              />
               <ElFormItem
-                label="备注（选填）"
+                :label="structured ? '备注' : '备注（选填）'"
+                :required="structured"
                 class="form-field--full"
+                :error="
+                  submitted && structured && !reason.trim()
+                    ? '请填写备注，无特殊情况请填无'
+                    : undefined
+                "
+                :show-message="true"
                 :class="{ 'is-error': submitted && reason.trim().length > 2000 }"
                 ><ElInput
                   v-model="reason"
@@ -852,8 +779,96 @@ onBeforeUnmount(() => {
                   :rows="2"
                   maxlength="2000"
                   show-word-limit
-                  :placeholder="unitProcessing ? '选填' : '选填，例如：10 块板材切割为 100 件'"
+                  :placeholder="structured ? '无特殊情况请填无' : '选填'"
               /></ElFormItem>
+              <ProcessingTaskFields
+                v-if="processing && snapshot.task_required != null"
+                v-model:task-id="taskId"
+                v-model:purpose-id="purposeId"
+                v-model:rework-record-id="originalRecordId"
+                :team-id="teamId"
+                :context="snapshot"
+                :hide-route-instructions="processing"
+                :rework="isRework"
+                :rework-record-fixed="!!reworkRecordId || snapshot.rework_pending === true"
+                :submitted="submitted"
+                :disabled="saving || loading"
+                @validity="taskFieldsValid = $event"
+              />
+              <ElFormItem
+                class="form-field--full"
+                v-if="processing && snapshot.processing_schedules?.length"
+                label="交货排期"
+                :required="!snapshot.production_schedule_locked"
+                :class="{ 'is-error': submitted && scheduleMissing }"
+              >
+                <span
+                  v-if="snapshot.production_schedule_locked && selectedSchedule"
+                  class="processing-auto-value"
+                >
+                  {{ selectedSchedule.task_title || selectedSchedule.task_no }} ·
+                  {{ formatDateTime(selectedSchedule.due_at) }} ·
+                  {{ selectedSchedule.target_quantity ?? '—' }} 件
+                </span>
+                <ElSelect
+                  v-else
+                  v-model="scheduleId"
+                  :disabled="snapshot.production_schedule_locked"
+                  aria-label="交货排期"
+                  placeholder="选择本次加工对应的排期"
+                >
+                  <ElOption
+                    v-for="plan in snapshot.processing_schedules"
+                    :key="plan.id"
+                    :value="plan.id"
+                    :label="`${plan.task_title || plan.task_no} · ${formatDateTime(plan.due_at)} · ${plan.target_quantity ?? '—'} 件`"
+                  />
+                </ElSelect>
+                <div v-if="selectedSchedule" class="processing-plan-summary">
+                  <span
+                    >计划 <b>{{ selectedSchedule.target_quantity ?? '—' }}</b> 件</span
+                  >
+                  <span
+                    >已转出 <b>{{ selectedSchedule.dispatched_quantity }}</b> 件</span
+                  >
+                  <span
+                    >待交 <b>{{ selectedSchedule.remaining_quantity ?? '—' }}</b> 件</span
+                  >
+                </div>
+              </ElFormItem>
+
+              <ElFormItem
+                v-if="structured"
+                label="实际加工日期"
+                required
+                :class="{
+                  'is-error': submitted && (!processingDate || processingDate > factoryToday()),
+                }"
+              >
+                <div
+                  v-if="!editingProcessingDate"
+                  class="processing-auto-value"
+                  aria-label="实际加工日期"
+                >
+                  <span>{{ processingDate }}</span>
+                  <ElButton
+                    link
+                    :disabled="saving"
+                    aria-label="修改实际加工日期"
+                    @click="editingProcessingDate = true"
+                    >修改</ElButton
+                  >
+                </div>
+                <ElDatePicker
+                  v-else
+                  v-model="processingDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  aria-label="实际加工日期"
+                  :clearable="false"
+                  @change="editingProcessingDate = false"
+                />
+              </ElFormItem>
             </CompactFormSection>
             <div v-if="processing && !unitProcessing" class="processing-mode">
               <ElSwitch
@@ -886,7 +901,7 @@ onBeforeUnmount(() => {
                       <th>物料类型</th>
                       <th>件数</th>
                       <th>实测重量</th>
-                      <th>实际尺寸（选填）</th>
+                      <th>实际尺寸</th>
                       <th v-if="snapshot.shared_unallocated" class="shared-owner-column">
                         归属流水号 *
                       </th>
@@ -909,10 +924,13 @@ onBeforeUnmount(() => {
                           /></ElSelect>
                         </td>
                         <td>
+                          <span v-if="line.role === 'remaining'">{{
+                            materialTypeLabel(line.material_type)
+                          }}</span>
                           <ElSelect
+                            v-else
                             v-model="line.material_type"
                             :aria-label="`明细${index + 1}物料类型`"
-                            :disabled="line.role === 'remaining' && !!snapshot.material_type"
                             @change="outputTypeChanged(line)"
                             ><ElOption
                               v-for="type in materialTypeOptions.filter(
@@ -960,7 +978,11 @@ onBeforeUnmount(() => {
                           </div>
                         </td>
                         <td>
+                          <span v-if="line.role !== 'produced'">{{
+                            line.role === 'remaining' ? snapshot.transfer_specification || '—' : '—'
+                          }}</span>
                           <div
+                            v-else
                             class="dialog-field"
                             :class="{ 'is-error': outputError(line, 'specification') }"
                           >
@@ -1056,6 +1078,34 @@ onBeforeUnmount(() => {
                 : '本批没有未转出的库存，不能登记加工。'
             }}
           </p>
+          <h3 v-if="processing" class="processing-section-title">工单信息</h3>
+          <ElDescriptions :column="2" border class="quantity-summary">
+            <ElDescriptionsItem v-if="processing" label="流水号">{{
+              sharedSerialLabel(snapshot)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem v-if="processing" label="物料类型">{{
+              materialTypeLabel(snapshot.material_type || null)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="来源批次" :span="2">{{
+              snapshot.batch_no
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
+            <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
+            <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{
+              snapshot.transfer_specification || '—'
+            }}</ElDescriptionsItem>
+          </ElDescriptions>
+          <SharedMaterialInfo :item="snapshot" />
+          <section v-if="processing && snapshot.process_route" class="processing-current-step">
+            <header>
+              <strong
+                >{{ snapshot.process_route.sequence_no }} ·
+                {{ snapshot.process_route.step_name }}</strong
+              ><span>当前工序</span>
+            </header>
+            <p>{{ snapshot.process_route.instructions || '未填写工艺要求' }}</p>
+          </section>
+
           <h3 v-if="historyRecords.length || !editable" class="quantity-history-title">
             本批操作记录
           </h3>
@@ -1262,6 +1312,14 @@ onBeforeUnmount(() => {
 }
 .processing-registration-form {
   container: form-fields / inline-size;
+}
+.processing-auto-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 6px;
+  color: var(--text);
 }
 .processing-workspace .process-execution-panel {
   position: sticky;

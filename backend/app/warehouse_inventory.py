@@ -499,7 +499,13 @@ def list_inventory(db, team_id, filters):
                     .where(
                         *matching_sources,
                         literal_query(
-                            term, [mt.customer_code, mt.product_code, mt.finished_specification]
+                            term,
+                            [
+                                mt.batch_no,
+                                mt.customer_code,
+                                mt.product_code,
+                                mt.finished_specification,
+                            ],
                         ),
                     )
                     .exists(),

@@ -33,13 +33,37 @@ def work(client, s, lot, employee, **extra):
         expected_revision=context["revision"],
         processor_name=employee["name"],
         processor_employee_id=employee["id"],
+        processing_minutes=60,
         processing_date="2026-10-15",
         processing_mode=context["processing_mode"],
         completed_quantity=context["quantity"],
         completed_weight=context["weight"],
         idempotency_key="daily-first",
+        reason="无",
     )
+    parameters = {
+        "furnace_no": "测试炉1",
+        "temperature_requirement": "900–950 °C",
+        "actual_temperature_c": 925,
+        "holding_minutes": 30,
+        "machine_no": "测试机台1",
+    }
+    body.update({key: parameters[key] for key in context.get("parameter_fields", [])})
     body.update(extra)
+    key = next(
+        (key for key in context.get("parameter_fields", []) if key in ("machine_no", "furnace_no")),
+        None,
+    )
+    if key and "equipment_id" not in extra:
+        name = (body.get(key) or "").strip()
+        if name and len(name) <= 80:
+            items = client.get(url + "/equipment").json()
+            item = next((item for item in items if item["name"] == name), None)
+            if item is None:
+                response = client.post(url + "/equipment", json={"name": name})
+                assert response.status_code == 201, response.text
+                item = response.json()
+            body["equipment_id"] = item["id"]
     return client.post(url + "/quantity-adjustments", headers=s["other_headers"], json=body)
 
 
@@ -64,7 +88,13 @@ def test_all_production_teams_record_actual_work(client, warehouse, code):
             quantity=100,
             input_quantity=1,
             outputs=[
-                dict(role="produced", material_type="semi_finished", quantity=100, weight=100)
+                dict(
+                    role="produced",
+                    material_type="semi_finished",
+                    quantity=100,
+                    weight=100,
+                    transfer_specification="20 × 10 × 2 mm",
+                )
             ],
         )
         if split

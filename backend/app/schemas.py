@@ -58,6 +58,7 @@ class ProcessingQuantity(BaseModel):
     processor_employee_id: int | None = Field(default=None, ge=1)
     processor_employee_ids: list[int] | None = Field(default=None, min_length=1, max_length=50)
     processing_minutes: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    equipment_id: int | None = Field(default=None, ge=1)
     furnace_no: str | None = Field(default=None, max_length=80)
     temperature_requirement: str | None = Field(default=None, max_length=160)
     actual_temperature_c: Decimal | None = Field(

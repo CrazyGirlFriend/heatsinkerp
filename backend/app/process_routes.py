@@ -49,13 +49,13 @@ def is_engineering_user(user):
 
 
 def assert_route_importer(user):
-    if user.role != "ADMIN" and not is_engineering_user(user):
-        raise HTTPException(403, "仅工艺班组或管理员可以维护工艺")
+    if not is_engineering_user(user):
+        raise HTTPException(403, "仅工艺班组可以维护工艺")
     return user
 
 
 def require_route_reader(row, user):
-    if row.state != "published":
+    if row.state != "published" and user.role != "ADMIN":
         assert_route_importer(user)
     return row
 

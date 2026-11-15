@@ -18,6 +18,7 @@ from sqlalchemy import select
 from test_dispatch_order_documents import post, setup_order
 from test_dispatch_planning import URL, order_file
 from test_dispatch_planning import dispatcher as dispatcher  # noqa: F401
+from test_engineering_team import author
 from test_outbound_documents import dispatch
 from test_process_routes import published, work
 from test_warehouse_classification import base, confirm
@@ -29,12 +30,15 @@ def selected_order(client, warehouse, dispatcher, *, repeated=False):
     route = published(client, warehouse, repeated)
     # Scope every step after stock preparation to the engineering serial. This
     # exercises path reuse rather than relying only on unrestricted common steps.
-    draft = client.post(f"/api/process-routes/{route['id']}/revise").json()
+    draft = client.post(
+        f"/api/process-routes/{route['id']}/revise", headers=author(client)[0]
+    ).json()
     steps = draft["steps"]
     for step in steps[1:]:
         step["serial_nos"] = draft["serial_nos"]
     saved = client.put(
         f"/api/process-routes/{draft['id']}",
+        headers=author(client)[0],
         json={
             **{key: draft[key] for key in ("title", "serial_nos", "version")},
             "steps": steps,
@@ -44,6 +48,7 @@ def selected_order(client, warehouse, dispatcher, *, repeated=False):
     assert saved.status_code == 200, saved.text
     response = client.post(
         f"/api/process-routes/{draft['id']}/publish",
+        headers=author(client)[0],
         json={"version": saved.json()["version"], "confirmed_imports": True},
     )
     assert response.status_code == 200, response.text
@@ -201,8 +206,10 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
     from test_process_route_intake import route_payload
 
     draft = route_payload(client, warehouse)
+    _, employee_id = author(client)
     with SessionLocal.begin() as db:
         row = db.get(ProcessRoute, draft["id"])
+        row.engineering_employee_id = employee_id
         row.serial_nos = ["A", "B"]
         steps = [
             {**step, "planned_quantity": "100", "split_here": index == 1}
@@ -211,7 +218,9 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
         row.steps = [*steps, {**steps[0], "sequence_no": 2, "name": "库房成品入库"}]
     add_documents(draft["id"])
     response = client.post(
-        f"/api/process-routes/{draft['id']}/publish", json={"version": draft["version"]}
+        f"/api/process-routes/{draft['id']}/publish",
+        headers=author(client)[0],
+        json={"version": draft["version"]},
     )
     assert response.status_code == 200, response.text
     route = response.json()

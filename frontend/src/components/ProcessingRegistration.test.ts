@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ElDatePicker, ElInputNumber, ElSwitch, ElSelect } from 'element-plus'
+import { ElDatePicker, ElInputNumber, ElSwitch, ElSelect, ElFormItem } from 'element-plus'
+import AppSelect from './AppSelect.vue'
+import SpecificationInput from './SpecificationInput.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
+import ProcessingDurationInput from './ProcessingDurationInput.vue'
+import ProcessingParameterFields from './ProcessingParameterFields.vue'
 import WeightInput from './WeightInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -28,6 +32,9 @@ beforeEach(() => {
   ])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
     { id: 3, team_id: 2, name: '研磨业务1', active: true, version: 1 },
+  ])
+  vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([
+    { id: 3, team_id: 2, name: 'GRIND-03', active: true, version: 1 },
   ])
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([employee])
   vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
@@ -59,7 +66,7 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render() {
+async function render(minutes: number | null = 30) {
   wrapper = mount(QuantityAdjustmentDialog, {
     props: { modelValue: true, teamId: 2, sourceId: 10, processing: true, canWrite: true },
     global: {
@@ -70,6 +77,19 @@ async function render() {
     },
   })
   await flushPromises()
+  await wrapper.get('textarea[aria-label="备注"]').setValue('无')
+  if (minutes != null)
+    wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', minutes)
+}
+function completedQuantityInput() {
+  return wrapper
+    .findAllComponents(ElInputNumber)
+    .find((input) => input.find('input[aria-label="本次完成件数"]').exists())!
+}
+async function changeDate(value: string) {
+  if (!wrapper.findComponent(ElDatePicker).exists())
+    await wrapper.get('button[aria-label="修改实际加工日期"]').trigger('click')
+  wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', value)
 }
 async function save() {
   await flushPromises()
@@ -79,17 +99,60 @@ async function save() {
     .trigger('click')
   await flushPromises()
 }
+it('requires daily-report parameters and duration before submitting and shows them before automatic metadata', async () => {
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...(await teamMaterialApi.quantityContext(2, 10)),
+    parameter_fields: ['machine_no'],
+  })
+  await render(null)
+  expect(wrapper.findComponent(ElDatePicker).exists()).toBe(false)
+  expect(wrapper.get('[aria-label="实际加工日期"]').text()).toContain(factoryToday())
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  expect(wrapper.getComponent(ProcessingDurationInput).props('invalid')).toBe(true)
+  expect(
+    wrapper.getComponent(ProcessingParameterFields).getComponent(ElFormItem).props('error'),
+  ).toBe('请选择机台号')
+  wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', 60)
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  wrapper
+    .getComponent(ProcessingParameterFields)
+    .getComponent(AppSelect)
+    .vm.$emit('update:modelValue', 3)
+  await flushPromises()
+  const parameters = wrapper.getComponent(ProcessingParameterFields).element
+  const metadata = wrapper.get('[aria-label="实际加工日期"]').element
+  expect(
+    parameters.compareDocumentPosition(metadata) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(
+    parameters.compareDocumentPosition(wrapper.get('.quantity-summary').element) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  await save()
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      equipment_id: 3,
+      machine_no: 'GRIND-03',
+      processing_minutes: 60,
+      processing_date: factoryToday(),
+    }),
+  )
+})
 it('requires an actual employee and submits partial work without changing original piece count', async () => {
   await render()
   expect(wrapper.findComponent(ElSwitch).exists()).toBe(false)
   expect(wrapper.text()).toContain('本次完成件数')
-  wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 6)
+  completedQuantityInput().vm.$emit('update:modelValue', 6)
   wrapper.getComponent(WeightInput).vm.$emit('update:modelValue', 60)
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
   expect(wrapper.get('button[aria-label="加工人"]').attributes('aria-invalid')).toBe('true')
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
-  wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', '2026-10-15')
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  await changeDate('2026-10-15')
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
@@ -107,16 +170,16 @@ it('requires an actual employee and submits partial work without changing origin
 })
 it('rejects completion above available pieces and dates after today', async () => {
   await render()
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
-  wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 11)
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  completedQuantityInput().vm.$emit('update:modelValue', 11)
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-  expect(wrapper.getComponent(ElInputNumber).element.closest('.is-error')).not.toBeNull()
-  wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 10)
-  wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', '2999-01-01')
+  expect(completedQuantityInput().element.closest('.is-error')).not.toBeNull()
+  completedQuantityInput().vm.$emit('update:modelValue', 10)
+  await changeDate('2999-01-01')
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-  wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', factoryToday())
+  await changeDate(factoryToday())
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledOnce()
 })
@@ -163,17 +226,20 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   const summary = wrapper.get('.quantity-summary').element
   const requirements = wrapper.get('.processing-current-step').element
   const outputs = wrapper.get('[aria-label="加工后完整实物明细"]').element
+  expect(wrapper.find('.dialog-readonly').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('加工后本批未转出总件数')
+  expect(wrapper.find('input[aria-label="加工任务"]').exists()).toBe(false)
   expect(
     summary.compareDocumentPosition(requirements) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy()
   expect(requirements.textContent).toContain('厚度2.5(+0.01/-0.02)，清洗吹干')
+  expect(outputs.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   for (const field of [
-    requirements,
-    wrapper.getComponent(ElDatePicker).element,
+    wrapper.get('[aria-label="实际加工日期"]').element,
     wrapper.getComponent(TeamEmployeeInput).element,
   ])
     expect(field.compareDocumentPosition(outputs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
   wrapper
     .findAllComponents(ElInputNumber)
     .find((i) => i.props('ariaLabel') === '明细2件数')!
@@ -182,6 +248,7 @@ it('opens splitting outputs directly and includes worker identity and actual wor
     .findAllComponents(WeightInput)
     .find((i) => i.props('ariaLabel') === '明细2重量')!
     .vm.$emit('update:modelValue', 100)
+  wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '20 × 10 × 2 mm')
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
@@ -209,7 +276,7 @@ it('requires a task, derives its business from the shared catalog and resets on 
     allowed_task_ids: [9],
   })
   await render()
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
   const task = wrapper
@@ -301,12 +368,14 @@ it('uses the engineered rework task while preserving the chosen original record'
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', 30)
   const task = wrapper
     .findAllComponents(ElSelect)
     .find((item) => item.find('[aria-label="加工任务"]').exists())!
-  expect(task.props('disabled')).toBe(true)
-  expect(task.props('modelValue')).toBe(9)
+  expect(task).toBeUndefined()
+  expect(wrapper.getComponent(ProcessingTaskFields).props('taskId')).toBe(9)
+  await wrapper.get('textarea[aria-label="备注"]').setValue('无')
   await flushPromises()
   await wrapper
     .findAll('button')
@@ -389,15 +458,35 @@ it('uses the published route task without asking again, including a planned repe
   const task = wrapper
     .findAllComponents(ElSelect)
     .find((select) => select.props('ariaLabel') === '加工任务')!
-  expect(task.props('modelValue')).toBe(9)
-  expect(task.props('disabled')).toBe(true)
+  expect(task).toBeUndefined()
+  expect(wrapper.getComponent(ProcessingTaskFields).props('taskId')).toBe(9)
   expect(wrapper.text()).toContain('二次研磨')
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
-  wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 6)
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  completedQuantityInput().vm.$emit('update:modelValue', 6)
   wrapper.getComponent(WeightInput).vm.$emit('update:modelValue', 60)
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
     expect.objectContaining({ processing_task_id: 9, purpose_id: 3, processor_employee_id: 71 }),
+  )
+})
+
+it('requires an explicit remark and keeps route-supplied values out of disabled inputs', async () => {
+  await render()
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  await wrapper.get('textarea[aria-label="备注"]').setValue('   ')
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  expect(
+    wrapper
+      .findAllComponents(ElFormItem)
+      .find((item) => item.props('label') === '备注')!
+      .props('error'),
+  ).toBe('请填写备注，无特殊情况请填无')
+  await wrapper.get('textarea[aria-label="备注"]').setValue('无')
+  await save()
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({ reason: '无' }),
   )
 })

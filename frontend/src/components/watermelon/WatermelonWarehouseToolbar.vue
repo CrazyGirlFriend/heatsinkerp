@@ -2,7 +2,7 @@
 import WatermelonDataToolbar from './WatermelonDataToolbar.vue'
 import WatermelonFilter from './WatermelonFilter.vue'
 import WatermelonButton from './WatermelonButton.vue'
-import { IconBox, IconLayoutGrid, IconClock, IconLock, IconCircleOff } from '@tabler/icons-vue'
+import { IconBox, IconLayoutGrid, IconLock, IconCircleOff } from '@tabler/icons-vue'
 import type { WarehouseCatalogFilter } from '@/services/warehouseCatalog'
 
 defineProps<{
@@ -18,10 +18,8 @@ const emit = defineEmits<{
 }>()
 const stateOptions = [
   { value: '', label: '全部', icon: IconLayoutGrid, color: '#6b7280' },
-  { value: 'unassigned', label: '未分配', icon: IconBox, color: '#b28030' },
   { value: 'occupied', label: '有料', icon: IconBox, color: '#24896d' },
   { value: 'available', label: '空闲', icon: IconLayoutGrid, color: '#89939e' },
-  { value: 'pending', label: '待签收', icon: IconClock, color: '#397fba' },
   { value: 'draft', label: '填写中', icon: IconLock, color: '#b28030' },
   { value: 'disabled', label: '停用', icon: IconCircleOff, color: '#8d8793' },
 ]
@@ -36,7 +34,7 @@ function changeState(value: string) {
       v-model="query"
       class="wm-warehouse-actions"
       label="搜索仓位"
-      placeholder="仓位、流水号或材质"
+      placeholder="仓位、流水号、批次号或材质"
       :loading="loading"
       @search="emit('search')"
       @refresh="emit('refresh')"

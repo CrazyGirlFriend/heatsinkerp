@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import ProcessingDurationInput from './ProcessingDurationInput.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, reactive } from 'vue'
@@ -77,6 +78,9 @@ function warehouseRoute() {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([
+    { id: 3, team_id: 2, name: 'ROLL-02', active: true, version: 1 },
+  ])
   vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   vi.spyOn(productionScheduleApi, 'candidates').mockResolvedValue({ items: [] })
   glass.enhance.mockReset()
@@ -677,9 +681,16 @@ describe('source batch dispatch and loss drafts', () => {
     expect(task.element.closest('.is-error')).not.toBeNull()
     wrapper
       .getComponent(ProcessingParameterFields)
-      .vm.$emit('update:modelValue', { machine_no: 'ROLL-02' })
+      .vm.$emit('update:modelValue', { machine_no: 'ROLL-02', equipment_id: 3 })
     task.vm.$emit('update:modelValue', 9)
     await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.getComponent(ProcessingDurationInput).props('invalid')).toBe(true)
+    wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', 90)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await wrapper.get('textarea[aria-label="加工备注"]').setValue('无')
     await submit()
     expect(
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
@@ -690,6 +701,7 @@ describe('source batch dispatch and loss drafts', () => {
         expected_revision: 7,
         processor_employee_id: 22,
         machine_no: 'ROLL-02',
+        processing_minutes: 90,
         processing_task_id: 9,
         processor_name: '发送王师傅',
         processing_mode: 'split',
@@ -1220,8 +1232,15 @@ describe('source batch dispatch and loss drafts', () => {
         .mock.calls[0]![1].lines.map((line) => line.purpose_id),
     ).toEqual([31, 32])
     await destination(1)
-    expect(selects[0]!.props('modelValue')).toBeUndefined()
-    expect(selects[1]!.props('modelValue')).toBeUndefined()
+    expect(wrapper.find('input[aria-label="TL10接收任务"]').exists()).toBe(false)
+    expect(wrapper.find('input[aria-label="TL11接收任务"]').exists()).toBe(false)
+    expect(teamMaterialApi.purposes).not.toHaveBeenCalledWith(1)
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.lastCall?.[1]).toMatchObject({
+      next_team_id: 1,
+    })
+    for (const line of vi.mocked(teamMaterialApi.createDispatch).mock.lastCall![1].lines)
+      expect(line).not.toHaveProperty('purpose_id')
   })
   it('cannot silently bypass a failed purpose lookup', async () => {
     vi.mocked(teamMaterialApi.purposes).mockRejectedValue(new Error('业务读取失败'))

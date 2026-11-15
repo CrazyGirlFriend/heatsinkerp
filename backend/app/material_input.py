@@ -1,6 +1,6 @@
 """Bounded suggestions from existing documents; never create a stock association."""
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import MaterialTransfer, SharedMaterialGroup, SharedMaterialMember
@@ -32,7 +32,10 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
         filters.append(MaterialTransfer.shared_unallocated.is_(False))
     if query.strip():
         term = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        filters.append(column.like(f"%{term}%", escape="!"))
+        match = column.like(f"%{term}%", escape="!")
+        if field == "serial_no":
+            match = or_(match, MaterialTransfer.batch_no.like(f"%{term}%", escape="!"))
+        filters.append(match)
     statement = (
         select(column, func.max(MaterialTransfer.id).label("latest"))
         .where(*filters)
@@ -74,7 +77,10 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
         if query.strip():
             term = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
             member_query = member_query.where(
-                SharedMaterialMember.serial_no.like(f"%{term}%", escape="!")
+                or_(
+                    SharedMaterialMember.serial_no.like(f"%{term}%", escape="!"),
+                    SharedMaterialGroup.batch_no.like(f"%{term}%", escape="!"),
+                )
             )
         member_query = member_query.order_by(
             case((SharedMaterialMember.serial_no == query.strip(), 0), else_=1),

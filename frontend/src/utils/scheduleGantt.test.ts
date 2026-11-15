@@ -307,7 +307,7 @@ describe('VTable schedule adapter', () => {
     expect(record!.children![1]!.children![0]!.progress).toBe(0)
     expect(record!.progress).toBeUndefined()
   })
-  it('honors weight and dual targets and leaves unassessed or missing targets unknown', () => {
+  it('honors weight and dual targets and shows dispatch progress even without assessment', () => {
     const [record] = scheduleGanttRecords([
       task([
         node(1, {
@@ -326,7 +326,7 @@ describe('VTable schedule adapter', () => {
       35,
       60,
       null,
-      null,
+      0,
     ])
   })
 })

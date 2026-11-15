@@ -109,7 +109,9 @@ def test_partial_rework_keeps_remaining_as_rework_not_initial_output(client, war
 
 def test_historical_hold_survives_rework_and_recheck_until_manual_release(client, inspection):
     s, lot, headers, body = inspection
-    hold = client.post("/api/inspections", headers=headers, json=body).json()
+    from test_inspections import create_check
+
+    hold = create_check(client, inspection).json()
     from app.database import SessionLocal
     from app.models import MaterialInspection
 
@@ -224,15 +226,25 @@ def test_split_rework_records_actual_output_and_scrap_without_recounting_initial
 ):
     s = warehouse
     lot, worker = setup_lot(client, s, code=code, quantity=1)
-    original = work(
+    response = work(
         client,
         s,
         lot,
         worker,
         quantity=10,
         input_quantity=1,
-        outputs=[dict(role="produced", quantity=10, weight=100, material_type="semi_finished")],
-    ).json()
+        outputs=[
+            dict(
+                role="produced",
+                quantity=10,
+                weight=100,
+                material_type="semi_finished",
+                transfer_specification="20 × 10 × 2 mm",
+            )
+        ],
+    )
+    assert response.status_code == 201, response.text
+    original = response.json()
     produced = approve_rework(client, s, original["outputs"][0], original)
     result = work(
         client,
@@ -243,7 +255,13 @@ def test_split_rework_records_actual_output_and_scrap_without_recounting_initial
         quantity=20,
         input_quantity=10,
         outputs=[
-            dict(role="produced", quantity=20, weight=99, material_type="semi_finished"),
+            dict(
+                role="produced",
+                quantity=20,
+                weight=99,
+                material_type="semi_finished",
+                transfer_specification="10 × 10 × 2 mm",
+            ),
             dict(role="scrap", quantity=0, weight=1, material_type="scrap_chips"),
         ],
         idempotency_key="split-rework",

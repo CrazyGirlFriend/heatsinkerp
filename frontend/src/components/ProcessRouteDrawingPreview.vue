@@ -101,7 +101,7 @@ onBeforeUnmount(() => {
           :src="`${url}#toolbar=0&navpanes=0&view=Fit`"
           title="PDF图纸原件"
           tabindex="-1"
-          :loading="thumbnail ? 'lazy' : 'eager'"
+          loading="eager"
           referrerpolicy="no-referrer"
         />
       </DocumentPreviewTrigger>

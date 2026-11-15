@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElTableColumn } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElFormItem, ElOption } from 'element-plus'
 import AppDialog from './AppDialog.vue'
 import AppButton from './AppButton.vue'
 import AppAlert from './AppAlert.vue'
-import AppInput from './AppInput.vue'
-import WorkspacePagination from './WorkspacePagination.vue'
-import DataTable from './watermelon/WatermelonDataTable.vue'
+import AppSelect from './AppSelect.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ReworkSource } from '@/types/processRoute'
@@ -15,66 +13,84 @@ import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 const emit = defineEmits<{ close: []; saved: [] }>()
 const visible = ref(true),
   busy = ref(false),
-  loading = ref(false),
-  error = ref('')
+  loadingSources = ref(false),
+  loadingContext = ref(false),
+  sourceError = ref(''),
+  contextError = ref('')
 const query = ref(''),
-  appliedQuery = ref(''),
   page = ref(1),
   total = ref(0)
 const rows = ref<ReworkSource[]>([]),
+  selected = ref<ReworkSource>(),
   context = ref<QuantityAdjustmentContext>()
-let generation = 0
-async function load() {
+const options = computed(() =>
+  selected.value && !rows.value.some((row) => row.id === selected.value?.id)
+    ? [selected.value, ...rows.value]
+    : rows.value,
+)
+let sourceGeneration = 0,
+  contextGeneration = 0
+async function load(nextPage = 1) {
   if (busy.value) return
-  const token = ++generation
-  loading.value = true
-  error.value = ''
-  context.value = undefined
-  rows.value = []
+  const token = ++sourceGeneration
+  loadingSources.value = true
+  sourceError.value = ''
+  if (nextPage === 1) {
+    rows.value = []
+    page.value = 1
+    total.value = 0
+  }
   try {
-    const data = await processRouteApi.reworkSources(appliedQuery.value, page.value)
-    if (token !== generation) return
-    rows.value = data.items
+    const data = await processRouteApi.reworkSources(query.value, nextPage)
+    if (token !== sourceGeneration) return
+    rows.value = nextPage === 1 ? data.items : [...rows.value, ...data.items]
     total.value = data.total
+    page.value = nextPage
   } catch (e) {
-    if (token === generation) error.value = e instanceof Error ? e.message : '批次读取失败'
+    if (token === sourceGeneration)
+      sourceError.value = e instanceof Error ? e.message : '批次读取失败'
   } finally {
-    if (token === generation) loading.value = false
+    if (token === sourceGeneration) loadingSources.value = false
   }
 }
-function search() {
-  appliedQuery.value = query.value.trim()
-  page.value = 1
+function search(value: string) {
+  query.value = value.trim()
   void load()
 }
-async function select(id: number) {
-  if (busy.value || loading.value) return
-  const token = ++generation
-  loading.value = true
-  error.value = ''
+async function select(id?: number) {
+  if (busy.value) return
+  selected.value = options.value.find((row) => row.id === id)
+  const token = ++contextGeneration
   context.value = undefined
+  contextError.value = ''
+  loadingContext.value = Boolean(selected.value)
+  if (!selected.value) return
   try {
-    const result = await processRouteApi.reworkSourceContext(id)
-    if (token === generation) context.value = result
+    const result = await processRouteApi.reworkSourceContext(selected.value.id)
+    if (token === contextGeneration) context.value = result
   } catch (e) {
-    if (token === generation) error.value = e instanceof Error ? e.message : '批次读取失败'
+    if (token === contextGeneration)
+      contextError.value = e instanceof Error ? e.message : '批次读取失败'
   } finally {
-    if (token === generation) loading.value = false
+    if (token === contextGeneration) loadingContext.value = false
   }
 }
 function saved() {
   visible.value = false
   emit('saved')
 }
-onMounted(load)
-onBeforeUnmount(() => ++generation)
+onMounted(() => load())
+onBeforeUnmount(() => {
+  ++sourceGeneration
+  ++contextGeneration
+})
 </script>
 
 <template>
   <AppDialog
     v-model="visible"
-    title="提交返工问题"
-    width="min(960px, calc(100vw - 24px))"
+    title="提交问题"
+    width="min(880px, calc(100vw - 24px))"
     append-to-body
     align-center
     :close-on-click-modal="!busy"
@@ -82,79 +98,104 @@ onBeforeUnmount(() => ++generation)
     :show-close="!busy"
     @closed="emit('close')"
   >
-    <AppAlert v-if="error" :title="error" type="error" :closable="false" />
-    <form class="rework-search" role="search" @submit.prevent="search">
-      <AppInput
-        v-model="query"
-        placeholder="流水号、批次号"
-        aria-label="返工批次搜索"
-        :disabled="busy"
-        clearable
-      />
-      <AppButton native-type="submit" class="action-warm" :disabled="loading || busy"
-        >查询</AppButton
-      >
-      <AppButton :disabled="loading || busy" @click="load">刷新</AppButton>
-    </form>
-    <DataTable
-      columns-key="TeamReworkRequestDialog-1"
-      :data="rows"
-      border
-      class="business-table"
-      aria-label="本班组返工批次"
-      :empty-text="loading ? '读取中' : '暂无可提交的在库批次'"
+    <ReworkRouteRequest
+      class="team-problem-form"
+      :context="context"
+      :loading="loadingContext"
+      @busy="busy = $event"
+      @changed="saved"
     >
-      <ElTableColumn prop="serial_no" label="流水号" min-width="150" />
-      <ElTableColumn prop="batch_no" label="批次号" min-width="190" />
-      <ElTableColumn prop="quantity" label="在库件数" width="100" align="right" />
-      <ElTableColumn label="在库重量（kg）" width="145" align="right"
-        ><template #default="{ row }">{{ row.weight.toFixed(3) }}</template></ElTableColumn
-      >
-      <ElTableColumn label="操作" width="110" align="center"
-        ><template #default="{ row }"
-          ><AppButton :disabled="loading || busy" @click="select(row.id)">{{
-            context?.source_transfer_id === row.id ? '已选择' : '选择'
-          }}</AppButton></template
-        ></ElTableColumn
-      >
-    </DataTable>
-    <WorkspacePagination
-      v-if="total > 10"
-      v-model:current-page="page"
-      :total="total"
-      :page-size="10"
-      :disabled="loading || busy"
-      layout="total, prev, pager, next"
-      @current-change="load"
-    />
-    <template v-if="context">
-      <p>{{ context.batch_no }}</p>
-      <AppAlert
-        v-if="!context.rework_task_records?.length"
-        title="本批次暂无可关联的加工记录"
-        type="warning"
-        :closable="false"
-      />
-      <ReworkRouteRequest
-        v-else
-        :key="context.source_transfer_id"
-        :context="context"
-        @busy="busy = $event"
-        @changed="saved"
-      />
-    </template>
+      <template #source="{ submitted }">
+        <ElFormItem
+          class="form-field--full"
+          label="问题批次"
+          required
+          :error="submitted && !selected ? '请选择问题批次' : ''"
+        >
+          <AppSelect
+            :model-value="selected?.id"
+            aria-label="问题批次"
+            placeholder="搜索流水号或批次号"
+            filterable
+            remote
+            clearable
+            :remote-method="search"
+            :loading="loadingSources"
+            :disabled="busy"
+            no-data-text="暂无可提交的在库批次"
+            @change="select"
+          >
+            <ElOption
+              v-for="row in options"
+              :key="row.id"
+              :value="row.id"
+              :label="`${row.serial_no || '未关联流水号'} · ${row.batch_no}`"
+            />
+            <template #footer>
+              <div class="source-actions">
+                <AppButton
+                  v-if="rows.length < total"
+                  :disabled="loadingSources || busy"
+                  @click.stop="load(page + 1)"
+                  >更多批次</AppButton
+                >
+                <AppButton :disabled="loadingSources || busy" @click.stop="load()">刷新</AppButton>
+              </div>
+            </template>
+          </AppSelect>
+          <span v-if="context" class="stock-summary">
+            在库 {{ context.quantity }} 件 · {{ context.weight }} kg
+          </span>
+        </ElFormItem>
+        <AppAlert
+          v-if="sourceError"
+          class="form-field--full"
+          :title="sourceError"
+          type="error"
+          :closable="false"
+        >
+          <AppButton :disabled="loadingSources || busy" @click="load()">重试</AppButton>
+        </AppAlert>
+        <AppAlert
+          v-if="contextError"
+          class="form-field--full"
+          :title="contextError"
+          type="error"
+          :closable="false"
+        >
+          <AppButton :disabled="loadingContext || busy" @click="select(selected?.id)"
+            >重试</AppButton
+          >
+        </AppAlert>
+        <AppAlert
+          v-if="context && !context.rework_task_records?.length && !context.rework_of_id"
+          class="form-field--full"
+          title="本批次暂无可反馈的工艺记录"
+          type="warning"
+          :closable="false"
+        />
+      </template>
+    </ReworkRouteRequest>
   </AppDialog>
 </template>
 
 <style scoped>
-.rework-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+.team-problem-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
-.rework-search :deep(.el-input) {
-  flex: 1;
-  min-width: 0;
+.app-select {
+  width: 100%;
+}
+.source-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.stock-summary {
+  color: var(--muted);
+  font-size: 12px;
 }
 </style>

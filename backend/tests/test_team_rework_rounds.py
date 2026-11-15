@@ -13,7 +13,8 @@ from app.models import (
 from receipt_helpers import receipt_post
 from sqlalchemy import select
 from test_engineered_rework import save_plan
-from test_processing_daily import work
+from test_inspections import historical_check
+from test_processing_daily import setup_lot, work
 from test_team_rework_notices import prepare
 from test_warehouse_classification import base, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -78,8 +79,8 @@ def inspect(client, s, lot, *, quantity=2, failed=0, scope="full"):
         kind = (
             "inspection" if db.get(MaterialTransfer, lot["id"]).next_team_id == qc.id else "patrol"
         )
-    response = client.post(
-        "/api/inspections",
+    response = historical_check(
+        client,
         headers=s["rework_qc_headers"],
         json=dict(
             source_transfer_id=lot["id"],
@@ -155,6 +156,27 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
 
 
+def test_qc_leader_submits_own_stock_directly_without_inspection_record(client, warehouse):
+    s = warehouse
+    lot, employee = setup_lot(client, s, code="FACTORY-QC")
+    processed = work(client, s, lot, employee)
+    assert processed.status_code == 201, processed.text
+    output = processed.json()["outputs"][0]
+    with SessionLocal.begin() as db:
+        engineering = Team(code="FACTORY-PROCESS", name="工艺", kind="engineering", active=True)
+        db.add(engineering)
+        db.flush()
+        engineering_id = engineering.id
+    route = direct(client, s, output, processed.json()["id"])
+    assert route["state"] == "draft"
+    assert route["rework_request"]["inspection_id"] is None
+    assert route["rework_request"]["requesting_team_id"] == s["other"]["id"]
+    assert client.get("/api/inspections").json()["total"] == 0
+    notices = client.get(f"/api/rework-notices?team_id={engineering_id}").json()
+    assert notices["total"] == 1
+    assert notices["items"][0]["kind"] == "requested"
+
+
 def test_rounds_follow_selected_material_not_other_portions_of_same_serial(client, warehouse):
     s = warehouse
     lot, body, _, _ = prepare(client, s)
@@ -222,10 +244,12 @@ def test_direct_request_respects_stock_revision_and_legacy_quality_hold(client, 
 
 
 def test_revision_is_not_a_new_round_and_partial_work_remains_open(client, warehouse):
+    from test_engineering_team import author
+
     s = warehouse
     lot, body, _, _ = prepare(client, s)
     route = save_plan(client, s, direct(client, s, lot, body["rework_of_id"]))
-    revision = client.post(URL + f"/{route['id']}/revise").json()
+    revision = client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).json()
     revised = save_plan(client, s, revision, instructions="精磨至2.40mm")
     rows = rounds(client, revised)
     assert len(rows) == 1 and rows[0]["request"]["round"] == 1

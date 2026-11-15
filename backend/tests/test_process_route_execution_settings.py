@@ -3,6 +3,7 @@
 from app.database import SessionLocal
 from app.models import ProcessRoute
 from sqlalchemy import func, select
+from test_engineering_team import author
 from test_process_route_import import HEADERS, docx
 from test_process_route_intake import publish_payload, route_payload
 from test_processing_daily import work
@@ -44,7 +45,9 @@ def test_word_maps_every_known_operation_to_its_active_team(client, warehouse):
         [["流水号", "691236-50"], HEADERS]
         + [[i, name, "按原稿要求加工", "1", "4008"] for i, name in enumerate(operations)]
     )
-    response = client.post("/api/process-routes/parse", files={"file": ("工艺.docx", word)})
+    response = client.post(
+        "/api/process-routes/parse", headers=author(client)[0], files={"file": ("工艺.docx", word)}
+    )
     assert response.status_code == 200, response.text
     steps = response.json()["steps"]
     assert [step["name"] for step in steps] == operations
@@ -56,7 +59,9 @@ def test_word_maps_every_known_operation_to_its_active_team(client, warehouse):
     assert steps[-1]["team_id"] is None
     disabled = teams["电镀"]
     assert client.patch(f"/api/teams/{disabled['id']}", json={"active": False}).status_code == 200
-    reparsed = client.post("/api/process-routes/parse", files={"file": ("工艺.docx", word)})
+    reparsed = client.post(
+        "/api/process-routes/parse", headers=author(client)[0], files={"file": ("工艺.docx", word)}
+    )
     assert reparsed.status_code == 200, reparsed.text
     assert reparsed.json()["steps"][-2]["team_id"] is None
     with SessionLocal() as db:

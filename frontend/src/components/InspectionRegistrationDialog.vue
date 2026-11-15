@@ -49,7 +49,7 @@ const visible = ref(true)
 const directory = useTeamDirectoryStore(),
   auth = useAuthStore()
 const teams = computed(() => directory.items.filter((team) => team.active && teamCanProcess(team)))
-const kind = computed(() => props.recheck?.kind || props.kind || 'patrol')
+const kind = computed(() => props.recheck?.kind || props.kind || 'inspection')
 const title = computed(() => (kind.value === 'inspection' ? '检验' : '巡检'))
 const teamId = ref(
   props.recheck?.team_id ??
@@ -138,7 +138,7 @@ async function load() {
     rows.value = result.items
     total.value = result.total
   } catch (e) {
-    if (token === generation) error.value = e instanceof Error ? e.message : '巡检批次读取失败'
+    if (token === generation) error.value = e instanceof Error ? e.message : '检查批次读取失败'
   } finally {
     if (token === generation) loading.value = false
   }
@@ -207,7 +207,7 @@ async function submit() {
     await inspectionApi.create({ ...body, idempotency_key: requestKey })
     emit('saved')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '巡检登记失败'
+    error.value = e instanceof Error ? e.message : '检查登记失败'
   } finally {
     saving.value = false
   }
@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <CompactFormSection title="检查内容" class="inspection-check-options">
-          <ElFormItem label="检验范围" required>
+          <ElFormItem label="检验方式" required>
             <ElRadioGroup v-model="scope"
               ><ElRadioButton value="sample">抽检</ElRadioButton
               ><ElRadioButton value="full">全检</ElRadioButton></ElRadioGroup

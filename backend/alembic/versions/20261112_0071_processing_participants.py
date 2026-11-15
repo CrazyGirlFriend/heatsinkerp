@@ -10,29 +10,37 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "material_quantity_adjustments", sa.Column("processor_group_key", sa.String(1024))
-    )
-    op.add_column("material_quantity_adjustments", sa.Column("processing_minutes", sa.Integer()))
-    op.create_table(
-        "processing_participants",
-        sa.Column(
-            "processing_id",
-            sa.Integer(),
-            sa.ForeignKey("material_quantity_adjustments.id", ondelete="CASCADE"),
-            primary_key=True,
-        ),
-        sa.Column(
-            "employee_id",
-            sa.Integer(),
-            sa.ForeignKey("team_employees.id", ondelete="RESTRICT"),
-            primary_key=True,
-        ),
-        sa.Column("name", sa.String(80), nullable=False),
-    )
-    op.create_index(
-        "ix_processing_participants_employee_id", "processing_participants", ["employee_id"]
-    )
+    inspector = sa.inspect(op.get_bind())
+    columns = {item["name"] for item in inspector.get_columns("material_quantity_adjustments")}
+    # The historical baseline creates current metadata for a new installation.
+    if "processor_group_key" not in columns:
+        op.add_column(
+            "material_quantity_adjustments", sa.Column("processor_group_key", sa.String(1024))
+        )
+    if "processing_minutes" not in columns:
+        op.add_column(
+            "material_quantity_adjustments", sa.Column("processing_minutes", sa.Integer())
+        )
+    if not inspector.has_table("processing_participants"):
+        op.create_table(
+            "processing_participants",
+            sa.Column(
+                "processing_id",
+                sa.Integer(),
+                sa.ForeignKey("material_quantity_adjustments.id", ondelete="CASCADE"),
+                primary_key=True,
+            ),
+            sa.Column(
+                "employee_id",
+                sa.Integer(),
+                sa.ForeignKey("team_employees.id", ondelete="RESTRICT"),
+                primary_key=True,
+            ),
+            sa.Column("name", sa.String(80), nullable=False),
+        )
+        op.create_index(
+            "ix_processing_participants_employee_id", "processing_participants", ["employee_id"]
+        )
     connection = op.get_bind()
     work = sa.table(
         "material_quantity_adjustments",
@@ -55,12 +63,20 @@ def upgrade():
                 work.c.id,
                 work.c.processor_employee_id,
                 sa.func.coalesce(work.c.processor_name, employees.c.name),
-            ).join(employees, employees.c.id == work.c.processor_employee_id),
+            )
+            .join(employees, employees.c.id == work.c.processor_employee_id)
+            .where(
+                ~sa.exists().where(
+                    participants.c.processing_id == work.c.id,
+                    participants.c.employee_id == work.c.processor_employee_id,
+                )
+            ),
         )
     )
     connection.execute(
         work.update()
         .where(work.c.processor_employee_id.is_not(None))
+        .where(work.c.processor_group_key.is_(None))
         .values(processor_group_key=sa.cast(work.c.processor_employee_id, sa.String(1024)))
     )
 

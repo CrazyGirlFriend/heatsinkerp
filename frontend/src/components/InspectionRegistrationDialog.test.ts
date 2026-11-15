@@ -21,7 +21,7 @@ vi.mock('@/stores/teamDirectory', () => ({
 }))
 const source = {
   source_transfer_id: 42,
-  team_id: 2,
+  team_id: 8,
   serial_no: '805881-5',
   batch_no: 'TL42',
   material_name: 'W80',
@@ -68,6 +68,9 @@ async function render(recheck?: InspectionRecord) {
   })
   await flushPromises()
   if (!recheck) {
+    expect(inspectionApi.sources).toHaveBeenCalledWith(
+      expect.objectContaining({ team_id: 8, kind: 'inspection' }),
+    )
     await button('选择').trigger('click')
     await flushPromises()
   }
@@ -99,7 +102,7 @@ function chooseProblems(ids = [11, 12]) {
 }
 it('requires the QC employee and counts, showing invalid fields without sending a request', async () => {
   await render()
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   expect(wrapper.findAll('.is-error').length).toBeGreaterThanOrEqual(2)
   expect(wrapper.getComponent(TeamEmployeeInput).props('invalid')).toBe(true)
   expect(inspectionApi.create).not.toHaveBeenCalled()
@@ -114,10 +117,11 @@ it('submits selected lot, real inspector, revision, and samples while preserving
   chooseProblems()
   await flushPromises()
   expect(wrapper.text()).toContain('样本合格 4 件')
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   const first = vi.mocked(inspectionApi.create).mock.calls[0]![0]
   expect(first).toMatchObject({
+    kind: 'inspection',
     source_transfer_id: 42,
     expected_revision: 3,
     inspector_employee_id: 9,
@@ -127,19 +131,25 @@ it('submits selected lot, real inspector, revision, and samples while preserving
   })
   expect(first.checked_at).toMatch(/Z$/)
   expect(wrapper.text()).toContain('连接中断')
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenLastCalledWith(first)
   expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 it('loads the only descendant lot for recheck without requesting automatic release', async () => {
   vi.mocked(inspectionApi.sources).mockResolvedValue({
-    items: [{ ...source, hold_id: 13 }],
+    items: [{ ...source, team_id: 2, hold_id: 13 }],
     total: 1,
     page: 1,
     page_size: 8,
   })
-  await render({ id: 13, team_id: 2, source_transfer_id: 42, batch_no: 'TL42' } as InspectionRecord)
+  await render({
+    id: 13,
+    kind: 'patrol',
+    team_id: 2,
+    source_transfer_id: 42,
+    batch_no: 'TL42',
+  } as InspectionRecord)
   expect(wrapper.find('.inspection-source-picker').exists()).toBe(false)
   expect(inspectionApi.sources).toHaveBeenCalledWith(expect.objectContaining({ recheck_id: 13 }))
   choosePerson()
@@ -150,6 +160,7 @@ it('loads the only descendant lot for recheck without requesting automatic relea
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({
       parent_id: 13,
+      kind: 'patrol',
       source_transfer_id: 42,
       failed_quantity: 0,
       problem_type_ids: [],
@@ -163,7 +174,7 @@ it('requires catalog choices for failed checks; remarks cannot replace them', as
   await flushPromises()
   choosePerson()
   await wrapper.get('textarea[maxlength="2000"]').setValue('说明已经填了')
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).not.toHaveBeenCalled()
   expect(
@@ -179,10 +190,10 @@ it('requires catalog choices for failed checks; remarks cannot replace them', as
   expect(select.props('filterable')).toBe(true)
   expect(select.props('allowCreate')).toBe(false)
   chooseProblems([13])
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   expect(inspectionApi.create).not.toHaveBeenCalled()
   chooseProblems([11])
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({ problem_type_ids: [11] }),
@@ -195,7 +206,7 @@ it('explains missing problem setup and does not accept a failed check without co
   fillCounts()
   await flushPromises()
   choosePerson()
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   expect(wrapper.text()).toContain('请检验班组长在“班组管理 → 检验问题”中配置')
   expect(inspectionApi.create).not.toHaveBeenCalled()
 })
@@ -212,7 +223,7 @@ it('recovers a catalog read failure and clears previous problem choices when the
   chooseProblems([11])
   wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 0)
   await flushPromises()
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({ failed_quantity: 0, problem_type_ids: [], involved_team_ids: [] }),
@@ -220,7 +231,13 @@ it('recovers a catalog read failure and clears previous problem choices when the
 })
 
 it('requires current problem choices for a failed recheck while keeping its original issue link', async () => {
-  await render({ id: 13, team_id: 2, source_transfer_id: 42, batch_no: 'TL42' } as InspectionRecord)
+  await render({
+    id: 13,
+    kind: 'patrol',
+    team_id: 2,
+    source_transfer_id: 42,
+    batch_no: 'TL42',
+  } as InspectionRecord)
   fillCounts()
   await flushPromises()
   choosePerson()
@@ -232,6 +249,7 @@ it('requires current problem choices for a failed recheck while keeping its orig
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({
       parent_id: 13,
+      kind: 'patrol',
       failed_quantity: 1,
       problem_type_ids: [12],
       involved_team_ids: [],
@@ -245,7 +263,7 @@ it('cannot submit after the actor loses inspection-team permissions', async () =
   choosePerson()
   state.auth.isTeamAccount = false
   await flushPromises()
-  expect(button('保存巡检').attributes('disabled')).toBeDefined()
+  expect(button('保存检验').attributes('disabled')).toBeDefined()
   expect(inspectionApi.create).not.toHaveBeenCalled()
 })
 
@@ -255,10 +273,10 @@ it('full inspection fills the current lot quantity and still requires explicit c
   await flushPromises()
   expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
   expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('disabled')).toBe(true)
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   expect(inspectionApi.create).not.toHaveBeenCalled()
   choosePerson()
-  await button('保存巡检').trigger('click')
+  await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({

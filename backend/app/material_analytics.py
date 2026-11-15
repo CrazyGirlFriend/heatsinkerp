@@ -31,6 +31,7 @@ META_FIELDS = (
 mt = MaterialTransfer
 TEXT_SEARCH_FIELDS = (
     "serial_no",
+    "batch_no",
     "material_name",
     "product_code",
     "customer_code",

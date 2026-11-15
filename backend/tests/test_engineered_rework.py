@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from test_engineering_team import author
+from test_inspections import historical_check
 from test_process_route_intake import publish_payload, route_payload
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, confirm, dispatch
@@ -53,8 +55,8 @@ def approved_quality_issue(client, setup, lot, context):
         )
         issue_id = issue.id if issue else None
     if issue_id is None:
-        result = client.post(
-            "/api/inspections",
+        result = historical_check(
+            client,
             headers=headers,
             json=dict(
                 source_transfer_id=lot["id"],
@@ -124,6 +126,7 @@ def save_plan(client, s, route, *, instructions="返工精磨至2.50±0.01mm", t
             db.add(person)
         db.commit()
         person_id = person.id
+    headers, _ = author(client)
     team = team or s["other"]["id"]
     task_base = f"/api/team-materials/{team}"
     task = next(
@@ -167,10 +170,10 @@ def save_plan(client, s, route, *, instructions="返工精磨至2.50±0.01mm", t
                 "instructions": "复磨后检查表面，不得叠放",
             }
         )
-    result = client.put(URL + f"/{route['id']}", json=body)
+    result = client.put(URL + f"/{route['id']}", json=body, headers=headers)
     assert result.status_code == 200, result.text
     published = client.post(
-        URL + f"/{route['id']}/publish", json={"version": result.json()["version"]}
+        URL + f"/{route['id']}/publish", json={"version": result.json()["version"]}, headers=headers
     )
     assert published.status_code == 200, published.text
     return published.json()
@@ -265,8 +268,10 @@ def test_two_rework_steps_keep_one_round_and_require_manual_return_to_normal_rou
     lot, employee, normal = routed_lot(client, s, second=False)
     original = work(client, s, lot, employee).json()
     request = request_plan(client, s, original["outputs"][0], original)
+    headers, _ = author(client)
     skipped = client.put(
         URL + f"/{request['id']}",
+        headers=headers,
         json={
             "title": request["title"],
             "serial_nos": request["serial_nos"],
@@ -386,7 +391,8 @@ def test_rework_instruction_can_be_revised_only_before_any_execution(client, war
     original = work(client, s, lot, employee).json()
     request = request_plan(client, s, original["outputs"][0], original)
     saved = save_plan(client, s, request)
-    revision = client.post(URL + f"/{saved['id']}/revise")
+    headers, _ = author(client)
+    revision = client.post(URL + f"/{saved['id']}/revise", headers=headers)
     assert revision.status_code == 201, revision.text
     revision = revision.json()
     assert revision["route_kind"] == "rework"
@@ -399,10 +405,12 @@ def test_rework_instruction_can_be_revised_only_before_any_execution(client, war
         key: revision[key] for key in ("title", "serial_nos", "version", "engineering_employee_id")
     }
     payload.update(steps=steps, modified_employee_id=saved["engineering_employee_id"])
-    changed = client.put(URL + f"/{revision['id']}", json=payload)
+    changed = client.put(URL + f"/{revision['id']}", json=payload, headers=headers)
     assert changed.status_code == 200, changed.text
     changed = client.post(
-        URL + f"/{revision['id']}/publish", json={"version": changed.json()["version"]}
+        URL + f"/{revision['id']}/publish",
+        json={"version": changed.json()["version"]},
+        headers=headers,
     )
     assert changed.status_code == 200, changed.text
     current = {"id": request["rework_request"]["source_transfer_id"]}
@@ -413,7 +421,7 @@ def test_rework_instruction_can_be_revised_only_before_any_execution(client, war
         client.get(URL + f"/{saved['id']}").json()["steps"][0]["instructions"]
         == "返工精磨至2.50±0.01mm"
     )
-    assert client.post(URL + f"/{revision['id']}/revise").status_code == 409
+    assert client.post(URL + f"/{revision['id']}/revise", headers=headers).status_code == 409
 
 
 def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(client, warehouse):
@@ -434,14 +442,17 @@ def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(cl
     assert client.get(f"{URL}/{route['id']}").json()["drawings"] == route["drawings"]
     assert client.get(f"{URL}/{route['id']}/drawings/{copied['id']}").content == original_pdf
     word = docx([["流水号", "WAREHOUSE-001"], HEADERS, [1, "返工", "手工要求", 1, 10]])
+    headers, _ = author(client)
     rejected = client.post(
         f"{URL}/{route['id']}/source",
+        headers=headers,
         data={"version": route["version"]},
         files={"file": ("返工.docx", word)},
     )
     assert rejected.status_code == 422 and "手工填写" in rejected.text
     uploaded = client.post(
         f"{URL}/{route['id']}/drawings",
+        headers=headers,
         data={"version": route["version"]},
         files={"file": ("补充图纸.pdf", pdf(2))},
     )
@@ -449,7 +460,7 @@ def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(cl
     route = uploaded.json()
     assert len(route["drawings"]) == 2
     saved = save_plan(client, s, route)
-    revision = client.post(f"{URL}/{saved['id']}/revise").json()
+    revision = client.post(f"{URL}/{saved['id']}/revise", headers=headers).json()
     assert len(revision["drawings"]) == 2
     assert {drawing["id"] for drawing in revision["drawings"]}.isdisjoint(
         drawing["id"] for drawing in saved["drawings"]

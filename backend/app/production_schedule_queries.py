@@ -473,7 +473,18 @@ def serial_options(db, query=None, page=1, page_size=20):
         .group_by(ProductionScheduleTask.serial_no)
     )
     if query:
-        grouped = grouped.where(literal_query(query, [ProductionScheduleTask.serial_no]))
+        from .production_schedules import filtered_nodes
+
+        grouped = grouped.where(
+            or_(
+                literal_query(query, [ProductionScheduleTask.serial_no]),
+                ProductionScheduleTask.serial_no.in_(
+                    select(Plan.serial_no).where(
+                        Plan.id.in_(filtered_nodes(query=query)), Plan.cancelled_at.is_(None)
+                    )
+                ),
+            )
+        )
     total = db.scalar(select(func.count()).select_from(grouped.subquery())) or 0
     rows = db.execute(
         grouped.order_by(ProductionScheduleTask.serial_no)

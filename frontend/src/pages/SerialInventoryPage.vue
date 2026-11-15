@@ -458,7 +458,7 @@ function exportSource() {
       <WorkspaceDataToolbar
         v-model="queryDraft"
         search-label="搜索库存"
-        placeholder="流水号、材质、规格或任务"
+        placeholder="流水号、批次号、材质、规格或任务"
         :maxlength="160"
         :loading="loading"
         columns

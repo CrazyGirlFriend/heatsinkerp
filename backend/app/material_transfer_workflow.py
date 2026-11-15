@@ -24,7 +24,6 @@ from .models import (
     Team,
     TeamEmployee,
     User,
-    WarehousePlacement,
     utcnow,
 )
 from .schemas import SCRAP_MATERIAL_TYPES, MaterialTransferDocumentFields
@@ -723,25 +722,6 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     user,
                     identity=identity,
                     required=target_changed_to_warehouse,
-                )
-        if transfer.warehouse_location and supplied.intersection(
-            {"serial_no", "material_name", "material_type"}
-        ):
-            from .warehouse_locations import lock_location, require_compatible
-
-            identity = tuple(
-                getattr(payload, field) if field in supplied else getattr(transfer, field)
-                for field in ("serial_no", "material_name", "material_type")
-            )
-            # Document names are historical; renamed slots retain their actual placement IDs.
-            location_ids = db.scalars(
-                select(WarehousePlacement.location_id)
-                .where(WarehousePlacement.transfer_id == transfer.id)
-                .order_by(WarehousePlacement.location_id)
-            ).all()
-            for location_id in location_ids:
-                require_compatible(
-                    db, lock_location(db, location_id), identity, exclude_transfer_id=transfer.id
                 )
         for field in ("serial_no", "quantity", "weight", "notes", *DOCUMENT_FIELDS, *SLUDGE_FIELDS):
             if field in supplied:

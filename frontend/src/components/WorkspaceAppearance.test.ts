@@ -2,7 +2,7 @@
 import { ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
 import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
 import { ElTableColumn } from 'element-plus'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
@@ -18,6 +18,7 @@ const wrappers: VueWrapper[] = []
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))
 
 function workbench(warehouse = true) {
+  const filtersOpen = ref(false)
   const onSearch = vi.fn(),
     onPage = vi.fn(),
     onSize = vi.fn()
@@ -30,7 +31,11 @@ function workbench(warehouse = true) {
             WorkspaceDataToolbar,
             { searchLabel: '搜索库存', onSearch, columns: true },
             {
-              filters: () => h(FilterDialog, { modelValue: false }),
+              filters: () =>
+                h(FilterDialog, {
+                  modelValue: filtersOpen.value,
+                  'onUpdate:modelValue': (value: boolean) => (filtersOpen.value = value),
+                }),
               actions: () => h('button', { type: 'button' }, '新建入库'),
             },
           ),
@@ -123,9 +128,11 @@ describe('warehouse shared appearance', () => {
     const filter = wrapper.getComponent(FilterDialog)
     expect(filter.emitted('open')).toEqual([[]])
     expect(filter.emitted('update:modelValue')).toEqual([[true]])
-    // Existing dialog API and close events are retained, including teleported contents.
-    const dialog = filter.getComponent(AppDialog)
-    dialog.vm.$emit('update:modelValue', false)
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="关闭筛选"]')).not.toBeNull())
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="关闭筛选"]')!
+    expect(close.closest('.wm-control-menu')).not.toBeNull()
+    close.click()
+    await flushPromises()
     expect(filter.emitted('cancel')).toEqual([[]])
     expect(filter.emitted('apply')).toBeUndefined()
   })

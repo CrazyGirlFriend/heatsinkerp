@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import create_engine
+from app.database import engine as app_engine
+from app.models import MaterialQuantityAdjustment
+from sqlalchemy import create_engine, update
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -102,7 +104,13 @@ def test_distinct_crews_and_unknown_duration_are_not_merged(client, warehouse):
     remainder = next(row for row in joint.json()["outputs"] if row["role"] == "remaining")
     single = work(client, s, remainder, first, idempotency_key="solo")
     assert single.status_code == 201, single.text
-    assert single.json()["processing_minutes"] is None
+    # Historical rows can still have unknown duration; new registrations require it.
+    with app_engine.begin() as connection:
+        connection.execute(
+            update(MaterialQuantityAdjustment)
+            .where(MaterialQuantityAdjustment.id == single.json()["id"])
+            .values(processing_minutes=None)
+        )
     daily = client.get(url + "/processing-daily").json()
     assert daily["total"] == 2
     assert sorted(len(row["processors"]) for row in daily["items"]) == [1, 2]
@@ -132,7 +140,7 @@ def test_invalid_crew_and_duration_do_not_change_stock(client, warehouse):
         result = work(client, s, lot, first, **extra)
         assert result.status_code == 422, result.text
     assert client.get(base(s, True) + "/processing-records").json()["total"] == 0
-    result = work(client, s, lot, first, processing_minutes=5)
+    result = work(client, s, lot, first, processing_minutes=5, holding_minutes=5)
     assert result.status_code == 201, result.text
     assert result.json()["completed_quantity"] == 10
 
@@ -156,6 +164,7 @@ def test_migration_preserves_legacy_names_and_unknown_duration():
                 "INSERT INTO material_quantity_adjustments VALUES (1, 1, '原姓名'), (2, NULL, '历史未关联')"
             )
             with Operations.context(MigrationContext.configure(conn)):
+                migration.upgrade()
                 migration.upgrade()
                 assert conn.exec_driver_sql("SELECT * FROM processing_participants").all() == [
                     (1, 1, "原姓名")

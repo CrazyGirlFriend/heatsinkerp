@@ -155,7 +155,7 @@ onBeforeUnmount(() => {
           v-model="query"
           :prefix-icon="Search"
           :aria-label="kind === 'serial' ? '搜索排期流水号' : '搜索业务人员'"
-          :placeholder="kind === 'serial' ? '搜索流水号' : '搜索姓名'"
+          :placeholder="kind === 'serial' ? '搜索流水号或批次号' : '搜索姓名'"
           clearable
           @clear="load(true)"
         /><ElButton native-type="submit">查询</ElButton>

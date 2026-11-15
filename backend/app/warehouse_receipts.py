@@ -298,13 +298,14 @@ def list_receipts(
     }
 
 
-def locations(db, team_id, *, query=None, limit=100, selected=None, identity=None):
+def locations(db, team_id, *, query=None, limit=100, page=1, selected=None, identity=None):
     from .warehouse_locations import list_locations
 
     return list_locations(
         db,
         team_id,
         query=query,
+        page=page,
         page_size=limit,
         available_only=True,
         selected=selected,

@@ -1,9 +1,9 @@
-"""One failed inspection, several team replies, and an explicit QC-leader decision."""
+"""Unified quality issues from inspections and team reports, with their own workflows."""
 
 from datetime import timezone
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, literal, select, union_all
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from . import inspections
@@ -73,6 +73,7 @@ def require_rework_issue(db, issue_id, user, *, lock=False):
 def rework_stock(db, issue_id, user, *, source_transfer_id=None, page=1, page_size=10):
     from .material_lineage import relatives
     from .quantity_adjustments import context
+    from .rework_routes import request_work_record
     from .schemas import SCRAP_MATERIAL_TYPES
 
     row = require_rework_issue(db, issue_id, user)
@@ -100,8 +101,9 @@ def rework_stock(db, issue_id, user, *, source_transfer_id=None, page=1, page_si
         result = context(db, lot.next_team_id, lot.id)
         ancestors = relatives([lot.id], ancestors=True, name="quality_rework_history")
         records = list(
-            db.scalars(
-                select(MaterialQuantityAdjustment)
+            db.execute(
+                select(MaterialQuantityAdjustment, Team.name)
+                .join(Team, Team.id == MaterialQuantityAdjustment.team_id)
                 .where(
                     MaterialQuantityAdjustment.source_transfer_id.in_(select(ancestors.c.id)),
                     MaterialQuantityAdjustment.processing_status.is_not(None),
@@ -111,16 +113,11 @@ def rework_stock(db, issue_id, user, *, source_transfer_id=None, page=1, page_si
             )
         )
         result["rework_task_records"] = [
-            dict(
-                rework_of_id=record.id,
-                process_step_name=record.process_step_name,
-                processing_task_name=record.processing_task_name,
-            )
-            for record in records
+            request_work_record(record, team_name) for record, team_name in records
         ]
         result["rework_of_id"] = (
             row.processing_record_id
-            if any(record.id == row.processing_record_id for record in records)
+            if any(record.id == row.processing_record_id for record, _ in records)
             else None
         )
         return result
@@ -197,56 +194,87 @@ def list_records(
     page=1,
     page_size=20,
 ):
+    from . import quality_team_problems as team_problems
+    from .table_query import query_statement
+
     conditions = [Inspection.parent_id.is_(None), Inspection.failed_quantity > 0, visible(user)]
-    conditions += RecordFilters(date_from=date_from, date_to=date_to).dates(Inspection.checked_at)
     if team_id:
         conditions.append(
             exists().where(Member.inspection_id == Inspection.id, Member.team_id == team_id)
         )
-    if kind:
-        conditions.append(Inspection.kind == kind)
-    if status:
-        conditions.append(Inspection.feedback_status == status)
     if problem_type_id is not None:
         conditions.append(
             Inspection.problems.any(InspectionProblem.problem_type_id == problem_type_id)
         )
-    if query and query.strip():
-        conditions.append(
-            stock.literal_query(
-                query,
-                [
-                    MaterialTransfer.serial_no,
-                    MaterialTransfer.batch_no,
-                    MaterialTransfer.material_name,
-                    Inspection.notes,
-                ],
-            )
-        )
-    stmt = (
-        select(Inspection, MaterialTransfer, Team)
+    columns = {**inspections.inspection_table_columns(), "route_state": literal(None)}
+    inspection_rows = (
+        select(*(column.label(key) for key, column in columns.items()))
+        .select_from(Inspection)
         .join(MaterialTransfer, MaterialTransfer.id == Inspection.source_transfer_id)
         .join(Team, Team.id == Inspection.team_id)
         .where(*conditions)
     )
-    from .table_query import query_statement
-
-    columns = inspections.inspection_table_columns()
+    report_rows, progress = team_problems.list_projection(db, user, team_id, columns)
+    if problem_type_id is not None:
+        # Team reports have a description, not inspection problem classifications.
+        report_rows = report_rows.where(False)
+    combined = union_all(inspection_rows, report_rows).subquery()
+    fields = dict(combined.c.items())
+    conditions = RecordFilters(date_from=date_from, date_to=date_to).dates(combined.c.checked_at)
+    if kind:
+        conditions.append(combined.c.kind == kind)
+    if status:
+        conditions.append(combined.c.feedback_status == status)
+    if query and query.strip():
+        conditions.append(
+            stock.literal_query(
+                query, [fields[key] for key in ("serial_no", "batch_no", "material_name", "notes")]
+            )
+        )
     stmt = query_statement(
-        stmt, Inspection.created_at.desc(), Inspection.id.desc(), columns=columns
+        select(combined).where(*conditions),
+        combined.c.created_at.desc(),
+        combined.c.id.desc(),
+        combined.c.kind,
+        columns=fields,
     )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     pending = (
         db.scalar(
             select(func.count()).select_from(
-                stmt.where(Inspection.feedback_status != "closed").subquery()
+                stmt.where(combined.c.feedback_status != "closed").subquery()
             )
         )
         or 0
     )
-    rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).all()
+    rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).mappings().all()
+    inspection_ids = [r["id"] for r in rows if r["kind"] != "team_report"]
+    inspection_documents = {
+        r["id"]: r
+        for r in summaries(
+            db,
+            db.execute(
+                select(Inspection, MaterialTransfer, Team)
+                .join(MaterialTransfer, MaterialTransfer.id == Inspection.source_transfer_id)
+                .join(Team, Team.id == Inspection.team_id)
+                .where(Inspection.id.in_(inspection_ids))
+            ).all(),
+        )
+    }
+    from .models import ProcessRoute
+
+    report_ids = [r["id"] for r in rows if r["kind"] == "team_report"]
+    report_documents = {
+        route.id: team_problems.document(route, lot, team, progress[route.id])
+        for route, lot, team in db.execute(
+            team_problems.statement(user, team_id).where(ProcessRoute.id.in_(report_ids))
+        )
+    }
     return dict(
-        items=summaries(db, rows),
+        items=[
+            (report_documents if r["kind"] == "team_report" else inspection_documents)[r["id"]]
+            for r in rows
+        ],
         total=total,
         pending_count=pending,
         page=page,

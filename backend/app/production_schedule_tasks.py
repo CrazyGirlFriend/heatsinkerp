@@ -224,7 +224,7 @@ def list_tasks(
     if query and query.strip():
         serials = list(dict.fromkeys(filter(None, re.split(r"[\s,，;；、]+", query.strip()))))
         if len(serials) > 100:
-            raise HTTPException(422, "一次最多搜索 100 个流水号")
+            raise HTTPException(422, "一次最多搜索 100 个流水号或批次号")
         task_match = literal_query(query, [Task.title, Task.serial_no])
         if serials and serials != [query.strip()]:
             task_match = or_(task_match, Task.serial_no.in_(serials))
@@ -232,6 +232,24 @@ def list_tasks(
         if token.startswith("PQ") and token[2:].isdigit() and len(token) <= 16:
             task_match = or_(task_match, Task.id == int(token[2:]))
         node_matches = schedules.filtered_nodes(query=query)
+        if serials and serials != [query.strip()]:
+            batch_sources = (
+                select(Source.schedule_id)
+                .join(schedules.Transfer, schedules.Transfer.id == Source.source_transfer_id)
+                .where(schedules.Transfer.batch_no.in_(serials))
+            )
+            batch_deliveries = (
+                select(schedules.Delivery.schedule_id)
+                .join(schedules.Transfer, schedules.Transfer.id == schedules.Delivery.transfer_id)
+                .where(schedules.Transfer.batch_no.in_(serials))
+            )
+            node_matches = select(Plan.id).where(
+                or_(
+                    Plan.id.in_(node_matches),
+                    Plan.id.in_(batch_sources),
+                    Plan.id.in_(batch_deliveries),
+                )
+            )
         nodes = nodes.where(
             or_(Plan.task_id.in_(select(Task.id).where(task_match)), Plan.id.in_(node_matches))
         )

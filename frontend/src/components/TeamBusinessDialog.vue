@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import StatePanel from './StatePanel.vue'
+import { equipmentTeamCodes } from '@/config/processingParameters'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -56,6 +57,7 @@ const props = withDefaults(
     businessOnly?: boolean
     employeesOnly?: boolean
     teamName?: string
+    teamCode?: string
     processingTasks?: boolean
     inspectionProblems?: boolean
   }>(),
@@ -87,6 +89,11 @@ const employees = ref<TeamEmployee[]>([])
 const editingEmployees = computed(() => tab.value === 'employees')
 const tasks = ref<TeamProcessingTask[]>([])
 const editingTasks = computed(() => tab.value === 'tasks')
+const equipment = ref<TeamDirectoryItem[]>([])
+const editingEquipment = computed(() => tab.value === 'equipment')
+const hasEquipment = computed(
+  () => equipmentTeamCodes.includes(props.teamCode || '') && !props.employeesOnly,
+)
 const problems = ref<TeamDirectoryItem[]>([])
 const editingProblems = computed(() => tab.value === 'problems')
 const canManage = computed(
@@ -101,22 +108,26 @@ const canManageDirectory = computed(
   () => canManage.value && (!editingProblems.value || canManageProblems.value),
 )
 const directoryItems = computed(() =>
-  editingProblems.value
-    ? problems.value
-    : editingTasks.value
-      ? tasks.value
-      : editingEmployees.value
-        ? employees.value
-        : purposes.value,
+  editingEquipment.value
+    ? equipment.value
+    : editingProblems.value
+      ? problems.value
+      : editingTasks.value
+        ? tasks.value
+        : editingEmployees.value
+          ? employees.value
+          : purposes.value,
 )
 const itemLabel = computed(() =>
-  editingProblems.value
-    ? '问题'
-    : editingTasks.value
-      ? '任务'
-      : editingEmployees.value
-        ? '员工'
-        : '任务',
+  editingEquipment.value
+    ? '设备'
+    : editingProblems.value
+      ? '问题'
+      : editingTasks.value
+        ? '任务'
+        : editingEmployees.value
+          ? '员工'
+          : '任务',
 )
 const purposes = ref<TeamPurpose[]>([]),
   newName = ref(''),
@@ -185,22 +196,29 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [options, state, staff, taskOptions, problemOptions] = await Promise.all([
-      props.employeesOnly ? Promise.resolve([]) : teamMaterialApi.purposes(props.teamId),
-      props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
-      teamMaterialApi.employees(props.teamId),
-      !props.processingTasks || !canManage.value
-        ? Promise.resolve([])
-        : teamMaterialApi.processingTasks(props.teamId),
-      canManageProblems.value
-        ? teamMaterialApi.inspectionProblems(props.teamId)
-        : Promise.resolve([]),
-    ])
+    const [options, state, staff, taskOptions, problemOptions, equipmentOptions] =
+      await Promise.all([
+        props.employeesOnly || !props.processingTasks
+          ? Promise.resolve([])
+          : teamMaterialApi.purposes(props.teamId),
+        props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
+        teamMaterialApi.employees(props.teamId),
+        !props.processingTasks || !canManage.value
+          ? Promise.resolve([])
+          : teamMaterialApi.processingTasks(props.teamId),
+        canManageProblems.value
+          ? teamMaterialApi.inspectionProblems(props.teamId)
+          : Promise.resolve([]),
+        hasEquipment.value && canManage.value
+          ? teamMaterialApi.equipment(props.teamId)
+          : Promise.resolve([]),
+      ])
     if (current !== epoch) return
     purposes.value = options
     employees.value = staff
     tasks.value = taskOptions
     problems.value = problemOptions
+    equipment.value = equipmentOptions
     opening.value = state
   } catch (e) {
     if (current === epoch) error.value = e instanceof Error ? e.message : '班组管理加载失败'
@@ -209,7 +227,7 @@ async function load() {
   }
 }
 watch(
-  () => [props.modelValue, props.teamId],
+  () => [props.modelValue, props.teamId, props.teamCode],
   () => {
     ++epoch
     if (!props.modelValue) return
@@ -220,9 +238,10 @@ watch(
         ? 'purposes'
         : props.initialTab || 'purposes'
     if (tab.value === 'purposes' && props.processingTasks && canManage.value) tab.value = 'tasks'
-    if (tab.value === 'tasks' && props.processingTasks === false) tab.value = 'purposes'
     if (tab.value === 'problems' && !canManageProblems.value) tab.value = 'purposes'
-    if (props.employeesOnly) tab.value = 'employees'
+    if (!props.processingTasks && ['purposes', 'tasks'].includes(tab.value)) tab.value = 'employees'
+    if (props.employeesOnly || (tab.value === 'equipment' && !hasEquipment.value))
+      tab.value = 'employees'
     newName.value = ''
     requestKey = ''
     lastBody = ''
@@ -284,13 +303,15 @@ async function saveDirectoryItem(item?: TeamDirectoryItem) {
   error.value = ''
   try {
     await (
-      editingProblems.value
-        ? teamMaterialApi.saveInspectionProblem
-        : editingTasks.value
-          ? teamMaterialApi.saveProcessingTask
-          : editingEmployees.value
-            ? teamMaterialApi.saveEmployee
-            : teamMaterialApi.savePurpose
+      editingEquipment.value
+        ? teamMaterialApi.saveEquipment
+        : editingProblems.value
+          ? teamMaterialApi.saveInspectionProblem
+          : editingTasks.value
+            ? teamMaterialApi.saveProcessingTask
+            : editingEmployees.value
+              ? teamMaterialApi.saveEmployee
+              : teamMaterialApi.savePurpose
     )(
       props.teamId,
       { name, active: item?.active ?? true, ...(item ? { expected_version: item.version } : {}) },
@@ -315,7 +336,7 @@ async function submitOpening() {
     ...line,
     quantity: enteredQuantity(line),
     ...sludgePayload(line.material_type, line.sludge_gross_weight, line.sludge_content_percent),
-    purpose_id: line.purpose_id || null,
+    purpose_id: props.processingTasks ? line.purpose_id || null : null,
     serial_no: line.serial_no.trim(),
     material_name: line.material_name.trim(),
   }))
@@ -371,17 +392,17 @@ async function submitOpening() {
     @close="close"
   >
     <ElTabs v-model="tab">
-      <ElTabPane
-        v-if="!employeesOnly && !processingTasks"
-        name="purposes"
-        label="接收任务"
-        :disabled="saving"
-      />
       <ElTabPane name="employees" label="人员管理" :disabled="saving" />
       <ElTabPane
         v-if="processingTasks && canManage && !employeesOnly"
         name="tasks"
         label="加工任务"
+        :disabled="saving"
+      />
+      <ElTabPane
+        v-if="hasEquipment && canManage"
+        name="equipment"
+        label="设备管理"
         :disabled="saving"
       />
       <ElTabPane
@@ -398,12 +419,21 @@ async function submitOpening() {
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <StatePanel v-if="loading" state="loading" title="正在读取班组管理" compact />
       <section
-        v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
+        v-else-if="
+          tab === 'purposes' ||
+          editingEmployees ||
+          editingTasks ||
+          editingProblems ||
+          editingEquipment
+        "
         ref="purposeSettings"
         class="purpose-settings"
       >
-        <p v-if="editingProblems" class="settings-note">
-          巡检、检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
+        <p v-if="editingEquipment" class="settings-note">
+          加工时选择本班组启用的设备；改名、停用不改变历史记录。
+        </p>
+        <p v-else-if="editingProblems" class="settings-note">
+          检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
         </p>
         <p v-else-if="editingTasks" class="settings-note">
           转料和加工使用同一份任务清单。改名、停用不改变历史记录。
@@ -440,13 +470,17 @@ async function submitOpening() {
             v-model="newName"
             :aria-label="`新增${itemLabel}名称`"
             :placeholder="
-              editingProblems
-                ? '请输入统一的问题名称'
-                : editingTasks
-                  ? '例如：粗磨、精磨'
-                  : editingEmployees
-                    ? '请输入员工姓名'
-                    : '例如：检验、去毛刺'
+              editingEquipment
+                ? teamCode === 'FACTORY-ANNEAL'
+                  ? '例如：1号炉、2号炉'
+                  : '例如：01号机、02号机'
+                : editingProblems
+                  ? '请输入统一的问题名称'
+                  : editingTasks
+                    ? '例如：粗磨、精磨'
+                    : editingEmployees
+                      ? '请输入员工姓名'
+                      : '例如：检验、去毛刺'
             "
             maxlength="80"
             :disabled="saving || !canManageDirectory"
@@ -521,7 +555,7 @@ async function submitOpening() {
                       :label="option.label"
                   /></ElSelect>
                 </div>
-                <div class="dialog-field">
+                <div v-if="processingTasks" class="dialog-field">
                   <span class="dialog-field-label">加工任务</span
                   ><ElSelect
                     v-model="line.purpose_id"

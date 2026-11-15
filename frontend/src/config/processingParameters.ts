@@ -8,8 +8,17 @@ export type ProcessingParameterKey =
   | 'holding_minutes'
   | 'machine_no'
 export type ProcessingParameters = Partial<
-  Pick<components['schemas']['QuantityAdjustmentResponse'], ProcessingParameterKey>
+  Pick<components['schemas']['QuantityAdjustmentResponse'], ProcessingParameterKey | 'equipment_id'>
 >
+
+export const equipmentTeamCodes = [
+  'FACTORY-ANNEAL',
+  'FACTORY-ROLL',
+  'FACTORY-GRIND',
+  'FACTORY-WIRE',
+  'FACTORY-ENGRAVE',
+]
+export const isEquipmentParameter = (key: string) => key === 'machine_no' || key === 'furnace_no'
 
 // The server supplies the applicable keys. Forms, record columns and exports share labels.
 const definitions: {
@@ -32,12 +41,15 @@ export function processingParameterPayload(
   values: ProcessingParameters,
   keys: readonly string[] = [],
 ) {
-  return Object.fromEntries(
-    processingParameterFields(keys).map(({ key }) => {
-      const value = values[key]
-      return [key, typeof value === 'string' ? value.trim() || null : (value ?? null)]
-    }),
-  ) as ProcessingParameters
+  return {
+    ...Object.fromEntries(
+      processingParameterFields(keys).map(({ key }) => {
+        const value = values[key]
+        return [key, typeof value === 'string' ? value.trim() || null : (value ?? null)]
+      }),
+    ),
+    ...(keys.some(isEquipmentParameter) ? { equipment_id: values.equipment_id ?? null } : {}),
+  } as ProcessingParameters
 }
 export function processingParameterErrors(
   values: ProcessingParameters,
@@ -47,7 +59,14 @@ export function processingParameterErrors(
   const errors: Record<string, string> = {}
   for (const field of processingParameterFields(keys)) {
     const value = values[field.key]
-    if (value == null || value === '') continue
+    if (isEquipmentParameter(field.key) && !values.equipment_id) {
+      errors[field.key] = `请选择${field.label}`
+      continue
+    }
+    if (value == null || (typeof value === 'string' && !value.trim())) {
+      errors[field.key] = `请填写${field.label}`
+      continue
+    }
     if (
       field.kind === 'text' &&
       (typeof value !== 'string' || value.trim().length > field.maxLength!)

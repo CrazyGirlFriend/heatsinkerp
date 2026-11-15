@@ -148,3 +148,31 @@ def authorize_opening(
     db: Session = Depends(get_db),
 ):
     return service.authorize_opening(payload=payload, team_id=team_id, user=user, db=db)
+
+
+@router.get("/{team_id}/equipment", response_model=list[TeamDirectoryItemResponse])
+def list_equipment(
+    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    return service.list_equipment(team_id=team_id, user=user, db=db)
+
+
+@router.post("/{team_id}/equipment", response_model=TeamDirectoryItemResponse, status_code=201)
+def create_equipment(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.save_directory_item(db, team_id, user, payload, equipment=True)
+
+
+@router.patch("/{team_id}/equipment/{equipment_id}", response_model=TeamDirectoryItemResponse)
+def update_equipment(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    equipment_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.save_directory_item(db, team_id, user, payload, equipment_id, equipment=True)

@@ -18,7 +18,7 @@ import type { ProcessRoute } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
 const vLoading = ElLoading.directive
 const watermelon = useWatermelonAppearance()
-const props = defineProps<{ serialNo?: string }>()
+const props = defineProps<{ serialNo?: string; pendingRework?: boolean }>()
 const emit = defineEmits<{ selected: [route: ProcessRoute]; close: [] }>()
 const visible = ref(true),
   query = ref(props.serialNo || ''),
@@ -30,11 +30,20 @@ const visible = ref(true),
   busy = ref(false),
   error = ref('')
 const tableQuery = useTableQuery(
-  queryColumns([
-    ['流水号', 'serial_nos'],
-    ['工艺人员', 'engineering_employee_name'],
-    ['导入时间', 'created_at', 'date'],
-  ]),
+  queryColumns(
+    props.pendingRework
+      ? [
+          ['流水号', 'serial_nos'],
+          ['提交班组', 'requesting_team_name'],
+          ['轮次', 'rework_round', 'number'],
+          ['提交时间', 'created_at', 'date'],
+        ]
+      : [
+          ['流水号', 'serial_nos'],
+          ['工艺人员', 'engineering_employee_name'],
+          ['导入时间', 'created_at', 'date'],
+        ],
+  ),
   () => {
     page.value = 1
     void load()
@@ -49,11 +58,11 @@ async function load() {
     const result = await processRouteApi.list(
       appliedQuery.value,
       page.value,
-      'published',
+      props.pendingRework ? 'draft' : 'published',
       'desc',
       20,
-      'normal',
-      'all',
+      props.pendingRework ? 'rework' : 'normal',
+      props.pendingRework ? 'open' : 'all',
       tableQuery.params.value.table_query,
     )
     if (current !== generation) return
@@ -83,7 +92,10 @@ async function choose(id: number) {
   try {
     const route = await processRouteApi.detail(id)
     if (current !== generation) return
-    if (route.state !== 'published') throw new Error('请选择工艺')
+    if (props.pendingRework) {
+      if (route.route_kind !== 'rework' || route.state !== 'draft')
+        throw new Error('该问题的返工工艺已制定，请刷新后重新选择')
+    } else if (route.state !== 'published') throw new Error('请选择工艺')
     emit('selected', route)
     visible.value = false
   } catch (reason) {
@@ -101,7 +113,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     v-model="visible"
-    title="选择工艺"
+    :title="pendingRework ? '选择返工问题' : '选择工艺'"
     class="route-picker-dialog"
     width="min(1000px, 94vw)"
     append-to-body
@@ -116,14 +128,18 @@ onBeforeUnmount(() => {
         v-if="watermelon"
         v-model="query"
         label="工艺搜索"
-        placeholder="搜索流水号、工艺人员"
+        :placeholder="
+          pendingRework ? '搜索流水号、批次号、问题或班组' : '搜索流水号、批次号、工艺人员'
+        "
         :disabled="busy"
         @search="search"
       />
       <ElInput
         v-else
         v-model="query"
-        placeholder="搜索流水号、工艺人员"
+        :placeholder="
+          pendingRework ? '搜索流水号、批次号、问题或班组' : '搜索流水号、批次号、工艺人员'
+        "
         aria-label="工艺搜索"
         clearable
         :disabled="busy"
@@ -137,7 +153,7 @@ onBeforeUnmount(() => {
       >
     </div>
     <WorkspaceTable
-      columns-key="PublishedProcessRoutePicker-1"
+      :columns-key="pendingRework ? 'PendingReworkRoutePicker' : 'PublishedProcessRoutePicker-1'"
       :column-query="tableQuery.controller.value"
       height="100%"
       fill
@@ -148,21 +164,40 @@ onBeforeUnmount(() => {
       :class="watermelon ? '' : 'business-table'"
       row-key="id"
     >
-      <ElTableColumn label="流水号" min-width="260" align="center"
+      <template v-if="pendingRework" #empty>暂无待制定的返工问题</template>
+      <ElTableColumn label="流水号" :min-width="pendingRework ? 160 : 260" align="center"
         ><template #default="{ row }">{{ row.serial_nos.join('、') }}</template></ElTableColumn
       >
-      <ElTableColumn label="工艺人员" width="140" align="center"
+      <template v-if="pendingRework">
+        <ElTableColumn label="问题" min-width="190" show-overflow-tooltip>
+          <template #default="{ row }">{{
+            row.rework_request?.problem_names?.join('、') || row.rework_request?.reason || '—'
+          }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="提交班组" width="110">
+          <template #default="{ row }">{{
+            row.rework_request?.requesting_team_name || '—'
+          }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="返工件数" width="100" align="right">
+          <template #default="{ row }">{{ row.rework_request?.quantity ?? '—' }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="轮次" width="75" align="center">
+          <template #default="{ row }">{{ row.rework_request?.round ?? '—' }}</template>
+        </ElTableColumn>
+      </template>
+      <ElTableColumn v-else label="工艺人员" width="140" align="center"
         ><template #default="{ row }"
           ><PersonName :name="row.engineering_employee_name || '—'" /></template
       ></ElTableColumn>
-      <ElTableColumn label="导入时间" width="180" align="center"
+      <ElTableColumn :label="pendingRework ? '提交时间' : '导入时间'" width="180" align="center"
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >
       <ElTableColumn label="操作" width="100" align="center"
         ><template #default="{ row }"
-          ><ElButton type="primary" link :disabled="busy || loading" @click="choose(row.id)"
-            >选择</ElButton
-          ></template
+          ><ElButton type="primary" link :disabled="busy || loading" @click="choose(row.id)">{{
+            pendingRework ? '制定' : '选择'
+          }}</ElButton></template
         ></ElTableColumn
       >
     </WorkspaceTable>

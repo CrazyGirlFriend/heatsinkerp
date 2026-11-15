@@ -279,6 +279,7 @@ const columns = computed(() =>
     .filter(
       (column) =>
         !['processing_role', 'owned_quantity', 'owned_weight'].includes(column.key) &&
+        (!props.warehouse || column.key !== 'purpose_name') &&
         (props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key)) &&
         (column.key !== 'process_route' || props.processing),
     )
@@ -331,6 +332,7 @@ const selectableColumns = computed(() =>
 const searchColumns = computed(() =>
   warehouseSearchColumns
     .filter((column) => !['owned_quantity', 'owned_weight'].includes(column.key))
+    .filter((column) => !props.warehouse || column.key !== 'purpose_name')
     .filter((column) => props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key))
     .map((column) =>
       column.key === 'source'
@@ -432,6 +434,11 @@ const filters = computed<TeamInventoryParams>(() => {
     'days',
   ])
     if (text(key)) params[key] = text(key)
+  if (props.warehouse && params.search_field === 'purpose_name') {
+    delete params.query
+    delete params.search_field
+    delete params.search_operator
+  }
   if (text('rework')) params.rework = text('rework')
   for (const key of ['processing_state', 'processing_role', 'route_status'])
     if (text(key)) params[key] = text(key)
@@ -827,7 +834,7 @@ function cancelFilters() {
 }
 function syncFilterDrafts() {
   filterResetRequested.value = false
-  queryDraft.value = text('query')
+  queryDraft.value = filters.value.query || ''
   reworkDraft.value = text('rework') as 'pending' | 'worked' | ''
   sourceDraft.value = text('receipt_source') as WarehouseSource | ''
   typeDraft.value = text('material_type')

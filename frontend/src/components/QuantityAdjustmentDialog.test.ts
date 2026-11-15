@@ -42,6 +42,9 @@ const context = (revision = 0): QuantityAdjustmentContext => ({
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
+  vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([
+    { id: 3, name: '02炉', team_id: 2, active: true, version: 1 },
+  ])
   state.auth = reactive({
     isTeamAccount: true,
     currentUser: { id: 2, team_id: 2, active: true },
@@ -174,6 +177,10 @@ describe('processing piece adjustment', () => {
       .vm.$emit('update:modelValue', value)
   }
   it('records remaining stock, multiple sizes and scrap as complete measured outputs without guessing amounts', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+      ...context(),
+      transfer_specification: '100 × 50 × 2 mm',
+    })
     await detailMode()
     expect(
       wrapper.findAllComponents(WeightInput).every((input) => input.props('modelValue') == null),
@@ -184,10 +191,8 @@ describe('processing piece adjustment', () => {
     weight(2, 55)
     pieces(3, 0)
     weight(3, 5)
-    wrapper
-      .findAllComponents(SpecificationInput)[0]!
-      .vm.$emit('update:modelValue', '100 × 50 × 2 mm')
-    wrapper.findAllComponents(SpecificationInput)[1]!.vm.$emit('update:modelValue', '10 × 5 × 2 mm')
+    expect(wrapper.findAllComponents(SpecificationInput)).toHaveLength(1)
+    wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '10 × 5 × 2 mm')
     await click('增加明细')
     await click('保存加工登记')
     expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
@@ -656,6 +661,7 @@ it('reworks completed stock with a required employee and the original record, wi
   ])
   wrapper.getComponent(ProcessingDurationInput).vm.$emit('update:modelValue', 95)
   wrapper.getComponent(ProcessingParameterFields).vm.$emit('update:modelValue', {
+    equipment_id: 3,
     furnace_no: '02炉',
     actual_temperature_c: 925.5,
     holding_minutes: 60,
@@ -672,6 +678,7 @@ it('reworks completed stock with a required employee and the original record, wi
       processor_employee_id: 7,
       processor_employee_ids: [7, 8],
       processing_minutes: 95,
+      equipment_id: 3,
       furnace_no: '02炉',
       actual_temperature_c: 925.5,
       holding_minutes: 60,

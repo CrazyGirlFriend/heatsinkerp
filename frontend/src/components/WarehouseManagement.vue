@@ -86,22 +86,12 @@ const tableQuery = useTableQuery(
       ['在库批次', 'received', 'number'],
       ['待签收批次', 'pending', 'number'],
     ]),
-    分配状态: {
-      field: 'assignment',
-      kind: 'select',
-      options: [
-        { value: 'assigned', label: '已分配' },
-        { value: 'unassigned', label: '未分配' },
-        { value: 'empty', label: '空仓位' },
-      ],
-    },
     仓位状态: {
       field: 'status',
       kind: 'select',
       options: [
         { value: 'occupied', label: '有料' },
         { value: 'available', label: '空闲' },
-        { value: 'pending', label: '待签收' },
         { value: 'draft', label: '填写中' },
         { value: 'disabled', label: '停用' },
       ],
@@ -148,7 +138,6 @@ function exportSource() {
                 ),
               ].join('、'),
       },
-      { key: 'assignment', label: '分配状态', value: assignmentLabel },
       {
         key: 'status',
         label: '仓位状态',
@@ -227,9 +216,6 @@ const {
     weight: row.status === 'received' ? (row.available_weight ?? null) : null,
   }),
 )
-function assignmentLabel(row: WarehouseCatalogRow) {
-  return row.stock ? '未分配' : row.location!.batches.length ? '已分配' : '—'
-}
 function stockBatch(stock: StockBatch): Batch {
   const available = dispatchableAmounts(stock)
   return {
@@ -249,17 +235,45 @@ function stockBatch(stock: StockBatch): Batch {
 const unassignedBatches = computed(() =>
   entries.value.flatMap((row) => (row.stock ? [stockBatch(row.stock)] : [])),
 )
-const selectableUnassigned = computed(() => unassignedBatches.value.filter(available))
-const unassignedCheckedCount = computed(
-  () => selectableUnassigned.value.filter((row) => selected.has(String(row.id))).length,
+function entryBatches(row: WarehouseCatalogRow): Batch[] {
+  return (row.stock ? [stockBatch(row.stock)] : row.location?.batches || []).filter(available)
+}
+const pageBatches = computed(() => [
+  ...new Map(entries.value.flatMap(entryBatches).map((batch) => [batch.id, batch])).values(),
+])
+const pageCheckedCount = computed(
+  () => pageBatches.value.filter((batch) => selected.has(String(batch.id))).length,
 )
-const allUnassignedChecked = computed(
-  () =>
-    !!selectableUnassigned.value.length &&
-    unassignedCheckedCount.value === selectableUnassigned.value.length,
+const allPageChecked = computed(
+  () => !!pageBatches.value.length && pageCheckedCount.value === pageBatches.value.length,
 )
-function toggleUnassigned(checked: string | number | boolean) {
-  selectableUnassigned.value.forEach((row) => toggle(row, checked))
+function entryCheckedCount(row: WarehouseCatalogRow) {
+  return entryBatches(row).filter((batch) => selected.has(String(batch.id))).length
+}
+function entrySelectable(row: WarehouseCatalogRow) {
+  const batches = entryBatches(row)
+  return batches.length > 0 && (entryCheckedCount(row) > 0 || selected.size + batches.length <= 100)
+}
+function toggleEntry(row: WarehouseCatalogRow, checked: string | number | boolean) {
+  entryBatches(row).forEach((batch) => toggle(batch, checked))
+}
+function togglePage(checked: string | number | boolean) {
+  pageBatches.value.forEach((batch) => toggle(batch, checked))
+}
+function dispatchEntry(row: WarehouseCatalogRow) {
+  if (!props.canDispatch || loading.value || error.value) return
+  const batches = entryBatches(row)
+  if (batches.length > 100) {
+    if (row.location) openDetail(row.location)
+    showToast('一次最多转出 100 批，请在仓位明细中勾选批次', 'info')
+    return
+  }
+  if (batches.length === 1) dispatch(batches[0]!)
+  else if (batches.length)
+    emit(
+      'batchDispatch',
+      batches.map((batch) => batch.id),
+    )
 }
 function selectable(batch: Batch) {
   return available(batch) && (selected.has(String(batch.id)) || selected.size < 100)
@@ -468,10 +482,19 @@ onBeforeUnmount(() => {
           </template>
           <template #actions>
             <WatermelonButton
-              v-if="canDispatch && selected.size"
-              :disabled="loading || !!error"
+              v-if="canDispatch"
+              :disabled="!selected.size || loading || !!error"
+              :title="selected.size ? '转出已选物料' : '请先勾选仓位或物料'"
               @click="batchDispatch"
-              >批量出库（{{ selected.size }}）</WatermelonButton
+              >批量转出<template v-if="selected.size"
+                >（{{ selected.size }} 批）</template
+              ></WatermelonButton
+            >
+            <WatermelonButton
+              v-if="canDispatch && selected.size"
+              :disabled="loading"
+              @click="selected.clear()"
+              >清空选择</WatermelonButton
             >
           </template>
           <template #primary-actions>
@@ -494,26 +517,38 @@ onBeforeUnmount(() => {
           :empty-text="loading ? '正在加载仓位' : '没有符合条件的记录'"
         >
           <ElTableColumn
-            v-if="canDispatch && selectableUnassigned.length"
+            v-if="canDispatch && pageBatches.length"
             width="46"
             fixed="left"
             class-name="wm-table-selection"
           >
             <template #header
               ><ElCheckbox
-                aria-label="选择本页未分配物料"
-                :model-value="allUnassignedChecked"
-                :indeterminate="unassignedCheckedCount > 0 && !allUnassignedChecked"
-                :disabled="loading || !!error || !selectableUnassigned.length"
-                @change="toggleUnassigned"
+                aria-label="选择本页可转出物料"
+                :model-value="allPageChecked"
+                :indeterminate="pageCheckedCount > 0 && !allPageChecked"
+                :disabled="loading || !!error || (selected.size >= 100 && !pageCheckedCount)"
+                @change="togglePage"
             /></template>
             <template #default="{ row }"
               ><ElCheckbox
-                v-if="row.stock"
-                :aria-label="`选择未分配物料 ${row.stock.transfer.batch_no}`"
-                :model-value="selected.has(String(row.stock.transfer.id))"
-                :disabled="loading || !!error || !selectable(stockBatch(row.stock))"
-                @change="toggle(stockBatch(row.stock), $event)"
+                :aria-label="
+                  row.stock
+                    ? `选择未分配物料 ${row.stock.transfer.batch_no}`
+                    : `选择仓位 ${row.location.name}`
+                "
+                :model-value="
+                  entryBatches(row as WarehouseCatalogRow).length > 0 &&
+                  entryCheckedCount(row as WarehouseCatalogRow) ===
+                    entryBatches(row as WarehouseCatalogRow).length
+                "
+                :indeterminate="
+                  entryCheckedCount(row as WarehouseCatalogRow) > 0 &&
+                  entryCheckedCount(row as WarehouseCatalogRow) <
+                    entryBatches(row as WarehouseCatalogRow).length
+                "
+                :disabled="loading || !!error || !entrySelectable(row as WarehouseCatalogRow)"
+                @change="toggleEntry(row as WarehouseCatalogRow, $event)"
             /></template>
           </ElTableColumn>
           <ElTableColumn label="仓位" min-width="124" fixed="left">
@@ -540,15 +575,6 @@ onBeforeUnmount(() => {
                 @click="emit('view', row.stock.transfer.batch_no)"
                 >{{ catalogSerial(row as WarehouseCatalogRow) }}</ElButton
               ><span v-else>{{ catalogSerial(row as WarehouseCatalogRow) }}</span></template
-            >
-          </ElTableColumn>
-          <ElTableColumn label="分配状态" width="104">
-            <template #default="{ row }"
-              ><WatermelonBadge
-                v-if="assignmentLabel(row as WarehouseCatalogRow) !== '—'"
-                :tone="row.stock ? 'warning' : 'success'"
-                >{{ assignmentLabel(row as WarehouseCatalogRow) }}</WatermelonBadge
-              ><span v-else class="wm-table-muted">—</span></template
             >
           </ElTableColumn>
           <ElTableColumn label="仓位状态" width="104">
@@ -619,15 +645,24 @@ onBeforeUnmount(() => {
                   >转出</ElButton
                 ></template
               >
-              <ElButton
-                v-else
-                class="wm-table-action"
-                link
-                :disabled="loading || !!error || row.location.draft_locked"
-                :aria-label="`编辑仓位 ${row.location.name}`"
-                @click="edit(row.location)"
-                ><IconPencil :size="15" />编辑</ElButton
-              >
+              <template v-else>
+                <ElButton
+                  class="wm-table-action"
+                  link
+                  :disabled="loading || !!error || row.location.draft_locked"
+                  :aria-label="`编辑仓位 ${row.location.name}`"
+                  @click="edit(row.location)"
+                  ><IconPencil :size="15" />编辑</ElButton
+                ><ElButton
+                  v-if="canDispatch"
+                  class="wm-table-action"
+                  link
+                  :aria-label="`转出仓位 ${row.location.name} 的物料`"
+                  :disabled="loading || !!error || !entryBatches(row as WarehouseCatalogRow).length"
+                  @click="dispatchEntry(row as WarehouseCatalogRow)"
+                  >转出</ElButton
+                >
+              </template>
             </template>
           </ElTableColumn>
         </WatermelonDataTable>
@@ -720,7 +755,7 @@ onBeforeUnmount(() => {
                 primary
                 :disabled="!selected.size || loading || !!error"
                 @click="batchDispatch"
-                >批量出库</WatermelonButton
+                >批量转出</WatermelonButton
               >
             </BatchSelectionBar>
             <WatermelonDataTable

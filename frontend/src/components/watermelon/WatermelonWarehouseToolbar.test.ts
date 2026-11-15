@@ -5,9 +5,11 @@ import WatermelonWarehouseToolbar from './WatermelonWarehouseToolbar.vue'
 import WarehouseManagement from '../WarehouseManagement.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi } from '@/services/warehouseLocationApi'
+import * as warehouseCatalog from '@/services/warehouseCatalog'
 
 let wrapper: VueWrapper | undefined
 beforeEach(() => {
+  vi.spyOn(warehouseCatalog, 'loadWarehouseCatalog').mockResolvedValue({ items: [], total: 0 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
     items: [],
     total: 0,
@@ -30,6 +32,9 @@ describe('Watermelon warehouse controls', () => {
     const trigger = wrapper.get<HTMLButtonElement>('.wm-filter-trigger')
     await trigger.trigger('click')
     await flushPromises()
+    expect(document.body.textContent).not.toContain('未分配')
+    expect(document.body.textContent).not.toContain('待签收')
+    expect(wrapper.get('input').attributes('placeholder')).toContain('批次号')
     const selected = document.querySelector<HTMLButtonElement>('[aria-checked="true"]')!
     expect(selected.textContent).toContain('有料')
     expect(document.activeElement).toBe(selected)
@@ -42,19 +47,17 @@ describe('Watermelon warehouse controls', () => {
   })
 
   it('applies a selected status to the existing warehouse request and resets it', async () => {
-    const list = vi
-      .spyOn(warehouseLocationApi, 'list')
-      .mockResolvedValue({ page: 1, page_size: 20, items: [], total: 0, team_id: 1 })
+    const list = vi.mocked(warehouseCatalog.loadWarehouseCatalog)
     wrapper = mount(WarehouseManagement, {
       props: { canManage: true, teamId: 1 },
       global: { stubs: { WatermelonDialog: true } },
       attachTo: document.body,
     })
     await flushPromises()
-    await wrapper.get('input[aria-label="搜索仓位"]').setValue('A-01')
+    await wrapper.get('input[aria-label="搜索仓位"]').setValue('TL202611150001')
     await wrapper.get('.wm-warehouse-actions').trigger('submit')
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('A-01', 1, 20, undefined)
+    expect(list).toHaveBeenLastCalledWith('TL202611150001', 1, 20, undefined, 1, undefined)
     await wrapper.get('.wm-filter-trigger').trigger('click')
     await flushPromises()
     const occupied = [
@@ -62,14 +65,14 @@ describe('Watermelon warehouse controls', () => {
     ].find((el) => el.textContent?.includes('有料'))!
     occupied.click()
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('A-01', 1, 20, 'occupied')
+    expect(list).toHaveBeenLastCalledWith('TL202611150001', 1, 20, 'occupied', 1, undefined)
     await wrapper.get('.wm-reset').trigger('click')
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('', 1, 20, undefined)
+    expect(list).toHaveBeenLastCalledWith('', 1, 20, undefined, 1, undefined)
   })
 
   it('keeps the existing warehouse permission gate', async () => {
-    const list = vi.spyOn(warehouseLocationApi, 'list')
+    const list = vi.mocked(warehouseCatalog.loadWarehouseCatalog)
     wrapper = mount(WarehouseManagement, { props: { canManage: false } })
     await flushPromises()
     expect(wrapper.text()).toContain('仅库房账号和管理员')

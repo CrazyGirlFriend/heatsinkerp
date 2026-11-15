@@ -1,0 +1,122 @@
+// @vitest-environment jsdom
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, expect, it, vi } from 'vitest'
+import TeamProblemDetail from './TeamProblemDetail.vue'
+import { qualityFeedbackApi, type TeamProblem } from '@/services/qualityFeedbackApi'
+import { processRouteApi } from '@/services/processRouteApi'
+import type { ProcessRoute } from '@/types/processRoute'
+
+const auth = vi.hoisted(() => ({
+  currentUser: {
+    active: true,
+    role: 'ADMIN',
+    team: {
+      active: true,
+      code: 'FACTORY-PROCESS',
+      kind: 'engineering',
+    },
+  },
+}))
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => auth,
+}))
+const report: TeamProblem = {
+  id: 12,
+  kind: 'team_report',
+  serial_no: '691236-50',
+  batch_no: 'TL-REWORK',
+  source_transfer_id: 42,
+  material_name: 'MoCu70',
+  team_id: 2,
+  team_name: '轧制',
+  checked_at: '2026-11-15T08:00:00Z',
+  notes: '精轧后厚度偏大',
+  failed_quantity: 20,
+  weight: 2,
+  created_by: '轧制班组长',
+  involved_teams: [{ team_id: 2, name: '轧制', replied: true }],
+  feedback_status: 'pending',
+  disposition: 'rework',
+  route_state: 'draft',
+  rework_round: 1,
+  rework_progress: {
+    quantity: 20,
+    completed_quantity: 0,
+    passed_quantity: 0,
+    state: 'awaiting_route',
+    inspections: [],
+  },
+}
+let wrapper: VueWrapper
+async function render(value: TeamProblem) {
+  vi.spyOn(qualityFeedbackApi, 'teamProblem').mockResolvedValue(value)
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({
+    id: 12,
+    state: 'published',
+  } as ProcessRoute)
+  wrapper = mount(TeamProblemDetail, {
+    props: { routeId: 12 },
+    global: {
+      stubs: {
+        AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        ProcessRouteEditor: {
+          name: 'ProcessRouteEditor',
+          props: ['route', 'viewOnly'],
+          template: '<div class="route-editor" :data-readonly="viewOnly" />',
+        },
+      },
+    },
+  })
+  await flushPromises()
+}
+afterEach(() => {
+  wrapper?.unmount()
+  auth.currentUser.role = 'ADMIN'
+  vi.restoreAllMocks()
+})
+it('shows the reporting team and unfilled route without exposing an authoring action to administrators', async () => {
+  await render(report)
+  expect(wrapper.text()).toContain('轧制')
+  expect(wrapper.text()).toContain('返工工艺未填写')
+  expect(wrapper.text()).toContain('精轧后厚度偏大')
+  expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['关闭'])
+  expect(processRouteApi.detail).not.toHaveBeenCalled()
+})
+it('shows published progress and opens the exact linked route read-only on demand', async () => {
+  await render({
+    ...report,
+    route_state: 'published',
+    feedback_status: 'processing',
+    rework_progress: { ...report.rework_progress, state: 'processing', completed_quantity: 8 },
+  })
+  expect(wrapper.text()).toContain('返工工艺已制定')
+  expect(wrapper.text()).toContain('8 / 20 件')
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '查看返工工艺')!
+    .trigger('click')
+  await flushPromises()
+  expect(processRouteApi.detail).toHaveBeenCalledWith(12)
+  expect(wrapper.get('.route-editor').attributes('data-readonly')).toBe('true')
+})
+it('lets engineering fill the linked draft and refreshes the quality status after saving', async () => {
+  auth.currentUser.role = 'TEAM'
+  await render(report)
+  vi.mocked(processRouteApi.detail).mockResolvedValue({ id: 12, state: 'draft' } as ProcessRoute)
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '填写返工工艺')!
+    .trigger('click')
+  await flushPromises()
+  const editor = wrapper.getComponent({ name: 'ProcessRouteEditor' })
+  expect(editor.props('viewOnly')).toBe(false)
+  vi.mocked(qualityFeedbackApi.teamProblem).mockResolvedValue({
+    ...report,
+    route_state: 'published',
+    feedback_status: 'processing',
+  })
+  editor.vm.$emit('saved')
+  await flushPromises()
+  expect(wrapper.text()).toContain('返工工艺已制定')
+  expect(wrapper.emitted('changed')).toHaveLength(1)
+})

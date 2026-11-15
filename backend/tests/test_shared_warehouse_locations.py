@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from app.database import SessionLocal
-from app.models import WarehouseLocation
+from app.models import WarehouseLocation, WarehousePlacement
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from sqlalchemy import select
@@ -38,7 +38,7 @@ def test_same_material_arrivals_share_inventory_without_merging_batches(client, 
     choices = client.get(
         f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations", params=MATERIAL
     ).json()["items"]
-    assert [item["id"] for item in choices] == [slot["id"], empty["id"]]
+    assert [item["id"] for item in choices] == [empty["id"], slot["id"]]
     second = intake(
         client,
         warehouse,
@@ -71,25 +71,27 @@ def test_same_material_arrivals_share_inventory_without_merging_batches(client, 
 @pytest.mark.parametrize(
     "change", [{"serial_no": "OTHER"}, {"material_name": "材料2"}, {"material_type": "finished"}]
 )
-def test_each_material_dimension_must_match_at_selection_and_submission(client, warehouse, change):
-    chosen = location(client, warehouse, "A-同类")
-    assert intake(client, warehouse, **chosen).status_code == 201
+def test_different_materials_share_selected_location_as_separate_batches(client, warehouse, change):
+    chosen = location(client, warehouse, "A-混放")
+    first = intake(client, warehouse, **chosen)
+    assert first.status_code == 201, first.text
     slot = state(client, {"id": 1})
     different = {**MATERIAL, **change}
     endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
-    assert client.get(endpoint, params=different).json()["items"] == []
-    failed = client.post(
-        f"/api/warehouse-locations/{slot['id']}/reservation",
-        headers=warehouse["headers"],
-        json={"key": uuid4().hex, **different},
-    )
-    assert failed.status_code == 409
-    selected = reserve(client, warehouse, slot)
-    # A forged or edited document cannot bypass matching with an old valid lock.
-    failed = intake(client, warehouse, idempotency_key="mismatch", **change, **selected)
-    assert failed.status_code == 409
-    assert len(state(client, slot)["batches"]) == 1
-    assert state(client, slot)["draft_locked"]
+    assert [row["id"] for row in client.get(endpoint, params=different).json()["items"]] == [
+        slot["id"]
+    ]
+    selected = reserve(client, warehouse, slot, different)
+    second = intake(client, warehouse, idempotency_key="mixed", **change, **selected)
+    assert second.status_code == 201, second.text
+    batches = state(client, slot)["batches"]
+    assert len(batches) == 2
+    assert {batch["id"] for batch in batches} == {first.json()["id"], second.json()["id"]}
+    assert sum(batch["quantity"] for batch in batches) == 200
+    assert {field: batches[1][field] for field in different} == different
+    assert not state(client, slot)["draft_locked"]
+    found = client.get(endpoint, params={"query": second.json()["batch_no"]}).json()
+    assert found["total"] == 1 and found["items"][0]["id"] == slot["id"]
 
 
 def test_same_material_still_cannot_steal_another_forms_live_lock(client, warehouse):
@@ -104,12 +106,19 @@ def test_same_material_still_cannot_steal_another_forms_live_lock(client, wareho
     )
     assert response.status_code == 409
     assert len(state(client, slot)["batches"]) == 1
+    # Busy slots remain visible, but another form cannot claim them.
+    endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
+    listed = client.get(endpoint).json()
+    assert listed["total"] == 1 and listed["items"][0]["draft_locked"]
 
 
-def test_manual_placement_adds_same_lot_and_compatible_lot_with_versions(client, warehouse):
+def test_manual_placement_adds_same_lot_and_different_material_with_versions(client, warehouse):
     slot = create_slot(client)
     first = intake(client, warehouse).json()
-    second = intake(client, warehouse, idempotency_key="second").json()
+    second = intake(client, warehouse, idempotency_key="second", material_name="铝").json()
+    with SessionLocal.begin() as db:
+        for placement in db.scalars(select(WarehousePlacement)).all():
+            db.delete(placement)
     endpoint = f"/api/warehouse-locations/{slot['id']}/placement"
     for lot, quantity, weight, version in [
         (first, 40, 4, 1),
@@ -142,8 +151,17 @@ def test_manual_placement_adds_same_lot_and_compatible_lot_with_versions(client,
     )
 
 
-def test_mixed_types_in_one_bulk_submit_roll_back_every_line_and_keep_lease(client, warehouse):
+def test_mixed_types_in_one_bulk_submit_share_occupied_slot_and_receive_independently(
+    client, warehouse
+):
     source = production_source(client, warehouse)
+    stored = intake(
+        client,
+        warehouse,
+        idempotency_key="stored",
+        material_name="铝",
+        **location(client, warehouse, "A-01"),
+    ).json()
     chosen = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     response = sender_post(
         client,
@@ -164,18 +182,29 @@ def test_mixed_types_in_one_bulk_submit_roll_back_every_line_and_keep_lease(clie
             ],
         },
     )
-    assert response.status_code == 409, response.text
+    assert response.status_code == 201, response.text
+    rows = response.json()["items"]
+    assert {row["material_type"] for row in rows} == {"semi_finished", "finished"}
+    assert all(row["warehouse_location"] == "A-01" for row in rows)
     with SessionLocal() as db:
-        assert (
-            db.scalar(select(WarehouseLocation.reservation_key))
-            == chosen["warehouse_location_reservation_key"]
+        slot = db.scalar(select(WarehouseLocation).where(WarehouseLocation.name == "A-01"))
+        assert slot.reservation_key is None
+        slot_id = slot.id
+    for row in rows:
+        received = receipt_post(
+            client,
+            "/api/material-transfers/" + row["batch_no"] + "/confirm",
+            headers=warehouse["headers"],
+            json={"idempotency_key": "receive-" + row["batch_no"]},
         )
-    assert return_rows(client, warehouse, source, "valid", chosen, count=2).status_code == 201
+        assert received.status_code == 200, received.text
+    batches = state(client, {"id": slot_id})["batches"]
+    assert {row["id"] for row in batches} == {stored["id"], *(row["id"] for row in rows)}
+    assert all(row["status"] == "received" for row in batches)
+    assert sum(row["quantity"] for row in batches) == 120
 
 
-def test_pending_batches_keep_matching_identity_on_edits_and_receive_independently(
-    client, warehouse
-):
+def test_pending_batches_allow_material_edits_and_receive_independently(client, warehouse):
     source = production_source(client, warehouse)
     chosen = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     response = return_rows(client, warehouse, source, "same-material", chosen, count=2)
@@ -188,11 +217,11 @@ def test_pending_batches_keep_matching_identity_on_edits_and_receive_independent
     )
     assert renamed.status_code == 200, renamed.text
     endpoint = "/api/material-transfers/" + first["batch_no"]
-    conflict = client.patch(
+    changed = client.patch(
         endpoint, headers=warehouse["other_headers"], json={"material_type": "finished"}
     )
-    assert conflict.status_code == 409, conflict.text
-    assert client.get(endpoint).json()["material_type"] == "semi_finished"
+    assert changed.status_code == 200, changed.text
+    assert client.get(endpoint).json()["material_type"] == "finished"
     edited = client.patch(
         endpoint,
         headers=warehouse["other_headers"],
@@ -213,3 +242,50 @@ def test_pending_batches_keep_matching_identity_on_edits_and_receive_independent
     assert all(row["status"] == "received" for row in slot["batches"])
     assert sum(row["quantity"] for row in slot["batches"]) == 18
     assert sum(row["weight"] for row in slot["batches"]) == 1.8
+
+
+def test_location_picker_pages_all_available_slots_and_searches_existing_material(
+    client, warehouse
+):
+    for index in range(3):
+        create_slot(client, f"A-{index}")
+    endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
+    page = client.get(endpoint, params={"page": 2, "limit": 2}).json()
+    assert page["total"] == 3 and page["page"] == 2
+    assert [row["name"] for row in page["items"]] == ["A-2"]
+    stored = intake(client, warehouse, **location(client, warehouse, "A-2")).json()
+    for query in (stored["batch_no"], "铜钼", stored["serial_no"]):
+        result = client.get(endpoint, params={"query": query}).json()
+        assert result["total"] == 1 and result["items"][0]["name"] == "A-2"
+
+
+def test_mixed_bulk_arrival_with_wrong_second_key_rolls_back_and_keeps_original_lease(
+    client, warehouse
+):
+    source = production_source(client, warehouse)
+    chosen = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
+    line = {"source_transfer_id": source["id"], "quantity": 10, "weight": 1, **chosen}
+    response = sender_post(
+        client,
+        f"/api/team-materials/{warehouse['other']['id']}/outbound-batches",
+        headers=warehouse["other_headers"],
+        json={
+            "next_team_id": warehouse["team"]["id"],
+            "idempotency_key": "invalid-mixed",
+            "lines": [
+                line,
+                {
+                    **line,
+                    "material_type": "finished",
+                    "warehouse_location_reservation_key": uuid4().hex,
+                },
+            ],
+        },
+    )
+    assert response.status_code == 409, response.text
+    with SessionLocal() as db:
+        slot = db.scalar(select(WarehouseLocation).where(WarehouseLocation.name == "A-01"))
+        assert slot.reservation_key == chosen["warehouse_location_reservation_key"]
+        slot_id = slot.id
+    assert state(client, {"id": slot_id})["batches"] == []
+    assert return_rows(client, warehouse, source, "retry-valid", chosen, count=2).status_code == 201

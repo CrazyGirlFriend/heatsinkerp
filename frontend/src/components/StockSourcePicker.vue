@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
         :aria-label="
           mode === 'loss' ? '丢失库存搜索' : mode === 'reallocate' ? '转投库存搜索' : '出库库存搜索'
         "
-        placeholder="搜索流水号、批次、材质或仓位"
+        placeholder="搜索流水号、批次号、材质或仓位"
         clearable
         @keyup.enter="search"
         @clear="search"

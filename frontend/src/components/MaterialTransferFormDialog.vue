@@ -156,9 +156,6 @@ const useSludge = computed(
       editingSnapshot.value.sludge_content_percent == null
     ),
 )
-const purposes = useTeamPurposes(() =>
-  props.modelValue && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null,
-)
 watch(
   () => form.nextTeamId,
   (value) => {
@@ -225,6 +222,11 @@ const destination = computed(() =>
   destinationTeams.value.find((team) => String(team.id) === String(form.nextTeamId)),
 )
 const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
+const purposes = useTeamPurposes(() =>
+  props.modelValue && !external.value && !toWarehouse.value && form.nextTeamId
+    ? Number(form.nextTeamId)
+    : null,
+)
 const notesLabel = computed(() =>
   external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注',
 )
@@ -425,7 +427,9 @@ async function submit(): Promise<void> {
         }
       : {}),
     next_team_id: form.nextTeamId,
-    ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id)
+    ...(!external.value &&
+    !toWarehouse.value &&
+    (form.purposeId || editingSnapshot.value?.purpose_id)
       ? { purpose_id: form.purposeId }
       : {}),
     quantity: Number(enteredQuantity.value),
@@ -698,7 +702,7 @@ onBeforeUnmount(() => {
             </ElSelect>
           </ElFormItem>
           <ElFormItem
-            v-if="!external"
+            v-if="!external && !toWarehouse"
             label="接收任务"
             :required="purposes.items.value.length > 0"
             :error="fieldErrors.purposeId"

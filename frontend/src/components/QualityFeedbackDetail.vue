@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
           ><PersonName :name="detail.inspector_name" /> /
           {{ formatDateTime(detail.checked_at) }}</ElDescriptionsItem
         >
-        <ElDescriptionsItem label="检验范围"
+        <ElDescriptionsItem label="检验方式"
           >{{ detail.scope === 'full' ? '全检' : '抽检' }} {{ detail.sample_quantity }} 件 /
           当时在库 {{ detail.batch_quantity }} 件</ElDescriptionsItem
         >

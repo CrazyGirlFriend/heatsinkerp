@@ -29,7 +29,13 @@ def serial_history(
     team = require_team(db, team_id)
     serial_no = serial_no.strip()
     if not serial_no:
-        raise HTTPException(422, "请输入完整流水号")
+        raise HTTPException(422, "请输入完整流水号或批次号")
+    team_scope = or_(MT.next_team_id == team_id, MT.source_team_id == team_id)
+    batch_serial = db.scalar(
+        select(MT.serial_no).where(MT.batch_no == serial_no, team_scope, MT.status != "voided")
+    )
+    if batch_serial:
+        serial_no = batch_serial
     RecordFilters(date_from=date_from, date_to=date_to).dates(MT.created_at)
     # Exact identity, with leading zeroes; an exhausted serial is still found.
     serial_scope = or_(

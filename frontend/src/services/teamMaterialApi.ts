@@ -199,9 +199,15 @@ export const teamMaterialApi = {
     query = '',
     selected = '',
     material?: import('./warehouseLocationApi').WarehouseMaterial,
+    page?: number,
   ) {
-    return request<{ items: WarehouseLocation[] }>(
-      path(teamId, 'warehouse-locations', { query, selected, ...material }),
+    return request<{ items: WarehouseLocation[]; total?: number }>(
+      path(teamId, 'warehouse-locations', {
+        query,
+        selected,
+        ...material,
+        ...(page ? { page, limit: 20 } : {}),
+      }),
     )
   },
   quantityContext(teamId: number, sourceId: number, page = 1) {
@@ -260,6 +266,19 @@ export const teamMaterialApi = {
   },
   purposes(teamId: number) {
     return request<TeamPurpose[]>(path(teamId, 'purposes'))
+  },
+  equipment(teamId: number) {
+    return request<TeamDirectoryItem[]>(path(teamId, 'equipment'))
+  },
+  saveEquipment(
+    teamId: number,
+    payload: { name: string; active: boolean; expected_version?: number },
+    id?: number,
+  ) {
+    return request<TeamDirectoryItem>(path(teamId, id ? `equipment/${id}` : 'equipment'), {
+      method: id ? 'PATCH' : 'POST',
+      body: payload,
+    })
   },
   processingTasks(teamId: number) {
     return request<TeamProcessingTask[]>(path(teamId, 'processing-tasks'))

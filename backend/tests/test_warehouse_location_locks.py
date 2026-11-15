@@ -87,7 +87,12 @@ def test_intake_consumes_lease_and_late_close_cannot_free_stock(client, warehous
     assert intake(client, warehouse, **selected).json() == result.json()
     assert release(client, slot, warehouse["headers"], lease["key"]).status_code == 204
     assert state(client, slot)["status"] == "occupied"
-    assert claim(client, slot, warehouse["other_headers"]).status_code == 409
+    new_lease = claim(client, slot, warehouse["other_headers"])
+    assert new_lease.status_code == 200
+    assert (
+        release(client, slot, warehouse["other_headers"], new_lease.json()["key"]).status_code
+        == 204
+    )
     assert (
         intake(
             client, warehouse, idempotency_key="no-location", warehouse_location=None
@@ -209,7 +214,9 @@ def return_rows(client, setup, source, key, selected, count=1):
     )
 
 
-def test_saved_transfer_retains_lock_through_receipt_and_void_releases(client, warehouse):
+def test_saved_transfer_keeps_placement_and_allows_another_arrival_before_receipt(
+    client, warehouse
+):
     source = production_source(client, warehouse)
     selected = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     slot = client.get("/api/warehouse-locations").json()["items"][0]
@@ -220,7 +227,9 @@ def test_saved_transfer_retains_lock_through_receipt_and_void_releases(client, w
     assert state(client, slot)["status"] == "locked"
     with SessionLocal() as db:
         assert db.get(WarehouseLocation, slot["id"]).reservation_key is None
-    assert claim(client, slot, warehouse["headers"]).status_code == 409
+    new_lease = claim(client, slot, warehouse["headers"])
+    assert new_lease.status_code == 200
+    assert release(client, slot, warehouse["headers"], new_lease.json()["key"]).status_code == 204
     assert (
         receipt_post(
             client,

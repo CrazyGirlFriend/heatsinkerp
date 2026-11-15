@@ -61,7 +61,7 @@ const dates = ref(recentDates()),
   workId = ref<number>(),
   autoRefresh = ref(true),
   exporting = ref(false),
-  basis = ref<QualityBasis>({ kind: 'patrol', scope: 'sample', phase: 'first' }),
+  basis = ref<QualityBasis>({ kind: 'inspection', scope: 'sample', phase: 'first' }),
   report = ref<FactoryPerformance | null>(null),
   teams = ref<FactoryPerformance['teams']>([]),
   loading = ref(false),
@@ -250,7 +250,7 @@ function openProcessing(id: number) {
     },
   })
 }
-function openQuality(tab: 'quality-feedback' | 'inspections' | 'inspection-results') {
+function openQuality(tab: 'quality-feedback' | 'inspection-results') {
   const target =
     tab === 'quality-feedback'
       ? selectedTeam.value || qualityWorkspace.value
@@ -458,7 +458,7 @@ onBeforeUnmount(() => {
         v-model="serialDraft"
         field="serial_no"
         label="统计流水号"
-        placeholder="输入或选择流水号"
+        placeholder="输入流水号或批次号"
         :maxlength="80"
         @selected="applyQuery"
         @keyup.enter="applyQuery"
@@ -511,7 +511,7 @@ onBeforeUnmount(() => {
           label="检查来源"
           :model-value="basis.kind"
           :options="[
-            { value: 'patrol', label: '巡检' },
+            { value: 'patrol', label: '历史巡检' },
             { value: 'inspection', label: '检验' },
           ]"
           @update:model-value="basis.kind = $event as QualityBasis['kind']"
@@ -538,8 +538,8 @@ onBeforeUnmount(() => {
           v-if="qualityWorkspace"
           link
           type="primary"
-          @click="openQuality(basis.kind === 'patrol' ? 'inspections' : 'inspection-results')"
-          >进入{{ basis.kind === 'patrol' ? '巡检' : '检验' }}记录</ElButton
+          @click="openQuality(basis.kind === 'patrol' ? 'quality-feedback' : 'inspection-results')"
+          >{{ basis.kind === 'patrol' ? '查看历史质量问题' : '进入检验记录' }}</ElButton
         >
       </div>
       <div class="performance-view-controls">
@@ -648,7 +648,7 @@ onBeforeUnmount(() => {
         <div>
           <strong>质量问题 {{ formatAmount(report.issues.summary.total) }} 条</strong>
           <StatisticHelp label="质量问题统计说明">
-            问题按发现日期、涉及班组及查看权限统计，包含巡检与检验；复检沿用原问题。一个问题可选择多个分类，分类或班组数量不能相加。
+            问题按发现日期、涉及班组及查看权限统计，包含检验与历史巡检；复检沿用原问题。一个问题可选择多个分类，分类或班组数量不能相加。
           </StatisticHelp>
           <span>待处理 {{ report.issues.summary.pending }}</span>
           <span>处理中 {{ report.issues.summary.processing }}</span>

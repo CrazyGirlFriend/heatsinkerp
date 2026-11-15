@@ -308,7 +308,7 @@ const searchPlaceholder = computed(() =>
   searchFieldDraft.value !== 'all'
     ? `搜索${materialSearchFields.find((option) => option.value === searchFieldDraft.value)?.label}`
     : searchModeDraft.value === 'contains'
-      ? '搜索编号、材质、班组或转料人'
+      ? '搜索流水号、批次号、材质、班组或转料人'
       : '搜索批次号、流水号、原单批号、编号、客户代码或材质',
 )
 

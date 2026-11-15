@@ -66,6 +66,8 @@ def test_current_stock_pending_documents_and_form_locks_remain_distinct(client, 
         },
     )
     assert outgoing.status_code == 201, outgoing.text
+    # The production-source fixture first receives into a required slot, then empties it.
+    source_empty_slots = catalog(client, state="available")["items"]
     draft = create_slot(client, "C-填写中")
     assert claim(client, draft, warehouse["headers"]).status_code == 200
     expired = create_slot(client, "D-到期")
@@ -80,11 +82,11 @@ def test_current_stock_pending_documents_and_form_locks_remain_distinct(client, 
         "pending": [pending_slot["id"]],
         "draft": [stocked["id"], draft["id"]],
         "disabled": [disabled["id"]],
-        "available": [expired["id"], free["id"]],
+        "available": [expired["id"], free["id"], *(row["id"] for row in source_empty_slots)],
     }.items():
         page = catalog(client, state=state, page_size=50)
         assert page["total"] == len(expected)
-        assert [row["id"] for row in page["items"]] == expected
+        assert {row["id"] for row in page["items"]} == set(expected)
     current = catalog(client, state="occupied")["items"][0]
     assert current["has_stock"] and current["draft_locked"]
     for key in ("created_at", "received_at"):

@@ -8,6 +8,7 @@ from app.models import MaterialTransfer, ProcessRoute, ProcessRouteDrawing, Proc
 from route_document_helpers import add_documents
 from sender_helpers import sender_post
 from sqlalchemy import delete, select
+from test_engineering_team import author
 from test_process_route_intake import publish_payload, route_payload
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -29,12 +30,15 @@ def routes(client, warehouse):
             source_data={"tables": [], "issues": []},
             created_by=original.created_by,
             created_by_user_id=original.created_by_user_id,
+            engineering_employee_id=original.engineering_employee_id,
         )
         db.add(row)
         db.commit()
         second_id = row.id
     add_documents(second_id)
-    response = client.post(f"/api/process-routes/{second_id}/publish", json={"version": 1})
+    response = client.post(
+        f"/api/process-routes/{second_id}/publish", headers=author(client)[0], json={"version": 1}
+    )
     assert response.status_code == 200, response.text
     return first, response.json()
 

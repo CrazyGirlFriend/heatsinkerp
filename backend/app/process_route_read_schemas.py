@@ -80,6 +80,7 @@ class ReworkProblemTeamResponse(ReadResponse):
 class ReworkRequestResponse(ReadResponse):
     source_transfer_id: int
     batch_no: str
+    material_name: str | None = None
     team_id: int
     team_name: str
     quantity: int

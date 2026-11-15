@@ -82,12 +82,18 @@ def test_warehouse_and_production_cannot_import_word(client, warehouse):
 
 
 def publish_payload(client, payload):
+    from test_engineering_team import author
+
+    headers, employee_id = author(client)
     write = {key: value for key, value in payload.items() if key != "id"}
-    saved = client.put(URL + f"/{payload['id']}", json=write)
+    write.update(engineering_employee_id=employee_id, modified_employee_id=employee_id)
+    saved = client.put(URL + f"/{payload['id']}", json=write, headers=headers)
     assert saved.status_code == 200, saved.text
     add_documents(payload["id"])
     published = client.post(
-        URL + f"/{payload['id']}/publish", json={"version": saved.json()["version"]}
+        URL + f"/{payload['id']}/publish",
+        json={"version": saved.json()["version"]},
+        headers=headers,
     )
     assert published.status_code == 200, published.text
     return {key: published.json()[key] for key in payload}

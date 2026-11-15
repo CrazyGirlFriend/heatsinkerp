@@ -99,6 +99,13 @@ export interface QuantityAdjustmentContext
   allowed_task_ids?: number[]
   rework_inspections?: { id: number; kind: string; checked_at: string }[]
   rework_task_records?: {
+    team_id?: number | null
+    team_name?: string | null
+    processing_date?: string | null
+    processor_name?: string | null
+    completed_quantity?: number | null
+    work_kind?: 'initial' | 'rework' | null
+    rework_round?: number | null
     process_route_id?: number | null
     process_step_index?: number | null
     process_step_name?: string | null

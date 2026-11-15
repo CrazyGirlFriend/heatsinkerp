@@ -62,6 +62,9 @@ const currentTaskName = computed(() =>
     ? origin.value?.processing_task_name || '历史未登记'
     : tasks.value.find((item) => item.id === props.taskId)?.name || '未登记',
 )
+const fixedTask = computed(() =>
+  Boolean(routeStep.value?.processing_task_id || (props.rework && !routeStep.value)),
+)
 function originalLabel(record: (typeof reworkRecords.value)[number]) {
   return `${record.process_step_name || '历史工序未登记'} · ${record.processing_task_name || '任务未登记'} · 原记录 #${record.rework_of_id}`
 }
@@ -215,10 +218,18 @@ onBeforeUnmount(() => ++generation)
   </section>
   <ElFormItem
     label="加工任务"
-    :required="required"
+    :required="required && !fixedTask"
     :class="{ 'is-error': submitted && (!validTask || !!error) }"
   >
+    <span v-if="fixedTask" class="processing-task-value" aria-label="加工任务">
+      {{ loading ? '正在读取' : currentTaskName }}
+      <small>{{ rework && !routeStep ? '沿用原加工记录' : '工艺已指定' }}</small>
+    </span>
+    <span v-else-if="!loading && !error && !required" class="processing-task-value"
+      >未配置加工任务</span
+    >
     <ElSelect
+      v-else
       :model-value="taskId"
       aria-label="加工任务"
       filterable
@@ -264,6 +275,17 @@ onBeforeUnmount(() => ++generation)
 </template>
 
 <style scoped>
+.processing-task-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 6px;
+  color: var(--text);
+}
+.processing-task-value small {
+  color: var(--muted);
+}
 .processing-route-instructions {
   grid-column: 1 / -1;
   border: 1px solid var(--line);

@@ -289,6 +289,7 @@ def warehouse_locations(
     material_name: str | None = Query(default=None, max_length=160),
     material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
     limit: int = Query(default=100, ge=1, le=100),
+    page: int = Query(default=1, ge=1),
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -296,7 +297,13 @@ def warehouse_locations(
     return team_read_response(
         db,
         lambda session: warehouse_receipts.locations(
-            session, team_id, query=query, limit=limit, selected=selected, identity=identity
+            session,
+            team_id,
+            query=query,
+            limit=limit,
+            page=page,
+            selected=selected,
+            identity=identity,
         ),
         schema=WarehouseLocationPage,
     )

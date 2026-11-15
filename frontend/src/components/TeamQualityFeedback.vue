@@ -8,7 +8,7 @@ import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute } from 'vue-router'
@@ -26,11 +26,13 @@ import {
   qualityFeedbackApi,
   feedbackStates,
   dispositions,
-  type QualityFeedback,
+  type QualityRow,
+  qualitySourceLabels,
+  qualityProblemLabel,
   type QualityFilters,
 } from '@/services/qualityFeedbackApi'
 import { formatDateTime } from '@/utils/format'
-import { inspectionProblemLabel } from '@/services/inspectionApi'
+const TeamProblemDetail = defineAsyncComponent(() => import('./TeamProblemDetail.vue'))
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 const props = defineProps<{ teamId?: number; showAll?: boolean }>()
 const emit = defineEmits<{ count: [value: number] }>()
@@ -43,7 +45,7 @@ const noticeKey = computed(() =>
     ? route.query.notice
     : undefined,
 )
-const rows = ref<QualityFeedback[]>([]),
+const rows = ref<QualityRow[]>([]),
   total = ref(0),
   pending = ref(0),
   page = ref(1),
@@ -52,6 +54,7 @@ const rows = ref<QualityFeedback[]>([]),
   error = ref(''),
   loading = ref(false),
   selected = ref<number>()
+const selectedProblem = ref<number>()
 const filtersOpen = ref(false),
   draftStatus = ref<QualityFilters['status']>(),
   draftKind = ref<QualityFilters['kind']>(),
@@ -67,6 +70,14 @@ const dispositionColumns = {
     kind: 'select' as const,
     options: Object.entries(dispositions).map(([value, label]) => ({ value, label })),
   },
+  工艺状态: {
+    field: 'route_state',
+    kind: 'select' as const,
+    options: [
+      { value: 'draft', label: '未填写' },
+      { value: 'published', label: '已制定' },
+    ],
+  },
 }
 const count = computed(
   () =>
@@ -80,7 +91,7 @@ const count = computed(
 let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
-  busy: () => loading.value || !!selected.value,
+  busy: () => loading.value || !!selected.value || !!selectedProblem.value,
 })
 const tableQuery = useTableQuery(
   {
@@ -90,6 +101,11 @@ const tableQuery = useTableQuery(
       ['问题说明', 'notes'],
     ]),
     ...dispositionColumns,
+    来源: {
+      field: 'kind',
+      kind: 'select',
+      options: Object.entries(qualitySourceLabels).map(([value, label]) => ({ value, label })),
+    },
   },
   () => {
     page.value = 1
@@ -186,12 +202,20 @@ function exportSource() {
     '质量反馈',
     total.value,
     [
-      { key: 'serial_no', label: '流水号', value: (r: QualityFeedback) => r.serial_no },
+      { key: 'serial_no', label: '流水号', value: (r: QualityRow) => r.serial_no },
       { key: 'checked_at', label: '发现时间', value: (r) => formatDateTime(r.checked_at) },
-      { key: 'kind', label: '来源', value: (r) => (r.kind === 'inspection' ? '检验' : '巡检') },
+      { key: 'kind', label: '来源', value: (r) => qualitySourceLabels[r.kind] },
       { key: 'team_name', label: '发现班组', value: (r) => r.team_name },
-      { key: 'scope', label: '检验范围', value: (r) => (r.scope === 'full' ? '全检' : '抽检') },
-      { key: 'sample_quantity', label: '检查件数', value: (r) => r.sample_quantity },
+      {
+        key: 'scope',
+        label: '检验方式',
+        value: (r) => (r.kind === 'team_report' ? '—' : r.scope === 'full' ? '全检' : '抽检'),
+      },
+      {
+        key: 'sample_quantity',
+        label: '检查件数',
+        value: (r) => (r.kind === 'team_report' ? '' : r.sample_quantity),
+      },
       { key: 'failed_quantity', label: '不合格件数', value: (r) => r.failed_quantity },
       {
         key: 'involved',
@@ -199,18 +223,28 @@ function exportSource() {
         value: (r) => r.involved_teams.map((t) => t.name).join('、'),
       },
       { key: 'notes', label: '问题说明', value: (r) => r.notes },
-      { key: 'problems', label: '检验问题', value: inspectionProblemLabel },
+      { key: 'problems', label: '检验问题', value: qualityProblemLabel },
       {
         key: 'feedback_status',
         label: '处理状态',
         value: (r) => feedbackStates[r.feedback_status],
       },
       {
+        key: 'route_state',
+        label: '工艺状态',
+        value: (r) =>
+          r.kind === 'team_report' ? (r.route_state === 'published' ? '已制定' : '未填写') : '',
+      },
+      {
         key: 'disposition',
         label: '处理方式',
         value: (r) => dispositions[r.disposition as keyof typeof dispositions],
       },
-      { key: 'decision_notes', label: '处理意见', value: (r) => r.decision_notes },
+      {
+        key: 'decision_notes',
+        label: '处理意见',
+        value: (r) => (r.kind === 'team_report' ? '' : r.decision_notes),
+      },
       { key: 'batch_no', label: '批次号', value: (r) => r.batch_no },
     ],
     (signal, progress) =>
@@ -254,6 +288,7 @@ watch(
     query.value = ''
     page.value = 1
     selected.value = undefined
+    selectedProblem.value = undefined
     void load()
   },
   { immediate: true },
@@ -295,9 +330,9 @@ onBeforeUnmount(() => {
               v-model="draftKind"
               clearable
               placeholder="全部"
-              ><ElOption label="巡检" value="patrol" /><ElOption
-                label="检验"
-                value="inspection" /></ElSelect
+              ><ElOption label="班组反馈" value="team_report" /><ElOption
+                label="历史巡检"
+                value="patrol" /><ElOption label="检验" value="inspection" /></ElSelect
           ></label>
           <label
             >处理状态<ElSelect
@@ -357,7 +392,7 @@ onBeforeUnmount(() => {
       :data="rows"
       :loading="loading"
       class="quality-feedback-table"
-      row-key="id"
+      :row-key="(row: QualityRow) => `${row.kind}:${row.id}`"
       empty-text="暂无质量反馈"
     >
       <ElTableColumn
@@ -369,12 +404,12 @@ onBeforeUnmount(() => {
         show-overflow-tooltip
       />
       <ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
-        <template #default="{ row }">{{ inspectionProblemLabel(row as QualityFeedback) }}</template>
+        <template #default="{ row }">{{ qualityProblemLabel(row as QualityRow) }}</template>
       </ElTableColumn>
       <ElTableColumn prop="failed_quantity" label="不合格件数" width="110" align="center" />
       <ElTableColumn label="涉及班组" min-width="180" align="center" show-overflow-tooltip
         ><template #default="{ row }">{{
-          (row as QualityFeedback).involved_teams.map((t) => t.name).join('、') || '待指定'
+          (row as QualityRow).involved_teams.map((t) => t.name).join('、') || '待指定'
         }}</template></ElTableColumn
       >
       <ElTableColumn label="处理状态" width="110" align="center"
@@ -384,6 +419,15 @@ onBeforeUnmount(() => {
           }}</ElTag></template
         ></ElTableColumn
       >
+      <ElTableColumn label="工艺状态" width="110" align="center">
+        <template #default="{ row }"
+          ><ElTag
+            v-if="row.kind === 'team_report'"
+            :type="row.route_state === 'published' ? 'success' : 'info'"
+            >{{ row.route_state === 'published' ? '已制定' : '未填写' }}</ElTag
+          ><span v-else>—</span></template
+        >
+      </ElTableColumn>
       <ElTableColumn label="处理方式" width="120" align="center">
         <template #default="{ row }">{{
           dispositions[row.disposition as keyof typeof dispositions] || '—'
@@ -395,25 +439,30 @@ onBeforeUnmount(() => {
       <ElTableColumn prop="notes" label="问题说明" min-width="220" show-overflow-tooltip />
       <ElTableColumn label="来源" width="80" align="center"
         ><template #default="{ row }">{{
-          row.kind === 'inspection' ? '检验' : '巡检'
+          qualitySourceLabels[(row as QualityRow).kind]
         }}</template></ElTableColumn
       >
       <ElTableColumn prop="team_name" label="发现班组" min-width="100" align="center" />
-      <ElTableColumn label="范围" width="80" align="center"
+      <ElTableColumn label="检验方式" width="120" align="center"
         ><template #default="{ row }">{{
-          row.scope === 'full' ? '全检' : '抽检'
+          row.kind === 'team_report' ? '—' : row.scope === 'full' ? '全检' : '抽检'
         }}</template></ElTableColumn
       >
       <ElTableColumn label="班组反馈" width="110" align="center"
         ><template #default="{ row }"
-          >{{ (row as QualityFeedback).involved_teams.filter((t) => t.replied).length }} /
+          >{{ (row as QualityRow).involved_teams.filter((t) => t.replied).length }} /
           {{ row.involved_teams.length }}</template
         ></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
       <ElTableColumn label="操作" width="110" fixed="right" align="center"
         ><template #default="{ row }"
-          ><ElButton link type="primary" @click="selected = row.id">查看 / 处理</ElButton></template
+          ><ElButton
+            link
+            type="primary"
+            @click="row.kind === 'team_report' ? (selectedProblem = row.id) : (selected = row.id)"
+            >查看 / 处理</ElButton
+          ></template
         ></ElTableColumn
       >
     </WorkspaceTable>
@@ -430,6 +479,12 @@ onBeforeUnmount(() => {
       "
       >共 {{ total }} 条问题 · {{ pending }} 条未结束</WorkspacePagination
     >
+    <TeamProblemDetail
+      v-if="selectedProblem"
+      :route-id="selectedProblem"
+      @close="selectedProblem = undefined"
+      @changed="changed"
+    />
     <QualityFeedbackDetail
       v-if="selected"
       :issue-id="selected"

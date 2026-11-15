@@ -6,8 +6,9 @@ from app.database import SessionLocal
 from app.models import MaterialTransfer, ProcessRoute, TeamEmployee
 from route_document_helpers import add_documents
 from sqlalchemy import func, select
+from test_engineering_team import author
 from test_process_route_import import CONTENT_TYPES, PROCESS, docx
-from test_quantity_adjustments import change
+from test_processing_daily import work as register_work
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -30,7 +31,9 @@ def imported(client):
             [1, "轧板", "重复原行", "7", "100"],
         ]
     )
-    response = client.post(URL + "/import", files={"file": ("工艺.docx", data)})
+    response = client.post(
+        URL + "/import", files={"file": ("工艺.docx", data)}, headers=author(client)[0]
+    )
     assert response.status_code == 201, response.text
     return response.json(), data
 
@@ -46,18 +49,23 @@ def test_invalid_word_package_leaves_no_draft_and_valid_original_is_preserved(cl
         },
     ):
         content = docx([["流水号", "OPC-VALIDATION"], *PROCESS], parts=parts)
-        response = client.post(URL + "/import", files={"file": ("工艺.docx", content)})
+        response = client.post(
+            URL + "/import", headers=author(client)[0], files={"file": ("工艺.docx", content)}
+        )
         assert response.status_code == 422, response.text
         with SessionLocal() as db:
             assert db.scalar(select(func.count(ProcessRoute.id))) == 0
     content = docx([["流水号", "OPC-VALIDATION"], *PROCESS])
-    response = client.post(URL + "/import", files={"file": ("工艺.docx", content)})
+    response = client.post(
+        URL + "/import", headers=author(client)[0], files={"file": ("工艺.docx", content)}
+    )
     assert response.status_code == 201, response.text
     source = client.get(URL + f"/{response.json()['id']}/source")
     assert source.status_code == 200 and source.content == content
 
 
 def published(client, s, same_team=False, *, row=None):
+    headers, employee_id = author(client)
     if row is None:
         row, _ = imported(client)
     task = client.post(base(s, True) + "/processing-tasks", json={"name": "精轧"}).json()
@@ -72,18 +80,21 @@ def published(client, s, same_team=False, *, row=None):
     steps.append({**steps[0], "sequence_no": 3, "name": "库房成品入库"})
     result = client.put(
         URL + f"/{row['id']}",
+        headers=headers,
         json={
             "title": "首批派工",
             "serial_nos": ["WAREHOUSE-001"],
             "steps": steps,
             "version": 1,
             "review_note": "已核对重复行",
+            "engineering_employee_id": employee_id,
         },
     )
     assert result.status_code == 200, result.text
     add_documents(row["id"])
     result = client.post(
         URL + f"/{row['id']}/publish",
+        headers=headers,
         json={"version": result.json()["version"], "confirmed_imports": True},
     )
     assert result.status_code == 200, result.text
@@ -125,17 +136,15 @@ def work(client, s, lot, partial=False):
             {"role": "remaining", "quantity": 40, "weight": 4, "material_type": "semi_finished"}
         )
     with SessionLocal() as db:
-        employee_id = db.scalar(
-            select(TeamEmployee.id).where(TeamEmployee.team_id == s["other"]["id"])
-        )
-    return change(
+        employee = db.scalar(select(TeamEmployee).where(TeamEmployee.team_id == s["other"]["id"]))
+        worker = {"id": employee.id, "name": employee.name}
+    return register_work(
         client,
         s,
         lot,
-        100,
-        processor_employee_id=employee_id,
-        workshop=True,
-        key=uuid4().hex,
+        worker,
+        quantity=100,
+        idempotency_key=uuid4().hex,
         processing_mode="split",
         processing_date="2026-10-23",
         input_quantity=lot["quantity"],
@@ -160,11 +169,23 @@ def test_word_review_permissions_original_and_revision(client, warehouse):
         ).status_code
         == 403
     )
-    assert client.post(URL + f"/{row['id']}/publish", json={"version": 1}).status_code == 422
-    assert client.post(URL + "/import", files={"file": ("a.docx", b"bad")}).status_code == 422
     assert (
         client.post(
-            URL + "/import", files={"file": ("a.docx", b"x" * (5 * 1024 * 1024 + 1))}
+            URL + f"/{row['id']}/publish", headers=author(client)[0], json={"version": 1}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            URL + "/import", headers=author(client)[0], files={"file": ("a.docx", b"bad")}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            URL + "/import",
+            headers=author(client)[0],
+            files={"file": ("a.docx", b"x" * (5 * 1024 * 1024 + 1))},
         ).status_code
         == 413
     )
@@ -172,8 +193,11 @@ def test_word_review_permissions_original_and_revision(client, warehouse):
     payload = {
         key: route[key] for key in ("title", "steps", "serial_nos", "review_note", "version")
     }
-    assert client.put(URL + f"/{route['id']}", json=payload).status_code == 409
-    new = client.post(URL + f"/{route['id']}/revise").json()
+    assert (
+        client.put(URL + f"/{route['id']}", headers=author(client)[0], json=payload).status_code
+        == 409
+    )
+    new = client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).json()
     assert new["state"] == "draft" and new["parent_id"] == route["id"]
 
 
@@ -267,7 +291,7 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
 ):
     s = warehouse
     route = published(client, s, True)
-    draft = client.post(URL + f"/{route['id']}/revise").json()
+    draft = client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).json()
     steps = draft["steps"]
     steps[2]["split_here"] = True
     steps[3]["serial_nos"] = ["A"]
@@ -275,8 +299,10 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
     # Legacy shared routes remain executable; new normal orders import one serial per order.
     from app.models import ProcessRouteOrderFile
 
+    _, employee_id = author(client)
     with SessionLocal() as db:
         historical = db.get(ProcessRoute, draft["id"])
+        historical.modified_employee_id = employee_id
         historical.serial_nos = ["A", "B"]
         historical.steps = steps
         historical.source_data = {**historical.source_data, "order_document": None}
@@ -286,6 +312,7 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
     saved = draft
     result = client.post(
         URL + f"/{draft['id']}/publish",
+        headers=author(client)[0],
         json={"version": saved["version"], "confirmed_imports": True},
     )
     assert result.status_code == 200, result.text
@@ -351,17 +378,15 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
     common = done.json()["outputs"][0]
     assert common["shared_unallocated"]
     with SessionLocal() as db:
-        employee = db.scalar(
-            select(TeamEmployee.id).where(TeamEmployee.team_id == s["other"]["id"])
-        )
-    result = change(
+        employee = db.scalar(select(TeamEmployee).where(TeamEmployee.team_id == s["other"]["id"]))
+        worker = {"id": employee.id, "name": employee.name}
+    result = register_work(
         client,
         s,
         common,
-        100,
-        workshop=True,
-        processor_employee_id=employee,
-        key="split",
+        worker,
+        quantity=100,
+        idempotency_key="split",
         processing_mode="split",
         processing_date="2026-10-23",
         input_quantity=100,

@@ -90,12 +90,15 @@ def test_reused_slot_survives_void_of_old_batch_and_can_assign_return_elsewhere(
         place(client, warehouse, empty, source, 100, 10.125, warehouse["other_headers"]).status_code
         == 403
     )
-    assert place(client, warehouse, slot, source, 100, 10.125).status_code == 409
-    assert place(client, warehouse, empty, source, 100, 10.125).status_code == 200
+    assert place(client, warehouse, slot, source, 40, 4).status_code == 200
+    assert place(client, warehouse, empty, source, 60, 6.125).status_code == 200
     assert place(client, warehouse, empty, source, 100, 10.125).status_code == 409
     assigned = stock(client, warehouse, source)
     assert assigned["unassigned_quantity"] == 0
-    assert assigned["warehouse_positions"][0]["name"] == "B"
+    assert {row["name"]: row["quantity"] for row in assigned["warehouse_positions"]} == {
+        "A": 40,
+        "B": 60,
+    }
     assert assigned["owned_quantity"] == 100 and assigned["on_hand_quantity"] == 100
 
 
@@ -161,7 +164,7 @@ def test_occupied_slot_can_be_renamed_without_changing_history(client, warehouse
     row = stock(client, warehouse, source)
     assert row["warehouse_positions"][0]["name"] == "B"
     assert row["transfer"]["warehouse_location"] == "A"
-    assert claim(client, slot, warehouse["headers"]).status_code == 409
+    assert claim(client, slot, warehouse["headers"]).status_code == 200
     base = f"/api/team-materials/{warehouse['team']['id']}/stock"
     assert client.get(base, params={"query": "B"}).json()["total"] == 1
 

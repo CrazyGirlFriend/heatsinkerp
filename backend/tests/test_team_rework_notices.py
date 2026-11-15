@@ -6,6 +6,7 @@ from app.database import SessionLocal
 from app.models import MaterialStockBalance, ProcessRoute, ReworkNotice, Team
 from sqlalchemy import select
 from test_engineered_rework import approved_quality_issue, save_plan
+from test_engineering_team import author
 from test_material_transfers import _leader
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base
@@ -80,7 +81,9 @@ def test_qc_problem_notifies_engineering_then_authoring_notifies_submitter(clien
     saved = save_plan(client, warehouse, route)
     # Publishing/retrying does not send duplicate messages or physically transfer anything.
     repeat = client.post(
-        f"/api/process-routes/{saved['id']}/publish", json={"version": saved["version"]}
+        f"/api/process-routes/{saved['id']}/publish",
+        headers=author(client)[0],
+        json={"version": saved["version"]},
     )
     assert repeat.status_code == 200, repeat.text
     team_inbox = client.get(f"/api/rework-notices?team_id={team_id}", headers=headers).json()
@@ -126,7 +129,9 @@ def test_existing_message_opens_the_current_engineered_revision(client, warehous
         f"/api/rework-notices?team_id={warehouse['other']['id']}", headers=headers
     ).json()
     notice_id = messages["items"][0]["id"]
-    revision = client.post(f"/api/process-routes/{saved['id']}/revise").json()
+    revision = client.post(
+        f"/api/process-routes/{saved['id']}/revise", headers=author(client)[0]
+    ).json()
     latest = save_plan(client, warehouse, revision, instructions="最新修订的要求")
     opened = client.get(f"/api/rework-notices/{notice_id}/route", headers=headers)
     assert opened.status_code == 200, opened.text

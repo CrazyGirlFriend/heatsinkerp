@@ -106,7 +106,6 @@ const canFullscreen = computed(
       'pending',
       'receipts',
       'processing',
-      'inspections',
       'inspection-results',
       'quality-feedback',
       'outgoing',

@@ -12,7 +12,6 @@ export const teamWorkspaceSections = [
   { value: 'processing', label: '加工记录' },
   { value: 'inspection-results', label: '检验记录' },
   { value: 'quality-feedback', label: '质量反馈' },
-  { value: 'inspections', label: '巡检记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'reallocations', label: '转投记录' },
   { value: 'losses', label: '丢失记录' },
@@ -41,7 +40,7 @@ export const teamWorkspaceModules = [
   {
     value: 'quality',
     label: '质量',
-    sections: ['inspection-results', 'quality-feedback', 'inspections'],
+    sections: ['inspection-results', 'quality-feedback'],
   },
   { value: 'warehouse', label: '仓库管理', sections: ['warehouse'] },
   { value: 'settings', label: '班组管理', sections: ['settings'] },
@@ -83,8 +82,7 @@ export function teamWorkspaceSectionsFor(
       (section.value !== 'reallocations' || reallocations) &&
       (section.value !== 'quality-feedback' || !warehouse) &&
       (section.value !== 'inspection-results' || inspection) &&
-      (section.value !== 'processing' || processing) &&
-      (section.value !== 'inspections' || processing),
+      (section.value !== 'processing' || processing),
   )
 }
 
@@ -97,6 +95,7 @@ export function resolveTeamWorkspaceSection(
   inspection = false,
   manageSettings = false,
 ): TeamWorkspaceSection {
+  if (query.tab === 'inspections') return warehouse ? 'stock' : 'quality-feedback'
   if (query.tab === 'serials' || query.tab === 'materials' || query.tab === 'material-types')
     return 'stock'
   if (query.tab === 'overview') return 'history'

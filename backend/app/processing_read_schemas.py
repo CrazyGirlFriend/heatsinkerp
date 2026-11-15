@@ -52,6 +52,7 @@ class QuantityAdjustmentResponse(ReadResponse):
     processor_employee_id: int | None
     processors: list[ProcessingPersonResponse]
     processing_minutes: int | None
+    equipment_id: int | None = None
     furnace_no: str | None
     temperature_requirement: str | None
     actual_temperature_c: float | None
@@ -84,6 +85,13 @@ class QuantityAdjustmentResponse(ReadResponse):
 
 class ReworkTaskRecordResponse(ReadResponse):
     rework_of_id: int
+    team_id: int | None = None
+    team_name: str | None = None
+    processing_date: str | None = None
+    processor_name: str | None = None
+    completed_quantity: int | None = None
+    work_kind: Literal["initial", "rework"] | None = None
+    rework_round: int | None = None
     process_route_id: int | None = None
     process_step_index: int | None = None
     process_step_name: str | None
