@@ -49,6 +49,61 @@ it('fills the warehouse initial to its real dispatch ratio and mounts a short su
   }
 })
 
+it.each(['库房', '检验'])(
+  'shows customer shipment wording for %s without implying downstream receipt',
+  async (team_name) => {
+    const node = {
+      ...scheduleSummaryFixture(),
+      team_name,
+      next_team_id: null,
+      next_team_name: null,
+      external_destination: '对外转料',
+      completion_basis: 'quantity',
+      processed_quantity: 100,
+      dispatched_quantity: 60,
+      sequence_no: 1,
+    } as ProductionSchedule
+    const wrapper = mount(ScheduleTeamPlanning, {
+      props: { nodes: [node] },
+      global: {
+        stubs: {
+          AppPopover: {
+            props: ['visible'],
+            template: '<div><slot name="reference"/><slot v-if="visible"/></div>',
+          },
+        },
+      },
+    })
+    try {
+      const icon = wrapper.get('.team-planning__step')
+      expect(icon.attributes('aria-label')).toContain('已发货 60%')
+      expect(icon.attributes('style')).toContain('--planning-progress: 60%')
+      await icon.trigger('focusin')
+      const summary = wrapper.get('.schedule-node-summary')
+      expect(summary.get('[aria-label="发货进度"]').text()).toContain('已发货 60%')
+      expect(summary.text()).toContain('约定发货')
+      expect(summary.text()).toContain('实际发齐')
+      expect(summary.text()).not.toContain('下序已签收')
+      expect(summary.text()).not.toContain('已转出')
+
+      for (const destination of [
+        { next_team_id: 3, external_destination: null },
+        { next_team_id: null, external_destination: '库房成品' },
+        { next_team_id: null, external_destination: '外委库' },
+      ]) {
+        await wrapper.setProps({ nodes: [{ ...node, ...destination }] })
+        expect(icon.attributes('aria-label')).toContain('已转出 60%')
+        expect(summary.get('[aria-label="转出进度"]').text()).toContain('已转出 60%')
+        expect(summary.text()).toContain('约定转交')
+        expect(summary.text()).toContain('下序已签收')
+        expect(summary.text()).not.toContain('已发货')
+      }
+    } finally {
+      wrapper.unmount()
+    }
+  },
+)
+
 it('keeps one team circle and reveals each batch quantity, deadline and handover status only in the summary', async () => {
   const first: ScheduleBatch = {
     id: 101,
@@ -109,6 +164,14 @@ it('keeps one team circle and reveals each batch quantity, deadline and handover
     expect(rows[1]!.text()).toContain('0 / 40 件')
     expect(rows[1]!.text()).toContain('2026-11-15 14:00')
     expect(rows[1]!.text()).toContain('逾期未交完')
+    expect(wrapper.get('.schedule-node-batches__heading').text()).toContain('已转 / 应交')
+    await wrapper.setProps({
+      nodes: [{ ...node, next_team_id: null, external_destination: '对外转料' }],
+    })
+    expect(wrapper.get('.schedule-node-summary header').text()).toContain('已发货 60%')
+    expect(wrapper.get('.schedule-node-batches__heading').text()).toContain('分批发货')
+    expect(wrapper.get('.schedule-node-batches__heading').text()).toContain('已发 / 应发')
+    expect(wrapper.findAll('.schedule-node-batches li')[1]!.text()).toContain('0 / 40 件')
     await wrapper.get('.team-planning__step').trigger('focusout')
     expect(wrapper.text()).toBe('库')
   } finally {

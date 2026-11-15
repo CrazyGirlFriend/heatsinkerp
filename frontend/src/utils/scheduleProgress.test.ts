@@ -178,6 +178,25 @@ describe('individual operation progress', () => {
       dispatched: 40,
     })
   })
+  it.each([
+    { next_team_id: null, external_destination: '对外转料', label: '已发货' },
+    { next_team_id: 3, external_destination: null, label: '已转出' },
+    { next_team_id: null, external_destination: '库房成品', label: '已转出' },
+    { next_team_id: null, external_destination: '外委库', label: '已转出' },
+    { next_team_id: null, external_destination: null, label: '已转出' },
+  ])('labels actual outbound progress by its destination: %j', ({ label, ...destination }) => {
+    expect(
+      nodeWorkProgress({
+        ...node(1, ''),
+        ...destination,
+        completion_basis: 'quantity',
+        target_quantity: 100,
+        processed_quantity: 100,
+        dispatched_quantity: 60,
+        received_quantity: 0,
+      }),
+    ).toEqual({ label, percent: 60 })
+  })
   it('does not invent processing for weight-only targets or warehouse completion', () => {
     const weight = {
       ...node(1, ''),

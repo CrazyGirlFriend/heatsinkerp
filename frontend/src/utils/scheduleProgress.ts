@@ -237,10 +237,14 @@ export function nodeCompletion(node: ProductionSchedule) {
   }
 }
 
+export function isCustomerShipmentNode(node: ProductionSchedule) {
+  return node.next_team_id == null && node.external_destination === '对外转料'
+}
+
 export function nodeWorkProgress(node: ProductionSchedule) {
   const progress = nodeCompletion(node)
   return {
-    label: '已转出',
+    label: isCustomerShipmentNode(node) ? '已发货' : '已转出',
     percent: progress.dispatched,
   }
 }

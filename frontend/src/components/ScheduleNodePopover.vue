@@ -5,12 +5,18 @@ import { computed, ref } from 'vue'
 import AppPopover from './AppPopover.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import { boardTeamColor } from '@/utils/scheduleBoard'
-import { nodeProgress, nodeTarget, nodeWorkProgress } from '@/utils/scheduleProgress'
+import {
+  isCustomerShipmentNode,
+  nodeProgress,
+  nodeTarget,
+  nodeWorkProgress,
+} from '@/utils/scheduleProgress'
 import { plannedDueLabel } from '@/utils/schedulePlanning'
 import { formatAmount, formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ node: ProductionSchedule; label: string }>()
 const open = ref(false)
+const shipment = computed(() => isCustomerShipmentNode(props.node))
 const progress = computed(() => nodeWorkProgress(props.node))
 const batches = computed(() =>
   (props.node.batches || [])
@@ -44,7 +50,7 @@ const multipleBatches = computed(() => batches.value.length > 1)
     <section v-if="open" class="schedule-node-summary" :aria-label="`${label}排期摘要`">
       <header>
         <strong :style="{ color: boardTeamColor(node.team_name) }">{{ label }}</strong>
-        <span
+        <span :aria-label="shipment ? '发货进度' : '转出进度'"
           >{{ progress.label }}
           <b>{{ progress.percent == null ? '—' : `${Math.round(progress.percent)}%` }}</b></span
         >
@@ -56,24 +62,27 @@ const multipleBatches = computed(() => batches.value.length > 1)
       >
       <dl>
         <template v-if="!multipleBatches">
-          <dt>约定转交</dt>
+          <dt>{{ shipment ? '约定发货' : '约定转交' }}</dt>
           <dd>{{ plannedDueLabel(node) }}</dd>
-          <dt>实际交完</dt>
+          <dt>{{ shipment ? '实际发齐' : '实际交完' }}</dt>
           <dd>{{ formatDateTime(node.handover_completed_at || node.completed_at) }}</dd>
         </template>
         <dt>计划数量</dt>
         <dd>{{ nodeTarget(node) || '—' }}</dd>
-        <dt>已转出</dt>
+        <dt>{{ progress.label }}</dt>
         <dd>
           {{ formatAmount(node.dispatched_quantity) }} 件 ·
           {{ formatAmount(node.dispatched_weight) }} kg
         </dd>
-        <dt>下序已签收</dt>
-        <dd>{{ formatAmount(node.received_quantity) }} 件</dd>
+        <template v-if="!shipment">
+          <dt>下序已签收</dt>
+          <dd>{{ formatAmount(node.received_quantity) }} 件</dd>
+        </template>
       </dl>
       <div v-if="multipleBatches" class="schedule-node-batches">
         <div class="schedule-node-batches__heading">
-          <span>分批交货 · {{ batches.length }} 批</span><span>已转 / 应交</span>
+          <span>{{ shipment ? '分批发货' : '分批交货' }} · {{ batches.length }} 批</span>
+          <span>{{ shipment ? '已发 / 应发' : '已转 / 应交' }}</span>
         </div>
         <ul aria-label="分批交货情况">
           <li v-for="batch in batches" :key="batch.id">
