@@ -595,9 +595,11 @@ onBeforeUnmount(() => {
       >
         <template #filters>
           <FilterDialog
+            v-slot="{ appendTo }"
             v-if="!fullscreen"
             v-model="filterOpen"
             title="排期筛选"
+            :suspended="!!selectionKind || managingPeople"
             :count="filterCount"
             @open="openFilters"
             @reset="resetFilters"
@@ -619,6 +621,7 @@ onBeforeUnmount(() => {
               <label v-if="!management"
                 >列表排序
                 <ElSelect
+                  :append-to="appendTo"
                   v-if="!fullscreen && !management"
                   v-model="draftSortOrder"
                   aria-label="列表排序"
@@ -629,6 +632,7 @@ onBeforeUnmount(() => {
               </label>
               <label
                 >任务范围<ElSelect
+                  :append-to="appendTo"
                   v-model="draftScope"
                   aria-label="任务范围筛选"
                   placeholder="全部任务"
@@ -638,6 +642,7 @@ onBeforeUnmount(() => {
               ></label>
               <label
                 >交货班组<ElSelect
+                  :append-to="appendTo"
                   v-model="draftTeam"
                   aria-label="交货班组筛选"
                   placeholder="全部班组"
@@ -650,6 +655,7 @@ onBeforeUnmount(() => {
               ></label>
               <label
                 >任务状态<ElSelect
+                  :append-to="appendTo"
                   v-model="draftStatus"
                   aria-label="任务状态筛选"
                   placeholder="全部状态"
@@ -661,7 +667,10 @@ onBeforeUnmount(() => {
                     :label="label" /></ElSelect
               ></label>
               <label
-                >节点要求交货日期<RecordDateFilter v-model="draftDates" label="节点要求交货日期"
+                >节点要求交货日期<RecordDateFilter
+                  :append-to="appendTo"
+                  v-model="draftDates"
+                  label="节点要求交货日期"
               /></label>
               <div class="schedule-filter-selection">
                 <span>流水号</span>
@@ -695,6 +704,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <TableFilterFields
+                :append-to="appendTo"
                 v-model="draftColumns"
                 :columns="taskQueryColumns"
                 :exclude="['serial_no', 'business_people']"

@@ -599,6 +599,7 @@ onBeforeUnmount(() => {
             maxlength="80"
             :disabled="example"
           /><FilterDialog
+            v-slot="{ appendTo }"
             v-if="!example"
             v-model="filtersOpen"
             :append-to="pageRoot"
@@ -615,8 +616,8 @@ onBeforeUnmount(() => {
             "
             ><label
               >收发日期<RecordDateFilter
+                :append-to="appendTo"
                 v-model="dateDraft"
-                :append-to="pageRoot"
                 label="收发日期" /></label></FilterDialog
           ><ElButton class="action-warm" native-type="submit" :loading="loading" :disabled="example"
             >查询</ElButton

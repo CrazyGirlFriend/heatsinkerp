@@ -9,6 +9,7 @@ import type { TableColumnCondition, TableQueryColumn } from '@/types/tableQuery'
 const props = defineProps<{
   columns: Record<string, TableQueryColumn>
   exclude?: string[]
+  appendTo?: HTMLElement
 }>()
 const model = defineModel<TableColumnCondition[]>({ required: true })
 const fields = computed(() => {
@@ -35,6 +36,7 @@ function update(column: TableQueryColumn, start: string, end = '') {
     <label v-for="column in fields" :key="column.field">
       <span>{{ column.label }}</span>
       <RecordDateFilter
+        :append-to="appendTo"
         v-if="column.kind === 'date'"
         :model-value="{
           from: value(column.field)?.value || '',
@@ -44,6 +46,7 @@ function update(column: TableQueryColumn, start: string, end = '') {
         @update:model-value="update(column, $event.from, $event.to)"
       />
       <AppSelect
+        :append-to="appendTo"
         v-else-if="column.kind === 'select'"
         :model-value="value(column.field)?.value.split(',').filter(Boolean) || []"
         multiple

@@ -172,6 +172,7 @@ defineExpose({ exportSource })
     >
       <template #filters
         ><FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           title="库存统计筛选"
           :count="stockFilter === 'all' ? 0 : 1"
@@ -180,7 +181,7 @@ defineExpose({ exportSource })
           @apply="applyFilter"
           @reset="filterDraft = 'all'"
           ><label
-            >库存状态<ElSelect v-model="filterDraft" aria-label="统计库存状态"
+            >库存状态<ElSelect :append-to="appendTo" v-model="filterDraft" aria-label="统计库存状态"
               ><ElOption value="all" label="全部" /><ElOption
                 value="stock"
                 label="有库存" /><ElOption value="pending" label="有待确认转出" /><ElOption

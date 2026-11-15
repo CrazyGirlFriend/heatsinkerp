@@ -6,7 +6,7 @@ import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { TeamDirectoryItem } from '@/types/teamBusiness'
-defineProps<{ modelValue?: number }>()
+defineProps<{ modelValue?: number; appendTo?: HTMLElement }>()
 const emit = defineEmits<{ 'update:modelValue': [value: number | undefined] }>()
 const directory = useTeamDirectoryStore()
 const team = computed(() => directory.items.find((item) => item.code === 'FACTORY-QC'))
@@ -38,6 +38,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <ElSelect
+      :append-to="appendTo"
       :model-value="modelValue"
       aria-label="检验问题筛选"
       placeholder="全部问题"

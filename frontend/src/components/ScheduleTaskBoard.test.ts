@@ -119,6 +119,11 @@ async function render(path = '/production-schedules', management = false, stubPo
       plugins: [router],
       directives: { loading: () => {} },
       stubs: {
+        AppPopover: {
+          props: ['visible'],
+          template:
+            '<div><slot name="reference" /><div v-if="visible !== false"><slot /></div></div>',
+        },
         ...(stubPopover
           ? { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } }
           : {}),
@@ -154,6 +159,9 @@ async function button(label: string) {
       : wrapper.findAll('button').find((item) => item.text() === label)!
   await target.trigger('click')
   await flushPromises()
+  if (label === '筛选') {
+    await vi.waitFor(() => expect(wrapper.find('.filter-form-panel').exists()).toBe(true))
+  }
 }
 function select(label: string) {
   return wrapper.findAllComponents(ElSelect).find((item) => item.props('ariaLabel') === label)!
@@ -534,13 +542,11 @@ describe('task scheduling board', () => {
       }),
     )
     expect(wrapper.get('.filter-count').text()).toBe('4')
-    await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
-    await flushPromises()
+    await button('筛选')
     await button('重置')
     await button('取消')
     expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
-    await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
-    await flushPromises()
+    await button('筛选')
     expect(wrapper.getComponent(ElInput).props('modelValue')).toBe('S-001')
     expect(select('任务范围筛选').props('modelValue')).toBe('attention')
     expect(wrapper.get('.schedule-filter-values').text()).toBe('S-001')
@@ -688,7 +694,6 @@ describe('task scheduling board', () => {
         stubs: {
           AppPopover: {
             props: ['visible'],
-            emits: ['update:visible'],
             template: `<div><span @click="$emit('update:visible', !visible)"><slot name="reference"/></span><slot v-if="visible"/></div>`,
           },
         },

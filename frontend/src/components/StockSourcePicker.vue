@@ -164,6 +164,7 @@ onBeforeUnmount(() => {
         @clear="search"
       />
       <FilterDialog
+        v-slot="{ appendTo }"
         v-model="filterOpen"
         title="来源批次筛选"
         :count="filterCount"
@@ -176,7 +177,11 @@ onBeforeUnmount(() => {
             urgentDraft = false
           }
         "
-        ><label>接收日期<RecordDateFilter v-model="dateDraft" label="接收日期" /></label
+        ><label
+          >接收日期<RecordDateFilter
+            :append-to="appendTo"
+            v-model="dateDraft"
+            label="接收日期" /></label
         ><ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox></FilterDialog
       >
       <ElButton class="action-warm" @click="search">查询</ElButton>

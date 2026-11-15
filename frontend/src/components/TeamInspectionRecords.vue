@@ -285,6 +285,7 @@ onBeforeUnmount(() => {
     >
       <template #filters>
         <FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           :count="filterCount"
           @open="openFilters"
@@ -292,7 +293,11 @@ onBeforeUnmount(() => {
           @reset="resetFilters"
         >
           <label v-if="showAll"
-            >被检班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
+            >被检班组<ElSelect
+              :append-to="appendTo"
+              v-model="draftTeam"
+              clearable
+              placeholder="全部班组"
               ><ElOption
                 v-for="team in teams"
                 :key="team.id"
@@ -300,16 +305,25 @@ onBeforeUnmount(() => {
                 :label="team.name" /></ElSelect
           ></label>
           <label
-            >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
+            >处理状态<ElSelect
+              :append-to="appendTo"
+              v-model="draftStatus"
+              clearable
+              placeholder="全部状态"
               ><ElOption
                 v-for="(label, key) in inspectionStatusLabels"
                 :key="key"
                 :value="key"
                 :label="label" /></ElSelect
           ></label>
-          <label>检查日期<RecordDateFilter v-model="draftDates" label="检查日期" /></label>
           <label
-            >检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem"
+            >检查日期<RecordDateFilter :append-to="appendTo" v-model="draftDates" label="检查日期"
+          /></label>
+          <label
+            >检验问题<InspectionProblemFilter
+              :append-to="appendTo"
+              v-if="filtersOpen"
+              v-model="draftProblem"
           /></label>
         </FilterDialog>
       </template>

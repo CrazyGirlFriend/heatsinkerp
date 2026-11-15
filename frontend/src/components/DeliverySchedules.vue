@@ -686,6 +686,7 @@ defineExpose({ exportSource, openDetail })
       >
         <template #filters
           ><FilterDialog
+            v-slot="{ appendTo }"
             v-model="filterOpen"
             :count="filterCount"
             @open="openFilters"
@@ -693,7 +694,11 @@ defineExpose({ exportSource, openDetail })
             @reset="resetFilters"
           >
             <label v-if="!teamId"
-              >交货班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
+              >交货班组<ElSelect
+                :append-to="appendTo"
+                v-model="draftTeam"
+                clearable
+                placeholder="全部班组"
                 ><ElOption
                   v-for="team in teams"
                   :key="team.id"
@@ -701,7 +706,11 @@ defineExpose({ exportSource, openDetail })
                   :label="team.name" /></ElSelect
             ></label>
             <label
-              >排期状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
+              >排期状态<ElSelect
+                :append-to="appendTo"
+                v-model="draftStatus"
+                clearable
+                placeholder="全部状态"
                 ><ElOption
                   v-for="(label, status) in scheduleStatusLabels"
                   :key="status"
@@ -709,9 +718,13 @@ defineExpose({ exportSource, openDetail })
                   :label="label" /></ElSelect
             ></label>
             <label class="filter-wide"
-              >要求交货日期<RecordDateFilter v-model="draftDates" label="要求交货日期"
+              >要求交货日期<RecordDateFilter
+                :append-to="appendTo"
+                v-model="draftDates"
+                label="要求交货日期"
             /></label>
             <TableFilterFields
+              :append-to="appendTo"
               v-model="draftColumns"
               :columns="scheduleQueryColumns"
               :exclude="['team_name', 'due_at']"

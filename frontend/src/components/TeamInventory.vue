@@ -946,6 +946,7 @@ onBeforeUnmount(() => {
       <template #filters
         ><FilterDialog
           v-model="filtersOpen"
+          #default="{ appendTo }"
           title="库存筛选"
           :count="filterCount"
           @open="openFilters"
@@ -956,6 +957,7 @@ onBeforeUnmount(() => {
           <div class="filter-fields">
             <label
               >搜索字段<ElSelect
+                :append-to="appendTo"
                 v-model="fieldDraft"
                 aria-label="库存搜索字段"
                 filterable
@@ -972,7 +974,7 @@ onBeforeUnmount(() => {
                   :value="column.key"
                   :label="column.label" /></ElSelect
             ></label>
-            <label class="filter-wide"
+            <label
               >搜索内容<ElInput
                 v-model="queryDraft"
                 aria-label="库存筛选搜索内容"
@@ -981,6 +983,7 @@ onBeforeUnmount(() => {
             /></label>
             <label v-if="warehouse"
               >来源<ElSelect
+                :append-to="appendTo"
                 v-model="sourceDraft"
                 class="warehouse-source-filter"
                 aria-label="库存来源筛选"
@@ -994,6 +997,7 @@ onBeforeUnmount(() => {
             ></label>
             <label v-else
               >上序班组<ElSelect
+                :append-to="appendTo"
                 v-model="sourceTeamDraft"
                 class="warehouse-source-filter"
                 aria-label="库存上序班组筛选"
@@ -1008,6 +1012,7 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >返工属性<ElSelect
+                :append-to="appendTo"
                 v-model="reworkDraft"
                 clearable
                 placeholder="全部"
@@ -1018,6 +1023,7 @@ onBeforeUnmount(() => {
             ></label>
             <label v-if="warehouse && sourceDraft === 'internal'"
               >来源班组<ElSelect
+                :append-to="appendTo"
                 v-model="sourceTeamDraft"
                 aria-label="库房来源班组"
                 placeholder="全部来源班组"
@@ -1031,6 +1037,7 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >物料类型<ElSelect
+                :append-to="appendTo"
                 v-model="typeDraft"
                 class="warehouse-type-filter"
                 aria-label="库存物料类型筛选"
@@ -1044,6 +1051,7 @@ onBeforeUnmount(() => {
             ></label>
             <label v-if="processing && !isScrapMaterialType(typeDraft)"
               >加工状态<ElSelect
+                :append-to="appendTo"
                 v-model="processingStateDraft"
                 clearable
                 aria-label="库存加工状态筛选"
@@ -1056,6 +1064,7 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >关联工艺<ElSelect
+                :append-to="appendTo"
                 v-model="routeStatusDraft"
                 clearable
                 aria-label="库存关联工艺筛选"
@@ -1066,6 +1075,7 @@ onBeforeUnmount(() => {
             ></label>
             <label v-if="!warehouse"
               >加工任务<ElSelect
+                :append-to="appendTo"
                 v-model="purposeDraft"
                 class="inventory-purpose-filter"
                 aria-label="库存加工任务筛选"
@@ -1081,6 +1091,7 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >材质<ElSelect
+                :append-to="appendTo"
                 v-model="materialDraft"
                 aria-label="库存材质筛选"
                 clearable
@@ -1093,7 +1104,10 @@ onBeforeUnmount(() => {
                   :label="item.material_name || '未填写材质'" /></ElSelect
             ></label>
             <label
-              >库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围"
+              >库存范围<ElSelect
+                :append-to="appendTo"
+                v-model="availabilityDraft"
+                aria-label="库存范围"
                 ><ElOption value="current" label="当前有料" /><ElOption
                   value="owned"
                   label="含已转出待确认" /><ElOption
@@ -1104,6 +1118,7 @@ onBeforeUnmount(() => {
             ></label>
             <label
               >分析条件<ElSelect
+                :append-to="appendTo"
                 v-model="analysisDraft"
                 aria-label="库存分析条件"
                 placeholder="库存与流转条件"
@@ -1126,14 +1141,19 @@ onBeforeUnmount(() => {
                 ><ElOption value="loss" :label="`近${daysDraft}天有丢失记录`" /></ElSelect
             ></label>
             <label
-              >事件周期<ElSelect v-model="daysDraft" aria-label="库存事件筛选周期"
+              >事件周期<ElSelect
+                :append-to="appendTo"
+                v-model="daysDraft"
+                aria-label="库存事件筛选周期"
                 ><ElOption :value="7" label="近7天" /><ElOption
                   :value="30"
                   label="近30天" /></ElSelect
             ></label>
             <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             <ElCheckbox v-if="warehouse" v-model="locationDraft">有未分配仓位的物料</ElCheckbox>
-            <label>流转日期<RecordDateFilter v-model="dateDraft" label="流转日期" /></label>
+            <label
+              >流转日期<RecordDateFilter :append-to="appendTo" v-model="dateDraft" label="流转日期"
+            /></label>
             <ElAlert
               v-if="inputError"
               :title="inputError"

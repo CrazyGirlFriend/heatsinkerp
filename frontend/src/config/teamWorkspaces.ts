@@ -81,6 +81,7 @@ export function teamWorkspaceSectionsFor(
       (section.value !== 'settings' || manageSettings) &&
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
+      (section.value !== 'quality-feedback' || !warehouse) &&
       (section.value !== 'inspection-results' || inspection) &&
       (section.value !== 'processing' || processing) &&
       (section.value !== 'inspections' || processing),

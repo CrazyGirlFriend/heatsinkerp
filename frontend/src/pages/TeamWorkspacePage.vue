@@ -1310,6 +1310,7 @@ onBeforeUnmount(() => {
               >
                 <template #filters
                   ><FilterDialog
+                    v-slot="{ appendTo }"
                     v-model="listFiltersOpen"
                     title="记录筛选"
                     :count="listFilterCount"
@@ -1321,6 +1322,7 @@ onBeforeUnmount(() => {
                     <div class="filter-fields">
                       <label v-if="['receipts', 'outgoing', 'reallocations'].includes(tab)"
                         >物料类型<ElSelect
+                          :append-to="appendTo"
                           v-model="materialDraft"
                           aria-label="物料类型筛选"
                           placeholder="全部类型"
@@ -1333,6 +1335,7 @@ onBeforeUnmount(() => {
                       ></label>
                       <label v-if="tab === 'receipts' && isWarehouse"
                         >入库来源<ElSelect
+                          :append-to="appendTo"
                           v-model="receiptSourceDraft"
                           aria-label="入库来源筛选"
                           placeholder="全部来源"
@@ -1346,6 +1349,7 @@ onBeforeUnmount(() => {
                       <template v-if="tab === 'outgoing'">
                         <label
                           >出库方式<ElSelect
+                            :append-to="appendTo"
                             v-model="kindDraft"
                             aria-label="出库方式筛选"
                             placeholder="全部方式"
@@ -1358,6 +1362,7 @@ onBeforeUnmount(() => {
                         ></label>
                         <label
                           >出库状态<ElSelect
+                            :append-to="appendTo"
                             v-model="statusDraft"
                             aria-label="出库状态筛选"
                             placeholder="全部状态"
@@ -1370,6 +1375,7 @@ onBeforeUnmount(() => {
                         ></label>
                         <label v-if="!isExternalEntryKind(kindDraft)"
                           >接收班组<ElSelect
+                            :append-to="appendTo"
                             v-model="nextTeamDraft"
                             aria-label="接收班组筛选"
                             placeholder="全部接收班组"
@@ -1390,6 +1396,7 @@ onBeforeUnmount(() => {
                       <label
                         >{{ tab === 'receipts' ? '入库日期' : '登记日期'
                         }}<RecordDateFilter
+                          :append-to="appendTo"
                           v-model="dateDraft"
                           :label="tab === 'receipts' ? '入库日期' : '登记日期'"
                       /></label>

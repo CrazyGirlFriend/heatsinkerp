@@ -263,6 +263,7 @@ function exportSource() {
     >
       <template #filters>
         <FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           :count="chips.length"
           @open="openFilters"
@@ -279,6 +280,7 @@ function exportSource() {
           /></label>
           <label
             >接收班组<AppSelect
+              :append-to="appendTo"
               v-model="draft.inventory_team_id"
               aria-label="接收班组"
               placeholder="全部班组"
@@ -292,6 +294,7 @@ function exportSource() {
           ></label>
           <label
             >来源班组<AppSelect
+              :append-to="appendTo"
               v-model="draft.source_team_id"
               aria-label="来源班组"
               placeholder="全部来源班组"
@@ -313,6 +316,7 @@ function exportSource() {
           /></label>
           <label
             >物料类型<AppSelect
+              :append-to="appendTo"
               v-model="draft.material_type"
               aria-label="物料类型"
               placeholder="全部类型"
@@ -325,6 +329,7 @@ function exportSource() {
           ></label>
           <label
             >转出开始日期<AppDatePicker
+              :append-to="appendTo"
               v-model="draft.date_from"
               aria-label="转出开始日期"
               type="date"
@@ -332,6 +337,7 @@ function exportSource() {
           /></label>
           <label
             >转出结束日期<AppDatePicker
+              :append-to="appendTo"
               v-model="draft.date_to"
               aria-label="转出结束日期"
               type="date"

@@ -72,6 +72,7 @@ const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() =>
   [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10,
 )
+const selectingProcessor = ref(false)
 const query = ref(''),
   dates = ref({ from: '', to: '' }),
   filtersOpen = ref(false)
@@ -522,8 +523,10 @@ onBeforeUnmount(() => {
     >
       <template #filters>
         <FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           title="加工记录筛选"
+          :suspended="selectingProcessor"
           :count="filterCount"
           @open="syncFilters"
           @cancel="syncFilters"
@@ -532,6 +535,7 @@ onBeforeUnmount(() => {
         >
           <label
             >加工性质<ElSelect
+              :append-to="appendTo"
               v-model="workKind"
               clearable
               placeholder="全部加工"
@@ -540,9 +544,12 @@ onBeforeUnmount(() => {
                 label="返工"
                 value="rework" /></ElSelect
           ></label>
-          <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
+          <label
+            >实际加工日期<RecordDateFilter :append-to="appendTo" v-model="dates" label="加工日期"
+          /></label>
           <label
             >加工任务<ElSelect
+              :append-to="appendTo"
               v-model="taskId"
               clearable
               filterable
@@ -558,6 +565,7 @@ onBeforeUnmount(() => {
           ></label>
           <label
             >加工人（不选为全部）<ProcessingPersonInput
+              @open-change="selectingProcessor = $event"
               v-model="processorName"
               :options="processors.map((person) => person.name)"
               label="加工人"

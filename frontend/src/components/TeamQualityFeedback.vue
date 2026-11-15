@@ -282,6 +282,7 @@ onBeforeUnmount(() => {
     >
       <template #filters>
         <FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           :count="count"
           @open="openFilters"
@@ -289,13 +290,21 @@ onBeforeUnmount(() => {
           @reset="reset"
         >
           <label
-            >问题来源<ElSelect v-model="draftKind" clearable placeholder="全部"
+            >问题来源<ElSelect
+              :append-to="appendTo"
+              v-model="draftKind"
+              clearable
+              placeholder="全部"
               ><ElOption label="巡检" value="patrol" /><ElOption
                 label="检验"
                 value="inspection" /></ElSelect
           ></label>
           <label
-            >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部"
+            >处理状态<ElSelect
+              :append-to="appendTo"
+              v-model="draftStatus"
+              clearable
+              placeholder="全部"
               ><ElOption
                 v-for="(name, key) in feedbackStates"
                 :key="key"
@@ -303,18 +312,31 @@ onBeforeUnmount(() => {
                 :label="name" /></ElSelect
           ></label>
           <label v-if="showAll"
-            >涉及班组<ElSelect v-model="draftTeam" clearable placeholder="全部"
+            >涉及班组<ElSelect
+              :append-to="appendTo"
+              v-model="draftTeam"
+              clearable
+              placeholder="全部"
               ><ElOption
                 v-for="t in directory.items"
                 :key="t.id"
                 :label="t.name"
                 :value="Number(t.id)" /></ElSelect
           ></label>
-          <label>发现日期<RecordDateFilter v-model="dates" label="发现日期" /></label>
           <label
-            >检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem"
+            >发现日期<RecordDateFilter :append-to="appendTo" v-model="dates" label="发现日期"
           /></label>
-          <TableFilterFields v-model="draftColumns" :columns="dispositionColumns" />
+          <label
+            >检验问题<InspectionProblemFilter
+              :append-to="appendTo"
+              v-if="filtersOpen"
+              v-model="draftProblem"
+          /></label>
+          <TableFilterFields
+            :append-to="appendTo"
+            v-model="draftColumns"
+            :columns="dispositionColumns"
+          />
         </FilterDialog>
       </template>
       <template #query-actions><div ref="columnSettingsTarget" /></template>

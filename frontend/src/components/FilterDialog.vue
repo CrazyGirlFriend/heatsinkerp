@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import AppDialog from '@/components/AppDialog.vue'
-import { Filter } from '@element-plus/icons-vue'
+import AppPopover from '@/components/AppPopover.vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ElButton from '@/components/AppButton.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
-import { IconAdjustmentsHorizontal } from '@tabler/icons-vue'
-import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
-const watermelon = useWatermelonAppearance()
-withDefaults(
-  defineProps<{ modelValue: boolean; count?: number; title?: string; appendTo?: HTMLElement }>(),
+import { IconAdjustmentsHorizontal, IconX } from '@tabler/icons-vue'
+const panel = ref<HTMLElement>()
+const trigger = ref<{ $el: HTMLElement }>()
+const panelHeight = ref(640)
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    count?: number
+    title?: string
+    appendTo?: HTMLElement
+    suspended?: boolean
+  }>(),
   {
     count: 0,
     title: '筛选条件',
@@ -21,6 +28,7 @@ const emit = defineEmits<{
   reset: []
 }>()
 function open() {
+  fitPanel()
   emit('open')
   emit('update:modelValue', true)
 }
@@ -28,53 +36,145 @@ function cancel() {
   emit('cancel')
   emit('update:modelValue', false)
 }
+function fitPanel() {
+  if (!trigger.value) return
+  panelHeight.value = Math.max(
+    160,
+    Math.min(640, window.innerHeight - trigger.value.$el.getBoundingClientRect().bottom - 20),
+  )
+}
+function escapePanel(event: KeyboardEvent) {
+  if (
+    !props.modelValue ||
+    props.suspended ||
+    event.key !== 'Escape' ||
+    event.defaultPrevented ||
+    panel.value?.querySelector('[aria-expanded="true"]')
+  )
+    return
+  event.preventDefault()
+  cancel()
+  void nextTick(() => trigger.value?.$el.focus())
+}
+function outsidePanel(event: PointerEvent) {
+  if (!props.modelValue || props.suspended) return
+  const target = event.target as Node
+  if (!panel.value?.contains(target) && !trigger.value?.$el.contains(target)) cancel()
+}
+onMounted(() => {
+  window.addEventListener('resize', fitPanel)
+  document.addEventListener('keydown', escapePanel)
+  document.addEventListener('pointerdown', outsidePanel)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', fitPanel)
+  document.removeEventListener('keydown', escapePanel)
+  document.removeEventListener('pointerdown', outsidePanel)
+})
 </script>
 <template>
-  <WatermelonButton
-    v-if="watermelon"
-    class="filter-dialog-trigger"
+  <AppPopover
+    :visible="modelValue"
+    trigger="click"
+    role="dialog"
     :aria-label="title"
-    :aria-expanded="modelValue"
-    @click="open"
-    ><IconAdjustmentsHorizontal :size="17" />筛选<span v-if="count" class="filter-count">{{
-      count
-    }}</span></WatermelonButton
-  >
-  <ElButton
-    v-else
-    class="filter-dialog-trigger"
-    :class="{ 'is-filtered': count > 0, 'action-cool': count > 0 }"
-    :icon="Filter"
-    :aria-label="title"
-    :aria-expanded="modelValue"
-    @click="open"
-    >筛选<span v-if="count" class="filter-count">{{ count }}</span></ElButton
-  >
-  <AppDialog
-    :model-value="modelValue"
-    :title="title"
-    width="min(640px, 94vw)"
-    class="compact-filter-dialog"
-    append-to-body
+    placement="bottom-start"
+    :width="560"
+    :offset="8"
+    :show-arrow="false"
     :append-to="appendTo || 'body'"
-    @update:model-value="!$event && cancel()"
+    popper-class="filter-form-popover"
+    :popper-options="{
+      modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }],
+    }"
   >
-    <div class="filter-dialog-fields"><slot /></div>
-    <template #footer>
-      <template v-if="watermelon">
+    <template #reference>
+      <WatermelonButton
+        ref="trigger"
+        class="filter-dialog-trigger"
+        :aria-label="title"
+        :aria-expanded="modelValue"
+        aria-haspopup="dialog"
+        @click="modelValue ? cancel() : open()"
+        ><IconAdjustmentsHorizontal :size="17" />筛选<span v-if="count" class="filter-count">{{
+          count
+        }}</span></WatermelonButton
+      >
+    </template>
+    <div ref="panel" class="filter-form-panel" :style="{ maxHeight: `${panelHeight}px` }">
+      <header>
+        <strong>{{ title }}</strong>
+        <ElButton unstyled class="filter-form-close" aria-label="关闭筛选" @click="cancel"
+          ><IconX :size="16"
+        /></ElButton>
+      </header>
+      <div class="filter-form-body">
+        <div class="filter-dialog-fields"><slot :append-to="panel" /></div>
+      </div>
+      <footer>
         <WatermelonButton class="filter-reset" @click="emit('reset')">重置</WatermelonButton>
         <WatermelonButton @click="cancel">取消</WatermelonButton>
         <WatermelonButton primary @click="emit('apply')">应用筛选</WatermelonButton>
-      </template>
-      <template v-else
-        ><ElButton class="filter-reset" @click="emit('reset')">重置</ElButton
-        ><ElButton @click="cancel">取消</ElButton
-        ><ElButton type="primary" @click="emit('apply')">应用筛选</ElButton></template
-      >
-    </template>
-  </AppDialog>
+      </footer>
+    </div>
+  </AppPopover>
 </template>
 <style>
+.filter-form-popover.el-popper {
+  max-width: calc(100vw - 24px);
+  padding: 0;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 14%);
+}
+.filter-form-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(640px, calc(100dvh - 110px));
+  color: var(--wm-text, var(--el-text-color-primary));
+}
+.filter-form-panel header,
+.filter-form-panel footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 12px 16px;
+}
+.filter-form-panel header {
+  justify-content: space-between;
+  font-size: 13px;
+  border-bottom: 1px solid var(--wm-border, var(--el-border-color));
+}
+.filter-form-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wm-muted, var(--el-text-color-regular));
+  cursor: pointer;
+}
+.filter-form-close:hover {
+  background: var(--wm-hover, var(--el-fill-color));
+}
+.filter-form-body {
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.filter-form-panel .filter-dialog-fields > .filter-fields {
+  gap: 14px 16px;
+}
+.filter-form-panel footer {
+  border-top: 1px solid var(--wm-border, var(--el-border-color));
+}
+.filter-form-panel .filter-reset {
+  margin-right: auto;
+}
 .filter-dialog-trigger.el-button {
   margin: 0;
 }
@@ -87,31 +187,6 @@ function cancel() {
   color: var(--primary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-.compact-filter-dialog.el-dialog {
-  max-height: calc(100dvh - 2 * min(8dvh, 40px));
-  margin-block: min(8dvh, 40px) !important;
-  display: flex;
-  flex-direction: column;
-}
-.compact-filter-dialog .el-dialog__body {
-  min-height: 0;
-  overflow-y: auto;
-}
-.compact-filter-dialog .el-dialog__header,
-.compact-filter-dialog .el-dialog__footer {
-  flex-shrink: 0;
-}
-.compact-filter-dialog .el-dialog__footer {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.compact-filter-dialog .el-dialog__footer .el-button {
-  margin: 0;
-}
-.compact-filter-dialog .filter-reset {
-  margin-right: auto !important;
 }
 .filter-dialog-fields,
 .filter-dialog-fields > .filter-fields {
@@ -139,6 +214,9 @@ function cancel() {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.filter-dialog-fields .processing-person-input {
+  max-width: none;
 }
 .filter-dialog-fields .el-checkbox {
   margin: 0;

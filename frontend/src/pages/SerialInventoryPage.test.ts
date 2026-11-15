@@ -79,6 +79,11 @@ async function render(path = '/material-trace') {
     global: {
       plugins: [router],
       stubs: {
+        AppPopover: {
+          props: ['visible'],
+          template:
+            '<div><slot name="reference" /><div v-if="visible !== false"><slot /></div></div>',
+        },
         PageBackButton: true,
         TeamInventoryDetail: true,
         InventoryPendingDialog: true,
@@ -199,6 +204,7 @@ it('keeps receiving-team filters in pending pagination and export without loadin
   expect(source.title).toBe('全厂待签收明细')
   const filter = page.getComponent(FilterDialog)
   await filter.get('button').trigger('click')
+  await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
   const receiver = page
     .findAllComponents(AppSelect)
     .find((select) => select.find('[aria-label="接收班组"]').exists())!
@@ -274,6 +280,7 @@ it('combines team and residence filters, validates bounds and resets pagination'
   ]
   const filter = page.getComponent(FilterDialog)
   await filter.get('button').trigger('click')
+  await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
   await page.get('input[aria-label="滞留至少（天）"]').setValue('7')
   await page.get('input[aria-label="滞留至多（天）"]').setValue('3')
   filter.vm.$emit('apply')
@@ -298,6 +305,7 @@ it('combines team and residence filters, validates bounds and resets pagination'
   )
   expect(page.text()).toContain('滞留 7～14天')
   await filter.get('button').trigger('click')
+  await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
   filter.vm.$emit('reset')
   await flushPromises()
   filter.vm.$emit('apply')
@@ -397,6 +405,7 @@ it('combines property search with processing filters and clears pagination', asy
   const { page, router } = await render('/material-trace?page=2')
   const filter = page.getComponent(FilterDialog)
   await filter.get('button').trigger('click')
+  await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
   const select = (name: string) =>
     page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())!
   select('搜索属性').vm.$emit('update:modelValue', 'on_hand_quantity')
@@ -458,6 +467,7 @@ it.each(['waste', 'sludge', 'scrap_chips'] as const)(
     })
     const filter = page.getComponent(FilterDialog)
     await filter.get('button').trigger('click')
+    await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
     const select = (name: string) =>
       page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())
     expect(

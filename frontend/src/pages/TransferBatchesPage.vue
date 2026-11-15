@@ -757,6 +757,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="filter-options">
             <FilterDialog
+              v-slot="{ appendTo }"
               v-model="filtersOpen"
               :title="`${pageTitle}筛选`"
               :count="appliedFilterCount"
@@ -773,7 +774,10 @@ onBeforeUnmount(() => {
                   placeholder="输入流水号、批次号等"
               /></label>
               <label
-                >搜索字段<ElSelect v-model="searchFieldDraft" aria-label="搜索字段"
+                >搜索字段<ElSelect
+                  :append-to="appendTo"
+                  v-model="searchFieldDraft"
+                  aria-label="搜索字段"
                   ><ElOption
                     v-for="field in materialSearchFields"
                     :key="field.value"
@@ -781,16 +785,20 @@ onBeforeUnmount(() => {
                     :label="field.label" /></ElSelect
               ></label>
               <label
-                >搜索方式<ElSelect v-model="searchModeDraft" aria-label="搜索方式"
+                >搜索方式<ElSelect
+                  :append-to="appendTo"
+                  v-model="searchModeDraft"
+                  aria-label="搜索方式"
                   ><ElOption
                     v-for="mode in materialSearchModes"
                     :key="mode.value"
                     :label="mode.label"
                     :value="mode.value" /></ElSelect
               ></label>
-              <label>登记日期<RecordDateFilter v-model="dateDraft" /></label>
+              <label>登记日期<RecordDateFilter :append-to="appendTo" v-model="dateDraft" /></label>
               <label
                 >状态<ElSelect
+                  :append-to="appendTo"
                   v-model="statusChoices"
                   multiple
                   collapse-tags
@@ -807,6 +815,7 @@ onBeforeUnmount(() => {
               >
               <label
                 >物料类型<ElSelect
+                  :append-to="appendTo"
                   v-model="typeChoices"
                   multiple
                   collapse-tags
@@ -821,6 +830,7 @@ onBeforeUnmount(() => {
               ></label>
               <label
                 >转出班组<ElSelect
+                  :append-to="appendTo"
                   v-model="sourceChoices"
                   multiple
                   collapse-tags
@@ -836,6 +846,7 @@ onBeforeUnmount(() => {
               ></label>
               <label
                 >接收班组<ElSelect
+                  :append-to="appendTo"
                   v-model="nextChoices"
                   multiple
                   collapse-tags

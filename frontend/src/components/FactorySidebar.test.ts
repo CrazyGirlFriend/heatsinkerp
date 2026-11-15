@@ -353,7 +353,6 @@ describe('three-level team navigation', () => {
       'team-8:inventory',
       'team-8:movement',
       'team-8:delivery',
-      'team-8:quality',
       'team-8:warehouse',
       'team-8:settings',
       'team-7:overview',

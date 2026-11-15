@@ -156,6 +156,8 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
     await wrapper.setProps({
       title: '检验',
+      warehouse: false,
+      appearance: 'watermelon',
       modelValue: 'inspections',
       processing: true,
       inspection: true,

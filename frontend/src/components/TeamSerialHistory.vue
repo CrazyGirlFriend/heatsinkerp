@@ -134,6 +134,7 @@ if (serial.value) search()
     >
       <template #filters
         ><FilterDialog
+          v-slot="{ appendTo }"
           v-model="filtersOpen"
           :append-to="historyRoot"
           title="收发历史筛选"
@@ -149,7 +150,7 @@ if (serial.value) search()
           @reset="dates = { from: '', to: '' }"
           ><label
             >收发日期<RecordDateFilter
-              :append-to="historyRoot"
+              :append-to="appendTo"
               v-model="dates"
               label="收发日期" /></label></FilterDialog
       ></template>

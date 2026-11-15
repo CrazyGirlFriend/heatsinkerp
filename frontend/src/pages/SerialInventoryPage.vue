@@ -469,6 +469,7 @@ function exportSource() {
       >
         <template #filters>
           <FilterDialog
+            v-slot="{ appendTo }"
             v-model="filtersOpen"
             :count="chips.length"
             @open="openFilters"
@@ -477,6 +478,7 @@ function exportSource() {
           >
             <label class="filter-wide"
               >搜索属性<AppSelect
+                :append-to="appendTo"
                 v-model="draft.search_field"
                 aria-label="搜索属性"
                 filterable
@@ -488,7 +490,10 @@ function exportSource() {
                   :label="column.label" /></AppSelect
             ></label>
             <label v-if="searchKind === 'number'"
-              >比较方式<AppSelect v-model="draft.search_operator" aria-label="比较方式"
+              >比较方式<AppSelect
+                :append-to="appendTo"
+                v-model="draft.search_operator"
+                aria-label="比较方式"
                 ><ElOption value="eq" label="等于" /><ElOption
                   value="gte"
                   label="不少于" /><ElOption value="lte" label="不多于" /></AppSelect
@@ -496,6 +501,7 @@ function exportSource() {
             <label :class="{ 'filter-wide': searchKind !== 'number' }"
               >搜索内容
               <AppDatePicker
+                :append-to="appendTo"
                 v-if="searchKind === 'date'"
                 v-model="draft.query"
                 aria-label="属性日期"
@@ -503,6 +509,7 @@ function exportSource() {
                 value-format="YYYY-MM-DD"
               />
               <AppSelect
+                :append-to="appendTo"
                 v-else-if="searchKind === 'status'"
                 v-model="draft.query"
                 aria-label="加急状态"
@@ -519,6 +526,7 @@ function exportSource() {
             </label>
             <label
               >所在班组<AppSelect
+                :append-to="appendTo"
                 v-model="draft.team_id"
                 aria-label="所在班组"
                 placeholder="全部班组"
@@ -548,6 +556,7 @@ function exportSource() {
             /></label>
             <label
               >物料类型<AppSelect
+                :append-to="appendTo"
                 v-model="draft.material_type"
                 aria-label="物料类型"
                 placeholder="全部类型"
@@ -560,6 +569,7 @@ function exportSource() {
             ></label>
             <label v-if="!isScrapType(draft.material_type)"
               >加工状态<AppSelect
+                :append-to="appendTo"
                 v-model="draft.processing_state"
                 aria-label="加工状态筛选"
                 clearable
@@ -572,6 +582,7 @@ function exportSource() {
             ></label>
             <label
               >来源<AppSelect
+                :append-to="appendTo"
                 v-model="draft.receipt_source"
                 aria-label="来源筛选"
                 clearable
@@ -584,6 +595,7 @@ function exportSource() {
             ></label>
             <label
               >来源班组<AppSelect
+                :append-to="appendTo"
                 v-model="draft.source_team_id"
                 aria-label="来源班组筛选"
                 clearable
@@ -597,6 +609,7 @@ function exportSource() {
             ></label>
             <label
               >返工属性<AppSelect
+                :append-to="appendTo"
                 v-model="draft.rework"
                 aria-label="返工属性筛选"
                 clearable
@@ -607,6 +620,7 @@ function exportSource() {
             ></label>
             <label
               >关联工艺<AppSelect
+                :append-to="appendTo"
                 v-model="draft.route_status"
                 aria-label="关联工艺筛选"
                 clearable
@@ -616,7 +630,10 @@ function exportSource() {
                   label="未关联" /></AppSelect
             ></label>
             <label class="filter-wide"
-              >库存范围<AppSelect v-model="draft.availability" aria-label="库存范围"
+              >库存范围<AppSelect
+                :append-to="appendTo"
+                v-model="draft.availability"
+                aria-label="库存范围"
                 ><ElOption value="current" label="当前有料" /><ElOption
                   value="owned"
                   label="含已转出待确认" /><ElOption
@@ -627,6 +644,7 @@ function exportSource() {
             ></label>
             <label
               >流转开始日期<AppDatePicker
+                :append-to="appendTo"
                 v-model="draft.date_from"
                 aria-label="流转开始日期"
                 type="date"
@@ -634,6 +652,7 @@ function exportSource() {
             /></label>
             <label
               >流转结束日期<AppDatePicker
+                :append-to="appendTo"
                 v-model="draft.date_to"
                 aria-label="流转结束日期"
                 type="date"

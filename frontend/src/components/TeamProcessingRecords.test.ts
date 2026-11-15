@@ -107,6 +107,11 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
     global: {
       plugins: [router],
       stubs: {
+        AppPopover: {
+          props: ['visible'],
+          template:
+            '<div><slot name="reference" /><div v-if="visible !== false"><slot /></div></div>',
+        },
         QuantityAdjustmentDialog: true,
         ProcessRouteEditor: {
           name: 'ProcessRouteEditor',
@@ -119,6 +124,11 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
   })
   await flushPromises()
   return router
+}
+
+async function openFilters() {
+  await wrapper.getComponent(FilterDialog).get('button').trigger('click')
+  await vi.waitFor(() => expect(wrapper.findComponent(RecordDateFilter).exists()).toBe(true))
 }
 
 describe('cutting processing records', () => {
@@ -151,6 +161,7 @@ describe('cutting processing records', () => {
     })
     const router = await render()
     expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
+    await openFilters()
     wrapper
       .findAllComponents(ElSelect)
       .find((item) => item.find('[aria-label="加工任务筛选"]').exists())!
@@ -418,6 +429,7 @@ describe('unified production records', () => {
   })
   it('uses the applied actual-date and person filters for both export formats', async () => {
     const router = await render()
+    await openFilters()
     wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'YS-007')
     wrapper
       .getComponent(RecordDateFilter)
@@ -467,6 +479,7 @@ describe('unified production records', () => {
       page_size: 10,
     })
     // Pagination must retain only applied date/person filters.
+    await openFilters()
     wrapper
       .getComponent(RecordDateFilter)
       .vm.$emit('update:modelValue', { from: '2026-10-16', to: '2026-10-16' })

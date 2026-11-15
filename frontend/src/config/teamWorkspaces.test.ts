@@ -40,6 +40,19 @@ describe('eight official workspace profiles', () => {
 })
 
 describe('shared workspace navigation', () => {
+  it('omits warehouse quality while preserving production and inspection quality entries', () => {
+    expect(teamWorkspaceModulesFor(true, true, true).map((module) => module.value)).not.toContain(
+      'quality',
+    )
+    expect(resolveTeamWorkspaceSection({ tab: 'quality-feedback' }, true)).toBe('stock')
+    for (const inspection of [false, true]) {
+      expect(
+        teamWorkspaceModulesFor(false, false, true, true, inspection)
+          .find((module) => module.value === 'quality')
+          ?.sections.map((section) => section.value),
+      ).toContain('quality-feedback')
+    }
+  })
   it('groups every available section exactly once without losing permission boundaries', () => {
     for (const [warehouse, manage, reallocate, process, inspect] of [
       [false, false, true, true, false],

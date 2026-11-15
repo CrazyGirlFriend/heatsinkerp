@@ -147,7 +147,7 @@ describe('team serial history', () => {
   it('uses explicit dates and opens the actual batch from a chart point', async () => {
     await render()
     await wrapper.getComponent(FilterDialog).get('button').trigger('click')
-    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.findComponent(RecordDateFilter).exists()).toBe(true))
     wrapper
       .getComponent(RecordDateFilter)
       .vm.$emit('update:modelValue', { from: '2026-09-18', to: '2026-09-18' })
