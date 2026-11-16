@@ -38,6 +38,8 @@ import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import TableExportDialog from '@/components/TableExportDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
+import { httpClient } from '@/services/httpClient'
 import * as inventoryStream from '@/services/inventoryStream'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -119,6 +121,8 @@ let wrapper: VueWrapper
 let subscription: inventoryStream.InventorySubscription<inventoryStream.InventoryChange>,
   stopStream: ReturnType<typeof vi.fn>
 beforeEach(() => {
+  localStorage.clear()
+  vi.spyOn(httpClient, 'request').mockRejectedValue(new Error('Unexpected component test request'))
   const navigation = useSidebarStore(appPinia)
   navigation.workspaceQueries = {}
   navigation.workspaceModules = {}
@@ -149,6 +153,20 @@ beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'openingState').mockResolvedValue({
+    enabled: false,
+    completed: false,
+    has_stock_history: false,
+    can_submit: false,
+    items: [],
+  })
+  vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
     items: [source(), source(11)],
     total: 2,
@@ -185,11 +203,18 @@ beforeEach(() => {
     page: 1,
     page_size: 10,
   })
+  vi.spyOn(materialTransferApi, 'get').mockImplementation(async (batchNo) =>
+    normalizeMaterialTransfer({ ...source().transfer, batch_no: batchNo }),
+  )
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer').mockResolvedValue({ items: [] })
 })
-afterEach(() => {
+afterEach(async () => {
   wrapper?.unmount()
+  await flushPromises()
+  const unexpectedRequests = vi.mocked(httpClient.request).mock.calls.map(([config]) => config.url)
   vi.restoreAllMocks()
   vi.useRealTimers()
+  expect(unexpectedRequests, `Unmocked requests: ${unexpectedRequests.join(', ')}`).toEqual([])
 })
 async function render(path = '/team-workspaces/914', animate = false) {
   const router = createRouter({
@@ -208,7 +233,12 @@ async function render(path = '/team-workspaces/914', animate = false) {
     global: {
       plugins: [router],
       stubs: {
-        ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
+        ElPopover: {
+          props: ['visible'],
+          emits: ['update:visible'],
+          template:
+            '<div><span @click="$emit(\'update:visible\', !visible)"><slot name="reference" /></span><slot v-if="visible" /></div>',
+        },
         transition: !animate,
         StockSourcePicker: true,
         TeamReworkRequestDialog: true,
@@ -235,6 +265,12 @@ async function render(path = '/team-workspaces/914', animate = false) {
   await flushPromises()
   return router
 }
+
+async function openToolbarMenu() {
+  await wrapper.get('button[aria-label="更多操作"]').trigger('click')
+  await flushPromises()
+}
+
 describe('team workspace material ledger', () => {
   it.each([901, 914, 900])(
     'keeps one column button above empty lists for team %s',
@@ -264,12 +300,14 @@ describe('team workspace material ledger', () => {
         expect(buttons[0]!.element.closest('table'), tab).toBeNull()
         expect(wrapper.find('th .table-column-settings').exists(), tab).toBe(false)
         expect(wrapper.get('.el-table__empty-text').text(), tab).toBe(emptyText)
+        expect(wrapper.find('[aria-label="表格显示列"]').exists(), tab).toBe(false)
         await buttons[0]!.trigger('click')
         await flushPromises()
         expect(wrapper.find('[aria-label="表格显示列"]').exists(), tab).toBe(true)
         const cancel = wrapper.findAll('button').find((button) => button.text() === '取消')!
         await cancel.trigger('click')
         await flushPromises()
+        expect(wrapper.find('[aria-label="表格显示列"]').exists(), tab).toBe(false)
       }
     },
     15000,
@@ -1155,6 +1193,7 @@ describe('team workspace material ledger', () => {
       if (tab === 'outgoing') {
         wrapper.getComponent({ name: 'ElTable' }).vm.$emit('selection-change', [transfer])
         await flushPromises()
+        await openToolbarMenu()
         await wrapper
           .findAll('button')
           .find((button) => button.text().startsWith('合并打印'))!
@@ -1319,6 +1358,7 @@ describe('team workspace material ledger', () => {
     vi.useFakeTimers()
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2&page_size=20')
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('还未查询')
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '新建出库')!
@@ -1372,6 +1412,7 @@ describe('team workspace material ledger', () => {
   it('starts dispatch from the ledger without changing its route and shows the saved group', async () => {
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
     const path = router.currentRoute.value.fullPath
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '新建出库')!
@@ -1397,6 +1438,7 @@ describe('team workspace material ledger', () => {
   })
   it('opens this team’s pending outbound records from the empty stock picker', async () => {
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '新建出库')!
@@ -1413,6 +1455,7 @@ describe('team workspace material ledger', () => {
   })
   it('closes the picker on navigation and ignores a late permission refresh after cancellation', async () => {
     const router = await render()
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '新建出库')!
@@ -1421,6 +1464,7 @@ describe('team workspace material ledger', () => {
     await router.push('/team-workspaces/914?tab=outgoing')
     await flushPromises()
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '新建出库')!
@@ -1488,6 +1532,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('nav[aria-label$="视图"] [aria-current=page]').text()).toBe('库存明细')
+    await openToolbarMenu()
     expect(wrapper.get('.workspace-toolbar .workspace-actions').text()).toContain('新建出库')
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
@@ -1993,6 +2038,7 @@ describe('team workspace material ledger', () => {
   })
   it('opens the receiving scanner from stock and restricts it to the current team account', async () => {
     await render('/team-workspaces/914?tab=stock')
+    await openToolbarMenu()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '扫码入库')!
