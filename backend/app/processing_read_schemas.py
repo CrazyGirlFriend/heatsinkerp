@@ -117,6 +117,7 @@ class ReworkProblemTeamResponse(ReadResponse):
 class QuantityAdjustmentContextResponse(
     PageResponse[QuantityAdjustmentResponse], SharedMaterialResponse
 ):
+    inspection_enabled: bool = False
     parameter_fields: list[str]
     rework_inspections: list[ReworkInspectionReference]
     process_route: RouteExecutionContextResponse | None

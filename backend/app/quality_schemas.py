@@ -11,15 +11,10 @@ from .read_schemas import PageResponse, ReadResponse
 Disposition = Literal["pending", "rework", "shipment", "transfer", "reallocate", "scrap", "other"]
 
 
-class InspectionCreate(BaseModel):
+class InspectionResults(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    source_transfer_id: int = Field(ge=1)
-    expected_revision: int = Field(ge=0)
-    inspector_employee_id: int = Field(ge=1)
-    checked_at: datetime
     sample_quantity: int = Field(gt=0, le=2147483647)
     failed_quantity: int = Field(ge=0, le=2147483647)
-    kind: Literal["patrol", "inspection"] = "patrol"
     scope: Literal["sample", "full"] = "sample"
     methods: list[Literal["visual", "microscope"]] = Field(min_length=1, max_length=2)
     items: list[Literal["appearance", "dimension", "weight"]] = Field(min_length=1, max_length=3)
@@ -29,21 +24,6 @@ class InspectionCreate(BaseModel):
     problem_type_ids: list[int] = Field(default_factory=list, max_length=50)
     notes: str = Field(default="", max_length=2000)
     parent_id: int | None = Field(default=None, ge=1)
-    idempotency_key: str = Field(min_length=1, max_length=100)
-
-    @field_validator("idempotency_key")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("提交标识不能为空")
-        return value.strip()
-
-    @field_validator("checked_at")
-    @classmethod
-    def timestamp(cls, value):
-        if value.tzinfo is None:
-            raise ValueError("检查时间须带时区")
-        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def counts(self):
@@ -68,6 +48,29 @@ class InspectionCreate(BaseModel):
         if not self.failed_quantity and self.problem_type_ids:
             raise ValueError("没有不合格物料时无需选择检验问题")
         return self
+
+
+class InspectionCreate(InspectionResults):
+    source_transfer_id: int = Field(ge=1)
+    expected_revision: int = Field(ge=0)
+    inspector_employee_id: int = Field(ge=1)
+    checked_at: datetime
+    kind: Literal["patrol", "inspection"] = "patrol"
+    idempotency_key: str = Field(min_length=1, max_length=100)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("提交标识不能为空")
+        return value.strip()
+
+    @field_validator("checked_at")
+    @classmethod
+    def timestamp(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("检查时间须带时区")
+        return value.astimezone(timezone.utc)
 
 
 class FeedbackWrite(BaseModel):

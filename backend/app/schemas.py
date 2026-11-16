@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from .process_route_schemas import RouteIntakeWrite
+from .quality_schemas import InspectionResults
 
 DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
@@ -49,6 +50,7 @@ class ProcessingOutput(BaseModel):
 
 
 class ProcessingQuantity(BaseModel):
+    inspection: InspectionResults | None = None
     production_schedule_id: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)

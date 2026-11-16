@@ -88,6 +88,7 @@ export type {
 } from './processingContract'
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
+  inspection_enabled?: boolean
   parameter_fields?: string[]
   purpose_id?: number | null
   production_schedule_id?: number | null
@@ -143,6 +144,7 @@ export interface QuantityAdjustmentContext
   rework_count?: number
 }
 export interface CreateQuantityAdjustment extends ProcessingParameters {
+  inspection?: components['schemas']['InspectionResults']
   production_schedule_id?: number | null
   processing_task_id?: number | null
   purpose_id?: number | null

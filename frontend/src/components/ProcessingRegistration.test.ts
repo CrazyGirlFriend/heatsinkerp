@@ -9,6 +9,7 @@ import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import ProcessingDurationInput from './ProcessingDurationInput.vue'
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import ProcessingInspectionFields from './ProcessingInspectionFields.vue'
 import WeightInput from './WeightInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -20,6 +21,12 @@ vi.mock('@/stores/auth', () => ({
     isTeamAccount: true,
     currentUser: { id: 2, team_id: 2, active: true },
     currentUserError: '',
+  }),
+}))
+vi.mock('@/stores/teamDirectory', () => ({
+  useTeamDirectoryStore: () => ({
+    loaded: true,
+    items: [{ id: 5, name: '研磨', code: 'FACTORY-GRIND', active: true }],
   }),
 }))
 const employee = { id: 71, name: '张师傅', team_id: 2, active: true, version: 1 }
@@ -144,6 +151,7 @@ it('requires daily-report parameters and duration before submitting and shows th
 })
 it('requires an actual employee and submits partial work without changing original piece count', async () => {
   await render()
+  expect(wrapper.findComponent(ProcessingInspectionFields).exists()).toBe(false)
   expect(wrapper.findComponent(ElSwitch).exists()).toBe(false)
   expect(wrapper.text()).toContain('本次完成件数')
   completedQuantityInput().vm.$emit('update:modelValue', 6)
@@ -167,6 +175,52 @@ it('requires an actual employee and submits partial work without changing origin
     }),
   )
   expect(vi.mocked(teamMaterialApi.changeQuantity).mock.calls[0]![1].outputs).toBeUndefined()
+})
+it('saves QC results with the work and blocks an incomplete defect report', async () => {
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...(await teamMaterialApi.quantityContext(2, 10)),
+    inspection_enabled: true,
+  })
+  vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([
+    { id: 12, team_id: 2, name: '尺寸超差', active: true, version: 1 },
+  ])
+  await render()
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  const fields = wrapper.getComponent(ProcessingInspectionFields)
+  function choose(label: string, value: unknown) {
+    fields
+      .findAllComponents(AppSelect)
+      .find((s) => s.find(`input[aria-label="${label}"]`).exists())!
+      .vm.$emit('update:modelValue', value)
+  }
+  choose('检查手段', ['visual'])
+  choose('检查项目', ['dimension'])
+  fields.getComponent(ElInputNumber).vm.$emit('update:modelValue', 2)
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  choose('不合格问题', [12])
+  choose('涉及班组', [5])
+  await fields.get('textarea[aria-label="问题说明"]').setValue('两件厚度超差')
+  await save()
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledOnce()
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      completed_quantity: 10,
+      inspection: expect.objectContaining({
+        scope: 'full',
+        sample_quantity: 10,
+        failed_quantity: 2,
+        methods: ['visual'],
+        items: ['dimension'],
+        problem_type_ids: [12],
+        involved_team_ids: [5],
+        notes: '两件厚度超差',
+      }),
+    }),
+  )
 })
 it('rejects completion above available pieces and dates after today', async () => {
   await render()

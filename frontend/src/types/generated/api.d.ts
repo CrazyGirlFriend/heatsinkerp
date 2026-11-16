@@ -2777,6 +2777,7 @@ export interface components {
       idempotency_key: string
       /** Input Quantity */
       input_quantity?: number | null
+      inspection?: components['schemas']['InspectionResults'] | null
       /** Machine No */
       machine_no?: string | null
       /** Outputs */
@@ -4054,6 +4055,44 @@ export interface components {
       /** Team Name */
       team_name: string
       /** Weight Result */
+      weight_result: string
+    }
+    /** InspectionResults */
+    InspectionResults: {
+      /**
+       * Dimension Result
+       * @default
+       */
+      dimension_result: string
+      /** Failed Quantity */
+      failed_quantity: number
+      /** Involved Team Ids */
+      involved_team_ids?: number[]
+      /** Items */
+      items: ('appearance' | 'dimension' | 'weight')[]
+      /** Methods */
+      methods: ('visual' | 'microscope')[]
+      /**
+       * Notes
+       * @default
+       */
+      notes: string
+      /** Parent Id */
+      parent_id?: number | null
+      /** Problem Type Ids */
+      problem_type_ids?: number[]
+      /** Sample Quantity */
+      sample_quantity: number
+      /**
+       * Scope
+       * @default sample
+       * @enum {string}
+       */
+      scope: 'sample' | 'full'
+      /**
+       * Weight Result
+       * @default
+       */
       weight_result: string
     }
     /** InspectionSourceResponse */
@@ -6098,6 +6137,7 @@ export interface components {
       holding_minutes?: number | null
       /** Input Quantity */
       input_quantity?: number | null
+      inspection?: components['schemas']['InspectionResults'] | null
       /** Machine No */
       machine_no?: string | null
       /** Outputs */
@@ -6900,6 +6940,11 @@ export interface components {
       batch_no: string
       /** Completed Task Ids */
       completed_task_ids: number[]
+      /**
+       * Inspection Enabled
+       * @default false
+       */
+      inspection_enabled: boolean
       /** Items */
       items: components['schemas']['QuantityAdjustmentResponse'][]
       /** Material Name */

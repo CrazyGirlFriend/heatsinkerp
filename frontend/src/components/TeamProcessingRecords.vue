@@ -57,6 +57,10 @@ const props = defineProps<{
 const reportTemplate = computed(() =>
   props.management ? productionTemplates(props.teamCode)[0] : undefined,
 )
+const isInspectionTeam = computed(() => props.teamCode === 'FACTORY-QC')
+function latestInspection(row: ProcessingRecord) {
+  return row.report_inspections?.filter((check) => check.kind === 'inspection').at(-1)
+}
 const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
 const {
   route: viewedRoute,
@@ -250,6 +254,25 @@ function exportSource() {
         value: (row) => row.processing_date || '未登记',
       },
       { key: 'completed_quantity', label: '本次完成件数', value: (row) => row.completed_quantity },
+      ...(isInspectionTeam.value
+        ? [
+            {
+              key: 'sample_quantity',
+              label: '检验件数',
+              value: (row: ProcessingRecord) => latestInspection(row)?.sample_quantity,
+            },
+            {
+              key: 'passed_quantity',
+              label: '合格件数',
+              value: (row: ProcessingRecord) => latestInspection(row)?.passed_quantity,
+            },
+            {
+              key: 'failed_quantity',
+              label: '不合格件数',
+              value: (row: ProcessingRecord) => latestInspection(row)?.failed_quantity,
+            },
+          ]
+        : []),
       { key: 'completed_weight', label: '本次完成重量 (kg)', value: (row) => row.completed_weight },
       { key: 'input_quantity', label: '本次投入件数', value: (row) => row.input_quantity },
       { key: 'input_weight', label: '本次投入重量 (kg)', value: (row) => row.input_weight },
@@ -630,6 +653,36 @@ onBeforeUnmount(() => {
                 </dd>
               </div>
             </dl>
+            <dl v-for="check in row.report_inspections" :key="check.id">
+              <div>
+                <dt>检验时间</dt>
+                <dd>{{ formatDateTime(check.checked_at) }}</dd>
+              </div>
+              <div>
+                <dt>检验方式</dt>
+                <dd>{{ check.scope === 'full' ? '全检' : '抽检' }}</dd>
+              </div>
+              <div>
+                <dt>检验件数</dt>
+                <dd>{{ check.sample_quantity }}</dd>
+              </div>
+              <div>
+                <dt>合格件数</dt>
+                <dd>{{ check.passed_quantity }}</dd>
+              </div>
+              <div>
+                <dt>不合格件数</dt>
+                <dd>{{ check.failed_quantity }}</dd>
+              </div>
+              <div v-if="check.failed_quantity">
+                <dt>不合格问题</dt>
+                <dd>{{ check.problem_names.join('、') }}</dd>
+              </div>
+              <div v-if="check.notes" class="processing-record-requirements">
+                <dt>问题说明</dt>
+                <dd>{{ check.notes }}</dd>
+              </div>
+            </dl>
           </section>
         </template>
       </ElTableColumn>
@@ -697,6 +750,30 @@ onBeforeUnmount(() => {
           inventoryAmount(row.completed_quantity)
         }}</template></ElTableColumn
       >
+      <template v-if="isInspectionTeam">
+        <ElTableColumn label="检验件数" min-width="110" align="right">
+          <template #default="{ row }">{{
+            inventoryAmount(latestInspection(row as ProcessingRecord)?.sample_quantity)
+          }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="合格件数" min-width="110" align="right">
+          <template #default="{ row }">{{
+            inventoryAmount(latestInspection(row as ProcessingRecord)?.passed_quantity)
+          }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="不合格件数" min-width="120" align="right">
+          <template #default="{ row }"
+            ><span
+              :class="{
+                'inspection-failed': latestInspection(row as ProcessingRecord)?.failed_quantity,
+              }"
+              >{{
+                inventoryAmount(latestInspection(row as ProcessingRecord)?.failed_quantity)
+              }}</span
+            ></template
+          >
+        </ElTableColumn>
+      </template>
       <ElTableColumn label="本次完成重量 (kg)" min-width="175" align="center"
         ><template #default="{ row }">{{
           inventoryAmount(row.completed_weight)
@@ -802,6 +879,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.inspection-failed {
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
 .processing-record-detail {
   margin: 8px 16px 12px;
   padding: 14px 16px;

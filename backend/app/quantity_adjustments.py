@@ -20,7 +20,7 @@ from .models import (
 )
 from .processing_registration import METRICS, prepare
 from .schemas import ProcessingQuantity
-from .team_constants import SPLITTING_TEAM_CODES
+from .team_constants import INSPECTION_TEAM_CODE, SPLITTING_TEAM_CODES
 
 
 def validate_outbound_clearance(lot, quantity, weight, available, clearance):
@@ -276,6 +276,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         .limit(50)
     ).all()
     return {
+        "inspection_enabled": stock.require_team(db, team_id).code == INSPECTION_TEAM_CODE,
         "rework_inspections": [
             {"id": row.id, "kind": row.kind, "checked_at": _utc(row.checked_at)}
             for row in inspections
@@ -335,6 +336,11 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     if hold and payload.work_kind != "rework":
         raise HTTPException(409, "本批巡检不合格，请登记返工；处理后须由检验班组复检放行")
     team = require_processing_team(db, lot.next_team_id)
+    if payload.inspection is not None:
+        if team.code != INSPECTION_TEAM_CODE or payload.processing_mode != "unit":
+            raise HTTPException(422, "仅检验班组的加工登记可附带检验结果")
+        if payload.inspection.failed_quantity and not payload.inspection.notes.strip():
+            raise HTTPException(422, "请填写不合格问题说明")
     from .processing_parameters import recorded_parameters
 
     parameters = recorded_parameters(payload, team.code, db=db, team_id=team.id)
@@ -555,6 +561,23 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         from .processing_outputs import record_events
 
         record_events(db, items, user)
+    if payload.inspection is not None:
+        from datetime import timezone
+
+        from .inspections import record_inspection
+        from .quality_schemas import InspectionCreate
+
+        inspected = next(item for item in items if item.processing_role == "produced")
+        result = InspectionCreate(
+            **payload.inspection.model_dump(),
+            source_transfer_id=inspected.id,
+            expected_revision=db.get(Balance, inspected.id).revision,
+            inspector_employee_id=employee.id,
+            checked_at=now.replace(tzinfo=timezone.utc),
+            kind="inspection",
+            idempotency_key=f"processing-inspection:{row.id}",
+        )
+        record_inspection(db, inspected, result, user, team, stock.fingerprint(result), work=row)
     return row
 
 

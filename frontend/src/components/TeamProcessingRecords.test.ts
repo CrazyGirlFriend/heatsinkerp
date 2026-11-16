@@ -131,6 +131,52 @@ async function openFilters() {
   await vi.waitFor(() => expect(wrapper.findComponent(RecordDateFilter).exists()).toBe(true))
 }
 
+it('shows the latest QC counts and leaves unrecorded quality results blank', async () => {
+  const response = await teamMaterialApi.processingRecords(5)
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    ...response,
+    items: [
+      {
+        ...record(),
+        report_inspections: [
+          {
+            id: 1,
+            source_transfer_id: 11,
+            checked_at: '2026-11-16T08:00:00Z',
+            inspector_name: '张师傅',
+            batch_quantity: 100,
+            sample_quantity: 60,
+            passed_quantity: 57,
+            failed_quantity: 3,
+            kind: 'inspection',
+            scope: 'sample',
+            parent_id: null,
+            disposition: 'pending',
+            problem_names: ['划伤'],
+            notes: '边缘划伤',
+          },
+        ],
+      },
+      record(2),
+    ],
+  })
+  await render()
+  await wrapper.setProps({ teamCode: 'FACTORY-QC' })
+  await flushPromises()
+  const headers = wrapper.findAll('.el-table__header th')
+  const bodyRows = wrapper.findAll('.el-table__body tbody tr')
+  for (const [label, expected] of [
+    ['检验件数', '60'],
+    ['合格件数', '57'],
+    ['不合格件数', '3'],
+  ]) {
+    const index = headers.findIndex((th) => th.text().includes(label!))
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(bodyRows[0]!.findAll('td')[index]!.text()).toBe(expected)
+    expect(bodyRows[1]!.findAll('td')[index]!.text()).toBe('—')
+  }
+})
+
 describe('cutting processing records', () => {
   it('shows and exports two hours of labor for two people working one hour', async () => {
     const result = await teamMaterialApi.processingRecords(5)

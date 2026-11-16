@@ -203,10 +203,166 @@ def require_current_kind(payload):
         raise HTTPException(410, "巡检登记已停用，请由物料所在班组长提交返工问题")
 
 
+def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
+    """Save inspection facts inside the caller's stock transaction."""
+    from . import material_stock as stock
+    from .material_transfer_workflow import require_team_employee
+    from .processing_records import registered_lots
+
+    target = stock.require_team(db, lot.next_team_id)
+    if not target.active or target.code not in PROCESSING_TEAM_CODES:
+        raise HTTPException(422, "请选择生产班组的已加工在库批次")
+    if payload.kind == "inspection" and target.id != actor_team.id:
+        raise HTTPException(422, "检验登记请选择检验班组的在库批次")
+    balance = db.scalar(
+        select(MaterialStockBalance)
+        .where(MaterialStockBalance.transfer_id == lot.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if balance is None or balance.revision != payload.expected_revision:
+        raise HTTPException(409, "库存已变化，请重新选择巡检批次")
+    parent = db.get(Inspection, payload.parent_id) if payload.parent_id else None
+    if payload.parent_id and (
+        parent is None
+        or parent.parent_id
+        or not parent.failed_quantity
+        or parent.kind != payload.kind
+    ):
+        raise HTTPException(409, "复检必须关联本批次的原不合格检查")
+    if parent:
+        family = relatives([parent.source_transfer_id], name="recheck_family")
+        if not db.scalar(select(family.c.id).where(family.c.id == lot.id)):
+            raise HTTPException(409, "复检批次不属于原检查物料的后续批次")
+    quantity = balance.on_hand_quantity
+    if quantity <= 0 or payload.sample_quantity > quantity:
+        raise HTTPException(422, "检查件数超过本批当前在库件数，请选择现存批次")
+    if payload.scope == "full" and payload.sample_quantity != quantity:
+        raise HTTPException(422, "全检件数须等于当前在库件数")
+    for team_id in payload.involved_team_ids:
+        involved = db.get(Team, team_id)
+        if involved is None or not involved.active:
+            raise HTTPException(422, "问题涉及班组不存在或已停用")
+    progress = registered_lots(target.id)
+    registered = db.execute(
+        select(progress.c.processing_status, progress.c.latest_id).where(
+            progress.c.lot_id == lot.id
+        )
+    ).first()
+    state = registered.processing_status if registered else None
+    if payload.kind == "patrol" and state not in ("complete", "partial", "registered"):
+        raise HTTPException(422, "只能抽检已登记加工的物料")
+    now = utcnow()
+    if payload.checked_at.replace(tzinfo=None) > now:
+        raise HTTPException(422, "检查时间不能晚于当前时间")
+    if lot.received_at and payload.checked_at.replace(tzinfo=None) < lot.received_at:
+        raise HTTPException(422, "检查时间不能早于本批入库时间")
+    employee = require_team_employee(db, actor_team.id, payload.inspector_employee_id, "检验人")
+    problems = (
+        list(
+            db.scalars(
+                select(InspectionProblemType)
+                .where(InspectionProblemType.id.in_(payload.problem_type_ids))
+                .order_by(InspectionProblemType.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+        if payload.problem_type_ids
+        else []
+    )
+    if len(problems) != len(payload.problem_type_ids) or any(
+        p.team_id != actor_team.id or not p.active for p in problems
+    ):
+        raise HTTPException(422, "请选择启用的检验问题；无可用选项时请联系检验班组长")
+    if parent and payload.checked_at.replace(tzinfo=None) < parent.checked_at:
+        raise HTTPException(422, "复检时间不能早于原检查")
+    work = work or (
+        db.get(MaterialQuantityAdjustment, registered.latest_id)
+        if registered and registered.latest_id
+        else None
+    )
+    from .process_routes import route_document
+
+    row = Inspection(
+        process_step=route_document(lot),
+        processing_record_id=work.id if work else None,
+        processor_name=work.processor_name if work else None,
+        source_transfer_id=lot.id,
+        team_id=target.id,
+        inspection_team_id=actor_team.id,
+        inspector_employee_id=employee.id,
+        inspector_name=employee.name,
+        checked_at=payload.checked_at.replace(tzinfo=None),
+        batch_quantity=quantity,
+        sample_quantity=payload.sample_quantity,
+        failed_quantity=payload.failed_quantity,
+        kind=payload.kind,
+        scope=payload.scope,
+        methods=payload.methods,
+        items=payload.items,
+        dimension_result=payload.dimension_result.strip(),
+        weight_result=payload.weight_result.strip(),
+        blocks_outbound=False,
+        notes=payload.notes.strip(),
+        parent_id=payload.parent_id,
+        idempotency_key=payload.idempotency_key,
+        request_hash=digest,
+        created_by=actor_name(user),
+        created_by_user_id=user.id,
+        created_at=now,
+        problems=[InspectionProblem(problem_type_id=p.id, name=p.name) for p in problems],
+    )
+    db.add(row)
+    db.flush()
+    # A recheck belongs to the original issue; it does not create another defect count.
+    if payload.failed_quantity and not parent:
+        db.add_all(
+            [
+                InspectionFeedbackTeam(inspection_id=row.id, team_id=i)
+                for i in payload.involved_team_ids
+            ]
+        )
+    db.flush()
+    if payload.failed_quantity and not parent:
+        from .quality_notices import notify_involved_teams
+
+        notify_involved_teams(db, row)
+    db.add(
+        MaterialTransferEvent(
+            transfer_id=lot.id,
+            action="inspection_rechecked" if parent else "inspection_recorded",
+            actor=actor_name(user),
+            actor_user_id=user.id,
+            occurred_at=now,
+            changes={
+                "inspection": {
+                    "before": None,
+                    "after": dict(
+                        id=row.id,
+                        inspector=employee.name,
+                        sample=payload.sample_quantity,
+                        failed=payload.failed_quantity,
+                        parent_id=payload.parent_id,
+                        released=False,
+                        blocks_outbound=False,
+                        kind=payload.kind,
+                        scope=payload.scope,
+                        methods=payload.methods,
+                        items=payload.items,
+                        involved_team_ids=payload.involved_team_ids,
+                        problems=[dict(id=p.id, name=p.name) for p in problems],
+                    ),
+                }
+            },
+        )
+    )
+    return row
+
+
 def create(db, payload, user):
     from . import material_stock as stock
-    from .material_transfer_workflow import _require_team_actor, require_team_employee
-    from .processing_records import registered_lots
+    from .material_transfer_workflow import _require_team_actor
 
     actor_team = _require_team_actor(user)
     if actor_team.code != INSPECTION_TEAM_CODE:
@@ -234,157 +390,8 @@ def create(db, payload, user):
             )
             if prior is not None:
                 return replay(prior)
-            target = stock.require_team(db, lot.next_team_id)
-            if not target.active or target.code not in PROCESSING_TEAM_CODES:
-                raise HTTPException(422, "请选择生产班组的已加工在库批次")
-            if payload.kind == "inspection" and target.id != actor_team.id:
-                raise HTTPException(422, "检验登记请选择检验班组的在库批次")
-            balance = db.scalar(
-                select(MaterialStockBalance)
-                .where(MaterialStockBalance.transfer_id == lot.id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-            if balance is None or balance.revision != payload.expected_revision:
-                raise HTTPException(409, "库存已变化，请重新选择巡检批次")
-            parent = db.get(Inspection, payload.parent_id) if payload.parent_id else None
-            if payload.parent_id and (
-                parent is None
-                or parent.parent_id
-                or not parent.failed_quantity
-                or parent.kind != payload.kind
-            ):
-                raise HTTPException(409, "复检必须关联本批次的原不合格检查")
-            if parent:
-                family = relatives([parent.source_transfer_id], name="recheck_family")
-                if not db.scalar(select(family.c.id).where(family.c.id == lot.id)):
-                    raise HTTPException(409, "复检批次不属于原检查物料的后续批次")
-            quantity = balance.on_hand_quantity
-            if quantity <= 0 or payload.sample_quantity > quantity:
-                raise HTTPException(422, "检查件数超过本批当前在库件数，请选择现存批次")
-            if payload.scope == "full" and payload.sample_quantity != quantity:
-                raise HTTPException(422, "全检件数须等于当前在库件数")
-            for team_id in payload.involved_team_ids:
-                involved = db.get(Team, team_id)
-                if involved is None or not involved.active:
-                    raise HTTPException(422, "问题涉及班组不存在或已停用")
-            progress = registered_lots(target.id)
-            registered = db.execute(
-                select(progress.c.processing_status, progress.c.latest_id).where(
-                    progress.c.lot_id == lot.id
-                )
-            ).first()
-            state = registered.processing_status if registered else None
-            if payload.kind == "patrol" and state not in ("complete", "partial", "registered"):
-                raise HTTPException(422, "只能抽检已登记加工的物料")
-            now = utcnow()
-            if payload.checked_at.replace(tzinfo=None) > now:
-                raise HTTPException(422, "检查时间不能晚于当前时间")
-            if lot.received_at and payload.checked_at.replace(tzinfo=None) < lot.received_at:
-                raise HTTPException(422, "检查时间不能早于本批入库时间")
-            employee = require_team_employee(
-                db, actor_team.id, payload.inspector_employee_id, "检验人"
-            )
-            problems = (
-                list(
-                    db.scalars(
-                        select(InspectionProblemType)
-                        .where(InspectionProblemType.id.in_(payload.problem_type_ids))
-                        .order_by(InspectionProblemType.id)
-                        .with_for_update()
-                        .execution_options(populate_existing=True)
-                    )
-                )
-                if payload.problem_type_ids
-                else []
-            )
-            if len(problems) != len(payload.problem_type_ids) or any(
-                p.team_id != actor_team.id or not p.active for p in problems
-            ):
-                raise HTTPException(422, "请选择启用的检验问题；无可用选项时请联系检验班组长")
-            if parent and payload.checked_at.replace(tzinfo=None) < parent.checked_at:
-                raise HTTPException(422, "复检时间不能早于原检查")
-            work = (
-                db.get(MaterialQuantityAdjustment, registered.latest_id)
-                if registered and registered.latest_id
-                else None
-            )
-            from .process_routes import route_document
-
-            row = Inspection(
-                process_step=route_document(lot),
-                processing_record_id=work.id if work else None,
-                processor_name=work.processor_name if work else None,
-                source_transfer_id=lot.id,
-                team_id=target.id,
-                inspection_team_id=actor_team.id,
-                inspector_employee_id=employee.id,
-                inspector_name=employee.name,
-                checked_at=payload.checked_at.replace(tzinfo=None),
-                batch_quantity=quantity,
-                sample_quantity=payload.sample_quantity,
-                failed_quantity=payload.failed_quantity,
-                kind=payload.kind,
-                scope=payload.scope,
-                methods=payload.methods,
-                items=payload.items,
-                dimension_result=payload.dimension_result.strip(),
-                weight_result=payload.weight_result.strip(),
-                blocks_outbound=False,
-                notes=payload.notes.strip(),
-                parent_id=payload.parent_id,
-                idempotency_key=payload.idempotency_key,
-                request_hash=digest,
-                created_by=actor_name(user),
-                created_by_user_id=user.id,
-                created_at=now,
-                problems=[InspectionProblem(problem_type_id=p.id, name=p.name) for p in problems],
-            )
-            db.add(row)
-            db.flush()
-            # A recheck belongs to the original issue; it does not create another defect count.
-            if payload.failed_quantity and not parent:
-                db.add_all(
-                    [
-                        InspectionFeedbackTeam(inspection_id=row.id, team_id=i)
-                        for i in payload.involved_team_ids
-                    ]
-                )
-            db.flush()
-            if payload.failed_quantity and not parent:
-                from .quality_notices import notify_involved_teams
-
-                notify_involved_teams(db, row)
-            db.add(
-                MaterialTransferEvent(
-                    transfer_id=lot.id,
-                    action="inspection_rechecked" if parent else "inspection_recorded",
-                    actor=actor_name(user),
-                    actor_user_id=user.id,
-                    occurred_at=now,
-                    changes={
-                        "inspection": {
-                            "before": None,
-                            "after": dict(
-                                id=row.id,
-                                inspector=employee.name,
-                                sample=payload.sample_quantity,
-                                failed=payload.failed_quantity,
-                                parent_id=payload.parent_id,
-                                released=False,
-                                blocks_outbound=False,
-                                kind=payload.kind,
-                                scope=payload.scope,
-                                methods=payload.methods,
-                                items=payload.items,
-                                involved_team_ids=payload.involved_team_ids,
-                                problems=[dict(id=p.id, name=p.name) for p in problems],
-                            ),
-                        }
-                    },
-                )
-            )
-            result = record_dict(row, lot, target)
+            row = record_inspection(db, lot, payload, user, actor_team, digest)
+            result = record_dict(row, lot, db.get(Team, lot.next_team_id))
         return result
     except (IntegrityError, OperationalError) as exc:
         db.rollback()

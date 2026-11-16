@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import ProcessingInspectionFields from './ProcessingInspectionFields.vue'
 import {
   processingParameterErrors,
   processingParameterPayload,
@@ -57,6 +58,7 @@ import { useAuthStore } from '@/stores/auth'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type {
   CreateProcessingOutput,
+  CreateQuantityAdjustment,
   QuantityAdjustment,
   QuantityAdjustmentContext,
 } from '@/types/teamMaterials'
@@ -146,6 +148,10 @@ const processingDate = ref(factoryToday())
 const editingProcessingDate = ref(false)
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
+const inspection = ref<CreateQuantityAdjustment['inspection'] | null>(null)
+const inspectionEnabled = computed(
+  () => unitProcessing.value && snapshot.value?.inspection_enabled === true,
+)
 const taskId = ref<number | null>(null),
   purposeId = ref<number | null>(null)
 const scheduleId = ref<number | null>(null)
@@ -396,6 +402,7 @@ async function save() {
       (!employees.value.length ||
         !processingDate.value ||
         processingDate.value > factoryToday())) ||
+    (inspectionEnabled.value && !inspection.value) ||
     !processingMinutesValid.value ||
     (structured.value && Object.keys(parameterErrors.value).length > 0) ||
     (structured.value &&
@@ -443,6 +450,7 @@ async function save() {
       : {}),
   }))
   const body = {
+    ...(inspectionEnabled.value && inspection.value ? { inspection: inspection.value } : {}),
     ...(isRework.value
       ? { work_kind: 'rework' as const, rework_of_id: originalRecordId.value || undefined }
       : {}),
@@ -511,6 +519,7 @@ watch(
     closeRoute()
     ++generation
     snapshot.value = null
+    inspection.value = null
     scheduleId.value = null
     records.value = []
     total.value = 0
@@ -762,6 +771,16 @@ onBeforeUnmount(() => {
                   label="加工后实际尺寸"
                   @validity-change="specificationValid = $event"
               /></ElFormItem>
+              <ProcessingInspectionFields
+                v-if="inspectionEnabled"
+                :key="`${teamId}:${sourceId}`"
+                class="form-field--full"
+                :team-id="teamId"
+                :quantity="quantity"
+                :submitted="submitted"
+                :disabled="saving || loading"
+                @change="inspection = $event"
+              />
               <ElFormItem
                 :label="structured ? '备注' : '备注（选填）'"
                 :required="structured"
