@@ -11,6 +11,7 @@ from app.shared_material import common_split_index, is_split_step
 from fastapi import HTTPException
 from route_document_helpers import add_documents
 from sqlalchemy import func, select
+from test_engineering_team import author
 from test_process_route_intake import publish_payload, route_payload
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
@@ -19,7 +20,7 @@ from test_warehouse_receipts import warehouse as warehouse
 
 
 @pytest.fixture()
-def joint(client, warehouse):
+def joint(client, warehouse, request):
     payload = route_payload(client, warehouse)
     first = publish_payload(client, payload)
     with SessionLocal.begin() as db:
@@ -34,13 +35,18 @@ def joint(client, warehouse):
             source_data={"tables": [], "issues": []},
             created_by=original.created_by,
             created_by_user_id=original.created_by_user_id,
+            engineering_employee_id=original.engineering_employee_id,
+            engineering_employee_name=original.engineering_employee_name,
         )
         db.add(other)
         db.flush()
         other_id = other.id
     add_documents(other_id)
+    headers, _ = author(client)
     second_response = client.post(
-        f"/api/process-routes/{other_id}/publish", json={"version": 1, "confirmed_imports": True}
+        f"/api/process-routes/{other_id}/publish",
+        headers=headers,
+        json={"version": 1, "confirmed_imports": True},
     )
     assert second_response.status_code == 200, second_response.text
     second = second_response.json()
@@ -58,6 +64,10 @@ def joint(client, warehouse):
             ("ORDER-B", second, 4, 40),
         ]
     ]
+    if getattr(request, "param", "with_plan") == "without_plan":
+        for member in members:
+            for field in ("planned_weight", "planned_quantity", "planned_specification"):
+                member.pop(field)
     response = intake(client, warehouse, serial_no="", quantity=2, weight=20)
     assert response.status_code == 201, response.text
     return response.json(), members
@@ -80,6 +90,7 @@ def send(client, warehouse, joint, **changes):
     )
 
 
+@pytest.mark.parametrize("joint", ["without_plan", "with_plan"], indirect=True)
 def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     client, warehouse, joint
 ):
@@ -91,6 +102,9 @@ def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     lot = result["items"][0]
     assert lot["quantity"] == 1 and lot["weight"] == 10
     assert lot["shared_unallocated"]
+    for member, stored in zip(members, lot["shared_serials"], strict=True):
+        for field in ("planned_weight", "planned_quantity", "planned_specification"):
+            assert stored[field] == member.get(field)
     assert [row["process_route_id"] for row in lot["shared_serials"]] == [
         m["process_route_id"] for m in members
     ]
@@ -109,6 +123,7 @@ def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     assert remainder["available_quantity"] == 1 and remainder["available_weight"] == 10
 
 
+@pytest.mark.parametrize("joint", ["without_plan", "with_plan"], indirect=True)
 def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
     client, warehouse, joint
 ):
@@ -120,6 +135,8 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
         employee = db.scalar(
             select(TeamEmployee.id).where(TeamEmployee.team_id == warehouse["other"]["id"])
         )
+    equipment = client.post(base(warehouse, True) + "/equipment", json={"name": "共投拆料机"})
+    assert equipment.status_code == 201, equipment.text
     result = change(
         client,
         warehouse,
@@ -127,6 +144,8 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
         61,
         workshop=True,
         processor_employee_id=employee,
+        equipment_id=equipment.json()["id"],
+        processing_minutes=60,
         processing_mode="split",
         processing_date="2026-11-01",
         input_quantity=1,
@@ -138,6 +157,7 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
                 "quantity": 60,
                 "weight": 6,
                 "material_type": "semi_finished",
+                "transfer_specification": "20 × 10 × 2 mm",
             },
             {"role": "remaining", "quantity": 1, "weight": 4, "material_type": "semi_finished"},
         ],
@@ -152,6 +172,8 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
         workshop=True,
         key="second-cut",
         processor_employee_id=employee,
+        equipment_id=equipment.json()["id"],
+        processing_minutes=60,
         processing_mode="split",
         processing_date="2026-11-01",
         input_quantity=1,
@@ -163,6 +185,7 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
                 "quantity": 40,
                 "weight": 4,
                 "material_type": "semi_finished",
+                "transfer_specification": "10 × 10 × 2 mm",
             },
         ],
     )
@@ -225,14 +248,14 @@ def test_joint_routes_can_share_processing_before_a_later_cut(client, warehouse,
 
 @pytest.mark.parametrize(
     "change_kind",
-    ["duplicate", "missing_plan", "stale_route", "different_path", "wrong_route", "external"],
+    ["duplicate", "partial_plan", "stale_route", "different_path", "wrong_route", "external"],
 )
 def test_invalid_joint_transfer_rolls_back_stock_and_group(client, warehouse, joint, change_kind):
     origin, members = joint
     members = deepcopy(members)
     if change_kind == "duplicate":
         members[1]["serial_no"] = members[0]["serial_no"]
-    elif change_kind == "missing_plan":
+    elif change_kind == "partial_plan":
         members[1]["planned_weight"] = None
     elif change_kind == "stale_route":
         members[1]["process_route_version"] += 1

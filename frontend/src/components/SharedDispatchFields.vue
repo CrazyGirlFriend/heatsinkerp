@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import ElInput from '@/components/AppInput.vue'
 import { computed, ref, watch } from 'vue'
 import { ElTableColumn } from 'element-plus'
 import AppButton from './AppButton.vue'
-import AppNumberInput from './AppNumberInput.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import MaterialInput from './MaterialInput.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -38,16 +36,6 @@ const problem = computed(() => {
   const error = Object.values(errors.value).find(Boolean)
   if (error) return error
   if (props.modelValue.some((row) => !row.process_route_id)) return '请为每个共投流水号读取工艺'
-  if (
-    props.modelValue.some(
-      (row) =>
-        !(Number(row.planned_weight) > 0) ||
-        !Number.isSafeInteger(row.planned_quantity) ||
-        !(Number(row.planned_quantity) > 0) ||
-        !row.planned_specification?.trim(),
-    )
-  )
-    return '请填写各流水号的计划用料、切出件数和切割尺寸'
   return ''
 })
 watch(problem, (value) => emit('validation-change', value), { immediate: true })
@@ -132,7 +120,7 @@ watch(
   <section class="shared-dispatch-fields" aria-label="共投流水号明细">
     <WorkspaceTable
       columns-key="SharedDispatchFields-1"
-      :required-columns="['流水号', '关联工艺', '计划用料（kg）', '切出件数', '切割尺寸']"
+      :required-columns="['流水号', '关联工艺']"
       :data="modelValue"
       size="small"
       :height="undefined"
@@ -157,41 +145,6 @@ watch(
               : routes[row.serial_no.trim()]?.title || (loading ? '读取中…' : '—')
           }}</span></template
         >
-      </ElTableColumn>
-      <ElTableColumn label="计划用料（kg）" width="155">
-        <template #default="{ row, $index }"
-          ><AppNumberInput
-            :model-value="row.planned_weight ?? undefined"
-            :min="0.000001"
-            :precision="6"
-            :controls="false"
-            :disabled="disabled"
-            :aria-label="`计划用料 ${$index + 1}`"
-            @update:model-value="update($index, { planned_weight: $event })"
-        /></template>
-      </ElTableColumn>
-      <ElTableColumn label="切出件数" width="125">
-        <template #default="{ row, $index }"
-          ><AppNumberInput
-            :model-value="row.planned_quantity ?? undefined"
-            :min="1"
-            :precision="0"
-            :controls="false"
-            :disabled="disabled"
-            :aria-label="`切出件数 ${$index + 1}`"
-            @update:model-value="update($index, { planned_quantity: $event })"
-        /></template>
-      </ElTableColumn>
-      <ElTableColumn label="切割尺寸" min-width="170">
-        <template #default="{ row, $index }"
-          ><ElInput
-            :model-value="row.planned_specification || ''"
-            placeholder="长 × 宽 × 厚 mm"
-            :maxlength="240"
-            :disabled="disabled"
-            :aria-label="`切割尺寸 ${$index + 1}`"
-            @update:model-value="update($index, { planned_specification: $event })"
-        /></template>
       </ElTableColumn>
       <ElTableColumn label="操作" width="70">
         <template #default="{ $index }"
@@ -230,8 +183,5 @@ watch(
 }
 .shared-dispatch-fields > .el-button {
   justify-self: start;
-}
-.shared-dispatch-fields :deep(.el-input-number) {
-  width: 100%;
 }
 </style>

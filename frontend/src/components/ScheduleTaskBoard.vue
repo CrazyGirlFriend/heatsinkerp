@@ -9,6 +9,7 @@ import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import ScheduleTeamPlanning from './ScheduleTeamPlanning.vue'
 import AppTabs from './AppTabs.vue'
@@ -115,7 +116,6 @@ const taskColumns = [
 ] as const
 const selectableColumns = taskColumns.map((column) => ({ ...column, defaultVisible: true }))
 type TaskColumn = (typeof taskColumns)[number]['key']
-const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
 const columnChoices = ref<InventoryColumnChoice<TaskColumn>[]>(
   taskColumns.map((column) => ({ key: column.key, visible: true })),
 )
@@ -558,21 +558,13 @@ onBeforeUnmount(() => {
     <div v-if="management && (!fullscreen || error)" class="task-board__toolbar">
       <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
       <div class="task-board__actions">
-        <TableExportButton
-          text
-          v-if="!fullscreen"
-          :source="exportSource"
-          :context="JSON.stringify({ ...filters, sort_by: sortBy, sort_order: sortOrder })"
-          :disabled="loading || !!error"
-        />
         <slot name="view-actions" />
       </div>
     </div>
     <component
-      :is="management ? 'div' : VTableScheduleTimeline"
-      v-show="!error"
+      :is="management ? WorkspaceDataPanel : VTableScheduleTimeline"
+      v-show="management || !error"
       class="task-board__surface"
-      :class="{ 'task-board__surface--management': management }"
       v-bind="
         management ? {} : { tasks: rows, loading, loadingMore, hasMore, loadError: moreError }
       "
@@ -588,8 +580,6 @@ onBeforeUnmount(() => {
         :placeholder="management ? '搜索流水号、任务或批次号' : '搜索流水号或批次号，支持多个'"
         :maxlength="4096"
         refresh-label="刷新任务排期"
-        :columns="management"
-        @columns="columnSettings?.open($event)"
         @search="search"
         @refresh="load()"
       >
@@ -711,15 +701,20 @@ onBeforeUnmount(() => {
               />
             </div> </FilterDialog
         ></template>
-        <template v-if="management" #tools>
+        <template v-if="management" #query-actions>
           <InventoryColumnSettings
-            ref="columnSettings"
             :storage-key="columnStorageKey"
             :columns="selectableColumns"
-            :show-trigger="false"
             description="勾选显示列，上下移动调整顺序；操作列固定在右侧。"
             choices-label="调度排期可选列"
             @change="columnChoices = $event"
+          />
+        </template>
+        <template v-if="management" #tools>
+          <TableExportButton
+            :source="exportSource"
+            :context="JSON.stringify({ ...filters, sort_by: sortBy, sort_order: sortOrder })"
+            :disabled="loading || !!error"
           />
         </template>
         <template #primary-actions
@@ -739,119 +734,127 @@ onBeforeUnmount(() => {
       <template v-if="!management" #load-status>
         已显示 {{ rows.length }} / {{ total }} 条
       </template>
+      <template v-if="management">
+        <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
+        <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
+        <StatePanel v-if="error" state="error" :description="error" @retry="load" />
+        <WorkspaceTable
+          columns-key="ScheduleTaskBoard-1"
+          :column-settings="false"
+          v-else
+          :data="rows"
+          :loading="loading"
+          class="dispatch-task-table"
+          aria-label="调度排期列表"
+          row-key="id"
+          :column-query="tableQuery.controller.value"
+        >
+          <ElTableColumn
+            v-for="column in visibleColumns"
+            :key="column.key"
+            :label="column.label"
+            :prop="column.key"
+            :min-width="column.width"
+            :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
+            :align="column.key === 'quantity' ? 'right' : 'left'"
+            :show-overflow-tooltip="column.key !== 'team_planning'"
+          >
+            <template #default="{ row }">
+              <ElButton
+                v-if="column.key === 'serial_no'"
+                link
+                type="primary"
+                @click="openTask(asTask(row))"
+                >{{ row.serial_no }}</ElButton
+              >
+              <template v-else-if="column.key === 'quantity'">{{
+                formatAmount(taskQuantity(row))
+              }}</template>
+              <template v-else-if="column.key === 'delivery_batches'">{{
+                row.delivery_batches?.length || 1
+              }}</template>
+              <template v-else-if="column.key === 'final_due_at' || column.key === 'created_at'">{{
+                formatDateTime(row[column.key])
+              }}</template>
+              <ScheduleShipmentProgress
+                v-else-if="column.key === 'shipped_quantity'"
+                :shipped="row.shipped_quantity"
+                :target="row.order_quantity ?? taskQuantity(row)"
+                :status="row.shipment_status"
+              />
+              <ElTag
+                v-else-if="column.key === 'order_completed'"
+                :type="row.order_completed ? 'success' : 'info'"
+                >{{ row.order_completed ? '已完成' : '未完成' }}</ElTag
+              >
+              <ElTag
+                v-else-if="column.key === 'order_overdue'"
+                :type="row.order_overdue ? 'danger' : 'info'"
+                >{{ row.order_overdue ? '已逾期' : '未逾期' }}</ElTag
+              >
+              <ScheduleTeamPlanning v-else-if="column.key === 'team_planning'" :nodes="row.nodes" />
+              <span v-else-if="column.key === 'business_people'" class="schedule-people">
+                <template v-if="row.business_people?.length"
+                  ><PersonName
+                    v-for="person in row.business_people"
+                    :key="person.id"
+                    :name="person.name"
+                /></template>
+                <PersonName v-else :name="row.business_person_name" />
+              </span>
+              <ElTag
+                v-else-if="column.key === 'locked'"
+                :type="row.locked_at ? 'warning' : 'info'"
+                >{{ row.locked_at ? '已锁定' : '未锁定' }}</ElTag
+              >
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            v-if="canManage"
+            label="操作"
+            width="264"
+            fixed="right"
+            :show-overflow-tooltip="false"
+          >
+            <template #default="{ row }">
+              <div class="dispatch-task-actions">
+                <ElButton
+                  link
+                  type="primary"
+                  :disabled="!!row.locked_at || actionBusy"
+                  @click="editTask(asTask(row))"
+                  >修改交期</ElButton
+                >
+                <ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
+                  row.locked_at ? '解锁' : '锁定'
+                }}</ElButton>
+                <ElButton
+                  link
+                  type="danger"
+                  :disabled="!!row.locked_at || actionBusy"
+                  @click="deleteTarget = asTask(row)"
+                  >删除</ElButton
+                >
+              </div>
+            </template>
+          </ElTableColumn>
+        </WorkspaceTable>
+        <WorkspacePagination
+          :current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          @current-change="paginate"
+          @size-change="resizePage"
+          >共 {{ total }} 项任务</WorkspacePagination
+        >
+      </template>
     </component>
-    <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
-    <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
-    <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-    <WorkspaceTable
-      columns-key="ScheduleTaskBoard-1"
-      :column-settings="false"
-      v-else-if="management"
-      :data="rows"
-      border
-      class="dispatch-task-table"
-      aria-label="调度排期列表"
-      row-key="id"
-      :column-query="tableQuery.controller.value"
-    >
-      <ElTableColumn
-        v-for="column in visibleColumns"
-        :key="column.key"
-        :label="column.label"
-        :prop="column.key"
-        :min-width="column.width"
-        :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
-        :align="column.key === 'quantity' ? 'right' : 'left'"
-        :show-overflow-tooltip="column.key !== 'team_planning'"
-      >
-        <template #default="{ row }">
-          <ElButton
-            v-if="column.key === 'serial_no'"
-            link
-            type="primary"
-            @click="openTask(asTask(row))"
-            >{{ row.serial_no }}</ElButton
-          >
-          <template v-else-if="column.key === 'quantity'">{{
-            formatAmount(taskQuantity(row))
-          }}</template>
-          <template v-else-if="column.key === 'delivery_batches'">{{
-            row.delivery_batches?.length || 1
-          }}</template>
-          <template v-else-if="column.key === 'final_due_at' || column.key === 'created_at'">{{
-            formatDateTime(row[column.key])
-          }}</template>
-          <ScheduleShipmentProgress
-            v-else-if="column.key === 'shipped_quantity'"
-            :shipped="row.shipped_quantity"
-            :target="row.order_quantity ?? taskQuantity(row)"
-            :status="row.shipment_status"
-          />
-          <ElTag
-            v-else-if="column.key === 'order_completed'"
-            :type="row.order_completed ? 'success' : 'info'"
-            >{{ row.order_completed ? '已完成' : '未完成' }}</ElTag
-          >
-          <ElTag
-            v-else-if="column.key === 'order_overdue'"
-            :type="row.order_overdue ? 'danger' : 'info'"
-            >{{ row.order_overdue ? '已逾期' : '未逾期' }}</ElTag
-          >
-          <ScheduleTeamPlanning v-else-if="column.key === 'team_planning'" :nodes="row.nodes" />
-          <span v-else-if="column.key === 'business_people'" class="schedule-people">
-            <template v-if="row.business_people?.length"
-              ><PersonName
-                v-for="person in row.business_people"
-                :key="person.id"
-                :name="person.name"
-            /></template>
-            <PersonName v-else :name="row.business_person_name" />
-          </span>
-          <ElTag v-else-if="column.key === 'locked'" :type="row.locked_at ? 'warning' : 'info'">{{
-            row.locked_at ? '已锁定' : '未锁定'
-          }}</ElTag>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn
-        v-if="canManage"
-        label="操作"
-        width="264"
-        fixed="right"
-        :show-overflow-tooltip="false"
-      >
-        <template #default="{ row }">
-          <div class="dispatch-task-actions">
-            <ElButton
-              link
-              type="primary"
-              :disabled="!!row.locked_at || actionBusy"
-              @click="editTask(asTask(row))"
-              >修改交期</ElButton
-            >
-            <ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
-              row.locked_at ? '解锁' : '锁定'
-            }}</ElButton>
-            <ElButton
-              link
-              type="danger"
-              :disabled="!!row.locked_at || actionBusy"
-              @click="deleteTarget = asTask(row)"
-              >删除</ElButton
-            >
-          </div>
-        </template>
-      </ElTableColumn>
-    </WorkspaceTable>
-    <WorkspacePagination
-      v-if="management"
-      :current-page="page"
-      :page-size="pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50]"
-      @current-change="paginate"
-      @size-change="resizePage"
-      >共 {{ total }} 项任务</WorkspacePagination
-    >
+    <template v-if="!management">
+      <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
+      <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
+      <StatePanel v-if="error" state="error" :description="error" @retry="load" />
+    </template>
     <AppDialog
       :model-value="!!detailId"
       title="任务详情"
@@ -1066,10 +1069,6 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.task-board__surface--management {
-  flex: 0 0 auto;
-}
-
 .schedule-people {
   display: inline-flex;
   align-items: center;
@@ -1082,7 +1081,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;

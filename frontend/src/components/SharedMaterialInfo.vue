@@ -6,6 +6,14 @@ import { inventoryAmount } from '@/types/teamInventory'
 import type { SharedMaterialFields } from '@/types/sharedMaterial'
 const props = defineProps<{ item: SharedMaterialFields & { serial_no?: string } }>()
 const members = computed(() => props.item.shared_serials || [])
+const hasPlan = computed(() =>
+  members.value.some(
+    (member) =>
+      member.planned_weight != null ||
+      member.planned_quantity != null ||
+      member.planned_specification,
+  ),
+)
 const plannedWeight = computed(() =>
   members.value.length && members.value.every((member) => member.planned_weight != null)
     ? members.value.reduce((sum, member) => sum + Number(member.planned_weight), 0)
@@ -25,7 +33,7 @@ const plannedQuantity = computed(() =>
   >
     <header>
       <div class="detail-section-heading">
-        <h3>共投分配计划</h3>
+        <h3>{{ hasPlan ? '共投分配计划' : '共投流水号' }}</h3>
         <span>来源 {{ item.shared_origin_batch_no || '—' }}</span>
       </div>
       <span>{{ item.shared_unallocated ? '实物尚未分配' : `本批归属 ${item.serial_no}` }}</span>
@@ -42,7 +50,7 @@ const plannedQuantity = computed(() =>
             ? 'shared-current-serial'
             : ''
       "
-      empty-text="暂无分配计划"
+      empty-text="暂无共投流水号"
     >
       <ElTableColumn label="流水号" min-width="150"
         ><template #default="{ row }"
@@ -52,17 +60,17 @@ const plannedQuantity = computed(() =>
       <ElTableColumn label="客户" min-width="100" show-overflow-tooltip
         ><template #default="{ row }">{{ row.customer_code || '—' }}</template></ElTableColumn
       >
-      <ElTableColumn label="计划用料 (kg)" min-width="130"
+      <ElTableColumn v-if="hasPlan" label="计划用料 (kg)" min-width="130"
         ><template #default="{ row }">{{
           row.planned_weight == null ? '未登记' : inventoryAmount(row.planned_weight)
         }}</template></ElTableColumn
       >
-      <ElTableColumn label="计划切出 (件)" min-width="130"
+      <ElTableColumn v-if="hasPlan" label="计划切出 (件)" min-width="130"
         ><template #default="{ row }">{{
           row.planned_quantity == null ? '未登记' : inventoryAmount(row.planned_quantity)
         }}</template></ElTableColumn
       >
-      <ElTableColumn label="计划切割尺寸" min-width="185" show-overflow-tooltip
+      <ElTableColumn v-if="hasPlan" label="计划切割尺寸" min-width="185" show-overflow-tooltip
         ><template #default="{ row }">{{
           row.planned_specification || '未登记'
         }}</template></ElTableColumn
@@ -79,7 +87,7 @@ const plannedQuantity = computed(() =>
         ><template #default="{ row }">{{ row.delivery_quantity ?? '—' }}</template></ElTableColumn
       >
     </ElTable>
-    <footer>
+    <footer v-if="hasPlan">
       <span class="shared-plan-total"
         >计划合计
         <b>{{ plannedWeight == null ? '未登记' : `${inventoryAmount(plannedWeight)} kg` }}</b

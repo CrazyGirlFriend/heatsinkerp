@@ -12,7 +12,14 @@ afterEach(() => {
 })
 
 it('keeps the current operation fixed while reading previous, next and original requirements', async () => {
-  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({ ...routeFixture, state: 'published' })
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({
+    ...routeFixture,
+    state: 'published',
+    steps: routeFixture.steps.map((step, index) => ({
+      ...step,
+      team_name: ['库房', '研磨', '研磨', '检验'][index],
+    })),
+  })
   wrapper = mount(ProcessExecutionPanel, {
     props: {
       serial: 'S-001',
@@ -44,6 +51,14 @@ it('keeps the current operation fixed while reading previous, next and original 
   })
   await flushPromises()
   expect(wrapper.get('.is-current').text()).toContain('精磨')
+  const names = wrapper.findAll('.execution-node-name')
+  expect(names.map((node) => node.element.firstChild?.textContent?.trim())).toEqual([
+    '库房',
+    '研磨',
+    '研磨',
+    '检验',
+  ])
+  expect(names[1]!.get('small').text()).toBe('粗磨')
   await wrapper.findAll('.execution-nodes button')[1]!.trigger('click')
   expect(wrapper.get('.execution-requirements').text()).toContain('禁止摞放')
   expect(wrapper.get('.is-current').text()).toContain('精磨')

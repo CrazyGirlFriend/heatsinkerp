@@ -200,10 +200,13 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
   })
-  it('blocks a normal handoff with missing dimensions and opens its dimension field', async () => {
+  it('shows missing dimensions immediately and blocks a normal handoff until they are filled', async () => {
     const lot = source()
     lot.transfer.transfer_specification = null
     await render('dispatch', [lot])
+    expect(
+      wrapper.get('.source-specification-field button[aria-expanded]').attributes('aria-expanded'),
+    ).toBe('true')
     await destination()
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
@@ -1744,7 +1747,7 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
   )
 })
 
-it('creates joint production only on a warehouse transfer and sends one physical quantity with two route bindings', async () => {
+it('dispatches joint material with actual stock quantities and route bindings without requiring cutting plans', async () => {
   const { routeFixture } = await import('@/testFixtures/processRoute')
   const { orderFixture } = await import('@/testFixtures/processRouteOrder')
   const SharedFields = (await import('./SharedDispatchFields.vue')).default
@@ -1775,20 +1778,8 @@ it('creates joint production only on a warehouse transfer and sends one physical
     .trigger('click')
   await flushPromises()
   const fields = wrapper.getComponent(SharedFields)
-  fields.vm.$emit('update:modelValue', [
-    {
-      serial_no: 'ORDER-A',
-      planned_weight: 6,
-      planned_quantity: 60,
-      planned_specification: '20 × 10 × 2 mm',
-    },
-    {
-      serial_no: 'ORDER-B',
-      planned_weight: 4,
-      planned_quantity: 40,
-      planned_specification: '10 × 10 × 2 mm',
-    },
-  ])
+  expect(fields.text()).not.toMatch(/计划用料|切出件数|切割尺寸/)
+  fields.vm.$emit('update:modelValue', [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }])
   await new Promise((resolve) => setTimeout(resolve, 350))
   await flushPromises()
   await submit()
@@ -1805,6 +1796,11 @@ it('creates joint production only on a warehouse transfer and sends one physical
   })
   expect(body.lines[0]).not.toHaveProperty('serial_no')
   expect(body.lines[0]).not.toHaveProperty('production_schedule_id')
+  for (const member of body.lines[0]!.shared_serials!) {
+    expect(member).not.toHaveProperty('planned_weight')
+    expect(member).not.toHaveProperty('planned_quantity')
+    expect(member).not.toHaveProperty('planned_specification')
+  }
 })
 
 it('does not show joint production for downstream stock or external returns', async () => {

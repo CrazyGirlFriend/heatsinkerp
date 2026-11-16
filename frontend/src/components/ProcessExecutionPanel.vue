@@ -125,9 +125,9 @@ onBeforeUnmount(() => ++generation)
             >
               <span class="execution-node-number">{{ step.sequence_no }}</span>
               <span class="execution-node-name"
-                >{{ step.name
+                >{{ step.team_name || step.name
                 }}<small v-if="step.team_name && step.team_name !== step.name">{{
-                  step.team_name
+                  step.name
                 }}</small></span
               >
               <span v-if="step.index === context.step_index" class="execution-current">{{
@@ -144,7 +144,7 @@ onBeforeUnmount(() => ++generation)
           class="execution-requirements"
         >
           <header>
-            <strong>{{ selectedStep.name }}</strong
+            <strong>{{ selectedStep.team_name || selectedStep.name }}</strong
             ><span>计划 {{ selectedStep.planned_quantity || '—' }}</span>
           </header>
           <p>{{ selectedStep.instructions || '未填写工艺要求' }}</p>

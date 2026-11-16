@@ -686,7 +686,7 @@ watch(
       originalSpecification:
         source.current_specification ?? source.transfer.transfer_specification ?? '',
       specificationValid: true,
-      specificationOpen: false,
+      specificationOpen: !(source.current_specification ?? source.transfer.transfer_specification),
     }))
     lines.value.forEach((line, index) => {
       line.percent = line.source.transfer.sludge_content_percent ?? undefined
@@ -1250,7 +1250,11 @@ watch(
             <header>
               <div class="source-identity">
                 <span class="source-index">{{ String(index + 1).padStart(2, '0') }}</span>
-                <strong>{{ sharedSerialLabel(line.source.transfer) }}</strong
+                <strong>{{
+                  line.source.transfer.serial_no || line.source.transfer.shared_unallocated
+                    ? sharedSerialLabel(line.source.transfer)
+                    : line.source.transfer.batch_no
+                }}</strong
                 ><span class="source-material">{{
                   line.source.transfer.material_name || '未填写材质'
                 }}</span>
@@ -1263,7 +1267,10 @@ watch(
                   :material-type="line.source.transfer.material_type"
                 />
                 <div class="source-meta">
-                  <span>上一批次 {{ line.source.transfer.batch_no }}</span>
+                  <span
+                    v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
+                    >批次 {{ line.source.transfer.batch_no }}</span
+                  >
                   <span>来自 {{ line.source.transfer.source_team.name }}</span
                   ><span v-if="line.source.transfer.purpose_name"
                     >业务 {{ line.source.transfer.purpose_name }}</span
@@ -1282,26 +1289,6 @@ watch(
                   :quantity="dispatchableAmounts(line.latest).quantity"
                   :weight="dispatchableAmounts(line.latest).weight"
                 />
-              </div>
-              <div v-if="needsRoute(line)" class="dispatch-route-choice">
-                <ElFormItem
-                  v-if="!line.source.transfer.serial_no"
-                  label="流水号"
-                  :error="lineError(line, 'route')"
-                  required
-                >
-                  <MaterialInput
-                    v-model="line.serialNo"
-                    field="serial_no"
-                    aria-label="出库流水号"
-                    label="出库流水号"
-                    :disabled="busy"
-                    placeholder="输入流水号"
-                  />
-                </ElFormItem>
-                <span v-if="routeProblem(line)" class="field-error" role="status">{{
-                  routeProblem(line)
-                }}</span>
               </div>
               <div class="source-actions">
                 <ElButton
@@ -1377,6 +1364,30 @@ watch(
                 </AppPopover>
               </div>
             </header>
+            <div v-if="needsRoute(line)" class="dispatch-route-choice dialog-form-grid">
+              <ElFormItem
+                v-if="!line.source.transfer.serial_no"
+                label="流水号"
+                :error="lineError(line, 'route')"
+                required
+              >
+                <MaterialInput
+                  v-model="line.serialNo"
+                  field="serial_no"
+                  aria-label="出库流水号"
+                  label="出库流水号"
+                  :disabled="busy"
+                  placeholder="输入或选择流水号"
+                />
+              </ElFormItem>
+              <p
+                v-if="line.serialNo.trim() && routeProblem(line)"
+                class="field-error"
+                role="status"
+              >
+                {{ routeProblem(line) }}
+              </p>
+            </div>
             <template v-if="line.shared">
               <SharedDispatchFields
                 v-model="line.sharedMembers"
@@ -1721,7 +1732,7 @@ watch(
                     line.specification || (external ? '选填' : '必填')
                   }}</span>
                   <span class="source-disclosure-action">{{
-                    line.specificationOpen ? '收起' : '编辑'
+                    line.specificationOpen ? '收起' : line.specification ? '编辑' : '填写'
                   }}</span>
                 </template>
                 <ElFormItem label-width="0" :error="lineError(line, 'specification')">
@@ -1939,14 +1950,17 @@ watch(
   margin: 0;
 }
 .dispatch-context-fields {
-  grid-template-columns: minmax(160px, 200px) repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
-.external-destination-field {
-  grid-column: span 2;
+.batch-purpose-field {
+  grid-column: 1 / -1;
 }
 .dispatch-context-fields :deep(.team-employee) {
   width: 100%;
+}
+.dispatch-context-fields :deep(.processing-person-input) {
+  max-width: none;
 }
 .processing-count {
   padding: 12px 0;
@@ -1967,20 +1981,15 @@ watch(
 .source-line {
   --el-component-size: 36px;
   min-width: 0;
-  padding: 14px 16px 6px;
-  border: 1px solid var(--wm-border, #fff);
-  border-radius: 16px;
-  background: var(--wm-muted-surface, #fffffff5);
-  box-shadow:
-    0 0 0 1px #3760480e,
-    0 2px 5px #233f2c05;
+  padding: 16px;
+  border: 1px solid var(--wm-border, var(--line));
+  border-radius: 12px;
+  background: var(--wm-surface, var(--surface));
 }
-.source-line :deep(.el-input__wrapper),
-.source-line :deep(.el-select__wrapper) {
-  --surface: rgb(255 255 255 / 96%);
-}
-.source-line header {
-  margin-bottom: 14px;
+.source-line > header {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line-light);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1996,7 +2005,7 @@ watch(
   min-width: 0;
 }
 .source-identity {
-  flex: 1;
+  flex: 1 1 260px;
   column-gap: 10px;
 }
 .source-balance,
@@ -2031,8 +2040,7 @@ watch(
   gap: 10px;
 }
 .source-actions {
-  border-left: 1px solid var(--line);
-  padding-left: 12px;
+  gap: 8px;
 }
 .source-actions :deep(.el-button) {
   margin-left: 0;
@@ -2066,7 +2074,10 @@ watch(
   font-size: 13px;
 }
 .source-meta {
-  display: contents;
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 4px 12px;
   font-size: 11px;
   color: var(--wm-muted, #7b8981);
 }
@@ -2076,16 +2087,27 @@ watch(
   overflow-wrap: anywhere;
 }
 .source-inputs {
-  grid-template-columns: 144px 208px repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 .source-inputs.source-inputs-weight-only {
-  grid-template-columns: 208px repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .source-inputs.source-inputs-sludge {
-  grid-template-columns: 208px 144px minmax(120px, 0.8fr) minmax(128px, 0.8fr) minmax(180px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dispatch-route-choice {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+.dispatch-route-choice .field-error {
+  margin: 0;
+  padding-block: 8px;
 }
 .source-inputs :deep(.el-form-item),
+.dispatch-route-choice :deep(.el-form-item),
 .dispatch-context-fields :deep(.el-form-item) {
   margin-bottom: 0;
   flex-direction: column;
@@ -2108,10 +2130,18 @@ watch(
   text-align: left;
 }
 .source-quantity-field :deep(.el-input-number) {
-  max-width: 144px;
+  width: 100%;
+  max-width: none;
 }
 .source-weight-field :deep(.weight-input) {
-  max-width: 208px;
+  width: 100%;
+  max-width: none;
+}
+.source-inputs .dialog-readonly {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .source-weight-field :deep(.weight-input select),
 .source-inputs-sludge :deep(.weight-input select) {
@@ -2202,60 +2232,25 @@ watch(
 .action-footer .el-button--primary {
   min-width: 108px;
 }
-@media (max-width: 1200px), (max-height: 800px) {
-  .source-line header {
-    row-gap: 6px;
-  }
-  .source-lines {
-    gap: 10px;
-  }
-}
-@media (max-width: 1100px) {
+@container form-fields (max-width: 860px) {
   .source-identity {
     flex-basis: 100%;
   }
   .source-balance {
     margin-right: auto;
   }
-  .source-inputs {
-    grid-template-columns: 128px 208px repeat(2, minmax(0, 1fr));
-    column-gap: 12px;
-  }
-  .source-inputs.source-inputs-sludge {
-    grid-template-columns: 208px 144px minmax(0, 1fr);
-  }
-  .source-inputs-sludge .source-material-type-field {
-    grid-column: 1;
-  }
-  .source-inputs-sludge .source-purpose-field {
-    grid-column: 2 / -1;
-  }
-}
-@media (max-width: 900px) {
-  .dispatch-context-fields,
   .source-inputs,
   .source-inputs.source-inputs-weight-only,
   .source-inputs.source-inputs-sludge {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .source-inputs-sludge .source-material-type-field {
-    grid-column: auto;
-  }
-  .source-inputs-sludge .source-purpose-field {
-    grid-column: 1 / -1;
-  }
-  .external-destination-field {
-    grid-column: auto;
-  }
-  .source-balance {
-    margin-left: auto;
-  }
 }
-@media (max-width: 640px) {
+@container form-fields (max-width: 480px) {
   .source-line {
     padding-inline: 12px;
   }
   .dispatch-context-fields,
+  .dispatch-route-choice,
   .source-inputs,
   .source-inputs.source-inputs-weight-only,
   .source-inputs.source-inputs-sludge {
@@ -2266,7 +2261,10 @@ watch(
   }
   .source-balance {
     margin-left: 0;
+    flex-basis: 100%;
   }
+}
+@media (max-width: 640px) {
   .action-footer > div:last-child {
     margin-left: auto;
   }
