@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import AppDisclosure from './AppDisclosure.vue'
 import AppDetailTable from './AppDetailTable.vue'
-import ReworkRoundsTable from './ReworkRoundsTable.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
@@ -850,24 +849,10 @@ onMounted(async () => {
                 <td>{{ draft.rework_request.round }}</td>
               </tr>
               <tr>
-                <th scope="row">问题来源</th>
-                <td>
-                  {{
-                    draft.rework_request.inspection_id
-                      ? draft.rework_request.inspection_kind === 'patrol'
-                        ? '巡检'
-                        : '检验'
-                      : draft.rework_request.requesting_team_id
-                        ? '班组反馈'
-                        : '来源未记录'
-                  }}<template v-if="draft.rework_request.inspection_id">
-                    #{{ draft.rework_request.inspection_id }}</template
-                  >
-                </td>
                 <th scope="row">物料所在班组</th>
                 <td>{{ draft.rework_request.team_name }}</td>
                 <th scope="row">原加工记录</th>
-                <td>#{{ draft.rework_request.rework_of_id }}</td>
+                <td colspan="3">#{{ draft.rework_request.rework_of_id }}</td>
               </tr>
               <tr>
                 <th scope="row">返工批次</th>
@@ -892,11 +877,6 @@ onMounted(async () => {
             </tbody>
           </AppDetailTable>
         </div>
-        <ReworkRoundsTable
-          v-if="draft.rework_request && draft.id"
-          :route-id="draft.id"
-          :version="draft.version"
-        />
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
           <div
             v-if="!readonly && fieldErrors.attachments"

@@ -365,8 +365,10 @@ it('carries quality problems and teams into manual rework engineering with inher
     false,
     true,
   )
-  for (const value of ['返工问题', '尺寸超差', '厚度实测2.60mm', '巡检 #19'])
+  for (const value of ['返工问题', '尺寸超差', '厚度实测2.60mm'])
     expect(wrapper.get('.route-rework-context').text()).toContain(value)
+  expect(wrapper.get('.route-rework-context').text()).not.toContain('问题来源')
+  expect(wrapper.get('.route-rework-context').text()).not.toContain('巡检')
   expect(
     wrapper.findAll('[aria-label="涉及班组"] [role="listitem"]').map((cell) => cell.text()),
   ).toEqual(['研磨', '轧制'])

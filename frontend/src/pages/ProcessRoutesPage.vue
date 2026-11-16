@@ -180,10 +180,7 @@ const filterColumns = computed(() => ({
   ]),
   ...queryColumns(
     routeKind.value === 'rework'
-      ? [
-          ['轮次', 'rework_round', 'number'],
-          ['提交班组', 'requesting_team_name'],
-        ]
+      ? [['提交班组', 'requesting_team_name']]
       : [['材质', 'material_name']],
   ),
 }))
@@ -511,7 +508,7 @@ onBeforeUnmount(() => {
                 <ElSelect v-model="draftScope" :append-to="appendTo" aria-label="返工范围筛选">
                   <ElOption value="open" label="未结束" />
                   <ElOption value="ended" label="已复检" />
-                  <ElOption value="all" label="全部轮次" />
+                  <ElOption value="all" label="全部" />
                 </ElSelect>
               </label>
               <label>
@@ -812,27 +809,6 @@ onBeforeUnmount(() => {
             }}</span></template
           ></ElTableColumn
         >
-        <ElTableColumn v-if="routeKind === 'rework'" label="问题来源" width="80" align="center">
-          <template #default="{ row }"
-            ><span
-              class="rework-source"
-              :class="{
-                'rework-source-inspection': row.rework_request?.inspection_id,
-                'route-empty':
-                  !row.rework_request?.inspection_id && !row.rework_request?.requesting_team_id,
-              }"
-              >{{
-                row.rework_request?.inspection_id
-                  ? row.rework_request.inspection_kind === 'patrol'
-                    ? '巡检'
-                    : '检验'
-                  : row.rework_request?.requesting_team_id
-                    ? '班组反馈'
-                    : '未记录'
-              }}</span
-            ></template
-          >
-        </ElTableColumn>
         <ElTableColumn v-if="routeKind === 'rework'" label="涉及班组" width="110" align="center">
           <template #default="{ row }">
             <div
@@ -1207,18 +1183,6 @@ onBeforeUnmount(() => {
   -webkit-line-clamp: 2;
   overflow: hidden;
   overflow-wrap: anywhere;
-}
-.rework-source {
-  color: var(--route-secondary);
-  font-size: 12px;
-}
-.rework-source-inspection {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 7px;
-  border: 1px solid var(--wm-border, #dce3df);
-  border-radius: 4px;
-  background: var(--wm-muted-surface, #f5f7f6);
 }
 .rework-team-list {
   display: flex;

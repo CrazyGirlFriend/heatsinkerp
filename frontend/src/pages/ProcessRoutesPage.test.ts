@@ -642,8 +642,9 @@ it('applies rework toolbar filters together across pages and resets them without
     .find((select) => select.vm.$attrs['aria-label'] === '工艺状态筛选')!
     .vm.$emit('update:modelValue', 'published')
   await wrapper.get('[aria-label="提交班组筛选"]').setValue('研磨')
-  await wrapper.get('[aria-label="轮次最小值"]').setValue('2')
-  await wrapper.get('[aria-label="轮次最大值"]').setValue('3')
+  await wrapper.get('[aria-label="工艺人员筛选"]').setValue('张工')
+  expect(wrapper.find('[aria-label="轮次最小值"]').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="轮次最大值"]').exists()).toBe(false)
   expect(processRouteApi.list).toHaveBeenLastCalledWith(
     '',
     3,
@@ -660,7 +661,7 @@ it('applies rework toolbar filters together across pages and resets them without
   expect(request.slice(0, 7)).toEqual(['861113', 1, 'published', 'desc', 20, 'rework', 'all'])
   expect(JSON.parse(request[7]!).filters).toEqual([
     { field: 'requesting_team_name', kind: 'text', value: '研磨', end: '' },
-    { field: 'rework_round', kind: 'number', value: '2', end: '3' },
+    { field: 'engineering_employee_name', kind: 'text', value: '张工', end: '' },
   ])
   expect(dialog.props()).toMatchObject({ modelValue: false, count: 3 })
   await dialog.get('.filter-dialog-trigger').trigger('click')
@@ -769,8 +770,8 @@ it('separates pending rework with visible problems and teams, and opens manual a
     'open',
     undefined,
   )
-  for (const text of ['尺寸超差', '巡检', '未填写', '待指定'])
-    expect(wrapper.text()).toContain(text)
+  for (const text of ['尺寸超差', '未填写', '待指定']) expect(wrapper.text()).toContain(text)
+  expect(wrapper.text()).not.toContain('巡检')
   expect(wrapper.get('.route-list .el-table__body tbody tr td').text()).toBe(pending.serial_nos[0])
   expect(wrapper.get('.route-list .el-table__body tbody tr td:nth-child(4)').text()).toBe('未填写')
   expect(wrapper.find('.route-step-node').exists()).toBe(false)
@@ -794,7 +795,6 @@ it('separates pending rework with visible problems and teams, and opens manual a
     '返工概要',
     '轮次',
     '提交班组',
-    '问题来源',
     '涉及班组',
     '执行班组',
     '工艺人员',
