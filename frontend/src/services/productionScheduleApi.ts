@@ -147,6 +147,7 @@ export const productionScheduleApi = {
       business_person_id?: number | null
       business_person_ids?: number[]
       delivery_batches?: CustomerDeliveryBatch[]
+      team_plans?: import('@/types/productionSchedule').TaskTeamPlanWrite[]
     },
   ) => request<ScheduleTask>(`/production-schedules/tasks/${id}`, { method: 'PATCH', body }),
   taskRouteOptions: (serial_no: string) =>

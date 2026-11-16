@@ -61,6 +61,10 @@ const multipleBatches = computed(() => batches.value.length > 1)
         >{{ scheduleStatusLabels[node.handover_status || node.status] }}</ElTag
       >
       <dl>
+        <template v-if="node.process_step_names?.length">
+          <dt>工序</dt>
+          <dd>{{ node.process_step_names.join(' → ') }}</dd>
+        </template>
         <template v-if="!multipleBatches">
           <dt>{{ shipment ? '约定发货' : '约定转交' }}</dt>
           <dd>{{ plannedDueLabel(node) }}</dd>

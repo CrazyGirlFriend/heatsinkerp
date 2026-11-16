@@ -191,6 +191,9 @@ def summaries(db, ids, *, now=None):
             .where(Plan.id.in_(ids))
         )
     }
+    from .schedule_routes import operation_names
+
+    operations = operation_names(db, [row[0] for row in rows])
     result = {}
     for row in rows:
         plan = row[0]
@@ -213,6 +216,7 @@ def summaries(db, ids, *, now=None):
             "due_at": iso(plan.due_at),
             "planned_start_at": iso(schedule_batches.handover_start(plan, predecessors)),
             "team_name": values["team_name"],
+            "process_step_names": operations.get(plan.id, []),
             "assessment_enabled": True,
             "initial_due_at": iso(plan.initial_due_at),
             "batches": batch_plans.get(plan.id, []),

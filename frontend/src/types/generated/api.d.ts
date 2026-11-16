@@ -8031,6 +8031,8 @@ export interface components {
       process_route_id: number | null
       /** Process Step Index */
       process_step_index: number | null
+      /** Process Step Names */
+      process_step_names?: string[]
       /** Processed Quantity */
       processed_quantity: number
       /** Quality Held */
@@ -8343,6 +8345,8 @@ export interface components {
       process_route_id: number | null
       /** Process Step Index */
       process_step_index: number | null
+      /** Process Step Names */
+      process_step_names?: string[]
       /** Processed Quantity */
       processed_quantity: number
       /** Quality Held */
@@ -8730,6 +8734,8 @@ export interface components {
       notes?: string | null
       /** Planned Quantity */
       planned_quantity?: number | null
+      /** Team Plans */
+      team_plans?: components['schemas']['TaskTeamPlan'][]
       /** Title */
       title: string
     }
@@ -9553,6 +9559,20 @@ export interface components {
       expected_version: number
       /** Locked */
       locked: boolean
+    }
+    /** TaskTeamPlan */
+    TaskTeamPlan: {
+      /** Batches */
+      batches: components['schemas']['BatchWrite'][]
+      /**
+       * Expected Version
+       * @default 1
+       */
+      expected_version: number
+      /** Process Step Index */
+      process_step_index?: number | null
+      /** Schedule Id */
+      schedule_id?: number | null
     }
     /** TeamCreate */
     TeamCreate: {

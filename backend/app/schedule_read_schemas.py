@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import JsonValue
+from pydantic import Field, JsonValue
 
 from .process_route_read_schemas import RouteOrderDocumentResponse, RouteStepResponse
 from .read_schemas import PageResponse, ReadResponse
@@ -126,6 +126,7 @@ class ScheduleResponse(OrderFulfillmentResponse):
     task_title: str
     process_route_id: int | None
     process_step_index: int | None
+    process_step_names: list[str] = Field(default_factory=list)
     serial_no: str
     team_id: int
     next_team_id: int | None

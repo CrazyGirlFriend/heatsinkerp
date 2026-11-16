@@ -1,4 +1,4 @@
-"""Dispatch defines customer dates; route teams submit execution plans for approval."""
+"""Dispatch defines customer dates and each route team's handover plan."""
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -11,7 +11,12 @@ from sqlalchemy import select
 from . import production_schedules as schedules
 from .models import ProductionSchedule as Plan
 from .models import Team, utcnow
-from .production_schedule_schemas import CustomerBatch, ScheduleNode, ScheduleTaskCreate
+from .production_schedule_schemas import (
+    CustomerBatch,
+    ScheduleNode,
+    ScheduleTaskCreate,
+    TaskTeamPlan,
+)
 from .schedule_permissions import require_unlocked
 
 
@@ -24,6 +29,7 @@ class DispatchTaskCreate(BaseModel):
     final_due_at: datetime
     planned_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647, strict=True)
     delivery_batches: list[CustomerBatch] = Field(default_factory=list, max_length=100)
+    team_plans: list[TaskTeamPlan] | None = Field(default=None, min_length=1, max_length=50)
     business_person_ids: list[int] = Field(min_length=1, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -116,6 +122,21 @@ def build_task(db, payload):
     if not nodes:
         raise HTTPException(422, "工艺中没有该流水号的执行班组")
     planned_quantity = payload.planned_quantity or nodes[-1]["target_quantity"]
+    if payload.team_plans is not None:
+        plans = {p.process_step_index: p for p in payload.team_plans}
+        if len(plans) != len(payload.team_plans) or set(plans) != {
+            n["process_step_index"] for n in nodes
+        }:
+            raise HTTPException(422, "请按当前工艺填写每个班组的排期")
+        for node in nodes:
+            plan = plans[node["process_step_index"]]
+            if plan.schedule_id or any(b.id or b.upstream_batch_ids for b in plan.batches):
+                raise HTTPException(422, "新建排期不能引用已有班组或供料批次")
+            if any(b.target_quantity is None for b in plan.batches):
+                raise HTTPException(422, "请填写每个班组各批的计划件数")
+            node["target_quantity"] = sum(b.target_quantity for b in plan.batches)
+            node["target_weight"] = sum(b.target_weight or 0 for b in plan.batches) or None
+            node["due_at"] = max(b.due_at for b in plan.batches)
     batches = payload.delivery_batches or [
         CustomerBatch.model_construct(
             batch_number=1,

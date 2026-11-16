@@ -38,8 +38,16 @@ def dispatcher(client):
     return _leader(client, "dispatch-leader", response.json()["id"])[1]
 
 
-def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00"):
-    route = published(client, warehouse)
+def create(
+    client,
+    warehouse,
+    dispatcher,
+    final_due="2026-12-30T16:00:00+08:00",
+    *,
+    team_plans=False,
+    same_team=False,
+):
+    route = published(client, warehouse, same_team)
     people = [
         client.post(URL + "/business-people", json={"name": name}).json()["id"]
         for name in ["业务甲", "业务乙"]
@@ -56,11 +64,157 @@ def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00")
             dict(batch_number=2, target_quantity=60, due_at="2026-12-30T16:00:00+08:00"),
         ],
     )
-    assert submit(client, body).status_code == 403
+    if team_plans:
+        steps = []
+        for index, step in enumerate(route["steps"]):
+            if steps and steps[-1][1]["team_id"] == step["team_id"]:
+                steps[-1] = (index, step)
+            else:
+                steps.append((index, step))
+        body["team_plans"] = [
+            dict(
+                process_step_index=index,
+                batches=[
+                    dict(
+                        batch_number=1,
+                        target_quantity=40,
+                        due_at=f"2026-12-{20 + i}T08:00:00+08:00",
+                    ),
+                    dict(
+                        batch_number=2,
+                        target_quantity=60,
+                        due_at=f"2026-12-{20 + i}T16:00:00+08:00",
+                    ),
+                ],
+            )
+            for i, (index, _) in enumerate(steps)
+        ]
+    assert submit(client, body, warehouse["headers"]).status_code == 403
     response = submit(client, body, dispatcher)
     assert response.status_code == 201, response.text
     assert submit(client, body, dispatcher).json()["id"] == response.json()["id"]
     return response.json(), people
+
+
+def test_dispatch_creates_all_team_batches_in_one_form(client, warehouse, dispatcher):
+    task, _ = create(client, warehouse, dispatcher, team_plans=True)
+    assert len(task["nodes"]) == 3
+    for index, node in enumerate(task["nodes"]):
+        assert node["planning_state"] == "confirmed"
+        assert node["target_quantity"] == 100
+        assert [b["target_quantity"] for b in node["batches"]] == [40, 60]
+        assert node["due_at"] == f"2026-12-{20 + index}T08:00:00+00:00"
+        response = client.get(f"{URL}/{node['id']}", headers=warehouse["other_headers"])
+        assert response.status_code == 200
+        assert response.json()["batches"] == node["batches"]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
+
+
+def test_existing_handover_shows_all_local_operations_without_merging_later_visits(
+    client, warehouse, dispatcher
+):
+    task, _ = create(client, warehouse, dispatcher, team_plans=True, same_team=True)
+    nodes = task["nodes"]
+    assert [n["process_step_index"] for n in nodes] == [0, 2, 3]
+    assert [n["process_step_names"] for n in nodes] == [
+        ["中转库"],
+        ["轧板", "二次轧板"],
+        ["库房成品入库"],
+    ]
+    assert nodes[0]["team_id"] == nodes[2]["team_id"]
+    assert nodes[1]["target_quantity"] == 100
+    assert nodes[1]["notes"] == "二次轧板"
+    listed = client.get(URL + "/tasks", headers=dispatcher).json()["items"][0]
+    assert listed["nodes"][1]["process_step_names"] == ["轧板", "二次轧板"]
+    detail = client.get(f"{URL}/{nodes[1]['id']}", headers=warehouse["other_headers"]).json()
+    assert detail["process_step_names"] == ["轧板", "二次轧板"]
+    assert detail["batches"] == nodes[1]["batches"]
+
+
+def team_change(node, due):
+    return dict(
+        schedule_id=node["id"],
+        expected_version=node["version"],
+        batches=[
+            {
+                k: b[k]
+                for k in (
+                    "id",
+                    "batch_number",
+                    "target_quantity",
+                    "target_weight",
+                    "upstream_batch_ids",
+                )
+            }
+            | {"due_at": due}
+            for b in node["batches"]
+        ],
+    )
+
+
+def test_bulk_team_plan_edit_is_atomic_and_keeps_batch_ids(client, warehouse, dispatcher):
+    task, _ = create(client, warehouse, dispatcher, team_plans=True)
+    payload = dict(
+        expected_version=task["version"],
+        title=task["title"],
+        notes="统一调整",
+        team_plans=[team_change(n, "2026-12-25T16:00:00+08:00") for n in task["nodes"]],
+    )
+    endpoint = f"{URL}/tasks/{task['id']}"
+    assert (
+        client.patch(endpoint, headers=warehouse["other_headers"], json=payload).status_code == 403
+    )
+    payload["team_plans"][-1]["expected_version"] += 1
+    failed = client.patch(endpoint, headers=dispatcher, json=payload)
+    assert failed.status_code == 409, failed.text
+    unchanged = client.get(endpoint, headers=dispatcher).json()
+    assert unchanged["version"] == task["version"]
+    assert unchanged["notes"] == task["notes"]
+    assert [n["batches"] for n in unchanged["nodes"]] == [n["batches"] for n in task["nodes"]]
+    payload["team_plans"][-1]["expected_version"] -= 1
+    saved = client.patch(endpoint, headers=dispatcher, json=payload)
+    assert saved.status_code == 200, saved.text
+    saved = saved.json()
+    for original, updated in zip(task["nodes"], saved["nodes"], strict=True):
+        assert [b["id"] for b in updated["batches"]] == [b["id"] for b in original["batches"]]
+        assert updated["due_at"] == "2026-12-25T08:00:00+00:00"
+        assert updated["planning_state"] == "confirmed"
+    assert client.patch(endpoint, headers=dispatcher, json=payload).status_code == 409
+
+
+def test_creation_requires_complete_and_matching_team_plans_when_supplied(
+    client, warehouse, dispatcher
+):
+    task, people = create(client, warehouse, dispatcher, team_plans=True)
+    body = dict(
+        serial_no=task["serial_no"],
+        route_id=task["nodes"][0]["process_route_id"],
+        route_version=1,
+        final_due_at="2026-12-30T16:00:00+08:00",
+        business_person_ids=people,
+        planned_quantity=100,
+        idempotency_key=uuid4().hex,
+    )
+    options = client.get(URL + "/route-options", params={"serial_no": task["serial_no"]}).json()
+    body["route_version"] = next(r["version"] for r in options if r["id"] == body["route_id"])
+    plans = [
+        dict(
+            process_step_index=n["process_step_index"],
+            batches=[dict(batch_number=1, target_quantity=100, due_at="2026-12-25T16:00:00+08:00")],
+        )
+        for n in task["nodes"]
+    ]
+    for invalid in (
+        [],
+        plans[:-1],
+        [plans[0], *plans[:-1]],
+        [dict(plans[0], process_step_index=999), *plans[1:]],
+    ):
+        result = submit(client, body | {"team_plans": invalid}, dispatcher)
+        assert result.status_code == 422, result.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(ProductionScheduleTask.id))) == 1
 
 
 def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
@@ -80,7 +234,7 @@ def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
         expected_version=plan["version"],
         batches=[dict(batch_number=1, target_quantity=100, due_at="2026-12-29T16:00:00+08:00")],
     )
-    for headers in [None, warehouse["headers"], warehouse["other_headers"]]:
+    for headers in [warehouse["headers"], warehouse["other_headers"]]:
         assert client.put(endpoint + "/batches", headers=headers, json=proposal).status_code == 403
     response = client.put(endpoint + "/batches", headers=dispatcher, json=proposal)
     assert response.status_code == 200, response.text
@@ -117,7 +271,11 @@ def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
     task = client.get(f"{URL}/tasks/{task['id']}").json()
     lockurl = f"{URL}/tasks/{task['id']}/lock"
     assert (
-        client.put(lockurl, json={"expected_version": task["version"], "locked": True}).status_code
+        client.put(
+            lockurl,
+            headers=warehouse["headers"],
+            json={"expected_version": task["version"], "locked": True},
+        ).status_code
         == 403
     )
     locked = client.put(

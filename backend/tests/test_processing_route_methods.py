@@ -224,6 +224,7 @@ def test_repeated_local_operations_deliver_only_against_final_step_schedule(clie
     assert sent.status_code == 201, sent.text
     task = client.get(f"/api/production-schedules/tasks/{task_id}").json()
     assert task["nodes"][1]["process_step_index"] == 2
+    assert task["nodes"][1]["process_step_names"] == ["粗磨", "精磨"]
     assert task["nodes"][1]["dispatched_quantity"] == 6
     assert task["nodes"][1]["completed_at"] is None
     assert task["nodes"][2]["dispatched_quantity"] == 0
@@ -253,6 +254,8 @@ def test_inline_outbound_completion_uses_same_requirement_snapshot(client, wareh
     s = warehouse
     lot, worker, payload = routed_lot(client, s, code="FACTORY-ROLL", second=False)
     ctx = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
+    equipment = client.post(base(s, True) + "/equipment", json={"name": "测试轧机"})
+    assert equipment.status_code == 201, equipment.text
     response = dispatch(
         client,
         s,
@@ -265,6 +268,10 @@ def test_inline_outbound_completion_uses_same_requirement_snapshot(client, wareh
                 quantity=10,
                 processor_employee_id=worker["id"],
                 processor_name=worker["name"],
+                equipment_id=equipment.json()["id"],
+                machine_no="测试轧机",
+                processing_minutes=60,
+                reason="无",
                 processing_date="2026-10-15",
                 processing_mode="split",
                 input_quantity=10,

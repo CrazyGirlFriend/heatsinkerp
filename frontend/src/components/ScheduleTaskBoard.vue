@@ -465,7 +465,8 @@ function editTask(task: ScheduleTask) {
   editingTask.value = task
   editorOpen.value = true
 }
-function saved() {
+function saved(task: ScheduleTask) {
+  rows.value = rows.value.map((row) => (row.id === task.id ? task : row))
   editorOpen.value = false
   editingTask.value = null
   closeTask()
@@ -840,7 +841,7 @@ onBeforeUnmount(() => {
                   type="primary"
                   :disabled="!!row.locked_at || actionBusy"
                   @click="editTask(asTask(row))"
-                  >修改交期</ElButton
+                  >修改排期</ElButton
                 >
                 <ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
                   row.locked_at ? '解锁' : '锁定'
@@ -909,7 +910,7 @@ onBeforeUnmount(() => {
                 scheduleStatusLabels[detail.status]
               }}</ElTag
               ><ElButton v-if="canManage && !detail.locked_at" @click="editTask(detail)"
-                >修改交期</ElButton
+                >修改排期</ElButton
               >
             </div>
             <div class="task-detail__meta">
@@ -978,6 +979,9 @@ onBeforeUnmount(() => {
                       }}</span
                       ><strong>{{ node.team_name }}</strong>
                     </div>
+                    <small v-if="node.process_step_names?.length">{{
+                      node.process_step_names.join(' → ')
+                    }}</small>
                     <small>→ {{ node.next_team_name || node.external_destination }}</small>
                     <ElTag v-if="node.route_link?.state === 'changed'" type="warning" size="small"
                       >工艺有更新</ElTag

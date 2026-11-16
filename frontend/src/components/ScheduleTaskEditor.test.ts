@@ -79,11 +79,12 @@ async function render(
   await flushPromises()
 }
 const orderFile = new File(['order'], '订单.xlsx')
-async function uploadOrder(confirm = true) {
+async function uploadOrder(confirm = true, planTeams = true) {
   const input = wrapper.get('input[type="file"]')
   Object.defineProperty(input.element, 'files', { configurable: true, value: [orderFile] })
   await input.trigger('change')
   await flushPromises()
+  if (planTeams) await fillTeamDates()
   if (confirm && wrapper.findComponent(ImportedDataConfirmation).exists()) {
     wrapper.getComponent(ImportedDataConfirmation).vm.$emit('update:modelValue', true)
     await flushPromises()
@@ -105,7 +106,19 @@ function batchDate(index: number, value: string) {
 function batchAmounts() {
   return wrapper
     .findAllComponents(ElInputNumber)
-    .filter((input) => input.props('ariaLabel') !== '本批交货量')
+    .filter(
+      (input) =>
+        input.props('ariaLabel') !== '本批交货量' && !input.props('ariaLabel')?.startsWith('班组'),
+    )
+}
+async function fillTeamDates() {
+  wrapper
+    .findAllComponents(ElDatePicker)
+    .filter((input) => input.props('ariaLabel')?.startsWith('班组'))
+    .forEach((input) => {
+      input.vm.$emit('update:modelValue', '2026-12-25T16:00:00')
+    })
+  await flushPromises()
 }
 function plannedAmount() {
   return wrapper
@@ -118,6 +131,126 @@ function trackFocus(element: Element) {
   Object.defineProperty(element, 'scrollIntoView', { configurable: true, value: scroll })
   return { focus, scroll }
 }
+it('requires each route team handover and submits split batches with the right process indices', async () => {
+  await render()
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await uploadOrder(true, false)
+  expect(wrapper.get('[aria-label="班组排期设置"]').text()).toContain('粗磨 → 精磨')
+  expect(
+    wrapper
+      .findAllComponents(ElDatePicker)
+      .filter((input) => input.props('ariaLabel')?.startsWith('班组')),
+  ).toHaveLength(3)
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  await vi.waitFor(() => expect(wrapper.text()).toContain('请选择转交时间'))
+  await wrapper.get('button[aria-label="班组1增加一批"]').trigger('click')
+  await flushPromises()
+  const amount = (label: string) =>
+    wrapper.findAllComponents(ElInputNumber).find((input) => input.props('ariaLabel') === label)!
+  amount('班组1第1批计划件数').vm.$emit('update:modelValue', 40)
+  amount('班组1第2批计划件数').vm.$emit('update:modelValue', 60)
+  await fillTeamDates()
+  await button('创建排期')
+  const plans = vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0].team_plans!
+  expect(plans.map((plan) => plan.process_step_index)).toEqual([0, 2, 3])
+  expect(plans[0]!.batches.map((batch) => batch.target_quantity)).toEqual([40, 60])
+  expect(
+    plans.every((plan) =>
+      plan.batches.every((batch) => batch.due_at === '2026-12-25T16:00:00+08:00'),
+    ),
+  ).toBe(true)
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
+  expect(wrapper.find('[aria-label="班组排期设置"]').exists()).toBe(false)
+})
+
+it('groups only consecutive operations on the selected serial path and keeps later team visits separate', async () => {
+  const route = structuredClone(routeFixture)
+  route.steps = [
+    route.steps[0]!,
+    route.steps[1]!,
+    { ...route.steps[3]!, name: '其他流水号检验', serial_nos: ['OTHER'] },
+    route.steps[2]!,
+    route.steps[3]!,
+    { ...route.steps[2]!, name: '复磨' },
+  ]
+  route.steps.forEach((step, index) => {
+    step.sequence_no = index
+  })
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValue([
+    { ...route, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
+  ])
+  await render()
+  const rows = wrapper.findAll('.dispatch-team-operations')
+  expect(rows).toHaveLength(4)
+  expect(rows[1]!.text()).toContain('粗磨 → 精磨')
+  expect(rows[3]!.text()).toContain('复磨')
+  expect(rows[3]!.text()).not.toContain('粗磨')
+  expect(wrapper.get('[aria-label="班组排期设置"]').text()).not.toContain('其他流水号检验')
+})
+
+it('edits team plans in the task form while keeping existing batch identities and links', async () => {
+  const existing = {
+    ...task,
+    nodes: [1, 2].map((id) => ({
+      id,
+      version: 4,
+      team_name: id === 1 ? '库房' : '研磨',
+      notes: '',
+      process_step_names: id === 1 ? ['备料'] : ['粗磨', '精磨'],
+      status: 'pending',
+      planning_state: 'confirmed',
+      completion_basis: 'quantity',
+      process_step_index: id - 1,
+      target_quantity: 100,
+      target_weight: null,
+      due_at: '2026-12-25T08:00:00Z',
+      batches: [
+        {
+          id: id * 10,
+          batch_number: 1,
+          target_quantity: 100,
+          target_weight: null,
+          due_at: '2026-12-25T08:00:00Z',
+          upstream_batch_ids: id === 2 ? [10] : [],
+        },
+      ],
+    })),
+  } as unknown as ScheduleTask
+  await render(existing)
+  expect(wrapper.get('[aria-label="班组排期设置"]').text()).toContain('研磨：粗磨 → 精磨')
+  const picker = wrapper
+    .findAllComponents(ElDatePicker)
+    .find((input) => input.props('ariaLabel') === '班组2第1批转交时间')!
+  expect(picker.props('modelValue')).toBe('2026-12-25T16:00:00')
+  picker.vm.$emit('update:modelValue', '2026-12-26T16:00:00')
+  await button('保存排期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({
+      team_plans: [
+        {
+          schedule_id: 2,
+          process_step_index: 1,
+          expected_version: 4,
+          batches: [
+            {
+              id: 20,
+              batch_number: 1,
+              due_at: '2026-12-26T16:00:00+08:00',
+              target_quantity: 100,
+              target_weight: null,
+              upstream_batch_ids: [10],
+            },
+          ],
+        },
+      ],
+    }),
+  )
+})
 it.each(['dispatch', 'admin'])(
   'lets %s schedule the current batch while preserving the reference order total',
   async (actor) => {
@@ -171,7 +304,7 @@ it('loads the serial process but requires dispatch to set the customer deadline'
     .find((field) => field.props('label') === '关联工艺')!
   expect(routeField.props('required')).toBe(true)
   expect(routeField.getComponent(ElSelect).props('modelValue')).toBe(routeFixture.id)
-  expect(wrapper.text()).toContain('执行工艺')
+  expect(wrapper.text()).toContain('班组排期')
   await button('创建排期')
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
   date('2026-12-30T16:00:00')
@@ -272,7 +405,7 @@ it('rejects customer batches that do not add up to the planned quantity', async 
 })
 it('preserves multiple contacts and uses the order version when editing', async () => {
   await render(task)
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
     7,
     expect.objectContaining({ expected_version: 3, business_person_ids: [1, 2] }),
@@ -291,7 +424,7 @@ it('preserves batch dates when changing the deadline or adding and removing anot
     .findAll('button')
     .filter((b) => b.text() === '删除')[1]!
     .trigger('click')
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
     7,
     expect.objectContaining({
@@ -319,7 +452,7 @@ it('rejects later hours on the final day and disables dates after the deadline',
       .findAllComponents(ElFormItem)
       .some((field) => field.props('error') === '第 1 批交期不能晚于最终交期'),
   ).toBe(true)
-  await button('保存交期')
+  await button('保存排期')
   await vi.waitFor(() => expect(wrapper.text()).toContain('第 1 批交期不能晚于最终交期'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
@@ -343,14 +476,14 @@ it('requires dates in batch order', async () => {
       .findAllComponents(ElFormItem)
       .some((field) => field.props('error') === '第 2 批交期不能早于上一批'),
   ).toBe(true)
-  await button('保存交期')
+  await button('保存排期')
   await vi.waitFor(() => expect(wrapper.text()).toContain('第 2 批交期不能早于上一批'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 it.each(['locked', 'team'])('blocks writes for %s', async (mode) => {
   if (mode === 'team') role.isDispatch = false
   await render(mode === 'locked' ? { ...task, locked_at: '2026-10-30T00:00:00Z' } : task)
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 it('keeps the editor until its closing transition finishes', async () => {
@@ -393,7 +526,7 @@ it.each([undefined, routeFixture])(
     expect(selection.props('disabled')).toBe(true)
     expect(plannedAmount().props('modelValue')).toBeUndefined()
     expect(batchAmounts()[0]!.props('modelValue')).toBeUndefined()
-    expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="班组排期设置"]').exists()).toBe(false)
     await wrapper.get('input[aria-label="任务流水号"]').setValue('   ')
     await flushPromises()
     expect(productionScheduleApi.taskRouteOptions).not.toHaveBeenCalled()
@@ -447,7 +580,7 @@ it('loads matching engineering files only after entering a serial and clears the
   expect(plannedAmount().props('modelValue')).toBeUndefined()
   expect(batchAmounts()[0]!.props('modelValue')).toBeUndefined()
   expect(wrapper.text()).not.toContain('替换订单表')
-  expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="班组排期设置"]').exists()).toBe(false)
   await flushPromises()
   expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
   expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledTimes(1)
@@ -549,7 +682,12 @@ it('lets dispatch correct the quantity without overwriting batch amounts, dates 
     }),
     orderFile,
   )
-  expect(wrapper.get('[aria-label="工艺执行班组"]').text()).toContain('100')
+  expect(
+    wrapper
+      .findAllComponents(ElInputNumber)
+      .find((input) => input.props('ariaLabel') === '班组1第1批计划件数')!
+      .props('modelValue'),
+  ).toBe(100)
 })
 
 it('saves a corrected existing total and restores it when reopened', async () => {
@@ -561,7 +699,7 @@ it('saves a corrected existing total and restores it when reopened', async () =>
     delivery_batches: [{ ...task.delivery_batches![0]!, target_quantity: 120 }],
   }
   vi.mocked(productionScheduleApi.updateTask).mockResolvedValue(updated)
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
     7,
     expect.objectContaining({
@@ -584,7 +722,7 @@ it.each([undefined, 0, -1, 1.5, 2147483648])(
   async (amount) => {
     await render(task)
     plannedAmount().vm.$emit('update:modelValue', amount)
-    await button('保存交期')
+    await button('保存排期')
     expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
   },
 )
@@ -595,7 +733,7 @@ it('does not clamp existing batches when dispatch reduces the planned total', as
   await flushPromises()
   expect(batchAmounts()[0]!.props('modelValue')).toBe(100)
   expect(wrapper.get('[role="status"]').text()).toContain('超出 20 件')
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 
@@ -605,7 +743,7 @@ it('shows the missing business contact at its field and scrolls and focuses the 
     .findAllComponents(ElFormItem)
     .find((item) => item.props('label') === '业务人员')!
   const feedback = trackFocus(field.get('button').element)
-  await button('保存交期')
+  await button('保存排期')
   expect(field.props('required')).toBe(true)
   expect(field.props('error')).toBe('请至少选择一位业务人员')
   await vi.waitFor(() => expect(field.text()).toContain('请至少选择一位业务人员'))
@@ -616,7 +754,7 @@ it('shows the missing business contact at its field and scrolls and focuses the 
   wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
   await flushPromises()
   expect(field.props('error')).toBe('')
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
 })
 
@@ -627,7 +765,7 @@ it('focuses the first missing date and moves to the batch date after the deadlin
   const due = wrapper.findAllComponents(ElDatePicker)
   const deadlineFeedback = trackFocus(due[0]!.get('input').element)
   const batchFeedback = trackFocus(due[1]!.get('input').element)
-  await button('保存交期')
+  await button('保存排期')
   await vi.waitFor(() => {
     expect(wrapper.text()).toContain('请选择最终交期')
     expect(wrapper.text()).toContain('请选择第 1 批交期')
@@ -636,7 +774,7 @@ it('focuses the first missing date and moves to the batch date after the deadlin
   expect(deadlineFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
   expect(batchFeedback.focus).not.toHaveBeenCalled()
   date('2026-12-30T16:00:00')
-  await button('保存交期')
+  await button('保存排期')
   expect(wrapper.text()).not.toContain('请选择最终交期')
   expect(batchFeedback.scroll).toHaveBeenCalledOnce()
   expect(batchFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
@@ -647,14 +785,14 @@ it('explains an allocation mismatch beside the batch quantity and focuses that i
   await render(task)
   batchAmounts()[0]!.vm.$emit('update:modelValue', 80)
   const feedback = trackFocus(batchAmounts()[0]!.get('input').element)
-  await button('保存交期')
+  await button('保存排期')
   const field = batchAmounts()[0]!.element.closest('.el-form-item')!
   await vi.waitFor(() => expect(field.textContent).toContain('各批数量合计须为 100 件'))
   expect(feedback.scroll).toHaveBeenCalledOnce()
   expect(feedback.focus).toHaveBeenCalledWith({ preventScroll: true })
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
   batchAmounts()[0]!.vm.$emit('update:modelValue', 100)
-  await button('保存交期')
+  await button('保存排期')
   expect(field.textContent).not.toContain('各批数量合计须为')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
 })
@@ -665,12 +803,12 @@ it('focuses invalid planned and batch quantities in field order', async () => {
   batchAmounts()[0]!.vm.$emit('update:modelValue', undefined)
   const plannedFeedback = trackFocus(plannedAmount().get('input').element)
   const batchFeedback = trackFocus(batchAmounts()[0]!.get('input').element)
-  await button('保存交期')
+  await button('保存排期')
   await vi.waitFor(() => expect(wrapper.text()).toContain('请输入 1 至 2147483647 的整数'))
   expect(plannedFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
   expect(batchFeedback.focus).not.toHaveBeenCalled()
   plannedAmount().vm.$emit('update:modelValue', 100)
-  await button('保存交期')
+  await button('保存排期')
   // Element Plus debounces error message visibility independently of focus.
   await vi.waitFor(() => expect(wrapper.text()).toContain('请输入大于 0 的整数'))
   expect(batchFeedback.scroll).toHaveBeenCalledOnce()
@@ -761,6 +899,10 @@ it('keeps manually entered quantity and existing schedule edits free of import c
   wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
   await flushPromises()
   await uploadOrder(false)
+  wrapper
+    .findAllComponents(ElInputNumber)
+    .filter((input) => input.props('ariaLabel')?.startsWith('班组'))
+    .forEach((input) => input.vm.$emit('update:modelValue', 90))
   await button('创建排期')
   expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
     expect.objectContaining({ planned_quantity: 90 }),
@@ -769,6 +911,6 @@ it('keeps manually entered quantity and existing schedule edits free of import c
   wrapper.unmount()
   await render(task)
   expect(wrapper.findComponent(ImportedDataConfirmation).exists()).toBe(false)
-  await button('保存交期')
+  await button('保存排期')
   expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
 })

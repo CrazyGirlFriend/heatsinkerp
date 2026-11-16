@@ -21,6 +21,7 @@ from .models import (
     utcnow,
 )
 from .models import ProductionSchedule as Plan
+from .models import ProductionScheduleBatch as Batch
 from .models import ProductionScheduleEvent as Event
 from .models import ProductionScheduleSource as Source
 from .models import ProductionScheduleTask as Task
@@ -374,6 +375,7 @@ def create_task(db, payload, user, *, order=None):
     from .dispatch_planning import DispatchTaskCreate, build_task
 
     pending = isinstance(payload, DispatchTaskCreate)
+    team_plans = {p.process_step_index: p for p in (payload.team_plans or [])} if pending else {}
     if pending and order is None:
         raise HTTPException(422, "请上传订单表")
     key = request_key("task", payload.idempotency_key)
@@ -439,7 +441,7 @@ def create_task(db, payload, user, *, order=None):
                         **{field: getattr(data, field) for field in schedules.FIELDS},
                         task_id=task.id,
                         initial_due_at=data.due_at,
-                        planning_state="pending" if pending else "confirmed",
+                        planning_state="pending" if pending and not team_plans else "confirmed",
                         idempotency_key=data.idempotency_key,
                         request_hash=fingerprint(data),
                     )
@@ -449,6 +451,11 @@ def create_task(db, payload, user, *, order=None):
                         Source(schedule_id=plan.id, **source.model_dump())
                         for source in node.sources
                     )
+                    if team_plans:
+                        db.add_all(
+                            Batch(schedule_id=plan.id, **b.model_dump(exclude={"id"}))
+                            for b in team_plans[node.process_step_index].batches
+                        )
                     db.flush()
                     schedules.record_event(db, plan, user, "created")
                     predecessor_id = plan.id
@@ -529,6 +536,18 @@ def update_task(db, task_id, payload, user):
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from None
         task.title, task.notes = payload.title, payload.notes
+        if payload.team_plans:
+            from .schedule_batches import apply_batches
+
+            plans = {
+                p.id: p
+                for p in db.scalars(select(Plan).where(Plan.task_id == task.id).with_for_update())
+            }
+            ids = [p.schedule_id for p in payload.team_plans]
+            if len(ids) != len(set(ids)) or any(i not in plans for i in ids):
+                raise HTTPException(422, "请选择当前任务的班组排期，不能重复或跨任务修改")
+            for entry in payload.team_plans:
+                apply_batches(db, plans[entry.schedule_id], task, entry, user)
         task.version += 1
         task.updated_at = utcnow()
         # The route's first node retains the task metadata audit; no duplicate business journal.

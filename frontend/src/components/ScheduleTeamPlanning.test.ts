@@ -52,6 +52,48 @@ it('fills the warehouse initial to its real dispatch ratio and mounts a short su
   }
 })
 
+it('shows consecutive operations in the summary and distinguishes later visits to the same team', async () => {
+  const base = {
+    ...scheduleSummaryFixture(),
+    team_id: 2,
+    team_name: '研磨',
+    target_quantity: 100,
+    dispatched_quantity: 60,
+  } as ProductionSchedule
+  const nodes = [
+    { ...base, id: 1, sequence_no: 1, process_step_names: ['粗磨', '精磨'] },
+    { ...base, id: 2, team_id: 3, team_name: '退火', sequence_no: 2, process_step_names: ['退火'] },
+    { ...base, id: 3, sequence_no: 3, process_step_names: ['复磨'] },
+  ]
+  const wrapper = mount(ScheduleTeamPlanning, {
+    props: { nodes },
+    global: {
+      stubs: {
+        AppPopover: {
+          props: ['visible'],
+          template: '<div><slot name="reference"/><slot v-if="visible"/></div>',
+        },
+      },
+    },
+  })
+  try {
+    const circles = wrapper.findAll('.team-planning__step')
+    expect(circles).toHaveLength(3)
+    expect(circles[0]!.attributes('aria-label')).toContain('研磨 1')
+    expect(circles[2]!.attributes('aria-label')).toContain('研磨 2')
+    expect(wrapper.text()).not.toContain('粗磨')
+    await circles[0]!.trigger('focusin')
+    expect(wrapper.get('.schedule-node-summary').text()).toContain('粗磨 → 精磨')
+    expect(wrapper.get('.schedule-node-summary header').text()).toContain('60%')
+    await circles[0]!.trigger('focusout')
+    await circles[2]!.trigger('focusin')
+    expect(wrapper.get('.schedule-node-summary').text()).toContain('复磨')
+    expect(wrapper.get('.schedule-node-summary').text()).not.toContain('粗磨')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it.each(['库房', '检验'])(
   'shows customer shipment wording for %s without implying downstream receipt',
   async (team_name) => {

@@ -81,6 +81,7 @@ def test_selected_engineering_route_drives_outbound_and_all_processing_steps(
     assert route["serial_nos"] == ["WAREHOUSE-001"]
     assert all(node["serial_no"] == serial for node in task["nodes"])
     assert [node["process_step_index"] for node in task["nodes"]] == [0, 2, 3]
+    assert task["nodes"][1]["process_step_names"] == ["轧板", "二次轧板"]
     options = client.get(URL + "/route-options").json()
     assert options[0]["id"] == route["id"]
     assert options[0]["execution_serial"] == "WAREHOUSE-001"

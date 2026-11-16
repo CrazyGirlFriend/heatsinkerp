@@ -81,6 +81,44 @@ def route_states(db, plans):
     }
 
 
+def operation_names(db, plans):
+    """Show the local operations covered by each team's handover milestone."""
+    from .process_route_paths import execution_serial
+
+    route_ids = {p.process_route_id for p in plans if p.process_route_id}
+    routes = (
+        {
+            r.id: r
+            for r in db.execute(
+                select(Route.id, Route.steps, Route.serial_nos, Route.route_kind).where(
+                    Route.id.in_(route_ids)
+                )
+            )
+        }
+        if route_ids
+        else {}
+    )
+    result = {}
+    for plan in plans:
+        route = routes.get(plan.process_route_id)
+        index = plan.process_step_index
+        if not route or index is None or not 0 <= index < len(route.steps):
+            continue
+        try:
+            serial = execution_serial(route, plan.serial_no)
+        except HTTPException:
+            continue  # Historical unmatched routes must not hide the schedule itself.
+        names = []
+        for step in reversed(route.steps[: index + 1]):
+            if step.get("serial_nos") and serial not in step["serial_nos"]:
+                continue
+            if step["team_id"] != plan.team_id:
+                break
+            names.append(step["name"])
+        result[plan.id] = list(reversed(names))
+    return result
+
+
 def options(db, task):
     from .process_route_paths import execution_serial
     from .process_routes import route_document_checks

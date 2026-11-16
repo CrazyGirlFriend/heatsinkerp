@@ -154,7 +154,59 @@ class ScheduleCommitmentUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class BatchWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: int | None = Field(default=None, ge=1)
+    batch_number: int = Field(ge=1, le=9999)
+    # Accept older clients/proposals, but never save a user-entered start again.
+    planned_start_at: datetime | None = Field(default=None, exclude=True)
+    due_at: datetime
+    target_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    target_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
+    upstream_batch_ids: list[int] = Field(default_factory=list, max_length=100)
+
+    @field_validator("due_at")
+    @classmethod
+    def hour(cls, value):
+        return ScheduleNode.hour(value)
+
+    @model_validator(mode="after")
+    def period(self):
+        if self.target_quantity is None and self.target_weight is None:
+            raise ValueError("请填写每批数量或重量")
+        if len(set(self.upstream_batch_ids)) != len(self.upstream_batch_ids):
+            raise ValueError("上游批次不能重复")
+        return self
+
+
+class BatchPlanWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    batches: list[BatchWrite] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique(self):
+        for values in (
+            [b.batch_number for b in self.batches],
+            [b.id for b in self.batches if b.id],
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError("批次不能重复")
+        if sum(b.target_quantity or 0 for b in self.batches) > 2_147_483_647:
+            raise ValueError("计划总件数超出范围")
+        if sum(b.target_weight or 0 for b in self.batches) >= Decimal("100000000000"):
+            raise ValueError("计划总重量超出范围")
+        return self
+
+
+class TaskTeamPlan(BatchPlanWrite):
+    expected_version: int = Field(default=1, ge=1)
+    schedule_id: int | None = Field(default=None, ge=1)
+    process_step_index: int | None = Field(default=None, ge=0)
+
+
 class ScheduleTaskUpdate(BaseModel):
+    team_plans: list[TaskTeamPlan] = Field(default_factory=list, max_length=50)
     planned_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647, strict=True)
     delivery_batches: list[CustomerBatch] = Field(default_factory=list, max_length=100)
     final_due_at: datetime | None = None

@@ -822,7 +822,7 @@ describe('task scheduling board', () => {
     await render('/production-schedules?task_id=7')
     expect(productionScheduleApi.task).toHaveBeenCalledWith(7)
     await wrapper.setProps({ management: true })
-    await button('修改交期')
+    await button('修改排期')
     expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toEqual(task)
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
@@ -862,10 +862,32 @@ describe('task scheduling board', () => {
     )
     expect(wrapper.getComponent(ElPagination).props('currentPage')).toBe(2)
   })
+  it('reopens the saved plan while the list refresh is still pending', async () => {
+    await render('/production-schedules', true)
+    await button('修改排期')
+    let finishRefresh!: (value: Awaited<ReturnType<typeof productionScheduleApi.tasks>>) => void
+    vi.mocked(productionScheduleApi.tasks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefresh = resolve
+        }),
+    )
+    const updated = {
+      ...task,
+      version: 2,
+      nodes: [{ ...task.nodes[0]!, version: 2, due_at: '2026-10-23T10:00:00+08:00' }],
+    }
+    wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', updated)
+    await flushPromises()
+    await button('修改排期')
+    expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toEqual(updated)
+    finishRefresh({ items: [updated], total: 1, page: 1, page_size: 10 })
+    await flushPromises()
+  })
   it('preserves a task switch while the saved task list refresh is still pending', async () => {
     await render('/production-schedules?task_id=7')
     await wrapper.setProps({ management: true })
-    await button('修改交期')
+    await button('修改排期')
     let finishRefresh!: (value: Awaited<ReturnType<typeof productionScheduleApi.tasks>>) => void
     vi.mocked(productionScheduleApi.tasks).mockImplementationOnce(
       () =>

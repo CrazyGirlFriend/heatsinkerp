@@ -179,6 +179,12 @@ export type ScheduleSummary = Pick<
   | 'predecessor_id'
 >
 export type CustomerDeliveryBatch = Contract['CustomerDeliveryBatchResponse']
+export interface TaskTeamPlanWrite {
+  schedule_id?: number
+  process_step_index?: number | null
+  expected_version?: number
+  batches: ScheduleBatchWrite[]
+}
 export interface DispatchTaskWrite {
   planned_quantity?: number
   serial_no: string
@@ -186,6 +192,7 @@ export interface DispatchTaskWrite {
   route_version: number
   final_due_at: string
   delivery_batches: CustomerDeliveryBatch[]
+  team_plans?: TaskTeamPlanWrite[]
   business_person_ids: number[]
   notes: string | null
   idempotency_key: string

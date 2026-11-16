@@ -27,6 +27,8 @@ import type {
   ScheduleRouteOption,
   ScheduleSelection,
   DispatchTaskWrite,
+  ScheduleBatchWrite,
+  TaskTeamPlanWrite,
 } from '@/types/productionSchedule'
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { materialRequestKey } from '@/utils/materialStock'
@@ -111,6 +113,133 @@ const steps = computed(
         s.serial_nos.includes(selectedRoute.value?.execution_serial ?? serial.value.trim()),
     ) || [],
 )
+type TeamBatchDraft = Omit<ScheduleBatchWrite, 'due_at'> & { due: string }
+type TeamPlanDraft = Omit<TaskTeamPlanWrite, 'batches'> & {
+  name: string
+  instructions: string
+  basis: string
+  confirmed: boolean
+  original: string
+  batches: TeamBatchDraft[]
+}
+function teamPlanPayload(plan: TeamPlanDraft): TaskTeamPlanWrite {
+  return {
+    schedule_id: plan.schedule_id,
+    process_step_index: plan.process_step_index,
+    expected_version: plan.expected_version,
+    batches: plan.batches.map(({ due, ...batch }) => ({ ...batch, due_at: `${due}+08:00` })),
+  }
+}
+const teamPlans = ref<TeamPlanDraft[]>(
+  (props.task?.nodes || [])
+    .filter((node) => node.status !== 'cancelled')
+    .map((node) => {
+      const plan: TeamPlanDraft = {
+        schedule_id: node.id,
+        process_step_index: node.process_step_index,
+        expected_version: node.version,
+        name: `${node.team_name}${node.process_step_names?.length ? `：${node.process_step_names.join(' → ')}` : node.notes ? ` · ${node.notes}` : ''}`,
+        instructions: '',
+        basis: node.completion_basis || 'quantity',
+        confirmed: node.planning_state === 'confirmed',
+        original: '',
+        batches: (node.pending_batches?.length
+          ? node.pending_batches
+          : node.batches?.length
+            ? node.batches
+            : [
+                {
+                  batch_number: 1,
+                  due_at: node.planning_state === 'pending' ? '' : node.due_at,
+                  target_quantity: node.target_quantity,
+                  target_weight: node.target_weight,
+                  upstream_batch_ids: [],
+                },
+              ]
+        ).map((batch) => ({
+          id: batch.id || undefined,
+          batch_number: batch.batch_number,
+          due: local(batch.due_at),
+          target_quantity: batch.target_quantity,
+          target_weight: batch.target_weight == null ? null : Number(batch.target_weight),
+          upstream_batch_ids: [...batch.upstream_batch_ids],
+        })),
+      }
+      plan.original = JSON.stringify(teamPlanPayload(plan))
+      return plan
+    }),
+)
+const teamPlanRows = computed(() =>
+  teamPlans.value.flatMap((plan, index) =>
+    plan.batches.map((batch, batchIndex) => ({ plan, batch, index, batchIndex })),
+  ),
+)
+const hasWeightPlans = computed(() => teamPlans.value.some((plan) => plan.basis !== 'quantity'))
+function resetTeamPlans() {
+  const selected = selectedRoute.value
+  const grouped: {
+    step: (typeof steps.value)[number]
+    index: number
+    names: string[]
+    requirements: string[]
+  }[] = []
+  selected?.steps.forEach((step, index) => {
+    if (
+      step.serial_nos.length &&
+      !step.serial_nos.includes(selected.execution_serial ?? serial.value.trim())
+    )
+      return
+    const previous = grouped.at(-1)
+    if (previous?.step.team_id === step.team_id) {
+      previous.step = step
+      previous.index = index
+      previous.names.push(step.name)
+      previous.requirements.push(step.instructions)
+    } else grouped.push({ step, index, names: [step.name], requirements: [step.instructions] })
+  })
+  teamPlans.value = grouped.map(({ step, index, names, requirements }) => ({
+    process_step_index: index,
+    name: `${directory.items.find((team) => Number(team.id) === step.team_id)?.name || step.team_name || '班组'}：${names.join(' → ')}`,
+    instructions: names.map((name, i) => `${name}：${requirements[i]}`).join('\n'),
+    basis: 'quantity',
+    confirmed: false,
+    original: '',
+    batches: [
+      {
+        batch_number: 1,
+        due: '',
+        target_quantity: Number(step.planned_quantity) || null,
+        target_weight: null,
+        upstream_batch_ids: [],
+      },
+    ],
+  }))
+}
+function teamBatchError(
+  plan: TeamPlanDraft,
+  batch: TeamBatchDraft,
+  field: 'due' | 'quantity' | 'weight',
+) {
+  if (!submitted.value) return ''
+  if (field === 'due') return batch.due ? '' : '请选择转交时间'
+  const amount = field === 'quantity' ? batch.target_quantity : batch.target_weight
+  if (field === 'quantity' && plan.basis === 'weight') return ''
+  if (field === 'weight' && plan.basis === 'quantity') return ''
+  return amount &&
+    amount > 0 &&
+    (field !== 'quantity' || (Number.isSafeInteger(amount) && amount <= 2147483647))
+    ? ''
+    : '请填写有效计划数量'
+}
+function addTeamBatch(plan: TeamPlanDraft) {
+  plan.batches.push({
+    batch_number: Math.max(...plan.batches.map((b) => b.batch_number)) + 1,
+    due: '',
+    target_quantity: null,
+    target_weight: null,
+    upstream_batch_ids: [],
+  })
+}
 const quantity = ref<number | undefined>(
   props.task?.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
     props.task?.nodes.filter((n) => n.status !== 'cancelled').at(-1)?.target_quantity ||
@@ -236,6 +365,7 @@ watch(
     if (props.task) return
     quantity.value = Number(steps.value.at(-1)?.planned_quantity) || undefined
     batches.value = [{ quantity: quantity.value, due: '' }]
+    resetTeamPlans()
   },
 )
 function selectPeople(value: ScheduleSelection[]) {
@@ -281,7 +411,15 @@ async function save() {
     allocationError.value ||
     peopleError.value ||
     orderRequiredError.value ||
-    quantityConfirmationError.value
+    quantityConfirmationError.value ||
+    teamPlans.value.some((plan) =>
+      plan.batches.some(
+        (batch) =>
+          teamBatchError(plan, batch, 'due') ||
+          teamBatchError(plan, batch, 'quantity') ||
+          teamBatchError(plan, batch, 'weight'),
+      ),
+    )
   ) {
     await nextTick()
     focusFirstInvalidField(form.value?.$el)
@@ -299,6 +437,14 @@ async function save() {
       })),
       business_person_ids: people.value.map((p) => Number(p.value)),
       notes: notes.value.trim() || null,
+      team_plans: teamPlans.value
+        .filter(
+          (plan) =>
+            !props.task ||
+            !plan.confirmed ||
+            JSON.stringify(teamPlanPayload(plan)) !== plan.original,
+        )
+        .map(teamPlanPayload),
     }
     if (props.task)
       emit(
@@ -346,6 +492,7 @@ watch(
     if (props.task) return
     routeId.value = undefined
     routes.value = []
+    teamPlans.value = []
     routeManuallySelected.value = false
     quantity.value = undefined
     batches.value = [{ quantity: undefined, due: '' }]
@@ -365,7 +512,7 @@ onMounted(loadRoutes)
 <template>
   <AppDialog
     v-model="visible"
-    :title="task ? '修改订单交期' : '新建排期'"
+    :title="task ? '修改排期' : '新建排期'"
     width="min(1280px,96vw)"
     append-to-body
     :close-on-click-modal="!saving"
@@ -596,28 +743,107 @@ onMounted(loadRoutes)
               <ElButton :disabled="batches.length >= 100" @click="addBatch">＋ 增加一批</ElButton>
             </div>
           </CompactFormSection>
-          <CompactFormSection v-if="!task && steps.length" title="执行工艺">
+          <CompactFormSection v-if="teamPlans.length" title="班组排期">
+            <p class="form-field--full dispatch-field-hint">
+              按工艺顺序设置各班组的转交时间和数量，保存后班组直接查看执行。
+            </p>
             <ElTable
-              columns-key="ScheduleTaskEditor-2"
+              columns-key="ScheduleTaskEditor-team-plans"
               class="form-field--full"
-              :data="steps"
+              :data="teamPlanRows"
               border
               size="small"
-              aria-label="工艺执行班组"
+              aria-label="班组排期设置"
             >
-              <ElTableColumn label="工序" prop="name" min-width="130" />
-              <ElTableColumn label="班组" min-width="100"
-                ><template #default="{ row }">{{
-                  directory.items.find((t) => Number(t.id) === row.team_id)?.name || row.team_name
-                }}</template></ElTableColumn
-              >
-              <ElTableColumn label="计划数量" prop="planned_quantity" width="110" align="right" />
-              <ElTableColumn
-                label="工艺要求"
-                prop="instructions"
-                min-width="220"
-                show-overflow-tooltip
-              />
+              <ElTableColumn label="班组 / 工序" min-width="190">
+                <template #default="{ row }"
+                  ><span class="dispatch-team-operations" :title="row.plan.instructions"
+                    >{{ row.index + 1 }} · {{ row.plan.name }}</span
+                  ></template
+                >
+              </ElTableColumn>
+              <ElTableColumn label="批次" width="100">
+                <template #default="{ row }">第 {{ row.batch.batch_number }} 批</template>
+              </ElTableColumn>
+              <ElTableColumn label="转交时间" min-width="235">
+                <template #default="{ row }">
+                  <ElFormItem
+                    class="dispatch-batch-field"
+                    :error="teamBatchError(row.plan, row.batch, 'due')"
+                  >
+                    <ElDatePicker
+                      v-model="row.batch.due"
+                      type="datetime"
+                      format="YYYY-MM-DD HH:mm"
+                      value-format="YYYY-MM-DDTHH:mm:ss"
+                      :disabled-minutes="nonZeroMinutes"
+                      :disabled-seconds="nonZeroMinutes"
+                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批转交时间`"
+                      placeholder="选择转交时间"
+                    />
+                    <span
+                      v-if="row.batch.due && finalDue && row.batch.due > finalDue"
+                      class="dispatch-plan-warning"
+                      >晚于最终交期</span
+                    >
+                  </ElFormItem>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="计划件数" width="160">
+                <template #default="{ row }">
+                  <ElFormItem
+                    v-if="row.plan.basis !== 'weight'"
+                    class="dispatch-batch-field"
+                    :error="teamBatchError(row.plan, row.batch, 'quantity')"
+                  >
+                    <ElInputNumber
+                      v-model="row.batch.target_quantity"
+                      :min="1"
+                      :max="2147483647"
+                      :precision="0"
+                      :controls="false"
+                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批计划件数`"
+                    /> </ElFormItem
+                  ><span v-else>—</span>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn v-if="hasWeightPlans" label="计划重量（kg）" width="170">
+                <template #default="{ row }">
+                  <ElFormItem
+                    v-if="row.plan.basis !== 'quantity'"
+                    class="dispatch-batch-field"
+                    :error="teamBatchError(row.plan, row.batch, 'weight')"
+                  >
+                    <ElInputNumber
+                      v-model="row.batch.target_weight"
+                      :min="0"
+                      :precision="6"
+                      :controls="false"
+                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批计划重量`"
+                    /> </ElFormItem
+                  ><span v-else>—</span>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="操作" width="150">
+                <template #default="{ row }">
+                  <ElButton
+                    v-if="row.batchIndex === 0"
+                    link
+                    :disabled="row.plan.batches.length >= 100"
+                    :aria-label="`班组${row.index + 1}增加一批`"
+                    @click="addTeamBatch(row.plan)"
+                    >增加一批</ElButton
+                  >
+                  <ElButton
+                    v-if="row.plan.batches.length > 1"
+                    link
+                    type="danger"
+                    :aria-label="`班组${row.index + 1}删除第${row.batch.batch_number}批`"
+                    @click="row.plan.batches.splice(row.batchIndex, 1)"
+                    >删除</ElButton
+                  >
+                </template>
+              </ElTableColumn>
             </ElTable>
           </CompactFormSection>
           <CompactFormSection
@@ -641,7 +867,7 @@ onMounted(loadRoutes)
         :loading="saving"
         :disabled="!writable || loading || orderBusy || (!task && !selectedRoute)"
         @click="save"
-        >{{ task ? '保存交期' : '创建排期' }}</ElButton
+        >{{ task ? '保存排期' : '创建排期' }}</ElButton
       ></template
     >
   </AppDialog>
@@ -691,6 +917,14 @@ onMounted(loadRoutes)
   transform: translateY(-50%);
   color: var(--muted);
   pointer-events: none;
+}
+.dispatch-plan-warning {
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+}
+.dispatch-team-operations {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .dispatch-date-heading,
 .dispatch-allocation {
