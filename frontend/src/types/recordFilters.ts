@@ -1,6 +1,7 @@
 import type { components } from './generated/api'
 
 export interface RecordFilterParams {
+  table_query?: string
   date_from?: string
   date_to?: string
   urgent_only?: boolean

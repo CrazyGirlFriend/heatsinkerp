@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import Field, model_validator
 from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.orm import aliased
 
 from .inventory_age import stock_age_table
 from .material_analytics import (
@@ -54,6 +55,7 @@ WarehouseSearchField = Literal[
     "external_pending_weight",
     "source_batch_no",
     "batch_no",
+    "previous_batch_no",
     "warehouse_location",
     "shortage_weight",
     "processing_registered_quantity",
@@ -115,7 +117,7 @@ class WarehouseInventoryFilters(SerialFilters):
         }.get(self.search_field, self.search_field)
         if field.startswith(("owned_", "in_transit_", "external_pending_", "processing_")):
             field = "available_weight" if field.endswith("_weight") else "available_quantity"
-        if field in ("source_batch_no", "batch_no", "warehouse_location"):
+        if field in ("source_batch_no", "batch_no", "previous_batch_no", "warehouse_location"):
             field = "serial_no"
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
         return self
@@ -143,7 +145,7 @@ def origin_columns(include_team=False, registered=None):
     return {
         **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
-        "batch_no": case((mt.next_team_code == WAREHOUSE_TEAM_CODE, mt.batch_no)),
+        "warehouse_batch_no": case((mt.next_team_code == WAREHOUSE_TEAM_CODE, mt.batch_no)),
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
         "process_route_id": mt.process_route_id,
@@ -182,6 +184,7 @@ def warehouse_groups(team_id, filters):
     # Group the joined processing columns directly. A correlated scalar subquery
     # in GROUP BY is not recognized as deterministic by MySQL ONLY_FULL_GROUP_BY.
     origins = origin_columns(include_team=team_id is None, registered=registered)
+    parent = aliased(mt)
     placements = (
         select(
             WarehousePlacement.transfer_id,
@@ -251,6 +254,8 @@ def warehouse_groups(team_id, filters):
         select(
             *(column.label(name) for name, column in origins.items()),
             func.min(mt.id).label("group_id"),
+            func.min(mt.batch_no).label("batch_no"),
+            func.min(parent.batch_no).label("previous_batch_no"),
             func.max(
                 case(
                     (
@@ -284,6 +289,7 @@ def warehouse_groups(team_id, filters):
         )
         .select_from(stock)
         .join(mt, mt.id == stock.c.transfer_id)
+        .outerjoin(parent, parent.id == mt.source_transfer_id)
         .outerjoin(placements, placements.c.transfer_id == mt.id)
         .outerjoin(moves, moves.c.lot_id == mt.id)
         .outerjoin(losses, losses.c.lot_id == mt.id)
@@ -432,11 +438,36 @@ def list_inventory(db, team_id, filters):
         mt.status == "received",
         mt.stock_tracked.is_(True),
     ]
+    parent = aliased(mt)
+
+    def batch_matches(value, *, previous=False, condition=None):
+        from .table_query import column_predicate
+
+        opposites = {"not_in": "in", "not_contains": "contains", "ne": "eq", "blank": "not_blank"}
+        if condition and condition.operator in opposites:
+            return ~batch_matches(
+                None,
+                previous=previous,
+                condition=condition.model_copy(update={"operator": opposites[condition.operator]}),
+            )
+        statement = select(mt.id)
+        if previous:
+            statement = statement.join(parent, parent.id == mt.source_transfer_id)
+        column = parent.batch_no if previous else mt.batch_no
+        predicate = (
+            column_predicate(column, condition) if condition else literal_query(value, [column])
+        )
+        if predicate is None:
+            return None
+        return statement.where(*matching_sources, predicate).exists()
+
     if term:
         if field == "urgency":
             urgent = table.c.serial_no.in_(urgent_serials())
             conditions.append(urgent if term == "urgent" else ~urgent)
-        elif field in ("batch_no", "warehouse_location"):
+        elif field in ("batch_no", "previous_batch_no"):
+            conditions.append(batch_matches(term, previous=field == "previous_batch_no"))
+        elif field == "warehouse_location":
             conditions.append(literal_query(term, [table.c[field]]))
         elif field in ("last_activity_at", "oldest_received_at"):
             start, end = day_bounds(date.fromisoformat(term))
@@ -490,11 +521,19 @@ def list_inventory(db, team_id, filters):
                 ]
             matches = literal_query(term, columns)
             if field == "all":
+                from .material_lineage import relatives
                 from .shared_material import serial_match
 
+                # Follow physical batches across processing/splits/reallocation,
+                # even when descendants have different serial numbers.
+                family = relatives(
+                    select(mt.id).where(literal_query(term, [mt.batch_no])).correlate(None),
+                    name="inventory_batch_matches",
+                )
                 matches = or_(
                     matches,
                     serial_match(table.c.serial_no, term, "contains"),
+                    select(mt.id).where(*matching_sources, mt.id.in_(select(family.c.id))).exists(),
                     select(mt.id)
                     .where(
                         *matching_sources,
@@ -545,7 +584,7 @@ def list_inventory(db, team_id, filters):
                 )
             )
         )
-    from .table_query import table_order, table_predicates
+    from .table_query import current_table_query, table_options, table_order, table_predicates
 
     columns = {
         **dict(table.c.items()),
@@ -576,7 +615,30 @@ def list_inventory(db, team_id, filters):
         columns["stock_age"] = (
             func.timestampdiff(literal_column("SECOND"), table.c.stock_age_started_at, now) / 86400
         )
-    conditions.extend(table_predicates(columns))
+    conditions.extend(
+        table_predicates(
+            columns,
+            matches={
+                "batch_no": lambda item: batch_matches(None, condition=item),
+                "previous_batch_no": lambda item: batch_matches(
+                    None, previous=True, condition=item
+                ),
+            },
+        )
+    )
+    query_state = current_table_query.get()
+    option_statement = select(table).where(*conditions)
+    option_columns = columns
+    if (
+        query_state
+        and query_state.options
+        and query_state.options.field in ("batch_no", "previous_batch_no")
+    ):
+        option_statement = option_statement.join(mt, and_(*matching_sources)).outerjoin(
+            parent, parent.id == mt.source_transfer_id
+        )
+        option_columns = {**columns, "batch_no": mt.batch_no, "previous_batch_no": parent.batch_no}
+    table_options(db, option_statement, option_columns)
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
     rows = (
         db.execute(
@@ -608,7 +670,31 @@ def list_inventory(db, team_id, filters):
     priorities = urgency_map(db, [row["serial_no"] for row in rows])
     origins = origin_columns(include_team=team_id is None)
     differences = {}
+    batches = {}
     if rows:
+        # Fetch complete batch lists only for this page; do not use GROUP_CONCAT,
+        # whose MySQL length limit can silently lose batch numbers.
+        source_rows = db.execute(
+            select(
+                *(column.label(name) for name, column in origins.items()),
+                mt.batch_no,
+                parent.batch_no.label("previous_batch_no"),
+            )
+            .outerjoin(parent, parent.id == mt.source_transfer_id)
+            .where(
+                mt.next_team_id == team_id if team_id is not None else True,
+                mt.status == "received",
+                mt.stock_tracked.is_(True),
+                or_(*(and_(*group_conditions(origins, row)) for row in rows)),
+            )
+        ).mappings()
+        for source in source_rows:
+            current, previous = batches.setdefault(
+                tuple(source[name] for name in origins), (set(), set())
+            )
+            current.add(source["batch_no"])
+            if source["previous_batch_no"]:
+                previous.add(source["previous_batch_no"])
         lineage = weight_lineage(team_id)
         roots = weight_roots(lineage)
         root_rows = db.execute(
@@ -630,6 +716,10 @@ def list_inventory(db, team_id, filters):
     for row in rows:
         item = dict(row)
         item.pop("matches_date")
+        item.pop("warehouse_batch_no")
+        current, previous = batches[tuple(row[name] for name in origins)]
+        item["batch_nos"] = sorted(current)
+        item["previous_batch_nos"] = sorted(previous)
         rework_route = routes.get(item["rework_route_id"])
         item["rework_round"] = rework_route.rework_round if rework_route else None
         item["rework_route_ready"] = rework_route.state == "published" if rework_route else None

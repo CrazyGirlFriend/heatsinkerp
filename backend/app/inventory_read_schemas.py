@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+from pydantic import Field
+
 from .process_route_read_schemas import RouteExecutionContextResponse
 from .read_schemas import PageResponse, SharedMaterialResponse, StockBalanceResponse
 from .serial_urgency_schemas import UrgencyResponse
@@ -11,6 +13,9 @@ class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     group_id: int
     serial_no: str
     batch_no: str | None
+    batch_nos: list[str] = Field(default_factory=list)
+    previous_batch_no: str | None = None
+    previous_batch_nos: list[str] = Field(default_factory=list)
     warehouse_location: str | None
     process_route_id: int | None
     rework_route_id: int | None

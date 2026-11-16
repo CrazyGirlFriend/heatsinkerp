@@ -253,11 +253,34 @@ const recordColumns = computed(() =>
         ])
       : transferQueryColumns,
 )
-const tableQuery = useTableQuery(recordColumns, () => {
-  if (page.value !== 1)
-    void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
-  else void loadView()
-})
+const tableQuery = useTableQuery(
+  recordColumns,
+  () => {
+    if (page.value !== 1)
+      void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
+    else void loadView()
+  },
+  (table_query) => {
+    const params = { ...listParams(), table_query },
+      id = teamId.value
+    if (tab.value === 'pending')
+      return materialTransferApi.list({
+        ...params,
+        team_id: id,
+        direction: 'incoming',
+        status: 'pending',
+      })
+    if (tab.value === 'outgoing')
+      return teamMaterialApi.dispatches(id, { ...params, ...dispatchParams() })
+    if (tab.value === 'reallocations')
+      return teamMaterialApi.reallocations(id, {
+        ...params,
+        material_type: receiptParams().material_type,
+      })
+    if (tab.value === 'losses') return teamMaterialApi.losses(id, params)
+    return teamMaterialApi.receipts(id, { ...params, ...receiptParams() })
+  },
+)
 function listParams() {
   return { ...baseListParams(), ...tableQuery.params.value }
 }

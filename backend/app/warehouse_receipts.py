@@ -273,10 +273,11 @@ def list_receipts(
                 ],
             )
         )
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = dict(MaterialTransfer.__table__.columns.items())
     filters.extend(table_predicates(columns))
+    table_options(db, select(MaterialTransfer).where(*filters), columns)
     total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
     items = db.scalars(
         select(MaterialTransfer)

@@ -111,6 +111,7 @@ const tableQuery = useTableQuery(
     page.value = 1
     void load()
   },
+  (table_query) => qualityFeedbackApi.records({ ...params(), table_query }),
 )
 function params(): QualityFilters {
   return {

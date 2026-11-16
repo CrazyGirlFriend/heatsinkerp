@@ -48,6 +48,17 @@ const tableQuery = useTableQuery(
     page.value = 1
     void load()
   },
+  (table_query) =>
+    processRouteApi.list(
+      appliedQuery.value,
+      1,
+      props.pendingRework ? 'draft' : 'published',
+      'desc',
+      20,
+      props.pendingRework ? 'rework' : 'normal',
+      props.pendingRework ? 'open' : 'all',
+      table_query,
+    ),
 )
 let generation = 0
 async function load() {

@@ -473,7 +473,7 @@ def list_records(
 
     columns = inspection_table_columns()
     stmt = query_statement(
-        stmt, Inspection.created_at.desc(), Inspection.id.desc(), columns=columns
+        stmt, Inspection.created_at.desc(), Inspection.id.desc(), columns=columns, db=db
     )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).all()

@@ -156,11 +156,12 @@ def list_routes(
                 ]
             )
         )
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     material_name = ProcessRoute.source_data["receipt_fields"]["material_name"]["value"].as_string()
     columns = {**dict(ProcessRoute.__table__.columns.items()), "material_name": material_name}
     where.extend(table_predicates(columns))
+    table_options(db, select(ProcessRoute).where(*where), columns)
     effective_time = ProcessRoute.created_at
     ordering = (
         (effective_time.asc(), ProcessRoute.id.asc())

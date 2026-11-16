@@ -45,6 +45,8 @@ const tableQuery = useTableQuery(
     },
   },
   search,
+  (table_query) =>
+    productionScheduleApi.people({ query: query.value.trim() || undefined, table_query }),
 )
 let generation = 0
 async function load() {

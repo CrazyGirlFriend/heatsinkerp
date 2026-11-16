@@ -437,6 +437,8 @@ def list_plans(
     )
     query_state = current_table_query.get()
     query_fields = {item.field for item in query_state.filters} if query_state else set()
+    if query_state and query_state.options:
+        query_fields.add(query_state.options.field)
     if query_state and query_state.sort:
         query_fields.add(query_state.sort.field)
     if query_fields & {
@@ -451,6 +453,7 @@ def list_plans(
         func.coalesce(Task.created_at, Plan.created_at).desc(),
         Plan.id.desc(),
         columns=columns,
+        db=db,
     )
     total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     ids = list(db.scalars(statement.offset((page - 1) * page_size).limit(page_size)))

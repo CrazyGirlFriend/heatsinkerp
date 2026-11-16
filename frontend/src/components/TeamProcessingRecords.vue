@@ -129,10 +129,14 @@ function resetFilters() {
   processorId.value = null
   taskId.value = null
 }
-const tableQuery = useTableQuery(processingQueryColumns, () => {
-  if (page.value !== 1) paginate(1)
-  else void load()
-})
+const tableQuery = useTableQuery(
+  processingQueryColumns,
+  () => {
+    if (page.value !== 1) paginate(1)
+    else void load()
+  },
+  (table_query) => teamMaterialApi.processingRecords(props.teamId, { ...filters(), table_query }),
+)
 function filters() {
   return {
     ...tableQuery.params.value,

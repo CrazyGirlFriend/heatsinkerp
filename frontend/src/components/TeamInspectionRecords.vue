@@ -88,10 +88,14 @@ const filterCount = computed(
     Number(!!applied.value.problem_type_id) +
     Number(!!applied.value.date_from || !!applied.value.date_to),
 )
-const tableQuery = useTableQuery(inspectionQueryColumns, () => {
-  page.value = 1
-  void load()
-})
+const tableQuery = useTableQuery(
+  inspectionQueryColumns,
+  () => {
+    page.value = 1
+    void load()
+  },
+  (table_query) => inspectionApi.records({ ...params(), table_query }),
+)
 function params(): InspectionFilters {
   return {
     ...tableQuery.params.value,

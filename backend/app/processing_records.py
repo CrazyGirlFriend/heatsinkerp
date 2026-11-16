@@ -619,7 +619,7 @@ def list_records(
         processing_task_id,
         purpose_id,
     )
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = record_table_columns()
     conditions.extend(table_predicates(columns))
@@ -647,6 +647,7 @@ def list_records(
         .join(registered, registered.c.lot_id == Transfer.id)
         .where(*conditions)
     )
+    table_options(db, statement, columns)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     people = participant_pairs()
     summary = None

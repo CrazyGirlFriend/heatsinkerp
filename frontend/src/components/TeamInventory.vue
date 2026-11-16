@@ -404,9 +404,13 @@ function ownershipHint(row: TeamInventoryRow) {
     `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
   return `当前剩余 ${amount(row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${amount(row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${amount(row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${amount(available.quantity, available.weight)}`
 }
-const tableQuery = useTableQuery(inventoryQueryColumns, () => {
-  if (page.value !== 1) apply({ ...filters.value, page: 1 })
-})
+const tableQuery = useTableQuery(
+  inventoryQueryColumns,
+  () => {
+    if (page.value !== 1) apply({ ...filters.value, page: 1 })
+  },
+  (table_query) => teamMaterialApi.teamInventory(props.teamId, { ...filters.value, table_query }),
+)
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
     page: page.value,

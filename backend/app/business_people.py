@@ -18,7 +18,7 @@ def list_people(db, *, query=None, page=1, page_size=100):
         statement = statement.where(literal_query(query, [BusinessPerson.name]))
     from .table_query import query_statement
 
-    statement = query_statement(statement, BusinessPerson.id.desc())
+    statement = query_statement(statement, BusinessPerson.id.desc(), db=db)
     total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     return {
         "items": [

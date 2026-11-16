@@ -53,13 +53,17 @@ const page = computed(() => Math.max(1, Number(text('page')) || 1))
 const pageSize = computed(() =>
   [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 20,
 )
-const tableQuery = useTableQuery(transferQueryColumns, () => {
-  if (page.value !== 1)
-    void navigate({ ...route.query, page: undefined } as Record<
-      string,
-      string | number | undefined
-    >)
-})
+const tableQuery = useTableQuery(
+  transferQueryColumns,
+  () => {
+    if (page.value !== 1)
+      void navigate({ ...route.query, page: undefined } as Record<
+        string,
+        string | number | undefined
+      >)
+  },
+  (table_query) => materialTransferApi.list({ ...params.value, table_query }),
+)
 const params = computed<MaterialTransferListParams>(() => ({
   ...tableQuery.params.value,
   internal_only: true,

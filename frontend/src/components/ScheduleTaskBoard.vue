@@ -96,10 +96,14 @@ type TaskSort = 'created_at' | 'final_due_at'
 const sortBy = ref<TaskSort>('created_at')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const draftColumns = ref<TableColumnCondition[]>([])
-const tableQuery = useTableQuery(taskQueryColumns, () => {
-  page.value = 1
-  void load()
-})
+const tableQuery = useTableQuery(
+  taskQueryColumns,
+  () => {
+    page.value = 1
+    void load()
+  },
+  (table_query) => productionScheduleApi.tasks({ ...filters.value, table_query }),
+)
 const draftSortOrder = ref(`${sortBy.value}:${sortOrder.value}`)
 const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },

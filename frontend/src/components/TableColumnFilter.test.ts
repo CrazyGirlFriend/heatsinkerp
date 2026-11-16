@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ElDatePicker, ElPopover } from 'element-plus'
 import TableColumnFilter from './TableColumnFilter.vue'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
@@ -107,4 +107,102 @@ describe('table column filters', () => {
     expect(invalidNumberRange('2147483648', '', true)).toBe(true)
     expect(invalidNumberRange('0.000001', '99999999999.999999')).toBe(false)
   })
+})
+
+it('loads real values beyond the table page, selects blanks and preserves comma-containing values', async () => {
+  const loadOptions = vi
+    .fn()
+    .mockResolvedValueOnce({ values: [null, '铜,钼'], has_more: true, next_offset: 2 })
+    .mockResolvedValueOnce({ values: ['钢'], has_more: false, next_offset: 3 })
+  wrapper = mount(TableColumnFilter, {
+    props: { label: '材质', loadOptions },
+    global: { stubs: { ElPopover: popover } },
+  })
+  await open()
+  expect(loadOptions).toHaveBeenCalledWith('', 0)
+  expect(wrapper.text()).toContain('(空白)')
+  await click('加载更多')
+  await flushPromises()
+  expect(loadOptions).toHaveBeenLastCalledWith('', 2)
+  await click('取消全选')
+  await wrapper.findAll('input[type="checkbox"]')[0]!.setValue(true)
+  await wrapper.findAll('input[type="checkbox"]')[1]!.setValue(true)
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[0]).toEqual([
+    '',
+    '',
+    { operator: 'in', values: [null, '铜,钼'] },
+  ])
+})
+
+it('selects the entire result using exclusions and clears back to all values', async () => {
+  wrapper = mount(TableColumnFilter, {
+    props: {
+      label: '材质',
+      loadOptions: async () => ({ values: ['铜', '钢'], has_more: true, next_offset: 2 }),
+    },
+    global: { stubs: { ElPopover: popover } },
+  })
+  await open()
+  await wrapper.findAll('input[type="checkbox"]')[1]!.setValue(false)
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[0]).toEqual(['', '', { operator: 'not_in', values: ['钢'] }])
+  await open()
+  await click('全选')
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[1]).toEqual(['', ''])
+})
+
+it('offers blank and comparison conditions without leaking a stale range endpoint', async () => {
+  wrapper = mount(TableColumnFilter, {
+    props: { label: '数量', kind: 'number', value: '1', end: '20' },
+    global: { stubs: { ElPopover: popover } },
+  })
+  await open()
+  await wrapper.get('select[aria-label="数量筛选条件"]').setValue('gt')
+  await wrapper.get('input[aria-label="数量最小值"]').setValue('10')
+  expect(wrapper.find('input[aria-label="数量最大值"]').exists()).toBe(false)
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[0]).toEqual(['10', '', { operator: 'gt' }])
+  await open()
+  await wrapper.get('select[aria-label="数量筛选条件"]').setValue('blank')
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[1]).toEqual(['', '', { operator: 'blank' }])
+})
+
+it('selects a whole calendar month including its last day', async () => {
+  wrapper = mount(TableColumnFilter, {
+    props: { label: '日期', kind: 'date' },
+    global: { stubs: { ElPopover: popover } },
+  })
+  await open()
+  await wrapper.get('select[aria-label="日期选择方式"]').setValue('month')
+  wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', '2024-02-01')
+  await flushPromises()
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[0]).toEqual([
+    '2024-02-01',
+    '2024-02-29',
+    { operator: 'between' },
+  ])
+})
+
+it('keeps loading errors visible instead of offering current-page values', async () => {
+  wrapper = mount(TableColumnFilter, {
+    props: {
+      label: '材质',
+      loadOptions: async () => {
+        throw new Error('读取失败')
+      },
+    },
+    global: { stubs: { ElPopover: popover } },
+  })
+  await open()
+  expect(wrapper.get('[role="alert"]').text()).toContain('读取失败')
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')).toBeUndefined()
+  await click('条件筛选')
+  await wrapper.get('input[aria-label="材质筛选内容"]').setValue('铜')
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.emitted('apply')?.[0]).toEqual(['铜', ''])
 })

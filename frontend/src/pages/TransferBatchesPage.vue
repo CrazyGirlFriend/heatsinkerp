@@ -10,6 +10,7 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from '@/components/FilterDialog.vue'
 import InventoryColumnSettings from '@/components/InventoryColumnSettings.vue'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
+import type { TableQueryColumn, TableFilterDetails } from '@/types/tableQuery'
 import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
 import TableExportButton from '@/components/TableExportButton.vue'
@@ -255,12 +256,39 @@ const statusParams = computed(() =>
     ? { statuses: status.value, status: 'all' as const }
     : { status: status.value as TransferStatusValue | 'all' },
 )
-const tableQuery = useTableQuery({}, () => {
-  page.value = 1
-  void loadRows()
-})
-function headerSort(field: string) {
+const tableQuery = useTableQuery(
+  {},
+  () => {
+    page.value = 1
+    void loadRows()
+  },
+  (table_query) =>
+    materialTransferApi.list({ ...filterParams.value, ...statusParams.value, table_query }),
+)
+function headerColumn(field: string): TableQueryColumn {
+  if (field === 'source_team_name' || field === 'next_team_name')
+    return {
+      field: field === 'source_team_name' ? 'source_team_id' : 'next_team_id',
+      kind: 'select',
+      options: teamOptions.value,
+    }
+  if (field === 'material_type') return { field, kind: 'select', options: materialTypeOptions }
+  if (field === 'status') return { field, kind: 'select', options: columnStatusOptions.value }
   return {
+    field,
+    kind: ['quantity', 'weight'].includes(field)
+      ? 'number'
+      : field === 'created_at'
+        ? 'date'
+        : 'text',
+  }
+}
+function headerSort(field: string) {
+  const column = headerColumn(field)
+  return {
+    condition: tableQuery.state.value.filters.find((item) => item.field === column.field),
+    loadOptions: (search: string, offset: number) =>
+      tableQuery.controller.value.loadOptions!(column, search, offset),
     sortable: true,
     sort:
       tableQuery.state.value.sort?.field === field
@@ -537,7 +565,32 @@ function applyColumn(
   key: ColumnKey | 'date' | 'source' | 'next' | 'type' | 'status',
   value: string,
   end = '',
+  details?: TableFilterDetails,
 ) {
+  const fields: Record<string, string> = {
+    serial_query: 'serial_no',
+    batch_query: 'batch_no',
+    material_query: 'material_name',
+    purpose_query: 'purpose_name',
+    quantity_min: 'quantity',
+    weight_min: 'weight',
+    date: 'created_at',
+    source: 'source_team_name',
+    next: 'next_team_name',
+    type: 'material_type',
+    status: 'status',
+  }
+  const field = fields[key],
+    selectedValue = value,
+    selectedEnd = end
+  if (details) {
+    value = ''
+    end = ''
+  } else if (field) {
+    tableQuery.state.value.filters = tableQuery.state.value.filters.filter(
+      (item) => item.field !== headerColumn(field).field,
+    )
+  }
   if (key === 'date') dates.value = { from: value, to: end }
   else if (key === 'source') sourceTeamId.value = value
   else if (key === 'next') nextTeamId.value = value
@@ -551,7 +604,9 @@ function applyColumn(
   syncFilterDrafts()
   page.value = 1
   updateRoute()
-  void loadRows()
+  if (details)
+    tableQuery.controller.value.filter(headerColumn(field!), selectedValue, selectedEnd, details)
+  else void loadRows()
 }
 
 function setPage(next: number): void {
@@ -999,7 +1054,9 @@ onBeforeUnmount(() => {
                   v-bind="headerSort('serial_no')"
                   :context="route.fullPath"
                   :value="columns.serial_query"
-                  @apply="(value) => applyColumn('serial_query', value)" /></template
+                  @apply="
+                    (value, end, details) => applyColumn('serial_query', value, end, details)
+                  " /></template
               ><template #default="{ row }"
                 ><div class="transfer-serial">
                   <span
@@ -1031,7 +1088,9 @@ onBeforeUnmount(() => {
                   kind="date"
                   :value="dates.from"
                   :end="dates.to"
-                  @apply="(value, end) => applyColumn('date', value, end)" /></template
+                  @apply="
+                    (value, end, details) => applyColumn('date', value, end, details)
+                  " /></template
               ><template #default="{ row }"
                 ><time class="transfer-time" :title="formatDateTime(row.transferred_at)">{{
                   formatDateTime(row.transferred_at)
@@ -1054,7 +1113,9 @@ onBeforeUnmount(() => {
                   v-bind="headerSort('material_name')"
                   :context="route.fullPath"
                   :value="columns.material_query"
-                  @apply="(value) => applyColumn('material_query', value)"
+                  @apply="
+                    (value, end, details) => applyColumn('material_query', value, end, details)
+                  "
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'source'"
@@ -1064,7 +1125,7 @@ onBeforeUnmount(() => {
                   kind="select"
                   :value="String(sourceTeamId)"
                   :options="teamOptions"
-                  @apply="(value) => applyColumn('source', value)"
+                  @apply="(value, end, details) => applyColumn('source', value, end, details)"
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'destination'"
@@ -1074,7 +1135,7 @@ onBeforeUnmount(() => {
                   kind="select"
                   :value="String(nextTeamId)"
                   :options="teamOptions"
-                  @apply="(value) => applyColumn('next', value)"
+                  @apply="(value, end, details) => applyColumn('next', value, end, details)"
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'purpose'"
@@ -1082,7 +1143,9 @@ onBeforeUnmount(() => {
                   v-bind="headerSort('purpose_name')"
                   :context="route.fullPath"
                   :value="columns.purpose_query"
-                  @apply="(value) => applyColumn('purpose_query', value)"
+                  @apply="
+                    (value, end, details) => applyColumn('purpose_query', value, end, details)
+                  "
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'material_type'"
@@ -1092,7 +1155,7 @@ onBeforeUnmount(() => {
                   kind="select"
                   :value="materialType"
                   :options="materialTypeOptions"
-                  @apply="(value) => applyColumn('type', value)"
+                  @apply="(value, end, details) => applyColumn('type', value, end, details)"
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'quantity'"
@@ -1103,7 +1166,7 @@ onBeforeUnmount(() => {
                   integer
                   :value="columns.quantity_min"
                   :end="columns.quantity_max"
-                  @apply="(value, end) => applyColumn('quantity_min', value, end)"
+                  @apply="(value, end, details) => applyColumn('quantity_min', value, end, details)"
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'weight'"
@@ -1113,7 +1176,7 @@ onBeforeUnmount(() => {
                   kind="number"
                   :value="columns.weight_min"
                   :end="columns.weight_max"
-                  @apply="(value, end) => applyColumn('weight_min', value, end)"
+                  @apply="(value, end, details) => applyColumn('weight_min', value, end, details)"
                 />
                 <TableColumnFilter
                   v-else-if="column.key === 'status'"
@@ -1123,7 +1186,7 @@ onBeforeUnmount(() => {
                   kind="select"
                   :value="status === 'all' ? '' : status"
                   :options="columnStatusOptions"
-                  @apply="(value) => applyColumn('status', value)"
+                  @apply="(value, end, details) => applyColumn('status', value, end, details)"
                 />
                 <span v-else>{{ column.label }}</span>
               </template>
@@ -1158,7 +1221,7 @@ onBeforeUnmount(() => {
                   v-bind="headerSort('batch_no')"
                   :context="route.fullPath"
                   :value="columns.batch_query"
-                  @apply="(value) => applyColumn('batch_query', value)"
+                  @apply="(value, end, details) => applyColumn('batch_query', value, end, details)"
               /></template>
               <template #default="{ row }"
                 ><ElButton

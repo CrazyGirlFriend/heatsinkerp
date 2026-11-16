@@ -124,6 +124,7 @@ def list_catalog(db, user, *, query=None, state=None, team_id=None, page=1, page
                 else_="empty",
             ),
         },
+        db=db,
     )
     total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     rows = db.execute(statement.offset((page - 1) * page_size).limit(page_size)).mappings().all()

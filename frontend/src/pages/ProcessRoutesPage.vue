@@ -192,10 +192,24 @@ const filterColumns = computed(() => ({
       : [['材质', 'material_name']],
   ),
 }))
-const tableQuery = useTableQuery(filterColumns, () => {
-  page.value = 1
-  void load()
-})
+const tableQuery = useTableQuery(
+  filterColumns,
+  () => {
+    page.value = 1
+    void load()
+  },
+  (table_query) =>
+    processRouteApi.list(
+      appliedQuery.value,
+      1,
+      routeState.value,
+      'desc',
+      pageSize.value,
+      routeKind.value,
+      routeKind.value === 'rework' ? reworkScope.value : 'all',
+      table_query,
+    ),
+)
 const filterCount = computed(
   () =>
     tableQuery.state.value.filters.length +

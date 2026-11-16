@@ -322,6 +322,33 @@ it('uses receipt time for both processed and unprocessed stock', async () => {
   expect(table.find('[title*="完成登记起算"]').exists()).toBe(false)
 })
 
+it('shows every grouped batch and its previous batches and searches an input batch', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(
+    response([
+      {
+        ...row,
+        team_id: 2,
+        team_name: '轧制',
+        team_code: 'FACTORY-ROLL',
+        batch_no: 'TL-OUTPUT-A',
+        batch_nos: ['TL-OUTPUT-A', 'TL-OUTPUT-B'],
+        previous_batch_no: 'TL-INPUT-A',
+        previous_batch_nos: ['TL-INPUT-A', 'TL-INPUT-B'],
+      },
+    ]),
+  )
+  const { page, router } = await render('/material-inventory')
+  const table = page.get('[aria-label="全厂库存明细"]')
+  expect(table.text()).toContain('TL-OUTPUT-A、TL-OUTPUT-B')
+  expect(table.text()).toContain('TL-INPUT-A、TL-INPUT-B')
+  expect(table.text()).toContain('上一批次号')
+  await page.get('input[aria-label="搜索库存"]').setValue('TL-INPUT-A')
+  await page.get('input[aria-label="搜索库存"]').trigger('keyup.enter')
+  await flushPromises()
+  expect(router.currentRoute.value.query.query).toBe('TL-INPUT-A')
+  expect(api.stock).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'TL-INPUT-A' }))
+})
+
 it('combines team and residence filters, validates bounds and resets pagination', async () => {
   vi.spyOn(api, 'stock').mockResolvedValue(response())
   const { page, router } = await render('/material-trace?page=3')

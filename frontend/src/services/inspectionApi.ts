@@ -29,6 +29,7 @@ export interface InspectionCreate {
   idempotency_key: string
 }
 export interface InspectionFilters {
+  table_query?: string
   kind?: InspectionRecord['kind']
   scope?: InspectionRecord['scope']
   team_id?: number

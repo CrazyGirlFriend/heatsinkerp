@@ -141,10 +141,14 @@ const filterCount = computed(
     Number(!!filters.value.due_from || !!filters.value.due_to),
 )
 const draftColumns = ref<TableColumnCondition[]>([])
-const tableQuery = useTableQuery(scheduleQueryColumns, () => {
-  page.value = 1
-  void load()
-})
+const tableQuery = useTableQuery(
+  scheduleQueryColumns,
+  () => {
+    page.value = 1
+    void load()
+  },
+  (table_query) => productionScheduleApi.list({ ...params(), table_query }),
+)
 function params() {
   return {
     ...filters.value,

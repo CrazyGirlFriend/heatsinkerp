@@ -26,6 +26,9 @@ export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, Sh
   process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
   batch_no?: string | null
+  batch_nos?: string[]
+  previous_batch_no?: string | null
+  previous_batch_nos?: string[]
   warehouse_location?: string | null
   delivery_schedule?: InventoryScheduleSummary
   rework_pending?: boolean
@@ -162,7 +165,15 @@ export const warehouseColumns = [
     label: '批次号',
     width: 210,
     defaultVisible: true,
-    format: (row: TeamInventoryRow) => row.batch_no || '—',
+    format: (row: TeamInventoryRow) => row.batch_nos?.join('、') || row.batch_no || '—',
+  },
+  {
+    key: 'previous_batch_no',
+    label: '上一批次号',
+    width: 210,
+    defaultVisible: false,
+    format: (row: TeamInventoryRow) =>
+      row.previous_batch_nos?.join('、') || row.previous_batch_no || '—',
   },
   {
     key: 'warehouse_location',
@@ -409,6 +420,7 @@ export const warehouseSearchKind = (field: WarehouseSearchField) =>
         ? 'number'
         : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
+  table_query?: string
   availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField
   rework?: 'pending' | 'worked'

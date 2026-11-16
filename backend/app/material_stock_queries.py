@@ -322,10 +322,11 @@ def list_stock(
             )
             matches = or_(matches, stock.c.transfer_id.in_(location_matches))
         filters.append(matches)
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = dict(stock.c.items())
     filters.extend(table_predicates(columns))
+    table_options(db, select(stock).where(*filters), columns)
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
     metadata = source_metadata(team_id)
     rows = (
@@ -491,7 +492,7 @@ def list_losses(
             )
         )
         filters.append(MaterialLoss.source_transfer_id.in_(ids))
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = {
         **dict(MaterialLoss.__table__.columns.items()),
@@ -503,6 +504,7 @@ def list_losses(
         },
     }
     filters.extend(table_predicates(columns))
+    table_options(db, select(MaterialLoss).where(*filters), columns)
     total = db.scalar(select(func.count(MaterialLoss.id)).where(*filters)) or 0
     rows = db.scalars(
         select(MaterialLoss)
@@ -561,10 +563,11 @@ def list_outbound_batches(
                 ],
             )
         )
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = dict(mt.__table__.columns.items())
     filters.extend(table_predicates(columns))
+    table_options(db, select(mt).where(*filters), columns)
     total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
     items = db.scalars(
         select(mt)
@@ -688,7 +691,7 @@ def list_dispatches(
         filters.append(index.c.next_team_id == next_team_id)
     if status:
         filters.append(index.c.status == status)
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     matching_lines = or_(mt.dispatch_id == index.c.group_id, mt.id == index.c.single_id)
 
@@ -704,6 +707,7 @@ def list_dispatches(
         "weight": line_value(func.sum(case((mt.status != "voided", mt.weight), else_=0))),
     }
     filters.extend(table_predicates(columns))
+    table_options(db, select(index).where(*filters), columns)
     total = db.scalar(select(func.count()).select_from(index).where(*filters)) or 0
     rows = (
         db.execute(

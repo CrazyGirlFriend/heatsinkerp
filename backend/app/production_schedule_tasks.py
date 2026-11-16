@@ -311,6 +311,7 @@ def list_tasks(
         sort_column.desc() if sort_order == "desc" else sort_column.asc(),
         Task.id.desc() if sort_by == "created_at" and sort_order == "desc" else Task.id.asc(),
         columns=columns,
+        db=db,
     )
     total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     ids = list(db.scalars(statement.offset((page - 1) * page_size).limit(page_size)))

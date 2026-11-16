@@ -19,13 +19,21 @@ class AsyncDatabaseRoute(APIRoute):
         handler = super().get_route_handler()
 
         async def with_table_query(request):
-            from .table_query import current_table_query, parse_table_query
+            from fastapi import HTTPException
+            from fastapi.responses import JSONResponse
+
+            from .table_query import TableOptionsReady, current_table_query, parse_table_query
 
             token = current_table_query.set(
                 parse_table_query(request.query_params.get("table_query"))
             )
             try:
+                query = current_table_query.get()
+                if query and query.options and request.method != "GET":
+                    raise HTTPException(422, "筛选选项仅用于列表查询")
                 return await handler(request)
+            except TableOptionsReady as response:
+                return JSONResponse(response.payload)
             finally:
                 current_table_query.reset(token)
 

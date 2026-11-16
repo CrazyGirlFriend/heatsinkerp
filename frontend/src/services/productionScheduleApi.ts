@@ -75,7 +75,9 @@ export const productionScheduleApi = {
     request<ScheduleRouteOption[]>(`/production-schedules/tasks/${id}/route-options`),
   linkRoute: (id: number, body: ScheduleRouteLink) =>
     request<ScheduleTask>(`/production-schedules/tasks/${id}/route`, { method: 'POST', body }),
-  people: (params: { query?: string; page?: number; page_size?: number } = {}) =>
+  people: (
+    params: { query?: string; page?: number; page_size?: number; table_query?: string } = {},
+  ) =>
     request<MaterialPage<BusinessPerson>>(
       `/production-schedules/business-people?${queryString(params)}`,
     ),

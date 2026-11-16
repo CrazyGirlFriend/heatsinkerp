@@ -216,10 +216,11 @@ def list_material_transfers(
     filters.extend(
         record_filters.predicates(MaterialTransfer.created_at, MaterialTransfer.serial_no)
     )
-    from .table_query import table_order, table_predicates
+    from .table_query import table_options, table_order, table_predicates
 
     columns = dict(MaterialTransfer.__table__.columns.items())
     filters.extend(table_predicates(columns))
+    table_options(db, select(MaterialTransfer).where(*filters), columns)
     summary = None
     if include_summary:
         # Aggregate the same filtered set before pagination, in the existing count query.

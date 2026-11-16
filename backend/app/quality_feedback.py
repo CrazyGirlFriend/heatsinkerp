@@ -237,6 +237,7 @@ def list_records(
         combined.c.id.desc(),
         combined.c.kind,
         columns=fields,
+        db=db,
     )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     pending = (

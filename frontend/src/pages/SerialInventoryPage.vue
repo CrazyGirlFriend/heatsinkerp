@@ -77,10 +77,14 @@ async function switchView(value: string) {
   if (!text('search_field') || text('search_field') === 'all') query.query = text('query')
   await router.replace({ path: route.path, query })
 }
-const tableQuery = useTableQuery(inventoryQueryColumns, () => {
-  if (params.value.page !== 1)
-    void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
-})
+const tableQuery = useTableQuery(
+  inventoryQueryColumns,
+  () => {
+    if (params.value.page !== 1)
+      void router.replace({ path: route.path, query: { ...route.query, page: undefined } })
+  },
+  (table_query) => api.stock({ ...params.value, table_query }),
+)
 const params = computed<GlobalInventoryParams>(() => ({
   ...tableQuery.params.value,
   query: text('query') || undefined,
@@ -165,6 +169,7 @@ const defaults = [
   'material_type',
   'transfer_specification',
   'batch_no',
+  'previous_batch_no',
   'warehouse_location',
 ]
 const widths: Record<string, number> = {
@@ -462,7 +467,7 @@ function exportSource() {
       <WorkspaceDataToolbar
         v-model="queryDraft"
         search-label="搜索库存"
-        placeholder="流水号、批次号、仓库、材质、规格或任务"
+        placeholder="流水号、当前或上游批次号、仓库、材质、规格或任务"
         :maxlength="160"
         :loading="loading"
         columns
@@ -748,6 +753,7 @@ function exportSource() {
           :key="column.key"
           :label="column.label"
           :min-width="column.width"
+          :show-overflow-tooltip="['batch_no', 'previous_batch_no'].includes(column.key)"
           :fixed="column.key === 'on_hand_quantity' ? 'left' : undefined"
           :align="'numeric' in column && column.numeric ? 'right' : 'left'"
         >

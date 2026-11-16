@@ -244,6 +244,7 @@ export interface MaterialTransferColumnParams {
 }
 
 export interface MaterialTransferListParams extends MaterialTransferColumnParams {
+  table_query?: string
   record_kind?: 'shared' | 'reallocation'
   date_from?: string
   date_to?: string

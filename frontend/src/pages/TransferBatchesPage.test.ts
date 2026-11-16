@@ -1027,3 +1027,29 @@ it('shows original and destination serials separately in reallocation records', 
   const exported = await source.load(new AbortController().signal, () => {})
   expect(exported[0]).toMatchObject({ source_serial_no: 'FROM-001', serial_no: 'TO-002' })
 })
+
+it('applies an exact header selection without retaining the old keyword filter, and clears it independently', async () => {
+  const page = await renderList('/transfer-batches?material_query=W80&status=pending')
+  const header = page
+    .findAllComponents(TableColumnFilter)
+    .find((item) => item.props('label') === '材质')!
+  header.vm.$emit('apply', '', '', { operator: 'in', values: ['铜,钼', null] })
+  await flushPromises()
+  const params = vi.mocked(materialTransferApi.list).mock.calls.at(-1)![0]!
+  expect(params.material_query).toBeUndefined()
+  expect(params.status).toBe('pending')
+  expect(JSON.parse(params.table_query!).filters).toEqual([
+    {
+      field: 'material_name',
+      kind: 'text',
+      value: '',
+      end: '',
+      operator: 'in',
+      values: ['铜,钼', null],
+    },
+  ])
+  header.vm.$emit('apply', '', '')
+  await flushPromises()
+  expect(vi.mocked(materialTransferApi.list).mock.calls.at(-1)![0]!.table_query).toBeUndefined()
+  expect(vi.mocked(materialTransferApi.list).mock.calls.at(-1)![0]!.status).toBe('pending')
+})

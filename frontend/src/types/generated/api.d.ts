@@ -3442,6 +3442,8 @@ export interface components {
       batch_count: number
       /** Batch No */
       batch_no: string | null
+      /** Batch Nos */
+      batch_nos?: string[]
       /** Current Batch Count */
       current_batch_count: number
       /** Customer Code */
@@ -3496,6 +3498,10 @@ export interface components {
       owned_quantity: number
       /** Owned Weight */
       owned_weight: number
+      /** Previous Batch No */
+      previous_batch_no?: string | null
+      /** Previous Batch Nos */
+      previous_batch_nos?: string[]
       process_route: components['schemas']['RouteExecutionContextResponse'] | null
       /** Process Route Id */
       process_route_id: number | null
@@ -4141,6 +4147,8 @@ export interface components {
       batch_count: number
       /** Batch No */
       batch_no: string | null
+      /** Batch Nos */
+      batch_nos?: string[]
       /** Current Batch Count */
       current_batch_count: number
       /** Customer Code */
@@ -4195,6 +4203,10 @@ export interface components {
       owned_quantity: number
       /** Owned Weight */
       owned_weight: number
+      /** Previous Batch No */
+      previous_batch_no?: string | null
+      /** Previous Batch Nos */
+      previous_batch_nos?: string[]
       process_route: components['schemas']['RouteExecutionContextResponse'] | null
       /** Process Route Id */
       process_route_id: number | null
@@ -14865,6 +14877,7 @@ export interface operations {
           | 'external_pending_weight'
           | 'source_batch_no'
           | 'batch_no'
+          | 'previous_batch_no'
           | 'warehouse_location'
           | 'shortage_weight'
           | 'processing_registered_quantity'
@@ -15483,6 +15496,7 @@ export interface operations {
           | 'external_pending_weight'
           | 'source_batch_no'
           | 'batch_no'
+          | 'previous_batch_no'
           | 'warehouse_location'
           | 'shortage_weight'
           | 'processing_registered_quantity'

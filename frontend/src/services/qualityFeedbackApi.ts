@@ -32,6 +32,7 @@ export const qualitySourceLabels = {
 export const qualityProblemLabel = (row: QualityRow) =>
   row.kind === 'team_report' ? row.notes : inspectionProblemLabel(row)
 export interface QualityFilters {
+  table_query?: string
   problem_type_id?: number
   team_id?: number
   query?: string

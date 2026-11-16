@@ -101,6 +101,15 @@ const tableQuery = useTableQuery(
     page.value = 1
     void load()
   },
+  (table_query) =>
+    loadWarehouseCatalog(
+      appliedQuery.value.trim(),
+      1,
+      pageSize.value,
+      appliedFilter.value,
+      props.teamId,
+      table_query,
+    ),
 )
 function exportSource() {
   const query = appliedQuery.value,

@@ -200,6 +200,11 @@ export default defineComponent({
                         label: entry.label,
                         kind: field.kind || 'text',
                         options: field.options,
+                        condition: query.state.filters.find((item) => item.field === field.field),
+                        loadOptions: query.loadOptions
+                          ? (search: string, offset: number) =>
+                              query.loadOptions!(field, search, offset)
+                          : undefined,
                         value:
                           query.state.filters.find((item) => item.field === field.field)?.value ||
                           '',
@@ -210,7 +215,11 @@ export default defineComponent({
                           query.state.sort?.field === field.field
                             ? query.state.sort.direction
                             : undefined,
-                        onApply: (value: string, end: string) => query.filter(field, value, end),
+                        onApply: (
+                          value: string,
+                          end: string,
+                          details?: import('@/types/tableQuery').TableFilterDetails,
+                        ) => query.filter(field, value, end, details),
                         onSort: (direction?: 'asc' | 'desc') => query.sort(field.field, direction),
                       })
                     : h(
