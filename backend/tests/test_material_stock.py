@@ -199,7 +199,7 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
     assert loss(client, setup, first, reason="不同原因").status_code == 409
     assert loss(client, setup, first, idempotency_key="too-much", quantity=39).status_code == 409
     assert loss(client, setup, first, idempotency_key="too-heavy", weight=4).status_code == 409
-    for headers in ({}, setup["source_headers"], setup["third_headers"]):
+    for headers in (setup["source_headers"], setup["third_headers"]):
         attempt = sender_post(
             client,
             endpoint(setup, "dispatches"),

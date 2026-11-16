@@ -20,7 +20,7 @@ def catalog(client, context):
 def test_catalog_permissions_versions_and_duplicate_names(client, inspection):
     url, problem_id, headers = catalog(client, inspection)
     s, _, _, _ = inspection
-    assert client.post(url, json={"name": "缺口"}).status_code == 403
+    assert client.post(url, json={"name": "管理员新增问题"}).status_code == 201
     assert client.post(url, headers=s["other_headers"], json={"name": "缺口"}).status_code == 403
     row = client.post(url, headers=headers, json={"name": "  缺口  "})
     assert row.status_code == 201, row.text

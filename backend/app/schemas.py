@@ -259,6 +259,7 @@ class MaterialTransferCreate(
 ):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
+    source_team_id: int | None = Field(default=None, ge=1)
     sent_employee_id: int = Field(ge=1)
     serial_no: str = Field(min_length=1, max_length=80)
     next_team_id: int = Field(ge=1)

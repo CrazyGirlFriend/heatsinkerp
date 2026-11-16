@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload, lazyload, raiseload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
-from .auth import actor_name
+from .auth import actor_name, can_manage_team
 from .batch_numbers import next_transfer_batch_number
 from .material_weight import SLUDGE_FIELDS, sludge_measurement, validate_material_amounts
 from .models import (
@@ -107,6 +107,8 @@ def _creation_fingerprint(payload) -> str:
     ):
         if field not in payload.model_fields_set:
             value.pop(field, None)
+    if value.get("source_team_id") is None:
+        value.pop("source_team_id", None)
     if value.get("process_route") is None:
         value.pop("process_route", None)
     for field in (*DOCUMENT_FIELDS, *SLUDGE_FIELDS):
@@ -197,7 +199,9 @@ def _utc(value: datetime | None) -> datetime | None:
     )
 
 
-def _require_team_actor(user: User) -> Team:
+def _require_team_actor(user: User, team: Team | None = None) -> Team:
+    if user.role == "ADMIN" and user.active and team is not None and team.active:
+        return team
     if user.role != "TEAM":
         raise _forbidden("team leader account required")
     if user.team is None or user.team_id is None or not user.team.active:
@@ -252,19 +256,17 @@ def _locked_transfer(db, batch_no: str) -> MaterialTransfer:
 
 
 def _assert_source(user: User, transfer: MaterialTransfer) -> None:
-    team = _require_team_actor(user)
-    if team.id != transfer.source_team_id:
+    if not can_manage_team(user, transfer.source_team_id):
         raise _forbidden("only the source team can change this transfer")
 
 
 def _assert_receiver(user: User, transfer: MaterialTransfer) -> None:
-    team = _require_team_actor(user)
-    if team.id != transfer.next_team_id:
+    if not can_manage_team(user, transfer.next_team_id):
         raise _forbidden("only the target team can confirm this transfer")
 
 
 def material_transfer_allowed_actions(transfer: MaterialTransfer, user: User | None) -> list[str]:
-    if user is None or user.role != "TEAM":
+    if user is None or not user.active or user.role not in ("ADMIN", "TEAM"):
         return []
     if transfer.status == "received":
         from .transfer_amendments import eligible
@@ -272,19 +274,25 @@ def material_transfer_allowed_actions(transfer: MaterialTransfer, user: User | N
         return (
             ["request_amendment"]
             if eligible(transfer)
-            and user.team_id in (transfer.source_team_id, transfer.next_team_id)
+            and (
+                can_manage_team(user, transfer.source_team_id)
+                or can_manage_team(user, transfer.next_team_id)
+            )
             else []
         )
     if transfer.status != "pending":
         return []
-    if user.team_id == transfer.source_team_id:
-        return (
+    actions = []
+    if can_manage_team(user, transfer.source_team_id):
+        actions += (
             ["edit", "void", "confirm_outbound"]
             if transfer.entry_kind in EXTERNAL_ENTRY_KINDS
             else ["edit", "void"]
         )
-    if user.team_id == transfer.next_team_id:
-        return (
+    if transfer.entry_kind not in EXTERNAL_ENTRY_KINDS and can_manage_team(
+        user, transfer.next_team_id
+    ):
+        actions += (
             (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])
             if transfer.rejection_reason is not None
             else [
@@ -296,7 +304,7 @@ def material_transfer_allowed_actions(transfer: MaterialTransfer, user: User | N
                 ),
             ]
         )
-    return []
+    return actions
 
 
 def material_loss_dict(loss):
@@ -466,12 +474,14 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
     from .team_business import purpose_snapshot
 
     validate_pair(payload.delivery_date, payload.delivery_quantity)
-    source = _require_team_actor(user)
-    if source.kind in ("engineering", "dispatch", "business"):
-        raise HTTPException(403, "该班组不办理实物收发")
     request_hash = _creation_fingerprint(payload)
     try:
         with db.begin():
+            from .material_stock import actor_team
+
+            source = actor_team(db, user, payload.source_team_id or user.team_id)
+            if source.kind in ("engineering", "dispatch", "business"):
+                raise HTTPException(403, "该班组不办理实物收发")
             if payload.idempotency_key:
                 prior = db.scalar(
                     select(MaterialTransfer)
@@ -864,7 +874,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
         transfer = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
         if (
             transfer is not None
-            and transfer.next_team_id == user.team_id
+            and can_manage_team(user, transfer.next_team_id)
             and transfer.status == "received"
             and transfer.receipt_idempotency_key == payload.idempotency_key
         ):
@@ -877,7 +887,7 @@ def reject_material_transfer(db, batch_no, payload, user):
     with db.begin():
         transfer = _locked_transfer(db, batch_no)
         _assert_receiver(user, transfer)
-        if user.team.kind != "warehouse" or transfer.status != "pending":
+        if transfer.next_team.kind != "warehouse" or transfer.status != "pending":
             raise _conflict("仅库房可退回待接收明细，已接收单据不能修改")
         if (
             transfer.rejection_reason == payload.reason
@@ -905,7 +915,9 @@ def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     try:
         with db.begin():
             transfer = _locked_transfer(db, batch_no)
-            require_outbound_actor(user, transfer.source_team_id, transfer.entry_kind)
+            require_outbound_actor(
+                user, transfer.source_team_id, transfer.entry_kind, team=transfer.source_team
+            )
             # The source lookup can establish a REPEATABLE READ snapshot
             # before waiting for a concurrent confirmer. Load its audit with
             # a current read too, so an idempotent reply includes that event.

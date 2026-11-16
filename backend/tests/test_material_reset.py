@@ -29,6 +29,7 @@ def database(monkeypatch):
     for name in (
         *reset.RESET_TABLES,
         "users",
+        "team_employees",
         "work_orders",
         "admin_audit_events",
         "team_purposes",
@@ -69,6 +70,12 @@ def database(monkeypatch):
             },
             "transfer_amendment_notices": {"amendment_id": "material_transfer_amendments"},
             "transfer_amendment_notice_reads": {"notice_id": "transfer_amendment_notices"},
+            "processing_participants": {
+                "processing_id": "material_quantity_adjustments",
+                "employee_id": "team_employees",
+            },
+            "quality_notices": {"inspection_id": "material_inspections"},
+            "quality_notice_reads": {"notice_id": "quality_notices", "user_id": "users"},
         }.get(name, {}).items():
             columns.append(Column(column, ForeignKey(f"{target}.id", ondelete="RESTRICT")))
         reference = {
@@ -119,6 +126,9 @@ def database(monkeypatch):
             "material_transfer_amendments": {"transfer_id": 2, "pending_transfer_id": 2},
             "transfer_amendment_notices": {"amendment_id": 1},
             "transfer_amendment_notice_reads": {"notice_id": 1},
+            "processing_participants": {"processing_id": 1, "employee_id": 1},
+            "quality_notices": {"inspection_id": 1},
+            "quality_notice_reads": {"notice_id": 1, "user_id": 1},
         }.items():
             connection.execute(metadata.tables[name].update().values(**references))
         connection.execute(metadata.tables["material_transfers"].update().values(shared_group_id=1))

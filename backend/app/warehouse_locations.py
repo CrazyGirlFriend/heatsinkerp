@@ -388,7 +388,8 @@ def reserve(db, location_id, key, user, identity=None):
     from .material_stock import _db_conflict
     from .material_transfer_workflow import _require_team_actor
 
-    _require_team_actor(user)
+    if user.role != "ADMIN":
+        _require_team_actor(user)
     try:
         with db.begin():
             location = lock_location(db, location_id)

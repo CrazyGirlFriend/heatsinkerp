@@ -103,9 +103,9 @@ export const processRouteApi = {
     reason: string
     idempotency_key: string
   }) => request<ProcessRoute>('/rework-requests', 'POST', body),
-  reworkSources: (query = '', page = 1) =>
+  reworkSources: (query = '', page = 1, teamId?: number) =>
     request<MaterialPage<ReworkSource>>(
-      `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
+      `/rework-sources?query=${encodeURIComponent(query)}&page=${page}${teamId ? '&team_id=' + teamId : ''}`,
     ),
   reworkSourceContext: (id: number, problemTeamId?: number) =>
     request<QuantityAdjustmentContext>(

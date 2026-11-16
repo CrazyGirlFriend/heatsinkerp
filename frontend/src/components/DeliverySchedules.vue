@@ -76,17 +76,29 @@ const emit = defineEmits<{
 const route = useRoute(),
   auth = useAuthStore(),
   directory = useTeamDirectoryStore()
-const canManage = computed(() => Boolean(props.manage && auth.isDispatch))
+const canManage = computed(() =>
+  Boolean(
+    props.manage &&
+    (auth.isAdmin || auth.isDispatch) &&
+    auth.currentUser?.active !== false &&
+    !auth.currentUserError,
+  ),
+)
 const canDispatch = computed(() =>
   Boolean(
     props.teamId &&
-    auth.isTeamAccount &&
-    Number(auth.currentUser?.team_id) === props.teamId &&
+    (auth.isAdmin || auth.isTeamAccount) &&
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId) &&
     !auth.currentUserError &&
     auth.currentUser?.active !== false,
   ),
 )
-const canEditCommitment = computed(() => auth.isDispatch)
+const canEditCommitment = computed(
+  () =>
+    (auth.isAdmin || auth.isDispatch) &&
+    auth.currentUser?.active !== false &&
+    !auth.currentUserError,
+)
 const teams = computed(() =>
   directory.items.filter(
     (team) => team.active && ['warehouse', 'production'].includes(team.kind || ''),
@@ -478,7 +490,11 @@ function exportSource() {
       { key: 'destination', label: '接收去向', value: destination },
       { key: 'due_at', label: '要求交货时间', value: (row) => formatDateTime(row.due_at) },
       { key: 'quantity', label: '计划件数', value: (row) => row.target_quantity },
-      { key: 'dispatched_quantity', label: '已转出件数', value: (row) => row.dispatched_quantity },
+      {
+        key: 'dispatched_quantity',
+        label: '有效转出件数',
+        value: (row) => row.dispatched_quantity,
+      },
       {
         key: 'dispatched_weight',
         label: '已转出重量（kg）',
@@ -836,7 +852,7 @@ defineExpose({ exportSource, openDetail })
             formatAmount(row.target_quantity)
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="已转出件数" min-width="110" align="center"
+        <ElTableColumn label="有效转出件数" min-width="110" align="center"
           ><template #default="{ row }">{{
             formatAmount(row.dispatched_quantity)
           }}</template></ElTableColumn
@@ -1027,7 +1043,7 @@ defineExpose({ exportSource, openDetail })
             <ElDescriptionsItem label="计划件数">{{
               formatAmount(detail.target_quantity)
             }}</ElDescriptionsItem
-            ><ElDescriptionsItem label="已转出件数">{{
+            ><ElDescriptionsItem label="有效转出件数">{{
               formatAmount(detail.dispatched_quantity)
             }}</ElDescriptionsItem
             ><ElDescriptionsItem label="待交件数">{{
@@ -1117,7 +1133,7 @@ defineExpose({ exportSource, openDetail })
                 formatAmount(row.target_weight)
               }}</template></ElTableColumn
             >
-            <ElTableColumn label="已转出（件）" min-width="110"
+            <ElTableColumn label="有效转出（件）" min-width="110"
               ><template #default="{ row }">{{
                 formatAmount(row.dispatched_quantity)
               }}</template></ElTableColumn
@@ -1222,10 +1238,11 @@ defineExpose({ exportSource, openDetail })
                 }}</ElButton></template
               ></ElTableColumn
             >
-            <ElTableColumn label="件数" min-width="90" align="center"
-              ><template #default="{ row }">{{
-                formatAmount(row.quantity)
-              }}</template></ElTableColumn
+            <ElTableColumn label="实转 / 有效（件）" min-width="150" align="center"
+              ><template #default="{ row }"
+                >{{ formatAmount(row.quantity) }} /
+                {{ formatAmount(row.effective_quantity ?? row.quantity) }}</template
+              ></ElTableColumn
             >
             <ElTableColumn label="重量（kg）" min-width="120" align="center"
               ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn

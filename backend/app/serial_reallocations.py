@@ -93,25 +93,26 @@ def list_records(
     }
 
 
-def replay(prior, user, request_hash):
+def replay(prior, user, request_hash, team_id):
     if prior.entry_kind != "serial_reallocation":
         raise HTTPException(409, "idempotency key was used for another operation")
-    stock._replay(prior, user, request_hash, "next_team_id")
+    stock._replay(prior, user, request_hash, "next_team_id", team_id)
     return workflow.material_transfer_dict(prior, user)
 
 
 def create(db, team_id, payload, user):
-    require_team(stock.require_actor(user, team_id))
+    stock.require_actor(user, team_id)
     request_hash = stock.fingerprint(payload)
     try:
         with db.begin():
+            require_team(stock.actor_team(db, user, team_id))
             prior = db.scalar(
                 select(MaterialTransfer).where(
                     MaterialTransfer.idempotency_key == payload.idempotency_key
                 )
             )
             if prior is not None:
-                return replay(prior, user, request_hash)
+                return replay(prior, user, request_hash, team_id)
         with db.begin():
             # The source lock serializes deductions, including a same-key retry.
             lot = stock.lock_lot(db, payload.source_transfer_id, team_id)
@@ -121,7 +122,7 @@ def create(db, team_id, payload, user):
                 .execution_options(populate_existing=True)
             )
             if prior is not None:
-                return replay(prior, user, request_hash)
+                return replay(prior, user, request_hash, team_id)
             from .inspections import require_clear
 
             require_clear(db, lot.id)
@@ -237,5 +238,5 @@ def create(db, team_id, payload, user):
             )
         )
         if prior is not None:
-            return replay(prior, user, request_hash)
+            return replay(prior, user, request_hash, team_id)
         stock._db_conflict(exc)

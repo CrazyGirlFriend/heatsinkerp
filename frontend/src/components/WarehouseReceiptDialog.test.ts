@@ -101,6 +101,7 @@ async function amount(label: string, value: number) {
   await flushPromises()
 }
 async function fill() {
+  await wrapper.get('.receipt-optional-details .app-disclosure-trigger').trigger('click')
   await wrapper.get('input[aria-label="外部来源单位"]').setValue(' 来料单位 ')
   await wrapper.get('input[aria-label="流水号"]').setValue('  QA-IN  ')
   await wrapper.get('input[aria-label="材质"]').setValue('  铜钼  ')
@@ -148,6 +149,9 @@ describe('warehouse manual receipt', () => {
   })
   it.each(['成品规格', '转料规格'])('retains %s validation on physical receipts', async (label) => {
     await render()
+    expect(
+      wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
+    ).toBe('false')
     await fill()
     const shape = wrapper
       .findAllComponents(ElSelect)
@@ -155,8 +159,12 @@ describe('warehouse manual receipt', () => {
     shape.vm.$emit('update:modelValue', 'rectangle')
     shape.vm.$emit('change', 'rectangle')
     await flushPromises()
+    await wrapper.get('.receipt-optional-details .app-disclosure-trigger').trigger('click')
     await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(
+      wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
+    ).toBe('true')
     expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   })
   it('accepts raw intake without a serial number or route', async () => {

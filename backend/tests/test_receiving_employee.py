@@ -96,7 +96,7 @@ def test_receiver_selection_does_not_grant_account_permission(client):
     s = _setup_three_teams(client)
     person = employee(client, s["target"]["id"])
     row = _create(client, s).json()
-    for headers in ({}, s["source_headers"], s["third_headers"]):
+    for headers in (s["source_headers"], s["third_headers"]):
         response = client.post(
             f"/api/material-transfers/{row['batch_no']}/confirm",
             headers=headers,

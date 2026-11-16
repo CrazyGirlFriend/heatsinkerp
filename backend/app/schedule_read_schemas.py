@@ -52,6 +52,8 @@ class ScheduleBatchResponse(ReadResponse):
     status: ScheduleStatus
     warnings: list[str]
     dispatched_quantity: int
+    actual_dispatched_quantity: int = 0
+    quality_pending_quantity: int = 0
     dispatched_weight: float
     received_quantity: int
     received_weight: float
@@ -88,6 +90,7 @@ class ScheduleDeliveryResponse(ReadResponse):
     batch_no: str
     source_transfer_id: int | None
     quantity: int
+    effective_quantity: int | None = None
     weight: float
     status: str
     counts_toward_delivery: bool
@@ -153,6 +156,8 @@ class ScheduleResponse(OrderFulfillmentResponse):
     status: ScheduleStatus
     processed_quantity: int
     dispatched_quantity: int
+    actual_dispatched_quantity: int = 0
+    quality_pending_quantity: int = 0
     dispatched_weight: float
     received_quantity: int
     received_weight: float
@@ -246,6 +251,7 @@ class ScheduleShipmentResponse(ReadResponse):
     batch_no: str
     team_name: str | None
     quantity: int
+    effective_quantity: int | None = None
     weight: float
     shipped_at: str | None
 

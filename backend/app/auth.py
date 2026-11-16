@@ -141,6 +141,16 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def can_manage_team(user: User, team_id: int | None) -> bool:
+    return bool(
+        user.active
+        and (
+            user.role == "ADMIN"
+            or (user.role == "TEAM" and user.team and user.team.active and user.team_id == team_id)
+        )
+    )
+
+
 def actor_name(user: User) -> str:
     return user.display_name or user.username
 

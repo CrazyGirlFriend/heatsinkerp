@@ -28,7 +28,7 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render() {
+async function render(teamId?: number) {
   vi.spyOn(processRouteApi, 'reworkSources').mockResolvedValue({
     items: sources,
     page: 1,
@@ -37,6 +37,7 @@ async function render() {
   })
   vi.spyOn(processRouteApi, 'reworkSourceContext').mockResolvedValue(context)
   wrapper = mount(TeamReworkRequestDialog, {
+    props: { teamId },
     global: {
       stubs: {
         AppDialog: { props: ['modelValue', 'title'], template: '<div><slot/></div>' },
@@ -107,8 +108,8 @@ it('keeps the full form and typed problem after a batch read fails, and permits 
   expect(wrapper.getComponent(ReworkRouteRequest).props('context')).toEqual(context)
   expect(wrapper.get<HTMLTextAreaElement>('textarea').element.value).toBe('表面划伤')
 })
-it('loads further batches and searches without losing the selected batch or entered amounts', async () => {
-  await render()
+it('loads further batches in the selected team without losing selection or amounts', async () => {
+  await render(914)
   await selectBatch(12)
   await wrapper.get('input[aria-label="问题件数"]').setValue('2')
   const select = wrapper.getComponent(ElSelect)
@@ -122,7 +123,7 @@ it('loads further batches and searches without losing the selected batch or ente
   })
   select.props('remoteMethod')!('TL')
   await flushPromises()
-  expect(processRouteApi.reworkSources).toHaveBeenLastCalledWith('TL', 1)
+  expect(processRouteApi.reworkSources).toHaveBeenLastCalledWith('TL', 1, 914)
   expect(select.props('modelValue')).toBe(12)
   expect(wrapper.get<HTMLInputElement>('input[aria-label="问题件数"]').element.value).toBe('2')
   vi.mocked(processRouteApi.reworkSources).mockResolvedValueOnce({
@@ -137,7 +138,7 @@ it('loads further batches and searches without losing the selected batch or ente
   expect(more).toBeDefined()
   more!.click()
   await flushPromises()
-  expect(processRouteApi.reworkSources).toHaveBeenLastCalledWith('TL', 2)
+  expect(processRouteApi.reworkSources).toHaveBeenLastCalledWith('TL', 2, 914)
   await selectBatch(21)
   expect(processRouteApi.reworkSourceContext).toHaveBeenLastCalledWith(21)
 })

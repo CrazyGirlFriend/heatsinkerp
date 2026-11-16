@@ -486,11 +486,11 @@ describe('external document confirmation', () => {
     expect(wrapper.emitted('changed')).toBeUndefined()
     expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
   })
-  it('does not offer confirmation to admins or a different source team', async () => {
+  it('allows administrators to confirm but blocks a different source team', async () => {
     state.auth.isTeamAccount = false
     state.auth.isAdmin = true
     await drawer()
-    expect(wrapper.findAll('button').some((button) => button.text() === '确认出库')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === '确认出库')).toBe(true)
     state.auth.isTeamAccount = true
     state.auth.isAdmin = false
     state.auth.currentUser.team_id = 2

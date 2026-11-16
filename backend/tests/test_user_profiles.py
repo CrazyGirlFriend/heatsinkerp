@@ -85,7 +85,7 @@ def test_team_leader_cannot_edit_other_accounts_or_team_metadata(client):
     assert client.patch("/api/auth/me", json={"display_name": "未登录"}).status_code == 401
 
 
-def test_admin_edits_other_profile_and_business_but_cannot_operate_its_stock(client):
+def test_admin_edits_other_profile_business_and_stock(client):
     team = _team(client, "PROFILE-B", "乙班组")
     leader, own_headers = _leader(client, "profile-b", team["id"])
     response = client.patch(
@@ -125,13 +125,14 @@ def test_admin_edits_other_profile_and_business_but_cannot_operate_its_stock(cli
                         "serial_no": "S",
                         "material_name": "M",
                         "material_type": "raw_material",
+                        "transfer_specification": "100 × 80 × 5 mm",
                         "quantity": 1,
                         "weight": 1,
                     }
                 ],
             },
         ).status_code
-        == 403
+        == 201
     )
     assert (
         client.post("/api/team-materials/999999/purposes", json={"name": "业务"}).status_code == 404

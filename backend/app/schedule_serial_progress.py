@@ -2,6 +2,7 @@
 
 from sqlalchemy import func, select
 
+from .delivery_quality import quantity_columns
 from .models import MaterialTransfer as Transfer
 from .production_schedule_queries import iso
 from .production_schedule_tasks import require_task, task_values
@@ -11,7 +12,7 @@ from .schedule_fulfillment import attributed_customer_shipments
 def progress(db, task_id):
     selected = require_task(db, task_id)
     task = task_values(db, [task_id])[task_id]
-    shipments = attributed_customer_shipments()
+    shipments = attributed_customer_shipments(db)
     # Use the same attribution as the list: another batch of this serial must not
     # inflate the selected schedule's shipment quantity or completion percentage.
     filters = (Transfer.id.in_(select(shipments.c.id).where(shipments.c.task_id == task_id)),)
@@ -23,12 +24,14 @@ def progress(db, task_id):
             func.count(Transfer.id),
         ).where(*filters)
     ).one()
+    effective, _, _, _ = quantity_columns(db)
     records = db.execute(
         select(
             Transfer.id,
             Transfer.batch_no,
             Transfer.source_team_name,
             Transfer.quantity,
+            effective.label("effective_quantity"),
             Transfer.weight,
             Transfer.dispatched_at,
         )
@@ -40,7 +43,7 @@ def progress(db, task_id):
         "serial_no": selected.serial_no,
         "tasks": [task],
         "planned_quantity": task["order_quantity"],
-        "shipped_quantity": int(total[0] or 0),
+        "shipped_quantity": task["shipped_quantity"],
         "shipped_weight": float(total[1] or 0),
         "last_shipped_at": iso(total[2]),
         "shipment_count": total[3],
@@ -50,6 +53,7 @@ def progress(db, task_id):
                 "batch_no": row.batch_no,
                 "team_name": row.source_team_name,
                 "quantity": row.quantity,
+                "effective_quantity": row.effective_quantity,
                 "weight": float(row.weight),
                 "shipped_at": iso(row.dispatched_at),
             }

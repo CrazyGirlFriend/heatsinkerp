@@ -10,7 +10,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import main_system, material_stock, warehouse_receipts
+from . import main_system, warehouse_receipts
 from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .database import get_db
@@ -81,7 +81,9 @@ async def receive_from_main_system(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    warehouse_receipts.require_warehouse(material_stock.require_actor(user, team_id))
+    await db.run_sync(
+        lambda session: warehouse_receipts.check_warehouse_actor(session, user, team_id)
+    )
     values = {
         "operation": "main-system-receipt-v1",
         "team_id": team_id,
@@ -100,7 +102,11 @@ async def receive_from_main_system(
                 MaterialTransfer.idempotency_key == payload.idempotency_key
             )
         )
-        return warehouse_receipts.replay(prior, user, request_hash) if prior is not None else None
+        return (
+            warehouse_receipts.replay(prior, user, request_hash, team_id)
+            if prior is not None
+            else None
+        )
 
     prior = await db.run_sync(replay)
     if prior is not None:

@@ -356,14 +356,10 @@ describe('material transfer receipt review', () => {
       expect(buttons()).not.toContain(label)
   })
 
-  it.each(['other-team', 'admin', 'inactive', 'auth-error'] as const)(
+  it.each(['other-team', 'inactive', 'auth-error'] as const)(
     'blocks all transfer mutations for %s despite stale flags',
     async (actor) => {
       if (actor === 'other-team') state.auth.currentUser.team_id = 99
-      if (actor === 'admin') {
-        state.auth.isAdmin = true
-        state.auth.isTeamAccount = false
-      }
       if (actor === 'inactive') state.auth.currentUser.active = false
       if (actor === 'auth-error') state.auth.currentUserError = '登录状态读取失败'
       vi.mocked(materialTransferApi.get).mockResolvedValueOnce(

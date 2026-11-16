@@ -170,13 +170,28 @@ const actionLabel = computed(() => externalActionLabel(editingSnapshot.value?.en
 const isEditing = computed(() => Boolean(props.transfer))
 const linkedSource = computed(() => Boolean(editingSnapshot.value?.source_transfer_id))
 const groupedDispatch = computed(() => Boolean(editingSnapshot.value?.dispatch_no))
-const sourceTeam = computed(
-  () => editingSnapshot.value?.source_team ?? authStore.currentUser?.team ?? null,
+const selectedSourceTeamId = ref<number>()
+const sourceTeams = computed(() =>
+  teamStore.items.filter(
+    (team) => team.active && ['warehouse', 'production'].includes(team.kind || ''),
+  ),
 )
+const sourceTeam = computed(
+  () =>
+    editingSnapshot.value?.source_team ??
+    (authStore.isAdmin
+      ? sourceTeams.value.find((team) => Number(team.id) === selectedSourceTeamId.value)
+      : authStore.currentUser?.team) ??
+    null,
+)
+watch(selectedSourceTeamId, () => {
+  sender.value = null
+  form.nextTeamId = ''
+  form.purposeId = null
+})
 const teamActorReady = computed(
   () =>
-    authStore.isTeamAccount &&
-    authStore.currentUser?.team_id != null &&
+    (authStore.isAdmin || (authStore.isTeamAccount && authStore.currentUser?.team_id != null)) &&
     authStore.currentUser?.active !== false &&
     !authStore.currentUserError,
 )
@@ -184,11 +199,13 @@ const editable = computed(
   () =>
     !editingSnapshot.value ||
     (teamActorReady.value &&
-      String(authStore.currentUser?.team_id) === String(editingSnapshot.value.source_team.id) &&
+      (authStore.isAdmin ||
+        String(authStore.currentUser?.team_id) === String(editingSnapshot.value.source_team.id)) &&
       canEditMaterialTransfer(editingSnapshot.value)),
 )
 const sourceChanged = computed(
   () =>
+    !authStore.isAdmin &&
     !isEditing.value &&
     String(openedSourceTeamId.value) !== String(authStore.currentUser?.team_id ?? null),
 )
@@ -354,9 +371,8 @@ function close(): void {
 }
 
 function validate(): boolean {
-  if (!authStore.isTeamAccount) formError.value = '管理员仅可查看转料记录'
-  else if (!teamActorReady.value) formError.value = '当前账号不可操作，请重新登录后核对'
-  else if (!sourceTeam.value) formError.value = '当前账号未绑定班组，请联系管理员'
+  if (!teamActorReady.value) formError.value = '当前账号不可操作，请重新登录后核对'
+  else if (!sourceTeam.value) formError.value = '请选择转出班组'
   else if (sourceChanged.value) formError.value = '账号所属班组已变更，请关闭后重新新建转料'
   else if (!editable.value) formError.value = '此转料单已锁定或无编辑权限'
   else if (refreshFailed.value) formError.value = '请先重新读取最新单据'
@@ -451,7 +467,11 @@ async function submit(): Promise<void> {
       ]),
     ),
   }
-  const requestFingerprint = JSON.stringify({ ...payload, sent_employee_id: sender.value?.id })
+  const requestFingerprint = JSON.stringify({
+    ...payload,
+    source_team_id: sourceTeam.value?.id,
+    sent_employee_id: sender.value?.id,
+  })
   if (
     !props.transfer &&
     (!createRequestKey.value || createRequestFingerprint.value !== requestFingerprint)
@@ -464,8 +484,9 @@ async function submit(): Promise<void> {
       await authStore.refreshCurrentUser()
       if (epoch !== formGeneration || !props.modelValue) return
       if (
-        !authStore.isTeamAccount ||
-        String(authStore.currentUser?.team_id) !== String(editingSnapshot.value?.source_team.id)
+        !teamActorReady.value ||
+        (!authStore.isAdmin &&
+          String(authStore.currentUser?.team_id) !== String(editingSnapshot.value?.source_team.id))
       ) {
         formError.value = '账号所属班组已变更，请关闭后重新操作'
         return
@@ -490,6 +511,7 @@ async function submit(): Promise<void> {
           ...materialTransferVersion(editingSnapshot.value),
         })
       : await materialTransferApi.create({
+          ...(authStore.isAdmin ? { source_team_id: Number(sourceTeam.value!.id) } : {}),
           sent_employee_id: sender.value!.id,
           ...payload,
           idempotency_key: createRequestKey.value,
@@ -567,14 +589,7 @@ onBeforeUnmount(() => {
 
     <FormValidationNotice :message="formError" />
     <ElAlert
-      v-if="!authStore.isTeamAccount"
-      type="info"
-      :closable="false"
-      title="管理员仅可查看转料记录"
-      show-icon
-    />
-    <ElAlert
-      v-else-if="!sourceTeam"
+      v-if="!sourceTeam && !authStore.isAdmin"
       type="error"
       :closable="false"
       title="当前账号未绑定班组"
@@ -623,6 +638,16 @@ onBeforeUnmount(() => {
         @submit.prevent="submit"
       >
         <CompactFormSection title="转料信息" class="transfer-section" data-form-section="handoff">
+          <ElFormItem v-if="authStore.isAdmin && !isEditing" label="转出班组" required>
+            <ElSelect v-model="selectedSourceTeamId" placeholder="选择转出班组" :disabled="saving">
+              <ElOption
+                v-for="team in sourceTeams"
+                :key="team.id"
+                :label="team.name"
+                :value="Number(team.id)"
+              />
+            </ElSelect>
+          </ElFormItem>
           <ElFormItem
             label="转料人"
             :required="!isEditing"

@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 
+from .auth import can_manage_team
 from .models import utcnow
 from .observability import record
 
@@ -17,11 +18,7 @@ def can_edit(transfer, user):
     owner = transfer.source_team_id or transfer.next_team_id
     return bool(
         user
-        and user.role == "TEAM"
-        and user.team_id == owner
-        and user.active
-        and user.team
-        and user.team.active
+        and can_manage_team(user, owner)
         and transfer.status != "voided"
         and transfer.source_transfer_id is None
         and transfer.delivery_origin_id is None

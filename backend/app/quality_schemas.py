@@ -75,6 +75,7 @@ class InspectionCreate(InspectionResults):
 
 class FeedbackWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    team_id: int | None = Field(default=None, ge=1)
     expected_version: int = Field(ge=0)
     notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)

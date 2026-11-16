@@ -25,10 +25,15 @@ def require_warehouse(team):
     return team
 
 
-def replay(prior, user, request_hash):
+def check_warehouse_actor(db, user, team_id):
+    with db.begin():
+        require_warehouse(stock.actor_team(db, user, team_id))
+
+
+def replay(prior, user, request_hash, team_id):
     if prior.entry_kind != "warehouse_receipt":
         raise HTTPException(409, "idempotency key was used for another operation")
-    stock._replay(prior, user, request_hash, "next_team_id")
+    stock._replay(prior, user, request_hash, "next_team_id", team_id)
     return workflow.material_transfer_dict(prior, user)
 
 
@@ -70,7 +75,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
     validate_pair(payload.delivery_date, payload.delivery_quantity)
     if payload.receipt_kind == "return" and payload.delivery_date is not None:
         raise HTTPException(422, "返料沿用原批次交期，不能新增交付要求")
-    require_warehouse(stock.require_actor(user, team_id))
+    stock.require_actor(user, team_id)
     request_hash = request_hash or workflow._creation_fingerprint(payload)
     try:
         with db.begin():
@@ -93,7 +98,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 .execution_options(populate_existing=True)
             )
             if prior is not None:
-                return replay(prior, user, request_hash)
+                return replay(prior, user, request_hash, team_id)
             if payload.shared_serials:
                 raise HTTPException(422, "入库只登记实物，共投请在库房向下序转出时填写")
             from .warehouse_receipt_documents import attach_documents, validate_documents
@@ -215,7 +220,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             )
         )
         if prior is not None:
-            return replay(prior, user, request_hash)
+            return replay(prior, user, request_hash, team_id)
         stock._db_conflict(exc)
 
 

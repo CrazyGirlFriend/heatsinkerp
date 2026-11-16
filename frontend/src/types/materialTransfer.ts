@@ -295,6 +295,7 @@ export interface CreateMaterialTransferPayload
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   purpose_id?: number | null
+  source_team_id?: EntityId
   sent_employee_id: number
   serial_no: string
   next_team_id: EntityId
@@ -310,7 +311,7 @@ export interface OutboundQuantityClearance {
   reason?: string
 }
 export type UpdateMaterialTransferPayload = Partial<
-  Omit<CreateMaterialTransferPayload, 'idempotency_key' | 'sent_employee_id'>
+  Omit<CreateMaterialTransferPayload, 'idempotency_key' | 'sent_employee_id' | 'source_team_id'>
 > & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
 
 export interface ConfirmMaterialTransferPayload {

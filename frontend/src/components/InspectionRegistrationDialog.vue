@@ -89,8 +89,8 @@ const sample = ref<number>(),
 const form = ref<InstanceType<typeof ElForm>>()
 const writable = computed(
   () =>
-    auth.isTeamAccount &&
-    Number(auth.currentUser?.team_id) === props.inspectionTeamId &&
+    (auth.isAdmin || auth.isTeamAccount) &&
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.inspectionTeamId) &&
     !auth.currentUserError &&
     auth.currentUser?.active !== false,
 )
@@ -265,11 +265,12 @@ onBeforeUnmount(() => {
         <div v-if="!source" class="inspection-source-picker">
           <div class="inspection-pick-toolbar">
             <ElFormItem label="被检班组" required :class="{ 'is-error': submitted && !teamId }"
-              ><ElSelect
-                v-model="teamId"
-                :disabled="kind === 'inspection'"
+              ><span
+                v-if="kind === 'inspection'"
+                class="inspection-readonly"
                 aria-label="被检班组"
-                placeholder="选择班组"
+                >{{ teams.find((team) => Number(team.id) === teamId)?.name || '检验' }}</span
+              ><ElSelect v-else v-model="teamId" aria-label="被检班组" placeholder="选择班组"
                 ><ElOption
                   v-for="team in teams"
                   :key="team.id"
@@ -381,6 +382,7 @@ onBeforeUnmount(() => {
           /></ElFormItem>
           <ElFormItem
             :label="`${title}时间`"
+            class="form-field--medium"
             required
             :class="{ 'is-error': submitted && !checkedAt }"
             ><ElDatePicker
@@ -391,21 +393,23 @@ onBeforeUnmount(() => {
           /></ElFormItem>
           <ElFormItem
             :label="scope === 'full' ? '全检件数' : '抽检件数'"
-            class="form-field--short"
-            required
+            class="form-field--medium"
+            :required="scope !== 'full'"
             :class="{ 'is-error': submitted && (!sample || (source && sample > source.quantity)) }"
+            ><span v-if="scope === 'full'" class="inspection-readonly" aria-label="全检件数"
+              >{{ sample ?? '—' }} 件</span
             ><ElInputNumber
+              v-else
               v-model="sample"
-              :disabled="scope === 'full'"
               :min="1"
               :max="source?.quantity"
               :precision="0"
               controls-position="right"
-              :aria-label="scope === 'full' ? '全检件数' : '抽检件数'"
+              aria-label="抽检件数"
           /></ElFormItem>
           <ElFormItem
             label="不合格件数"
-            class="form-field--short"
+            class="form-field--medium"
             required
             :class="{
               'is-error':
@@ -525,6 +529,12 @@ onBeforeUnmount(() => {
   </AppDialog>
 </template>
 <style scoped>
+.inspection-readonly {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: var(--text);
+}
 .inspection-pick-toolbar {
   display: grid;
   grid-template-columns: minmax(140px, 180px) minmax(180px, 420px) auto;
@@ -558,6 +568,11 @@ onBeforeUnmount(() => {
 .inspection-fields :deep(.el-date-editor),
 .inspection-fields :deep(.team-employee) {
   width: 100%;
+}
+@container form-fields (min-width: 421px) and (max-width: 900px) {
+  .inspection-fields :deep(> .compact-form-grid > .el-form-item) {
+    grid-column: span 6;
+  }
 }
 .inspection-result {
   display: flex;

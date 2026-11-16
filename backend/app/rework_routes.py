@@ -216,8 +216,8 @@ def request_document(db, route):
     }
 
 
-def require_requester(user):
-    team = stock.require_actor(user, user.team_id)
+def require_requester(db, user, team_id=None):
+    team = stock.actor_team(db, user, team_id or user.team_id)
     if team.kind != "production" or team.code not in PROCESSING_TEAM_CODES:
         raise HTTPException(403, "仅生产班组可提交返工问题")
     return team
@@ -243,11 +243,14 @@ def request_work_record(record, team_name):
     )
 
 
-def source_stock(db, user, query="", page=1, lot_id=None, problem_team_id=None):
+def source_stock(db, user, query="", page=1, lot_id=None, problem_team_id=None, team_id=None):
     """Direct requests select physical stock held by the submitting team."""
     from .quality_feedback import is_qc
 
-    team = require_requester(user)
+    if user.role == "ADMIN" and team_id is None and lot_id is not None:
+        lot = db.get(MaterialTransfer, lot_id)
+        team_id = lot.next_team_id if lot else None
+    team = require_requester(db, user, team_id)
     stmt = (
         select(MaterialTransfer, Balance)
         .join(Balance, Balance.transfer_id == MaterialTransfer.id)
@@ -337,7 +340,6 @@ def request_rework(db, payload, user):
     from .process_route_documents import document
     from .quality_feedback import is_qc, require_rework_issue
 
-    team = require_requester(user)
     if payload.inspection_id is not None and not is_qc(user):
         raise HTTPException(403, "仅检验班组可提交返工问题")
     request_hash = stock.fingerprint(payload)
@@ -349,6 +351,20 @@ def request_rework(db, payload, user):
 
     try:
         with db.begin():
+            source = db.get(MaterialTransfer, payload.source_transfer_id)
+            if source is None:
+                raise HTTPException(404, "物料批次不存在")
+            team = require_requester(
+                db,
+                user,
+                (
+                    db.scalar(select(Team.id).where(Team.code == "FACTORY-QC"))
+                    if payload.inspection_id
+                    else source.next_team_id
+                )
+                if user.role == "ADMIN"
+                else None,
+            )
             prior = db.scalar(
                 select(ProcessRoute).where(ProcessRoute.request_key == payload.idempotency_key)
             )

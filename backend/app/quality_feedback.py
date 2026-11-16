@@ -35,7 +35,15 @@ from .team_constants import INSPECTION_TEAM_CODE
 
 
 def is_qc(user):
-    return user.role == "TEAM" and user.team and user.team.code == INSPECTION_TEAM_CODE
+    return user.active and (
+        user.role == "ADMIN"
+        or (
+            user.role == "TEAM"
+            and user.team
+            and user.team.active
+            and user.team.code == INSPECTION_TEAM_CODE
+        )
+    )
 
 
 def visible(user):
@@ -320,7 +328,6 @@ def detail(db, issue_id, user):
 
 
 def write(db, issue_id, payload, user, *, decision=False):
-    team = _require_team_actor(user)
     if decision and not is_qc(user):
         raise HTTPException(403, "仅检验班组长可决定处理方式、结束问题及解除历史锁定")
     if not decision and not payload.notes.strip():
@@ -335,6 +342,17 @@ def write(db, issue_id, payload, user, *, decision=False):
 
     try:
         with db.begin():
+            team_id = payload.team_id if not decision else None
+            if user.role == "ADMIN" and not decision and team_id is None:
+                raise HTTPException(422, "请选择反馈班组")
+            team = _require_team_actor(
+                user,
+                db.get(Team, team_id)
+                if team_id
+                else db.scalar(select(Team).where(Team.code == INSPECTION_TEAM_CODE)),
+            )
+            if team_id is not None:
+                stock.require_actor(user, team_id)
             row = issue(db, issue_id, user, lock=True)
             prior = db.scalar(select(Event).where(Event.idempotency_key == payload.idempotency_key))
             if prior:

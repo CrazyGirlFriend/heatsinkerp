@@ -293,10 +293,10 @@ watch(detailed, (value) => {
 const editable = computed(
   () =>
     props.canWrite &&
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
     !auth.currentUserError &&
-    Number(auth.currentUser?.team_id) === props.teamId,
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId),
 )
 const hasStock = computed(
   () =>
@@ -637,7 +637,10 @@ onBeforeUnmount(() => {
             <p v-if="!processing" class="quantity-note">
               只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。
             </p>
-            <CompactFormSection :title="processing ? '加工登记' : '件数调整'">
+            <CompactFormSection
+              :title="processing ? '加工登记' : '件数调整'"
+              class="processing-entry-section"
+            >
               <ElFormItem
                 label="加工人"
                 required
@@ -1333,6 +1336,14 @@ onBeforeUnmount(() => {
 .processing-registration-form {
   container: form-fields / inline-size;
 }
+.processing-entry-section :deep(> .compact-form-grid > .el-form-item:not(.form-field--full)) {
+  grid-column: span 6;
+}
+@container form-fields (max-width: 420px) {
+  .processing-entry-section :deep(> .compact-form-grid > .el-form-item) {
+    grid-column: 1 / -1;
+  }
+}
 .processing-auto-value {
   display: flex;
   flex-wrap: wrap;
@@ -1391,7 +1402,7 @@ onBeforeUnmount(() => {
 .processing-workspace .quantity-summary {
   margin: 0;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
   .processing-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1555,22 +1566,22 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 .processing-workspace .processing-output-table {
-  min-width: 820px;
+  min-width: 1080px;
 }
 .processing-workspace .processing-output-table:has(.shared-owner-column) {
-  min-width: 970px;
+  min-width: 1230px;
 }
 .processing-workspace .processing-output-table th[data-column-index='1'] {
-  width: 128px;
+  width: 156px;
 }
 .processing-workspace .processing-output-table th[data-column-index='2'] {
-  width: 112px;
+  width: 132px;
 }
 .processing-workspace .processing-output-table th[data-column-index='3'] {
-  width: 100px;
+  width: 180px;
 }
 .processing-workspace .processing-output-table th[data-column-index='4'] {
-  width: 160px;
+  width: 260px;
 }
 .processing-workspace .processing-output-table :deep(.specification-input) {
   grid-template-columns: minmax(0, 1fr);

@@ -586,7 +586,7 @@ def create(db, team_id, payload, user):
     request_hash = stock.fingerprint(payload)
 
     def replay(row):
-        stock._replay(row, user, request_hash, "team_id")
+        stock._replay(row, user, request_hash, "team_id", team_id)
         return record_dict(row)
 
     def prior():

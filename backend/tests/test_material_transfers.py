@@ -11,6 +11,7 @@ from app.seed_material_transfer_showcase import seed_material_transfer_showcase
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect, select, text
+from warehouse_test_locations import select_location
 
 
 def _team(client, code: str, name: str, *, active: bool = True) -> dict:
@@ -131,7 +132,11 @@ def test_permissions_receipt_requires_counterparty_amendment_instead_of_direct_e
     )
     assert incoming.status_code == 200
     assert incoming.json()["items"][0]["allowed_actions"] == ["confirm"]
-    assert client.get(f"/api/material-transfers/{batch_no}").json()["allowed_actions"] == []
+    assert client.get(f"/api/material-transfers/{batch_no}").json()["allowed_actions"] == [
+        "edit",
+        "void",
+        "confirm",
+    ]
 
     assert (
         client.patch(
@@ -236,7 +241,7 @@ def test_permissions_receipt_requires_counterparty_amendment_instead_of_direct_e
     )
 
 
-def test_admin_is_read_only_and_source_only_can_void_pending_transfer(client):
+def test_foreign_team_cannot_mutate_and_source_can_void_pending_transfer(client):
     setup = _setup_three_teams(client)
     assert _create(client, setup).status_code == 201
     batch_no = client.get("/api/material-transfers").json()["items"][0]["batch_no"]
@@ -245,26 +250,20 @@ def test_admin_is_read_only_and_source_only_can_void_pending_transfer(client):
         _create(client, setup, serial_no="ADMIN-CREATE", idempotency_key="admin-create").status_code
         == 201
     )
-    admin_attempt = sender_post(
-        client,
-        "/api/material-transfers",
-        json={
-            "serial_no": "ADMIN-DENIED",
-            "next_team_id": setup["target"]["id"],
-            "quantity": 1,
-            "weight": 1,
-        },
-    )
-    assert admin_attempt.status_code == 403
+    foreign = setup["third_headers"]
     assert (
-        client.patch(f"/api/material-transfers/{batch_no}", json={"quantity": 2}).status_code == 403
+        client.patch(
+            f"/api/material-transfers/{batch_no}", headers=foreign, json={"quantity": 2}
+        ).status_code
+        == 403
     )
-    assert client.delete(f"/api/material-transfers/{batch_no}").status_code == 403
+    assert client.delete(f"/api/material-transfers/{batch_no}", headers=foreign).status_code == 403
     assert (
         receipt_post(
             client,
             f"/api/material-transfers/{batch_no}/confirm",
-            json={"idempotency_key": "admin-receive"},
+            headers=foreign,
+            json={"idempotency_key": "foreign-receive"},
         ).status_code
         == 403
     )
@@ -508,6 +507,7 @@ def test_all_material_types_and_independent_counts_weight_validation(client):
             idempotency_key=material_type,
             next_team_id=warehouse["id"],
             notes="分类回库",
+            **select_location(client, setup, headers=setup["source_headers"]),
         )
         assert response.status_code == 201, response.text
         assert response.json()["material_type"] == material_type
@@ -528,7 +528,6 @@ def test_all_material_types_and_independent_counts_weight_validation(client):
             {"weight": "1.0000001"},
             {"customer_code": "X" * 81},
             {"technical_requirements": "X" * 4001},
-            {"source_team_id": setup["third"]["id"]},
             {"version": 5},
             {"history": [{"action": "received"}]},
         )
@@ -621,6 +620,7 @@ def test_search_modes_fields_types_and_combined_filters(client):
             customer_code=f"CUSTOMER-{i}",
             product_code=f"PRODUCT-{i}",
             material_name=f"铜钼-{i}",
+            **(select_location(client, setup, headers=setup["source_headers"]) if i == 2 else {}),
         )
         assert response.status_code == 201, response.text
     for mode, expected in (("exact", 1), ("prefix", 2), ("contains", 3)):
@@ -747,7 +747,7 @@ def test_list_filters_pagination_and_chronological_serial_trace(client):
         params={"serial_no": "SERIAL-001", "page_size": 100},
     )
     assert trace.status_code == 200
-    assert [item["id"] for item in trace.json()["items"]] == [first["id"], second["id"]]
+    assert [item["id"] for item in trace.json()["items"]] == [second["id"], first["id"]]
     assert trace.json()["total"] == 2
 
     assert (
@@ -964,6 +964,7 @@ def test_warehouse_requires_classification_and_preserves_notes_audit_and_kind(cl
         material_type="semi_finished",
         notes="半成品暂存，后续继续转料",
         idempotency_key="warehouse-semi",
+        **select_location(client, setup, headers=setup["source_headers"]),
     )
     assert incoming.status_code == 201, incoming.text
     body = incoming.json()
@@ -1009,7 +1010,11 @@ def test_warehouse_requires_classification_and_preserves_notes_audit_and_kind(cl
     assert client.get(url).json()["next_team_id"] == setup["target"]["id"]
     switched = client.patch(
         url,
-        json={"next_team_id": warehouse["id"], "material_type": "semi_finished_surplus"},
+        json={
+            "next_team_id": warehouse["id"],
+            "material_type": "semi_finished_surplus",
+            **select_location(client, setup, headers=setup["source_headers"]),
+        },
         headers=setup["source_headers"],
     )
     assert switched.status_code == 200, switched.text
@@ -1020,7 +1025,13 @@ def test_warehouse_requires_classification_and_preserves_notes_audit_and_kind(cl
         json={"next_team_id": setup["third"]["id"], "material_type": None},
         headers=setup["source_headers"],
     )
-    assert switched_back.status_code == 200, switched_back.text
+    assert switched_back.status_code == 409, switched_back.text
+    assert client.get(url).json()["next_team_id"] == warehouse["id"]
+    switched_back = _create(
+        client, setup, next_team_id=setup["third"]["id"], idempotency_key="other-production-target"
+    )
+    assert switched_back.status_code == 201, switched_back.text
+    url = f"/api/material-transfers/{switched_back.json()['batch_no']}"
     assert switched_back.json()["next_team"]["kind"] == "production"
     assert (
         client.patch(f"/api/teams/{setup['third']['id']}", json={"kind": "warehouse"}).status_code
@@ -1062,6 +1073,7 @@ def test_historical_warehouse_without_type_can_be_confirmed_without_inventing_fi
         ).status_code
         == 200
     )
+    location = select_location(client, setup, headers=setup["source_headers"])
     # Build an old-client fixture under the old rule (warehouse type was optional).
     # Restore the new validator before replaying, editing, or confirming the historic record.
     with monkeypatch.context() as old_backend:
@@ -1070,10 +1082,10 @@ def test_historical_warehouse_without_type_can_be_confirmed_without_inventing_fi
             "_validate_warehouse_type",
             lambda target, material_type: None,
         )
-        created_response = _create(client, setup)
+        created_response = _create(client, setup, **location)
         assert created_response.status_code == 201, created_response.text
         created = created_response.json()
-    retry = _create(client, setup)
+    retry = _create(client, setup, **location)
     assert retry.status_code == 201 and retry.json()["id"] == created["id"]
     assert retry.json()["material_type"] is None
     url = f"/api/material-transfers/{created['batch_no']}"

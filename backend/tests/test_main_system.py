@@ -287,7 +287,7 @@ def test_intake_rejects_changed_or_forged_material_without_stock(
         expected = 422
     if change == "admin":
         headers = {}
-        expected = 403
+        expected = 422  # Warehouse location remains mandatory for administrators.
     if change == "other-team":
         headers = warehouse["other_headers"]
         expected = 403

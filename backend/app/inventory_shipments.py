@@ -75,9 +75,9 @@ def snapshot(rows):
 
 
 def preview(db, team_id, group_id, user):
-    from .material_stock import require_outbound_actor
+    from .material_stock import actor_team, require_outbound_actor
 
-    require_outbound_actor(user, team_id, "inspection_shipment")
+    require_outbound_actor(user, team_id, "inspection_shipment", team=actor_team(db, user, team_id))
     rows = candidates(db, team_id, group_id)
     return {
         "revision": snapshot(rows),

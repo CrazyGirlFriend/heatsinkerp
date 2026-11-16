@@ -142,16 +142,14 @@ it.each([
   { kind: 'rework', published: false },
   { kind: 'rework', published: true },
 ])(
-  'keeps $kind ($published) read-only for an administrator even with direct-edit flags',
+  'lets an administrator edit $kind ($published) with direct-edit flags',
   async ({ kind, published }) => {
     authState.role = 'ADMIN'
     await render(published, kind === 'normal' ? routeFixture : reworkRouteFixture, false, true)
-    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
-    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
-    const buttons = wrapper.findAll('button').map((button) => button.text())
-    for (const action of ['修改工艺', '修改返工工艺', '保存工艺', '提交工艺']) {
-      expect(buttons).not.toContain(action)
-    }
+    expect(wrapper.find('input[type="file"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').map((button) => button.text())).toContain(
+      kind === 'rework' ? '提交工艺' : '保存工艺',
+    )
     expect(processRouteApi.options).not.toHaveBeenCalled()
     expect(processRouteApi.save).not.toHaveBeenCalled()
     expect(processRouteApi.publish).not.toHaveBeenCalled()

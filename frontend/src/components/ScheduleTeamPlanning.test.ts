@@ -13,6 +13,8 @@ it('fills the warehouse initial to its real dispatch ratio and mounts a short su
     assessment_enabled: false,
     target_quantity: 100,
     dispatched_quantity: 60,
+    actual_dispatched_quantity: 70,
+    quality_pending_quantity: 10,
     received_quantity: 40,
     due_at: '2026-11-25T08:00:00+08:00',
     planning_state: 'confirmed',
@@ -34,12 +36,13 @@ it('fills the warehouse initial to its real dispatch ratio and mounts a short su
     expect(icon.get('.team-planning__initial').text()).toBe('库')
     expect(icon.find('svg').exists()).toBe(false)
     expect(icon.attributes('style')).toContain('--planning-progress: 60%')
-    expect(icon.attributes('aria-label')).toContain('已转出 60%')
+    expect(icon.attributes('aria-label')).toContain('有效转出 60%')
     expect(wrapper.find('.schedule-node-summary').exists()).toBe(false)
     await icon.trigger('focusin')
     await flushPromises()
     expect(wrapper.get('.schedule-node-summary').text()).toContain('约定转交')
     expect(wrapper.get('.schedule-node-summary').text()).toContain('60 件')
+    expect(wrapper.get('.schedule-node-summary').text()).toContain('检验扣减10 件')
     await icon.trigger('click')
     expect(wrapper.emitted('select')).toBeUndefined()
     await icon.trigger('focusout')
@@ -76,15 +79,15 @@ it.each(['库房', '检验'])(
     })
     try {
       const icon = wrapper.get('.team-planning__step')
-      expect(icon.attributes('aria-label')).toContain('已发货 60%')
+      expect(icon.attributes('aria-label')).toContain('有效发货 60%')
       expect(icon.attributes('style')).toContain('--planning-progress: 60%')
       await icon.trigger('focusin')
       const summary = wrapper.get('.schedule-node-summary')
-      expect(summary.get('[aria-label="发货进度"]').text()).toContain('已发货 60%')
+      expect(summary.get('[aria-label="发货进度"]').text()).toContain('有效发货 60%')
       expect(summary.text()).toContain('约定发货')
       expect(summary.text()).toContain('实际发齐')
       expect(summary.text()).not.toContain('下序已签收')
-      expect(summary.text()).not.toContain('已转出')
+      expect(summary.text()).not.toContain('有效转出')
 
       for (const destination of [
         { next_team_id: 3, external_destination: null },
@@ -92,11 +95,11 @@ it.each(['库房', '检验'])(
         { next_team_id: null, external_destination: '外委库' },
       ]) {
         await wrapper.setProps({ nodes: [{ ...node, ...destination }] })
-        expect(icon.attributes('aria-label')).toContain('已转出 60%')
-        expect(summary.get('[aria-label="转出进度"]').text()).toContain('已转出 60%')
+        expect(icon.attributes('aria-label')).toContain('有效转出 60%')
+        expect(summary.get('[aria-label="转出进度"]').text()).toContain('有效转出 60%')
         expect(summary.text()).toContain('约定转交')
         expect(summary.text()).toContain('下序已签收')
-        expect(summary.text()).not.toContain('已发货')
+        expect(summary.text()).not.toContain('有效发货')
       }
     } finally {
       wrapper.unmount()
@@ -111,6 +114,8 @@ it('keeps one team circle and reveals each batch quantity, deadline and handover
     target_quantity: 60,
     target_weight: 6,
     dispatched_quantity: 60,
+    actual_dispatched_quantity: 60,
+    quality_pending_quantity: 0,
     dispatched_weight: 6,
     received_quantity: 40,
     received_weight: 4,
@@ -153,7 +158,7 @@ it('keeps one team circle and reveals each batch quantity, deadline and handover
     expect(wrapper.findAll('.team-planning__step')).toHaveLength(1)
     expect(wrapper.text()).toBe('库')
     await wrapper.get('.team-planning__step').trigger('focusin')
-    expect(wrapper.get('.schedule-node-summary header').text()).toContain('已转出 60%')
+    expect(wrapper.get('.schedule-node-summary header').text()).toContain('有效转出 60%')
     const rows = wrapper.findAll('.schedule-node-batches li')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('第 1 批')
@@ -168,7 +173,7 @@ it('keeps one team circle and reveals each batch quantity, deadline and handover
     await wrapper.setProps({
       nodes: [{ ...node, next_team_id: null, external_destination: '对外转料' }],
     })
-    expect(wrapper.get('.schedule-node-summary header').text()).toContain('已发货 60%')
+    expect(wrapper.get('.schedule-node-summary header').text()).toContain('有效发货 60%')
     expect(wrapper.get('.schedule-node-batches__heading').text()).toContain('分批发货')
     expect(wrapper.get('.schedule-node-batches__heading').text()).toContain('已发 / 应发')
     expect(wrapper.findAll('.schedule-node-batches li')[1]!.text()).toContain('0 / 40 件')

@@ -16,12 +16,12 @@ def overview(db, days):
     start_day = today - timedelta(days=days - 1)
     start = datetime.combine(start_day, time(), schedules.LOCAL_ZONE)
     end = datetime.combine(today + timedelta(days=1), time(), schedules.LOCAL_ZONE)
-    progress = schedules.progress_table()
+    progress = schedules.progress_table(db)
     rows = (
         select(
             Plan.id,
             Plan.due_at,
-            schedules.status_expression(progress, now).label("status"),
+            schedules.status_expression(db, progress, now).label("status"),
         )
         .join(Task, Task.id == Plan.task_id)
         .outerjoin(progress, progress.c.schedule_id == Plan.id)
@@ -29,6 +29,7 @@ def overview(db, days):
         .subquery()
     )
     period_ids = schedules.filtered_nodes(
+        db,
         due_from=start.astimezone(timezone.utc).replace(tzinfo=None),
         due_to=end.astimezone(timezone.utc).replace(tzinfo=None) - timedelta(microseconds=1),
     )

@@ -107,7 +107,7 @@ def require_plan(db, plan_id, *, lock=False):
 def summaries(db, ids, *, now=None):
     if not ids:
         return {}
-    progress = progress_table(plan_ids=ids)
+    progress = progress_table(db, plan_ids=ids)
     target = aliased(Team)
     rows = db.execute(
         select(
@@ -120,7 +120,7 @@ def summaries(db, ids, *, now=None):
             Task.delivery_batches.label("customer_batches"),
             Task.final_due_at.label("customer_due_at"),
             progress,
-            status_expression(progress, now or utcnow()).label("schedule_status"),
+            status_expression(db, progress, now or utcnow()).label("schedule_status"),
         )
         .join(Team, Team.id == Plan.team_id)
         .join(Task, Task.id == Plan.task_id)
@@ -176,14 +176,14 @@ def summaries(db, ids, *, now=None):
     from .schedule_fulfillment import fulfillment_values
 
     fulfillment = fulfillment_values(db, {row[0].task_id for row in rows})
-    handovers = progress_table(plan_ids=ids, include_warehouse=True)
+    handovers = progress_table(db, plan_ids=ids, include_warehouse=True)
     handover_states = {
         row.id: row
         for row in db.execute(
             select(
                 Plan.id,
                 handovers.c.completed_at,
-                status_expression(handovers, now or utcnow(), include_warehouse=True).label(
+                status_expression(db, handovers, now or utcnow(), include_warehouse=True).label(
                     "status"
                 ),
             )
@@ -231,6 +231,8 @@ def summaries(db, ids, *, now=None):
             "status": values["schedule_status"],
             "processed_quantity": processed.get(plan.id) or 0,
             "dispatched_quantity": sent_q,
+            "actual_dispatched_quantity": values["actual_dispatched_quantity"] or 0,
+            "quality_pending_quantity": values["quality_pending_quantity"] or 0,
             "dispatched_weight": float(sent_w),
             "received_quantity": values["received_quantity"] or 0,
             "received_weight": float(values["received_weight"] or 0),
@@ -302,6 +304,9 @@ def detail(db, plan_id):
             )
         ).all()
     )
+    from .delivery_quality import quantity_columns
+
+    effective, _, _, _ = quantity_columns(db)
     result["deliveries"] = [
         {
             "id": item.id,
@@ -309,18 +314,22 @@ def detail(db, plan_id):
             "batch_no": item.batch_no,
             "source_transfer_id": item.source_transfer_id,
             "quantity": item.quantity,
+            "effective_quantity": credited
+            if valid_delivery(plan, item, requires_processing=requires_processing)
+            else 0,
             "weight": float(item.weight),
             "status": item.status,
             "counts_toward_delivery": valid_delivery(
                 plan, item, requires_processing=requires_processing
-            ),
+            )
+            and (credited > 0 or item.quantity == 0),
             "transferred_at": iso(
                 item.created_at if item.entry_kind == "transfer" else item.dispatched_at
             ),
             "received_at": iso(item.received_at),
         }
-        for item in db.scalars(
-            select(Transfer)
+        for item, credited in db.execute(
+            select(Transfer, effective)
             .options(lazyload("*"))
             .join(Delivery, Delivery.transfer_id == Transfer.id)
             .where(Delivery.schedule_id == plan_id)
@@ -357,6 +366,7 @@ def list_plans(
     page_size=20,
 ):
     statement = filtered_nodes(
+        db,
         team_id=team_id,
         task_id=task_id,
         serial_no=serial_no,
@@ -372,7 +382,7 @@ def list_plans(
     fulfillment = fulfillment_table(db)
     next_team = aliased(Team)
     progress = progress_table(
-        plan_ids=select(Plan.id).where(Plan.id.in_(statement)), include_warehouse=True
+        db, plan_ids=select(Plan.id).where(Plan.id.in_(statement)), include_warehouse=True
     )
     sent = func.coalesce(progress.c.dispatched_quantity, 0)
     batch_count = select(func.count(Batch.id)).where(Batch.schedule_id == Plan.id).scalar_subquery()
@@ -386,7 +396,7 @@ def list_plans(
         select(func.max(links.c.total)).where(links.c.schedule_id == Plan.id).scalar_subquery(),
         explicit_sources,
     )
-    batch_progress = progress_table(batches=True, include_warehouse=True)
+    batch_progress = progress_table(db, batches=True, include_warehouse=True)
     batch_remaining = (
         select(
             func.sum(
@@ -424,7 +434,7 @@ def list_plans(
         ),
         "batch_count": batch_count,
         "source_count": source_count,
-        "handover_status": status_expression(progress, utcnow(), include_warehouse=True),
+        "handover_status": status_expression(db, progress, utcnow(), include_warehouse=True),
         "completed_at": progress.c.completed_at,
     }
     selected = (
@@ -467,6 +477,7 @@ def list_plans(
 
 
 def filtered_nodes(
+    db,
     *,
     team_id=None,
     task_id=None,
@@ -517,9 +528,9 @@ def filtered_nodes(
             legacy_due.append(Plan.due_at <= due_to)
         statement = statement.where(or_(batch_due.exists(), and_(~has_batches, *legacy_due)))
     if status:
-        progress = progress_table(plan_ids=statement)
+        progress = progress_table(db, plan_ids=statement)
         statement = statement.outerjoin(progress, progress.c.schedule_id == Plan.id).where(
-            status_expression(progress, utcnow()) == status
+            status_expression(db, progress, utcnow()) == status
         )
     return statement
 
@@ -822,6 +833,7 @@ def local_ancestors(lot_ids, team_id):
 
 
 def matching_statement(
+    db,
     team_id,
     lot_ids,
     *,
@@ -856,7 +868,7 @@ def matching_statement(
         )
     )
     if not include_completed:
-        progress = progress_table(plan_ids=select(matches.c.schedule_id))
+        progress = progress_table(db, plan_ids=select(matches.c.schedule_id))
         statement = statement.outerjoin(progress, progress.c.schedule_id == Plan.id).where(
             progress.c.completed_at.is_(None)
         )
@@ -871,7 +883,7 @@ def matching_statement(
 def matching_pairs(db, team_id, lot_ids, **options):
     if not lot_ids:
         return []
-    return list(db.execute(matching_statement(team_id, lot_ids, **options)))
+    return list(db.execute(matching_statement(db, team_id, lot_ids, **options)))
 
 
 def candidates(db, team_id, lot_ids, next_team_id=None, external_destination=None):
@@ -1122,7 +1134,7 @@ def source_options(db, team_id, serial_no, query=None, page=1, page_size=20, sch
         candidate_ids = (
             select(Transfer.id).join(Balance, Balance.transfer_id == Transfer.id).where(*conditions)
         )
-        pairs = matching_statement(team_id, candidate_ids).subquery()
+        pairs = matching_statement(db, team_id, candidate_ids).subquery()
         conditions.append(Transfer.id.in_(select(pairs.c.lot_id).where(pairs.c.id == schedule_id)))
         conditions.append(hold_column(Transfer.id).is_(None))
     query_base = (
@@ -1199,7 +1211,7 @@ def inventory_summaries(db, payload):
             .subquery("schedule_group_lots")
         )
         matches = matching_statement(
-            payload.team_id, select(grouped_lots.c.lot_id), include_completed=True
+            db, payload.team_id, select(grouped_lots.c.lot_id), include_completed=True
         ).subquery("schedule_group_matches")
         for group_id, plan_id in db.execute(
             select(grouped_lots.c.group_id, matches.c.id)

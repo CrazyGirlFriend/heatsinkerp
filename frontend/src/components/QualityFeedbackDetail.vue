@@ -59,6 +59,7 @@ const detail = ref<QualityFeedbackDetail>(),
   rechecking = ref(false)
 const reworkOpen = ref(false)
 const reworkContext = ref<QuantityAdjustmentContext>()
+const replyTeamId = ref<number>()
 const reply = ref(''),
   decisionNotes = ref(''),
   disposition = ref<keyof typeof dispositions>('pending'),
@@ -68,22 +69,32 @@ const reply = ref(''),
   submitted = ref<'reply' | 'decision' | null>(null)
 const qc = computed(() => directory.items.find((t) => t.code === 'FACTORY-QC' && t.active))
 const writable = computed(
-  () => auth.isTeamAccount && auth.currentUser?.active !== false && !auth.currentUserError,
+  () =>
+    (auth.isAdmin || auth.isTeamAccount) &&
+    auth.currentUser?.active !== false &&
+    !auth.currentUserError,
 )
 const canDecide = computed(
-  () => writable.value && !!qc.value && Number(auth.currentUser?.team_id) === Number(qc.value.id),
+  () =>
+    writable.value &&
+    !!qc.value &&
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === Number(qc.value.id)),
 )
 const canReply = computed(
   () =>
     writable.value &&
     detail.value?.feedback_status !== 'closed' &&
-    detail.value?.involved_teams.some((t) => t.team_id === Number(auth.currentUser?.team_id)),
+    (auth.isAdmin
+      ? !!detail.value?.involved_teams.length
+      : detail.value?.involved_teams.some((t) => t.team_id === Number(auth.currentUser?.team_id))),
 )
 let generation = 0,
   fingerprint = '',
   requestKey = ''
 function assign(row: QualityFeedbackDetail) {
   detail.value = row
+  if (!row.involved_teams.some((t) => t.team_id === replyTeamId.value))
+    replyTeamId.value = row.involved_teams[0]?.team_id
   decisionNotes.value = row.decision_notes
   disposition.value = row.disposition as keyof typeof dispositions
   status.value = row.feedback_status
@@ -116,6 +127,7 @@ async function save(decision: boolean) {
   )
     return
   const body = {
+    ...(!decision && auth.isAdmin ? { team_id: replyTeamId.value } : {}),
     notes: decision ? decisionNotes.value.trim() : reply.value.trim(),
     expected_version: detail.value.feedback_version,
   }
@@ -313,6 +325,15 @@ onBeforeUnmount(() => {
           <p>{{ event.notes || '未填写补充说明' }}</p>
         </div>
         <ElForm v-if="canReply" label-position="top" :disabled="busy"
+          ><ElFormItem v-if="auth.isAdmin" label="反馈班组" required>
+            <ElSelect v-model="replyTeamId">
+              <ElOption
+                v-for="team in detail.involved_teams"
+                :key="team.team_id"
+                :label="team.name"
+                :value="team.team_id"
+              />
+            </ElSelect> </ElFormItem
           ><ElFormItem
             label="本班组反馈"
             :class="{ 'is-error': submitted === 'reply' && !reply.trim() }"

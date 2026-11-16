@@ -13,7 +13,7 @@ import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedu
 import { orderFixture } from '@/testFixtures/processRouteOrder'
 import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
-const role = vi.hoisted(() => ({ isDispatch: true }))
+const role = vi.hoisted(() => ({ isDispatch: true, isAdmin: false }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => role }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [] }) }))
 vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: async () => [] }))
@@ -33,6 +33,7 @@ const task = {
 } as unknown as ScheduleTask
 beforeEach(() => {
   role.isDispatch = true
+  role.isAdmin = false
   const route = structuredClone(routeFixture)
   route.steps.forEach((s) => {
     s.serial_nos = ['S-001']
@@ -117,46 +118,51 @@ function trackFocus(element: Element) {
   Object.defineProperty(element, 'scrollIntoView', { configurable: true, value: scroll })
   return { focus, scroll }
 }
-it('displays the original order total without replacing the current delivery target', async () => {
-  const document = structuredClone(orderFixture)
-  document.receipt_fields.delivery_quantity!.value = 10800
-  vi.mocked(productionScheduleApi.parseOrder).mockResolvedValue(document)
-  await render()
-  plannedAmount().vm.$emit('update:modelValue', 4008)
-  batchAmounts()[0]!.vm.$emit('update:modelValue', 4008)
-  date('2026-12-30T16:00:00')
-  batchDate(0, '2026-12-29T16:00:00')
-  await button('选择业务人员')
-  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
-  await uploadOrder()
-  const totalField = () =>
-    wrapper
-      .findAllComponents(ElFormItem)
-      .find((field) => field.props('label') === '订单总量（参考）')!
-  expect(totalField().text()).toContain('10,800 件')
-  expect(totalField().find('input').exists()).toBe(false)
-  expect(plannedAmount().props('modelValue')).toBe(4008)
-  await button('创建排期')
-  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
-    expect.objectContaining({
-      planned_quantity: 4008,
-      delivery_batches: [
-        { batch_number: 1, target_quantity: 4008, due_at: '2026-12-29T16:00:00+08:00' },
-      ],
-    }),
-    orderFile,
-  )
-  await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
-  expect(totalField().text()).not.toContain('10,800')
-  wrapper.unmount()
-  await render({
-    ...task,
-    order_document: document,
-    delivery_batches: [{ batch_number: 1, target_quantity: 4008, due_at: task.final_due_at! }],
-  })
-  expect(totalField().text()).toContain('10,800 件')
-  expect(plannedAmount().props('modelValue')).toBe(4008)
-})
+it.each(['dispatch', 'admin'])(
+  'lets %s schedule the current batch while preserving the reference order total',
+  async (actor) => {
+    role.isAdmin = actor === 'admin'
+    role.isDispatch = actor === 'dispatch'
+    const document = structuredClone(orderFixture)
+    document.receipt_fields.delivery_quantity!.value = 10800
+    vi.mocked(productionScheduleApi.parseOrder).mockResolvedValue(document)
+    await render()
+    plannedAmount().vm.$emit('update:modelValue', 4008)
+    batchAmounts()[0]!.vm.$emit('update:modelValue', 4008)
+    date('2026-12-30T16:00:00')
+    batchDate(0, '2026-12-29T16:00:00')
+    await button('选择业务人员')
+    wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+    await uploadOrder()
+    const totalField = () =>
+      wrapper
+        .findAllComponents(ElFormItem)
+        .find((field) => field.props('label') === '订单总量（参考）')!
+    expect(totalField().text()).toContain('10,800 件')
+    expect(totalField().find('input').exists()).toBe(false)
+    expect(plannedAmount().props('modelValue')).toBe(4008)
+    await button('创建排期')
+    expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planned_quantity: 4008,
+        delivery_batches: [
+          { batch_number: 1, target_quantity: 4008, due_at: '2026-12-29T16:00:00+08:00' },
+        ],
+      }),
+      orderFile,
+    )
+    await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
+    expect(totalField().text()).not.toContain('10,800')
+    wrapper.unmount()
+    await render({
+      ...task,
+      order_document: document,
+      delivery_batches: [{ batch_number: 1, target_quantity: 4008, due_at: task.final_due_at! }],
+    })
+    expect(totalField().text()).toContain('10,800 件')
+    expect(plannedAmount().props('modelValue')).toBe(4008)
+  },
+)
 it('loads the serial process but requires dispatch to set the customer deadline', async () => {
   await render()
   expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('S-001')
@@ -341,8 +347,8 @@ it('requires dates in batch order', async () => {
   await vi.waitFor(() => expect(wrapper.text()).toContain('第 2 批交期不能早于上一批'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
-it.each(['locked', 'admin'])('blocks writes for %s', async (mode) => {
-  if (mode === 'admin') role.isDispatch = false
+it.each(['locked', 'team'])('blocks writes for %s', async (mode) => {
+  if (mode === 'team') role.isDispatch = false
   await render(mode === 'locked' ? { ...task, locked_at: '2026-10-30T00:00:00Z' } : task)
   await button('保存交期')
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()

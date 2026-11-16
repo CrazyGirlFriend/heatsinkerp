@@ -192,7 +192,7 @@ it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-e
   },
 )
 it.each(['normal', 'rework'] as const)(
-  'lets an administrator view %s routes and manage personnel without editing engineering',
+  'lets an administrator author %s routes and manage personnel',
   async (kind) => {
     state.admin = true
     const route = kind === 'normal' ? routeFixture : reworkRouteFixture
@@ -208,12 +208,10 @@ it.each(['normal', 'rework'] as const)(
     await render({ kind })
     const buttons = wrapper.findAll('button').map((button) => button.text())
     expect(buttons).toContain('班组管理')
-    for (const action of ['新建工艺', '制定返工工艺', '制定工艺', '修改工艺']) {
-      expect(buttons).not.toContain(action)
-    }
+    expect(buttons).toContain(kind === 'normal' ? '新建工艺' : '制定返工工艺')
     await wrapper.get('button.route-serial').trigger('click')
     expect((await openedEditor()).props()).toMatchObject({
-      viewOnly: true,
+      viewOnly: false,
       startEditing: false,
     })
   },

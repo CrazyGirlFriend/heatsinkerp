@@ -43,7 +43,7 @@ def choices(db, lot, *, lock=False):
     if lock:
         query = query.with_for_update().execution_options(populate_existing=True)
     plans = db.scalars(query).all()
-    progress = progress_table(plan_ids=[p.id for p in plans])
+    progress = progress_table(db, plan_ids=[p.id for p in plans])
     completed = (
         set(db.scalars(select(progress.c.schedule_id).where(progress.c.completed_at.is_not(None))))
         if plans

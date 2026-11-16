@@ -10,6 +10,7 @@ import { processRouteApi } from '@/services/processRouteApi'
 import type { ReworkSource } from '@/types/processRoute'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 
+const props = defineProps<{ teamId?: number }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const visible = ref(true),
   busy = ref(false),
@@ -43,7 +44,7 @@ async function load(nextPage = 1) {
     total.value = 0
   }
   try {
-    const data = await processRouteApi.reworkSources(query.value, nextPage)
+    const data = await processRouteApi.reworkSources(query.value, nextPage, props.teamId)
     if (token !== sourceGeneration) return
     rows.value = nextPage === 1 ? data.items : [...rows.value, ...data.items]
     total.value = data.total

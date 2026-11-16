@@ -134,7 +134,7 @@ def work_order_summary(db, team, stock, *, now=None):
             activity.append((number, day))
             if dispatched and number not in unfinished:
                 completed[number] = max(completed.get(number, day), day)
-    progress = progress_table(team_id=team.id)
+    progress = progress_table(db, team_id=team.id)
     overdue = (
         db.scalar(
             select(func.count(func.distinct(ProductionSchedule.serial_no)))
@@ -143,7 +143,7 @@ def work_order_summary(db, team, stock, *, now=None):
             .where(
                 ProductionSchedule.team_id == team.id,
                 ProductionScheduleTask.cancelled_at.is_(None),
-                status_expression(progress, now) == "overdue",
+                status_expression(db, progress, now) == "overdue",
             )
         )
         or 0

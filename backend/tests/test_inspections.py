@@ -147,9 +147,6 @@ def test_permissions_feedback_decision_and_recheck_are_independent(client, inspe
     assert row["feedback_status"] == "processing" and row["feedback_version"] == 1
     assert row["involved_teams"][0]["replied"]
     assert decide(client, s["other_headers"], row).status_code == 403
-    assert (
-        decide(client, {}, row).status_code == 403
-    )  # administrator reads but cannot impersonate QC
     assert client.get(f"/api/quality-feedback/{rid}", headers=s["headers"]).status_code == 404
     assert (
         client.get(
@@ -204,12 +201,16 @@ def test_invalid_inspection_cannot_write_stock_or_feedback(client, inspection, c
     assert client.get("/api/quality-feedback").json()["total"] == 0
 
 
-def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(client, warehouse):
+@pytest.mark.parametrize("admin", [False, True])
+def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
+    client, warehouse, admin
+):
     s = warehouse
     lot, worker = setup_lot(client, s, "FACTORY-QC")
+    acting_headers = dict(client.headers) if admin else s["other_headers"]
     problem = client.post(
         f"/api/team-materials/{s['other']['id']}/inspection-problems",
-        headers=s["other_headers"],
+        headers=acting_headers,
         json={"name": "尺寸超差"},
     )
     assert problem.status_code == 201, problem.text
@@ -249,10 +250,10 @@ def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
         involved_team_ids=[s["team"]["id"]],
         idempotency_key="qc-full",
     )
-    response = client.post("/api/inspections", headers=s["other_headers"], json=payload)
+    response = client.post("/api/inspections", headers=acting_headers, json=payload)
     assert response.status_code == 201, response.text
     assert (
-        client.post("/api/inspections", headers=s["other_headers"], json=payload).json()
+        client.post("/api/inspections", headers=acting_headers, json=payload).json()
         == response.json()
     )
     assert response.json()["passed_quantity"] == 8
@@ -274,10 +275,10 @@ def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
     assert external.status_code == 201, external.text
 
 
-def test_only_qc_can_register_and_employee_must_belong_to_qc(client, inspection):
+def test_admin_and_qc_can_register_and_employee_must_belong_to_qc(client, inspection):
     s, lot, headers, body = inspection
     assert client.post("/api/inspections", headers=s["other_headers"], json=body).status_code == 403
-    assert client.post("/api/inspections", json=body).status_code == 403
+    assert client.post("/api/inspections", json=body).status_code == 410
     other = client.get(base(s, True) + "/employees").json()[0]
     assert create_check(client, inspection, inspector_employee_id=other["id"]).status_code == 422
     fresh, worker = setup_lot(client, s, idempotency_key="unworked")

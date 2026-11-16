@@ -140,7 +140,7 @@ def summaries(db, plans, *, now=None, predecessors=None):
     tasks = {
         t.id: t for t in db.scalars(select(Task).where(Task.id.in_({p.task_id for p in plans})))
     }
-    progress = progress_table(plan_ids=list(parents), batches=True, include_warehouse=True)
+    progress = progress_table(db, plan_ids=list(parents), batches=True, include_warehouse=True)
     totals = {row._mapping["schedule_id"]: row._mapping for row in db.execute(select(progress))}
     result = {}
     for b in batches:
@@ -175,6 +175,8 @@ def summaries(db, plans, *, now=None, predecessors=None):
                 "status": state,
                 "warnings": warnings,
                 "dispatched_quantity": q,
+                "actual_dispatched_quantity": actual.get("actual_dispatched_quantity", 0),
+                "quality_pending_quantity": actual.get("quality_pending_quantity", 0),
                 "dispatched_weight": float(w),
                 "received_quantity": rq,
                 "received_weight": float(rw),

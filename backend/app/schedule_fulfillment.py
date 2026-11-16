@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 from sqlalchemy import and_, case, func, literal_column, or_, select, true
 from sqlalchemy.orm import aliased
 
+from .delivery_quality import credit_events, quantity_columns
 from .models import MaterialTransfer as Transfer
 from .models import ProductionSchedule as Plan
 from .models import ProductionScheduleDelivery as Delivery
@@ -58,13 +59,14 @@ def customer_shipments():
     )
 
 
-def attributed_customer_shipments():
+def attributed_customer_shipments(db):
     # Prefer an explicit delivery link, then the source lot's processing/receipt link.
     # Unbound historical shipments may belong to a single active order only; the
     # same serial's shipment must never fulfill two orders or a later new order.
     source = aliased(Transfer)
     direct, received = aliased(Delivery), aliased(Delivery)
     direct_plan, work_plan, received_plan = aliased(Plan), aliased(Plan), aliased(Plan)
+    effective, original, restored, _ = quantity_columns(db)
     only_task = (
         select(func.min(Task.id))
         .where(
@@ -79,7 +81,9 @@ def attributed_customer_shipments():
     return (
         select(
             Transfer.id,
-            Transfer.quantity,
+            effective.label("quantity"),
+            original.label("original_quantity"),
+            restored.label("restored_at"),
             Transfer.dispatched_at,
             func.coalesce(
                 direct_plan.task_id, work_plan.task_id, received_plan.task_id, only_task
@@ -101,13 +105,14 @@ def fulfillment_table(db):
     targets = select(
         Task.id.label("task_id"), quantity.label("order_quantity"), due.label("order_due_at")
     ).subquery()
-    attributed = attributed_customer_shipments()
+    attributed = attributed_customer_shipments(db)
+    events = credit_events(db, attributed, id_column="id", time_column="dispatched_at")
     running = select(
-        attributed,
-        func.sum(attributed.c.quantity)
+        events,
+        func.sum(events.c.quantity)
         .over(
-            partition_by=attributed.c.task_id,
-            order_by=(attributed.c.dispatched_at, attributed.c.id),
+            partition_by=events.c.task_id,
+            order_by=(events.c.dispatched_at, events.c.id),
             rows=(None, 0),
         )
         .label("running_quantity"),

@@ -142,7 +142,13 @@ const batches = ref<{ quantity: number | undefined; due: string }[]>(
 )
 if (!batches.value.length)
   batches.value.push({ quantity: quantity.value, due: props.task ? finalDue.value : '' })
-const writable = computed(() => auth.isDispatch && !props.task?.locked_at)
+const writable = computed(
+  () =>
+    (auth.isAdmin || auth.isDispatch) &&
+    auth.currentUser?.active !== false &&
+    !auth.currentUserError &&
+    !props.task?.locked_at,
+)
 const allocated = computed(() =>
   batches.value.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0),
 )

@@ -1196,7 +1196,10 @@ onMounted(async () => {
         v-if="
           readonly &&
           draft.route_kind === 'rework' &&
-          (draft.rework_request?.original_task_id || auth.isDispatch)
+          (draft.rework_request?.original_task_id ||
+            ((auth.isAdmin || auth.isDispatch) &&
+              auth.currentUser?.active !== false &&
+              !auth.currentUserError))
         "
         :to="{
           path: '/production-schedules',

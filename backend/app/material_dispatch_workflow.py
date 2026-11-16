@@ -14,7 +14,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
-from .auth import actor_name
+from .auth import actor_name, can_manage_team
 from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, utcnow
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
@@ -49,21 +49,25 @@ def revision(dispatch, items):
 def allowed_actions(dispatch, items, user):
     if (
         user is None
-        or user.role != "TEAM"
-        or not user.team
-        or not user.team.active
+        or not user.active
+        or (user.role != "ADMIN" and (user.role != "TEAM" or not user.team or not user.team.active))
         or not any(item.status == "pending" for item in items)
     ):
         return []
     if dispatch.entry_kind in EXTERNAL_ENTRY_KINDS:
         try:
-            stock.require_outbound_actor(user, dispatch.source_team_id, dispatch.entry_kind)
+            stock.require_outbound_actor(
+                user,
+                dispatch.source_team_id,
+                dispatch.entry_kind,
+                team=next((item.source_team for item in items), None),
+            )
         except HTTPException:
             return []
         return ["confirm_outbound"]
     return (
         ["confirm"]
-        if user.team_id == dispatch.next_team_id
+        if can_manage_team(user, dispatch.next_team_id)
         and not any(item.rejection_reason is not None for item in items if item.status == "pending")
         else []
     )
@@ -91,7 +95,7 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
             )
             if group is None:
                 raise HTTPException(404, "material dispatch batch not found")
-            _require_confirmer(group, user, external)
+            _require_confirmer(db, group, user, external)
             # All mutations follow source -> line order. Never lock a group
             # first and then wait for its sources (a child edit does the reverse).
             source_ids = db.scalars(
@@ -117,7 +121,7 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
-            _require_confirmer(group, user, external)
+            _require_confirmer(db, group, user, external)
             # A concurrent waiter must also see the newly committed audit,
             # rather than replaying a current header with stale history.
             events = db.scalars(
@@ -217,12 +221,16 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
         stock._db_conflict(exc)
 
 
-def _require_confirmer(group, user, external):
+def _require_confirmer(db, group, user, external):
     if (group.entry_kind in EXTERNAL_ENTRY_KINDS) != external:
         raise HTTPException(403, "use the confirmation endpoint for this batch kind")
     if external:
-        stock.require_outbound_actor(user, group.source_team_id, group.entry_kind)
+        stock.require_outbound_actor(
+            user,
+            group.source_team_id,
+            group.entry_kind,
+            team=stock.actor_team(db, user, group.source_team_id),
+        )
     else:
-        team = workflow._require_team_actor(user)
-        if team.id != group.next_team_id:
+        if not can_manage_team(user, group.next_team_id):
             raise HTTPException(403, "only the target team can confirm this batch")

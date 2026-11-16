@@ -115,7 +115,9 @@ def save_directory_item(
     if equipment:
         model, label, action = TeamEquipment, "设备", "equipment_changed"
     if inspection_problem:
-        if user.role != "TEAM" or not user.team or user.team.code != INSPECTION_TEAM_CODE:
+        if user.role != "ADMIN" and (
+            user.role != "TEAM" or not user.team or user.team.code != INSPECTION_TEAM_CODE
+        ):
             raise HTTPException(403, "仅检验班组长可以维护检验问题")
         require_actor(user, team_id)
         model, label, action = InspectionProblemType, "检验问题", "inspection_problem_changed"
@@ -133,6 +135,8 @@ def save_directory_item(
                 raise HTTPException(404, "未找到班组")
             if not team.active:
                 raise HTTPException(403, "班组已停用")
+            if inspection_problem and team.code != INSPECTION_TEAM_CODE:
+                raise HTTPException(403, "仅检验班组可以维护检验问题")
             if equipment:
                 from .processing_parameters import EQUIPMENT_FIELDS
 

@@ -146,8 +146,7 @@ watch(
 const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.batch_no || '')
 const teamActorReady = computed(
   () =>
-    authStore.isTeamAccount &&
-    authStore.currentUser?.team_id != null &&
+    (authStore.isAdmin || (authStore.isTeamAccount && authStore.currentUser?.team_id != null)) &&
     authStore.currentUser?.active !== false &&
     !authStore.currentUserError &&
     !loadError.value &&
@@ -157,14 +156,16 @@ const isSource = computed(() =>
   Boolean(
     teamActorReady.value &&
     current.value &&
-    String(authStore.currentUser?.team_id) === String(current.value.source_team.id),
+    (authStore.isAdmin ||
+      String(authStore.currentUser?.team_id) === String(current.value.source_team.id)),
   ),
 )
 const isReceiver = computed(() =>
   Boolean(
     teamActorReady.value &&
     current.value &&
-    String(authStore.currentUser?.team_id) === String(current.value.next_team.id),
+    (authStore.isAdmin ||
+      String(authStore.currentUser?.team_id) === String(current.value.next_team.id)),
   ),
 )
 const canMaintainDelivery = computed(() =>
@@ -172,8 +173,9 @@ const canMaintainDelivery = computed(() =>
     !props.receiptOnly &&
     teamActorReady.value &&
     current.value?.can_edit_delivery &&
-    String(authStore.currentUser?.team_id) ===
-      String(current.value.source_team.id || current.value.next_team.id),
+    (authStore.isAdmin ||
+      String(authStore.currentUser?.team_id) ===
+        String(current.value.source_team.id || current.value.next_team.id)),
   ),
 )
 const canEdit = computed(() =>
@@ -239,7 +241,6 @@ const stateMessage = computed(() => {
     return '本班组加工实物已登记，来源单据保持不变'
   if (opening.value) return '初始库存已登记，单据已锁定'
   if (receipt.value) return '手工入库已完成，单据已锁定'
-  if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
   if (external.value && current.value.status === 'pending')
     return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`

@@ -157,25 +157,16 @@ def test_idempotency_stale_version_and_weight_and_quantity_bounds(client, wareho
         db.rollback()
 
 
-def test_only_bound_team_may_change_and_weight_only_stock_allowed(client, warehouse):
+def test_admin_or_bound_team_may_change_and_weight_only_stock_allowed(client, warehouse):
     s = warehouse
     lot = processing_lot(client, s, quantity=0, weight=100)
     assert change(client, s, lot, 10, workshop=False, revision=0).status_code == 403
     assert (
-        client.post(
-            base(s, True) + "/quantity-adjustments",
-            json={
-                "source_transfer_id": lot["id"],
-                "quantity": 10,
-                "expected_revision": 0,
-                "processor_name": "张师傅",
-                "reason": "切割",
-                "idempotency_key": "admin",
-            },
+        change(
+            client, {**s, "other_headers": dict(client.headers)}, lot, 10, workshop=True
         ).status_code
-        == 403
+        == 201
     )
-    assert change(client, s, lot, 10, workshop=True).status_code == 201
     assert change(client, s, lot, 0, workshop=True, key="weight-only").status_code == 201
     assert (
         change(client, s, lot, 9, workshop=True, key="overlong", reason="x" * 2001).status_code

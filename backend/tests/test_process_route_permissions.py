@@ -1,4 +1,4 @@
-"""Administrators can inspect engineering but cannot author or replace its content."""
+"""Only administrators and engineering may author engineering content."""
 
 import pytest
 from app.database import SessionLocal
@@ -17,7 +17,7 @@ URL = "/api/process-routes"
 
 @pytest.mark.parametrize("kind", ["normal", "rework"])
 @pytest.mark.usefixtures("legacy_stock")
-def test_admin_can_read_but_cannot_change_routes_or_attachments(client, warehouse, kind):
+def test_production_cannot_change_routes_or_attachments(client, warehouse, kind):
     if kind == "normal":
         payload = route_payload(client, warehouse)
     else:
@@ -85,9 +85,9 @@ def test_admin_can_read_but_cannot_change_routes_or_attachments(client, warehous
             )
         )
     for method, path, options in mutations:
-        response = client.request(method, URL + path, **options)
+        response = client.request(method, URL + path, headers=warehouse["other_headers"], **options)
         assert response.status_code == 403, (method, path, response.text)
-        assert response.json()["detail"] == "仅工艺班组可以维护工艺"
+        assert response.json()["detail"] == "仅管理员和工艺班组可以维护工艺"
 
     assert client.get(f"{URL}/{route_id}").json() == original
     for path, content in files.items():
@@ -97,19 +97,25 @@ def test_admin_can_read_but_cannot_change_routes_or_attachments(client, warehous
         assert db.scalar(select(func.count(ProcessRouteDrawing.id))) == 1
 
 
-def test_admin_cannot_create_import_or_parse_engineering(client, warehouse):
+def test_production_cannot_create_import_or_parse_engineering(client, warehouse):
     payload = route_payload(client, warehouse)
     write = {key: value for key, value in payload.items() if key != "id"}
-    created = create_with_documents(client, write)
+    created = create_with_documents(client, write, headers=warehouse["other_headers"])
     assert created.status_code == 403, created.text
     for path in ("import", "parse", "parse-order", "drawing-preview"):
-        response = client.post(URL + "/" + path, files={"file": ("工艺.docx", b"original")})
+        response = client.post(
+            URL + "/" + path,
+            headers=warehouse["other_headers"],
+            files={"file": ("工艺.docx", b"original")},
+        )
         assert response.status_code == 403, (path, response.text)
     with SessionLocal() as db:
         assert db.scalar(select(func.count(ProcessRoute.id))) == 1
 
 
-def test_admin_cannot_revise_or_republish_published_engineering(client, warehouse, engineering):
+def test_production_cannot_revise_or_republish_published_engineering(
+    client, warehouse, engineering
+):
     route = manual(client, warehouse, engineering)
     published = client.post(
         f"{URL}/{route['id']}/publish",
@@ -119,6 +125,10 @@ def test_admin_cannot_revise_or_republish_published_engineering(client, warehous
     assert published.status_code == 200, published.text
     original = published.json()
     for path in ("revise", "publish"):
-        denied = client.post(f"{URL}/{route['id']}/{path}", json={"version": original["version"]})
+        denied = client.post(
+            f"{URL}/{route['id']}/{path}",
+            headers=warehouse["other_headers"],
+            json={"version": original["version"]},
+        )
         assert denied.status_code == 403, denied.text
     assert client.get(f"{URL}/{route['id']}").json() == original

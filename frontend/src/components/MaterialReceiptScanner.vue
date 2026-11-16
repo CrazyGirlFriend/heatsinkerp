@@ -37,10 +37,10 @@ const currentCode = ref('')
 const result = ref<{ message: string; tone: ToastTone } | null>(null)
 const allowed = computed(
   () =>
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
     !auth.currentUserError &&
-    Number(auth.currentUser?.team_id) === props.teamId,
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId),
 )
 const identity = computed(
   () =>

@@ -184,7 +184,7 @@ def refresh_deadlines(db, user, now=None):
             if not pending:
                 continue
             progress = progress_table(
-                plan_ids=list({p.id for _, p, _, _ in pending}), batches=batched
+                db, plan_ids=list({p.id for _, p, _, _ in pending}), batches=batched
             )
             completed = set(
                 db.scalars(

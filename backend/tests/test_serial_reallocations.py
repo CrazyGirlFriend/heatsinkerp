@@ -219,7 +219,7 @@ def test_permissions_invalid_targets_and_signed_amount_policy(client, warehouse)
         "reason": "转投",
         "idempotency_key": "permission",
     }
-    for headers in ({}, warehouse["other_headers"], dict(client.headers)):
+    for headers in (warehouse["other_headers"],):
         assert client.post(url, headers=headers, json=body).status_code == 403
     other_url = f"/api/team-materials/{warehouse['other']['id']}/serial-reallocations"
     assert client.post(other_url, headers=warehouse["other_headers"], json=body).status_code == 403
@@ -233,7 +233,9 @@ def test_permissions_invalid_targets_and_signed_amount_policy(client, warehouse)
     ):
         assert reallocate(client, warehouse, lot, **invalid).status_code == 422
     # The customer's existing no-cap policy also applies here, retaining signed stock.
-    result = reallocate(client, warehouse, lot, quantity=101, weight=11)
+    result = reallocate(
+        client, {**warehouse, "headers": dict(client.headers)}, lot, quantity=101, weight=11
+    )
     assert result.status_code == 201, result.text
     with SessionLocal() as db:
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == -1

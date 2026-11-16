@@ -29,7 +29,6 @@ from .process_route_schemas import BindWrite, RevisionWrite, RouteDraftWrite
 from .process_route_serials import reserve_serial
 from .process_routes import (
     assign_engineering_employee,
-    is_engineering_user,
     publish_route,
     require_draft_owner,
     require_route,
@@ -102,10 +101,7 @@ def publish(db, route_id, payload: RevisionWrite, user):
         if row.state == "published":
             require_route_documents(db, row)
             return document(row, db=db)
-        if (
-            is_engineering_user(user)
-            and (row.modified_employee_id if row.parent_id else row.engineering_employee_id) is None
-        ):
+        if (row.modified_employee_id if row.parent_id else row.engineering_employee_id) is None:
             raise HTTPException(422, "请选择修改人员" if row.parent_id else "请选择工艺人员")
         if row.modified_employee_id is not None:
             assign_engineering_employee(db, row, row.modified_employee_id, modifier=True)

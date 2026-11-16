@@ -16,9 +16,18 @@ from .configure_material_teams import MATERIAL_TEAMS, configure_material_teams
 from .database import SessionLocal
 from .material_stock import DispatchCreate, LossCreate, create_dispatch, create_loss
 from .material_transfer_workflow import confirm_material_transfer, confirm_outbound
-from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, TeamPurpose, User
+from .models import (
+    MaterialDispatch,
+    MaterialLoss,
+    MaterialTransfer,
+    Team,
+    TeamPurpose,
+    User,
+    WarehouseLocation,
+)
 from .schemas import MaterialReceiptConfirm, MaterialTransferConfirm, WarehouseReceiptCreate
 from .seed_material_transfer_showcase import demo_receiving_employee
+from .warehouse_locations import reserve
 from .warehouse_receipts import create_receipt
 
 PREFIX = "team-showcase-v2"
@@ -83,6 +92,24 @@ def seed_team_material_showcase(db, password):
         db.commit()
         return operation(db, *args, **kwargs)
 
+    def storage_location(actor, key):
+        name = f"演示仓位-{key}"
+        location = db.scalar(
+            select(WarehouseLocation).where(
+                WarehouseLocation.team_id == leaders[0].team_id,
+                WarehouseLocation.name == name,
+            )
+        )
+        if location is None:
+            location = WarehouseLocation(team_id=leaders[0].team_id, name=name)
+            db.add(location)
+            db.flush()
+        lease = run(reserve, location.id, f"{PREFIX}:{key}", actor)
+        return {
+            "warehouse_location": lease["name"],
+            "warehouse_location_reservation_key": lease["key"],
+        }
+
     def send(
         actor, target, lots, key, *, quantity=10, weight="1.000", confirm=False, external=None
     ):
@@ -110,8 +137,13 @@ def seed_team_material_showcase(db, password):
                     "quantity": quantity,
                     "weight": weight,
                     "material_type": "finished" if actor is leaders[-1] else "semi_finished",
+                    **(
+                        storage_location(actor, f"{key}-{index}")
+                        if not external and target is leaders[0]
+                        else {}
+                    ),
                 }
-                for lot in lots
+                for index, lot in enumerate(lots)
             ],
         )
         result = run(create_dispatch, actor.team_id, payload, actor)
@@ -155,6 +187,7 @@ def seed_team_material_showcase(db, password):
                 customer_code=f"TEST-C{index % 3 + 1:02d}",
                 notes="测试数据：库房手工入库",
                 idempotency_key=f"{PREFIX}:intake:{index}",
+                **storage_location(warehouse, f"intake-{index}"),
             ),
             warehouse,
         )
@@ -215,6 +248,7 @@ def seed_team_material_showcase(db, password):
             weight="1.000",
             notes="测试数据：成品手工入库",
             idempotency_key=COMPLETE_KEY,
+            **storage_location(warehouse, "complete"),
         ),
         warehouse,
     )

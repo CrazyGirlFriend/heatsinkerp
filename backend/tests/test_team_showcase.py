@@ -12,7 +12,7 @@ from app.models import (
 )
 from app.reset_business_data import business_counts, reset_business_data
 from app.seed_team_material_showcase import DEMO_USERS, seed_team_material_showcase, summary
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -119,6 +119,8 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
             )
         )
         db.commit()
+        placement_count = db.scalar(select(func.count()).select_from(WarehousePlacement))
+        db.commit()
         # Foreign-key checks remain enabled while deleting linked child lots.
         db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
         db.commit()
@@ -127,7 +129,7 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         for model in (Product, WorkOrder, Operation, ProductRouteOperation):
             assert len(db.scalars(select(model)).all()) == 1
         assert deleted["material_transfers"] == before["material_transfers"]
-        assert deleted["warehouse_placements"] == 1
+        assert deleted["warehouse_placements"] == placement_count
         assert all(count == 0 for count in business_counts(db).values())
         assert [
             (row.id, row.name)

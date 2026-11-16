@@ -219,6 +219,10 @@ def affected_teams(row):
 
 
 def change_for(row, db):
+    if isinstance(row, (MaterialInspection, InspectionFeedbackTeam)):
+        # Inspection results change credited progress from the involved operation
+        # onward, including teams that have already handed this batch over.
+        return InventoryChange(team_ids=None)
     if isinstance(row, InspectionFeedbackEvent):
         teams = set(
             db.scalars(

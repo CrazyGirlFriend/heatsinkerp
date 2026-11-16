@@ -244,7 +244,7 @@ export function isCustomerShipmentNode(node: ProductionSchedule) {
 export function nodeWorkProgress(node: ProductionSchedule) {
   const progress = nodeCompletion(node)
   return {
-    label: isCustomerShipmentNode(node) ? '已发货' : '已转出',
+    label: isCustomerShipmentNode(node) ? '有效发货' : '有效转出',
     percent: progress.dispatched,
   }
 }

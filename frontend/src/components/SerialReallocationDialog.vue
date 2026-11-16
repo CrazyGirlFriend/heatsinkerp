@@ -37,10 +37,10 @@ const auth = useAuthStore(),
 const team = computed(() => directory.items.find((item) => Number(item.id) === props.teamId))
 const canWrite = computed(
   () =>
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
     !auth.currentUserError &&
-    Number(auth.currentUser?.team_id) === props.teamId &&
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId) &&
     team.value?.active &&
     teamCanReallocate(team.value),
 )

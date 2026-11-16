@@ -15,6 +15,7 @@ from sender_helpers import sender_post
 from sqlalchemy import create_engine
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -71,6 +72,7 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
                     "quantity": 10,
                     "weight": 1,
                     "material_type": "semi_finished",
+                    **select_location(client, warehouse, headers=warehouse["other_headers"]),
                 }
             ],
         },
@@ -85,9 +87,8 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
         "expected_version": origin["version"],
     }
     url = f"/api/material-transfers/{origin['batch_no']}/delivery"
-    assert client.patch(url, json=payload).status_code == 403
     assert client.patch(url, headers=warehouse["other_headers"], json=payload).status_code == 403
-    response = client.patch(url, headers=warehouse["headers"], json=payload)
+    response = client.patch(url, json=payload)
     assert response.status_code == 200, response.text
     updated = response.json()
     assert updated["locked"] and updated["quantity"] == 100 and updated["weight"] == 10.125

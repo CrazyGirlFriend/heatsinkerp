@@ -5,6 +5,7 @@ import ElSelect from '@/components/AppSelect.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
+import AppDisclosure from './AppDisclosure.vue'
 import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
 import { IconLink } from '@tabler/icons-vue'
 import AppNumberInput from './AppNumberInput.vue'
@@ -70,10 +71,10 @@ const canWrite = computed(
     Boolean(warehouse.value) &&
     directory.loaded &&
     !directory.error &&
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
     auth.currentUser?.id != null &&
-    Number(auth.currentUser.team_id) === props.teamId &&
+    (auth.isAdmin || Number(auth.currentUser.team_id) === props.teamId) &&
     !auth.currentUserError,
 )
 const identity = computed(() => `${auth.currentUser?.id ?? ''}:${props.teamId}`)
@@ -331,6 +332,7 @@ watch(intakeSerials, () => {
   routeReviewed.value = importedRoute.value?.state === 'published'
 })
 const visibleSections = computed(() => documentSections)
+const detailsOpen = ref(false)
 const weightOnly = computed(() => isWeightOnlyType(form.materialType))
 const enteredQuantity = computed(() => (weightOnly.value ? 0 : form.quantity))
 const autofill = useMaterialAutofill(() => form.serialNo, form.document)
@@ -511,6 +513,20 @@ const validation = useDialogValidation(() => {
   return issues
 })
 const { formRef, fieldErrors } = validation
+watch(
+  fieldErrors,
+  (errors) => {
+    const detailKeys = [
+      'deliveryDate',
+      'deliveryQuantity',
+      'finishedQuantity',
+      'notes',
+      ...documentSections.flatMap((section) => section.fields.map((field) => field.key)),
+    ]
+    if (detailKeys.some((key) => errors[key])) detailsOpen.value = true
+  },
+  { flush: 'sync' },
+)
 function payload(): CreateWarehouseReceipt {
   return {
     ...Object.fromEntries(
@@ -742,22 +758,6 @@ onBeforeUnmount(() => {
               : ''
           "
         />
-        <ElFormItem
-          v-if="form.receiptKind === 'external' || importedRoute"
-          label="关联工艺"
-          :error="fieldErrors.processRoute"
-          class="receipt-route-choice"
-        >
-          <div class="receipt-route-choice-content">
-            <strong>{{ importedRoute?.serial_nos.join('、') || '未关联' }}</strong>
-            <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
-              <IconLink :size="16" />{{ importedRoute ? '更换工艺' : '选择工艺' }}
-            </ElButton>
-            <ElButton v-if="importedRoute" link :disabled="readonly" @click="routeEditorOpen = true"
-              >查看工艺</ElButton
-            >
-          </div>
-        </ElFormItem>
         <CompactFormSection title="入库信息" class="receipt-primary-section">
           <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required
             ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
@@ -796,25 +796,6 @@ onBeforeUnmount(() => {
               placeholder="选填已确认的出库批次号；流水号沿用原号"
           /></ElFormItem>
           <ElFormItem
-            label="流水号"
-            :error="fieldErrors.serialNo"
-            :class="['receipt-identity-field', importedClass('serial_no')]"
-            :required="form.receiptKind === 'return'"
-            ><template #label
-              >流水号<AutofillBadge
-                :source="documentSource('serial_no')"
-                kind="document"
-                :modified="documentChanged('serial_no')" /></template
-            ><MaterialInput
-              v-model="form.serialNo"
-              field="serial_no"
-              label="流水号"
-              :maxlength="80"
-              :disabled="readonly"
-              placeholder="选填，出库时可补充"
-              @selected="autofill.select"
-          /></ElFormItem>
-          <ElFormItem
             label="材质"
             :error="fieldErrors.material_name"
             :class="['receipt-identity-field', importedClass('material_name')]"
@@ -843,28 +824,44 @@ onBeforeUnmount(() => {
                 :label="item.label"
                 :value="item.value" /></ElSelect
           ></ElFormItem>
+          <ElFormItem
+            label="流水号"
+            :error="fieldErrors.serialNo"
+            :class="['receipt-identity-field', importedClass('serial_no')]"
+            :required="form.receiptKind === 'return'"
+            ><template #label
+              >流水号<AutofillBadge
+                :source="documentSource('serial_no')"
+                kind="document"
+                :modified="documentChanged('serial_no')" /></template
+            ><MaterialInput
+              v-model="form.serialNo"
+              field="serial_no"
+              label="流水号"
+              :maxlength="80"
+              :disabled="readonly"
+              placeholder="选填，出库时可补充"
+              @selected="autofill.select"
+          /></ElFormItem>
         </CompactFormSection>
-        <CompactFormSection title="数量与交期" class="dialog-section-quantities">
-          <MaterialDeliveryFields
-            class="form-field--long"
-            v-if="form.receiptKind === 'external' && !weightOnly"
-            v-model:date="form.deliveryDate"
-            v-model:quantity="form.deliveryQuantity"
-            :disabled="readonly"
-            :date-error="fieldErrors.deliveryDate"
-            :quantity-error="fieldErrors.deliveryQuantity"
-            :document-source="importedRoute?.filename"
-            :date-source="documentSource('delivery_date')"
-            :quantity-source="documentSource('delivery_quantity')"
-            :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
-            :quantity-state="
-              documentImport.state('delivery_quantity', importedValues.delivery_quantity)
-            "
-          />
+        <CompactFormSection title="入库数量与仓位" class="dialog-section-quantities">
+          <ElFormItem label="入库仓位" :error="fieldErrors.warehouseLocation" required
+            ><WarehouseLocationSelect
+              required
+              v-model="form.warehouseLocation"
+              v-model:reservation-key="form.warehouseLocationKey"
+              :team-id="teamId"
+              :serial-no="form.serialNo"
+              :material-name="form.document.material_name"
+              :material-type="form.materialType"
+              :active="modelValue"
+              :disabled="readonly"
+              @busy-change="locationBusy = $event"
+          /></ElFormItem>
+
           <ElFormItem
             v-if="!weightOnly"
             label="入库件数"
-            class="form-field--short"
             :error="fieldErrors.quantity"
             :class="importedClass('quantity')"
             required
@@ -912,108 +909,131 @@ onBeforeUnmount(() => {
             :percent-error="fieldErrors.percent"
             @update:weight="form.weight = $event"
           />
-          <ElFormItem
-            label="入库仓位"
-            :error="fieldErrors.warehouseLocation"
-            class="form-field--long"
-            required
-            ><WarehouseLocationSelect
-              required
-              v-model="form.warehouseLocation"
-              v-model:reservation-key="form.warehouseLocationKey"
-              :team-id="teamId"
-              :serial-no="form.serialNo"
-              :material-name="form.document.material_name"
-              :material-type="form.materialType"
-              :active="modelValue"
-              :disabled="readonly"
-              @busy-change="locationBusy = $event"
-          /></ElFormItem>
         </CompactFormSection>
-        <template v-for="section in visibleSections" :key="section.name">
-          <CompactFormSection
-            :title="section.label"
-            :class="{
-              'dialog-section-long': section.name !== 'document',
-              'dialog-section-details': section.name === 'document',
-            }"
-          >
-            <ElFormItem
-              v-for="field in section.fields"
-              :key="field.key"
-              :label="field.label"
-              :error="fieldErrors[field.key]"
-              :class="[
-                { 'form-field--long': specificationKeys.includes(field.key) || field.multiline },
-                importedClass(field.key),
-              ]"
-              ><template #label
-                >{{ field.label
-                }}<AutofillBadge
-                  :source="documentSource(field.key) || autofill.source(field.key)"
-                  :kind="documentSource(field.key) ? 'document' : undefined"
-                  :modified="documentChanged(field.key)" /></template
-              ><SpecificationInput
-                v-if="specificationKeys.includes(field.key)"
-                v-model="form.document[field.key]"
-                :label="field.label"
-                :disabled="readonly"
-                @validity-change="specificationValidity[field.key] = $event" /><MaterialInput
-                v-else-if="suggestionFields.includes(field.key)"
-                v-model="form.document[field.key]"
-                :field="field.key as MaterialInputField"
-                :label="field.label"
-                :maxlength="field.maxLength"
-                :disabled="readonly" /><ElInput
-                v-else
-                v-model="form.document[field.key]"
-                :aria-label="field.label"
-                :type="field.multiline ? 'textarea' : 'text'"
-                :rows="2"
-                :maxlength="field.maxLength"
-                :show-word-limit="field.multiline"
-                :disabled="readonly"
-                placeholder="选填"
-            /></ElFormItem>
-            <ElFormItem
-              v-if="section.name === 'document' && !weightOnly"
-              label="成品件数"
-              class="form-field--short"
-              :error="fieldErrors.finishedQuantity"
-              ><template #label
-                >成品件数<AutofillBadge
-                  :source="documentSource('finished_quantity')"
-                  kind="document"
-                  :modified="documentChanged('finished_quantity')" /></template
-              ><AppNumberInput
-                v-model="form.finishedQuantity"
-                aria-label="成品件数"
-                :min="0"
-                :max="2147483647"
-                :precision="0"
-                controls-position="right"
-                :disabled="readonly"
-                placeholder="选填"
-                ><template #suffix
-                  ><span class="dialog-input-unit">件</span></template
-                ></AppNumberInput
-              ></ElFormItem
+        <ElFormItem
+          v-if="form.receiptKind === 'external' || importedRoute"
+          label="关联工艺"
+          :error="fieldErrors.processRoute"
+          class="receipt-route-choice"
+        >
+          <div class="receipt-route-choice-content">
+            <strong>{{ importedRoute?.serial_nos.join('、') || '未关联' }}</strong>
+            <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
+              <IconLink :size="16" />{{ importedRoute ? '更换工艺' : '选择工艺' }}
+            </ElButton>
+            <ElButton v-if="importedRoute" link :disabled="readonly" @click="routeEditorOpen = true"
+              >查看工艺</ElButton
             >
-            <template v-if="section.name === 'notes'">
-              <ElFormItem label="入库说明" class="form-field--long" :error="fieldErrors.notes"
-                ><ElInput
-                  v-model="form.notes"
-                  aria-label="入库说明"
-                  type="textarea"
-                  :rows="2"
-                  maxlength="2000"
-                  show-word-limit
-                  :disabled="readonly"
-                  placeholder="选填：说明来料来源及本次入库情况"
-              /></ElFormItem>
-            </template>
+          </div>
+        </ElFormItem>
+        <AppDisclosure v-model:open="detailsOpen" class="receipt-optional-details">
+          <template #summary><strong>交期与物料资料</strong><span>选填</span></template>
+          <CompactFormSection
+            v-if="form.receiptKind === 'external' && !weightOnly"
+            title="交期信息"
+          >
+            <MaterialDeliveryFields
+              class="form-field--long"
+              v-if="form.receiptKind === 'external' && !weightOnly"
+              v-model:date="form.deliveryDate"
+              v-model:quantity="form.deliveryQuantity"
+              :disabled="readonly"
+              :date-error="fieldErrors.deliveryDate"
+              :quantity-error="fieldErrors.deliveryQuantity"
+              :document-source="importedRoute?.filename"
+              :date-source="documentSource('delivery_date')"
+              :quantity-source="documentSource('delivery_quantity')"
+              :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
+              :quantity-state="
+                documentImport.state('delivery_quantity', importedValues.delivery_quantity)
+              "
+            />
           </CompactFormSection>
-        </template>
+          <template v-for="section in visibleSections" :key="section.name">
+            <CompactFormSection
+              :title="section.label"
+              :class="{
+                'dialog-section-long': section.name !== 'document',
+                'dialog-section-details': section.name === 'document',
+              }"
+            >
+              <ElFormItem
+                v-for="field in section.fields"
+                :key="field.key"
+                :label="field.label"
+                :error="fieldErrors[field.key]"
+                :class="[
+                  { 'form-field--long': specificationKeys.includes(field.key) || field.multiline },
+                  importedClass(field.key),
+                ]"
+                ><template #label
+                  >{{ field.label
+                  }}<AutofillBadge
+                    :source="documentSource(field.key) || autofill.source(field.key)"
+                    :kind="documentSource(field.key) ? 'document' : undefined"
+                    :modified="documentChanged(field.key)" /></template
+                ><SpecificationInput
+                  v-if="specificationKeys.includes(field.key)"
+                  v-model="form.document[field.key]"
+                  :label="field.label"
+                  :disabled="readonly"
+                  @validity-change="specificationValidity[field.key] = $event" /><MaterialInput
+                  v-else-if="suggestionFields.includes(field.key)"
+                  v-model="form.document[field.key]"
+                  :field="field.key as MaterialInputField"
+                  :label="field.label"
+                  :maxlength="field.maxLength"
+                  :disabled="readonly" /><ElInput
+                  v-else
+                  v-model="form.document[field.key]"
+                  :aria-label="field.label"
+                  :type="field.multiline ? 'textarea' : 'text'"
+                  :rows="2"
+                  :maxlength="field.maxLength"
+                  :show-word-limit="field.multiline"
+                  :disabled="readonly"
+                  placeholder="选填"
+              /></ElFormItem>
+              <ElFormItem
+                v-if="section.name === 'document' && !weightOnly"
+                label="成品件数"
+                class="form-field--short"
+                :error="fieldErrors.finishedQuantity"
+                ><template #label
+                  >成品件数<AutofillBadge
+                    :source="documentSource('finished_quantity')"
+                    kind="document"
+                    :modified="documentChanged('finished_quantity')" /></template
+                ><AppNumberInput
+                  v-model="form.finishedQuantity"
+                  aria-label="成品件数"
+                  :min="0"
+                  :max="2147483647"
+                  :precision="0"
+                  controls-position="right"
+                  :disabled="readonly"
+                  placeholder="选填"
+                  ><template #suffix
+                    ><span class="dialog-input-unit">件</span></template
+                  ></AppNumberInput
+                ></ElFormItem
+              >
+              <template v-if="section.name === 'notes'">
+                <ElFormItem label="入库说明" class="form-field--long" :error="fieldErrors.notes"
+                  ><ElInput
+                    v-model="form.notes"
+                    aria-label="入库说明"
+                    type="textarea"
+                    :rows="2"
+                    maxlength="2000"
+                    show-word-limit
+                    :disabled="readonly"
+                    placeholder="选填：说明来料来源及本次入库情况"
+                /></ElFormItem>
+              </template>
+            </CompactFormSection>
+          </template>
+        </AppDisclosure>
         <ImportedDataConfirmation
           v-if="needsConfirmation"
           v-model="confirmedImports"
@@ -1084,6 +1104,13 @@ onBeforeUnmount(() => {
   min-width: 0;
   display: grid;
   gap: 10px;
+}
+.receipt-route-choice {
+  margin-top: 14px;
+}
+.receipt-optional-details :deep(.app-disclosure-label > span) {
+  color: var(--muted);
+  font-size: 12px;
 }
 .receipt-route-choice-content {
   display: flex;

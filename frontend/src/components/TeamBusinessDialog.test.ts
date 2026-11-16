@@ -71,46 +71,46 @@ async function click(text: string) {
 }
 
 describe('team business settings', () => {
-  it('lets the QC leader maintain versioned problem choices separately from businesses', async () => {
-    vi.mocked(teamMaterialApi.inspectionProblems).mockResolvedValue([
-      { id: 15, team_id: 2, name: '划伤', active: true, version: 3 },
-    ])
-    const save = vi.spyOn(teamMaterialApi, 'saveInspectionProblem').mockResolvedValue({
-      id: 15,
-      team_id: 2,
-      name: '表面划伤',
-      active: false,
-      version: 4,
-    })
-    wrapper = mount(TeamBusinessDialog, {
-      props: { modelValue: true, teamId: 2, inspectionProblems: true, initialTab: 'problems' },
-      global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
-    })
-    await flushPromises()
-    expect(wrapper.text()).toContain('检验问题')
-    expect(wrapper.text()).toContain('改名不改变历史记录')
-    await wrapper.get('input[aria-label="问题名称 15"]').setValue('表面划伤')
-    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
-    await click('保存')
-    expect(save).toHaveBeenCalledWith(
-      2,
-      { name: '表面划伤', active: false, expected_version: 3 },
-      15,
-    )
-    expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
-    await wrapper.get('input[aria-label="新增问题名称"]').setValue('尺寸超差')
-    await click('新增问题')
-    expect(save).toHaveBeenLastCalledWith(2, { name: '尺寸超差', active: true }, undefined)
-  })
+  it.each(['QC leader', 'administrator'])(
+    'lets the %s maintain versioned problem choices',
+    async (actor) => {
+      if (actor === 'administrator')
+        state.auth = { currentUser: { id: 1, active: true }, isAdmin: true, isTeamAccount: false }
+      vi.mocked(teamMaterialApi.inspectionProblems).mockResolvedValue([
+        { id: 15, team_id: 2, name: '划伤', active: true, version: 3 },
+      ])
+      const save = vi.spyOn(teamMaterialApi, 'saveInspectionProblem').mockResolvedValue({
+        id: 15,
+        team_id: 2,
+        name: '表面划伤',
+        active: false,
+        version: 4,
+      })
+      wrapper = mount(TeamBusinessDialog, {
+        props: { modelValue: true, teamId: 2, inspectionProblems: true, initialTab: 'problems' },
+        global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain('检验问题')
+      expect(wrapper.text()).toContain('改名不改变历史记录')
+      await wrapper.get('input[aria-label="问题名称 15"]').setValue('表面划伤')
+      wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
+      await click('保存')
+      expect(save).toHaveBeenCalledWith(
+        2,
+        { name: '表面划伤', active: false, expected_version: 3 },
+        15,
+      )
+      expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+      await wrapper.get('input[aria-label="新增问题名称"]').setValue('尺寸超差')
+      await click('新增问题')
+      expect(save).toHaveBeenLastCalledWith(2, { name: '尺寸超差', active: true }, undefined)
+    },
+  )
   it.each([
     [
       'another team',
       { currentUser: { id: 41, team_id: 3 }, isTeamAccount: true, isAdmin: false },
-      true,
-    ],
-    [
-      'administrator',
-      { currentUser: { id: 41, team_id: null }, isTeamAccount: false, isAdmin: true },
       true,
     ],
     [
@@ -363,38 +363,51 @@ describe('team business settings', () => {
     expect(wrapper.emitted('update:modelValue')).toEqual([[false], [false]])
     expect(wrapper.emitted('stocked')).toHaveLength(2)
   })
-  it('posts leading-zero stock once after confirmation, preserving local drafts on failure', async () => {
-    await render()
-    await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
-    await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
-    wrapper
-      .findAllComponents(ElSelect)
-      .find((item) => item.find('input[aria-label="第1行物料类型"]').exists())!
-      .vm.$emit('update:modelValue', 'semi_finished')
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
-    wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.125)
-    await click('保存本机草稿')
-    expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toContain('000012')
-    vi.mocked(teamMaterialApi.createOpening).mockRejectedValueOnce(new Error('网络错误'))
-    await click('确认初始库存登记')
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
-    expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toContain('000012')
-    await click('确认初始库存登记')
-    const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
-    expect(calls).toHaveLength(2)
-    expect(calls[0]![0]).toBe(2)
-    expect(calls[0]![1][0]).toMatchObject({
-      serial_no: '000012',
-      quantity: 100,
-      weight: 10.125,
-      material_type: 'semi_finished',
-      purpose_id: null,
-    })
-    expect(calls[0]![2]).toBe(calls[1]![2])
-    expect(wrapper.emitted('stocked')).toHaveLength(1)
-    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
-    expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toBeNull()
-  })
+  it.each(['team', 'administrator'])(
+    'lets %s post stock and preserves local drafts on failure',
+    async (actor) => {
+      if (actor === 'administrator') {
+        state.auth = { currentUser: { id: 1, active: true }, isAdmin: true, isTeamAccount: false }
+        vi.mocked(teamMaterialApi.openingState).mockResolvedValue({ ...allowed, enabled: false })
+      }
+      await render()
+      await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
+      await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
+      wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.find('input[aria-label="第1行物料类型"]').exists())!
+        .vm.$emit('update:modelValue', 'semi_finished')
+      wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
+      wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.125)
+      await click('保存本机草稿')
+      expect(
+        localStorage.getItem(`heatsink.opening-draft.v1:${actor === 'administrator' ? 1 : 41}:2`),
+      ).toContain('000012')
+      vi.mocked(teamMaterialApi.createOpening).mockRejectedValueOnce(new Error('网络错误'))
+      await click('确认初始库存登记')
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+      expect(
+        localStorage.getItem(`heatsink.opening-draft.v1:${actor === 'administrator' ? 1 : 41}:2`),
+      ).toContain('000012')
+      await click('确认初始库存登记')
+      const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
+      expect(calls).toHaveLength(2)
+      expect(calls[0]![0]).toBe(2)
+      expect(calls[0]![1][0]).toMatchObject({
+        serial_no: '000012',
+        quantity: 100,
+        weight: 10.125,
+        material_type: 'semi_finished',
+        purpose_id: null,
+      })
+      expect(calls[0]![2]).toBe(calls[1]![2])
+      expect(wrapper.emitted('stocked')).toHaveLength(1)
+      expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
+      expect(
+        localStorage.getItem(`heatsink.opening-draft.v1:${actor === 'administrator' ? 1 : 41}:2`),
+      ).toBeNull()
+    },
+  )
   it('validates empty stock and restores only this account/team draft', async () => {
     localStorage.setItem(
       'heatsink.opening-draft.v1:41:3',

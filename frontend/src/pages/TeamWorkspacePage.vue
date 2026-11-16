@@ -142,9 +142,9 @@ const scopeLoading = computed(
 const canWrite = computed(
   () =>
     scopeReady.value &&
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
-    String(auth.currentUser?.team_id) === teamKey.value &&
+    (auth.isAdmin || String(auth.currentUser?.team_id) === teamKey.value) &&
     !auth.currentUserError,
 )
 const canManageBusiness = computed(
@@ -1181,7 +1181,6 @@ onBeforeUnmount(() => {
           :initial-tab="route.query.management_tab === 'production' ? 'production' : 'employees'"
           :processing-tasks="hasProcessing"
           :inspection-problems="team?.code === 'FACTORY-QC'"
-          :business-only="auth.isAdmin"
           @changed="businessChanged"
           @stocked="openingStocked"
         >
@@ -1956,6 +1955,7 @@ onBeforeUnmount(() => {
     </div>
     <template #dialogs>
       <TeamReworkRequestDialog
+        :team-id="teamId"
         v-if="reworkRequestOpen && canWrite && hasProcessing"
         :key="teamId"
         @close="reworkRequestOpen = false"

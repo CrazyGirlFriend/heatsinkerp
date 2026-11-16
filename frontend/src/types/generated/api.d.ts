@@ -3278,6 +3278,8 @@ export interface components {
        * @enum {string}
        */
       status: 'pending' | 'processing' | 'closed'
+      /** Team Id */
+      team_id?: number | null
     }
     /** DeliveryResponse */
     DeliveryResponse: {
@@ -3863,6 +3865,8 @@ export interface components {
        * @default
        */
       notes: string
+      /** Team Id */
+      team_id?: number | null
     }
     /** GroupQualityResponse */
     GroupQualityResponse: {
@@ -5055,6 +5059,8 @@ export interface components {
       sludge_gross_weight?: number | string | null
       /** Source Batch No */
       source_batch_no?: string | null
+      /** Source Team Id */
+      source_team_id?: number | null
       /** Special Process */
       special_process?: string | null
       /** Technical Requirements */
@@ -7752,6 +7758,11 @@ export interface components {
     }
     /** ScheduleBatchResponse */
     ScheduleBatchResponse: {
+      /**
+       * Actual Dispatched Quantity
+       * @default 0
+       */
+      actual_dispatched_quantity: number
       /** Batch Number */
       batch_number: number
       /** Completed At */
@@ -7780,6 +7791,11 @@ export interface components {
       id: number
       /** Planned Start At */
       planned_start_at: string | null
+      /**
+       * Quality Pending Quantity
+       * @default 0
+       */
+      quality_pending_quantity: number
       /** Received Quantity */
       received_quantity: number
       /** Received Weight */
@@ -7893,6 +7909,8 @@ export interface components {
       batch_no: string
       /** Counts Toward Delivery */
       counts_toward_delivery: boolean
+      /** Effective Quantity */
+      effective_quantity?: number | null
       /** Id */
       id: number
       /** Quantity */
@@ -7912,6 +7930,11 @@ export interface components {
     }
     /** ScheduleDetailResponse */
     ScheduleDetailResponse: {
+      /**
+       * Actual Dispatched Quantity
+       * @default 0
+       */
+      actual_dispatched_quantity: number
       /** Assessment Enabled */
       assessment_enabled: boolean
       /** Batches */
@@ -8012,6 +8035,11 @@ export interface components {
       processed_quantity: number
       /** Quality Held */
       quality_held: boolean
+      /**
+       * Quality Pending Quantity
+       * @default 0
+       */
+      quality_pending_quantity: number
       /** Received Quantity */
       received_quantity: number
       /** Received Weight */
@@ -8218,6 +8246,11 @@ export interface components {
     }
     /** ScheduleResponse */
     ScheduleResponse: {
+      /**
+       * Actual Dispatched Quantity
+       * @default 0
+       */
+      actual_dispatched_quantity: number
       /** Assessment Enabled */
       assessment_enabled: boolean
       /** Batches */
@@ -8314,6 +8347,11 @@ export interface components {
       processed_quantity: number
       /** Quality Held */
       quality_held: boolean
+      /**
+       * Quality Pending Quantity
+       * @default 0
+       */
+      quality_pending_quantity: number
       /** Received Quantity */
       received_quantity: number
       /** Received Weight */
@@ -8462,6 +8500,8 @@ export interface components {
     ScheduleShipmentResponse: {
       /** Batch No */
       batch_no: string
+      /** Effective Quantity */
+      effective_quantity?: number | null
       /** Id */
       id: number
       /** Quantity */
@@ -13173,6 +13213,7 @@ export interface operations {
         page?: number
         problem_team_id?: number | null
         query?: string
+        team_id?: number | null
       }
       header?: never
       path?: never

@@ -427,7 +427,7 @@ describe('delivery schedule workbench', () => {
     expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(5)
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
   })
-  it.each(['owning team', 'other team', 'administrator'])(
+  it.each(['owning team', 'other team'])(
     'keeps plans read-only for the %s, including route details',
     async (role) => {
       mockTaskRoute(role === 'other team' ? { team_id: 3, team_name: '研磨' } : {})
@@ -676,7 +676,7 @@ describe('delivery schedule workbench', () => {
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     expect(wrapper.text()).toContain('805881-5')
-    expect(button('修改批次计划')).toBeUndefined()
+    expect(button('修改批次计划')).toBeDefined()
   })
   it('shows the full task route but never exposes another team’s outbound action', async () => {
     const current = {
@@ -800,7 +800,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.text()).toContain('原交货时间：2026-10-22 15:00')
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
-    expect(wrapper.text()).toContain('已转出件数')
+    expect(wrapper.text()).toContain('有效转出件数')
     expect(button('修改批次计划')).toBeUndefined()
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
     expect(button('转出物料')).toBeDefined()

@@ -178,7 +178,7 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
     assert accepted.json()["items"][0]["delivery_origin_batch_no"] == origin["batch_no"]
 
 
-def test_only_the_bound_warehouse_leader_can_intake(client, warehouse):
+def test_other_team_cannot_intake_and_admin_must_supply_warehouse_location(client, warehouse):
     payload = {
         "serial_no": "WH",
         "material_name": "铜",
@@ -188,7 +188,7 @@ def test_only_the_bound_warehouse_leader_can_intake(client, warehouse):
         "notes": "验收",
         "idempotency_key": "denied",
     }
-    assert client.post(warehouse["url"], json=payload).status_code == 403
+    assert client.post(warehouse["url"], json=payload).status_code == 422
     assert (
         client.post(warehouse["url"], headers=warehouse["other_headers"], json=payload).status_code
         == 403

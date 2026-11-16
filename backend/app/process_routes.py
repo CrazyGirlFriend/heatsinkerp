@@ -49,8 +49,8 @@ def is_engineering_user(user):
 
 
 def assert_route_importer(user):
-    if not is_engineering_user(user):
-        raise HTTPException(403, "仅工艺班组可以维护工艺")
+    if not (user.active and user.role == "ADMIN") and not is_engineering_user(user):
+        raise HTTPException(403, "仅管理员和工艺班组可以维护工艺")
     return user
 
 

@@ -206,20 +206,33 @@ class DispatchCreate(BaseModel):
 
 
 def require_actor(user, team_id):
-    source = workflow._require_team_actor(user)
-    if source.id != team_id:
+    from .auth import can_manage_team
+
+    if not can_manage_team(user, team_id):
         raise HTTPException(403, "only the current team's leader may change its stock")
-    return source
 
 
-def require_outbound_actor(user, team_id, entry_kind):
-    source = require_actor(user, team_id)
+def actor_team(db, user, team_id):
+    require_actor(user, team_id)
+    if team_id is None:
+        raise HTTPException(422, "请选择操作班组")
+    team = require_team(db, team_id)
+    if not team.active:
+        raise HTTPException(403, "班组已停用")
+    return team
+
+
+def require_outbound_actor(user, team_id, entry_kind, *, team=None):
+    require_actor(user, team_id)
+    source = team if team is not None else user.team
     valid = (
-        entry_kind == "warehouse_outbound"
+        source is not None
+        and entry_kind == "warehouse_outbound"
         and source.code == WAREHOUSE_TEAM_CODE
         and source.kind == "warehouse"
     ) or (
-        entry_kind == "inspection_shipment"
+        source is not None
+        and entry_kind == "inspection_shipment"
         and source.code == INSPECTION_TEAM_CODE
         and source.kind == "production"
     )
@@ -237,8 +250,10 @@ def fingerprint(payload):
     ).hexdigest()
 
 
-def _replay(record, user, request_hash, owner_field):
-    if getattr(record, owner_field) != user.team_id:
+def _replay(record, user, request_hash, owner_field, team_id=None):
+    if team_id is not None and getattr(record, owner_field) != team_id:
+        raise HTTPException(409, "提交标识已用于其他班组，请重新提交")
+    if user.role != "ADMIN" and getattr(record, owner_field) != user.team_id:
         raise HTTPException(403, "idempotency key belongs to another team")
     if record.request_hash != request_hash:
         raise HTTPException(409, "idempotency key was used with a different payload")
@@ -342,7 +357,7 @@ def create_loss(db, team_id, payload, user):
                 select(MaterialLoss).where(MaterialLoss.idempotency_key == payload.idempotency_key)
             )
             if prior is not None:
-                _replay(prior, user, request_hash, "team_id")
+                _replay(prior, user, request_hash, "team_id", team_id)
                 return workflow.material_loss_dict(prior)
         # The business transaction's first consistent read must follow the lot
         # lock. It then sees a preceding same-key writer without FOR UPDATE on a
@@ -355,7 +370,7 @@ def create_loss(db, team_id, payload, user):
                 .execution_options(populate_existing=True)
             )
             if prior is not None:
-                _replay(prior, user, request_hash, "team_id")
+                _replay(prior, user, request_hash, "team_id", team_id)
                 return workflow.material_loss_dict(prior)
             validate_material_amounts(lot.material_type, payload.quantity, payload.weight)
             validate_available(db, lot, payload.quantity, payload.weight)
@@ -382,7 +397,7 @@ def create_loss(db, team_id, payload, user):
             select(MaterialLoss).where(MaterialLoss.idempotency_key == payload.idempotency_key)
         )
         if prior is not None:
-            _replay(prior, user, request_hash, "team_id")
+            _replay(prior, user, request_hash, "team_id", team_id)
             return workflow.material_loss_dict(prior)
         _db_conflict(exc)
 
@@ -396,20 +411,21 @@ def create_dispatch(db, team_id, payload, user):
     )
     from .team_business import purpose_snapshot
 
-    source = require_actor(user, team_id)
+    require_actor(user, team_id)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
-    if external:
-        require_outbound_actor(user, team_id, payload.entry_kind)
     request_hash = fingerprint(payload)
     try:
         with db.begin():
+            source = actor_team(db, user, team_id)
+            if external:
+                require_outbound_actor(user, team_id, payload.entry_kind, team=source)
             prior = db.scalar(
                 select(MaterialDispatch).where(
                     MaterialDispatch.idempotency_key == payload.idempotency_key
                 )
             )
             if prior is not None:
-                _replay(prior, user, request_hash, "source_team_id")
+                _replay(prior, user, request_hash, "source_team_id", team_id)
                 return dispatch_dict(db, prior, user)
         # Close the preflight snapshot before waiting for source locks. The
         # recheck below is a fresh snapshot; a missing key must not gap-lock
@@ -430,7 +446,7 @@ def create_dispatch(db, team_id, payload, user):
                 .execution_options(populate_existing=True)
             )
             if prior is not None:
-                _replay(prior, user, request_hash, "source_team_id")
+                _replay(prior, user, request_hash, "source_team_id", team_id)
                 return dispatch_dict(db, prior, user)
             if payload.inventory_total is not None:
                 from .inventory_shipments import allocate, snapshot
@@ -833,6 +849,6 @@ def create_dispatch(db, team_id, payload, user):
             )
         )
         if prior is not None:
-            _replay(prior, user, request_hash, "source_team_id")
+            _replay(prior, user, request_hash, "source_team_id", team_id)
             return dispatch_dict(db, prior, user)
         _db_conflict(exc)

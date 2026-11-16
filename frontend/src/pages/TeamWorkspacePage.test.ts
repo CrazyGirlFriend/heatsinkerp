@@ -331,15 +331,11 @@ describe('team workspace material ledger', () => {
     })
     expect(dashboard.exists()).toBe(false)
   })
-  it.each(['warehouse', 'administrator', 'foreign-qc', 'inactive-qc'])(
+  it.each(['warehouse', 'foreign-qc', 'inactive-qc'])(
     'does not expose rework submission for %s',
     async (account) => {
       let teamId = 914
       if (account === 'warehouse') teamId = state.auth.currentUser.team_id = 901
-      if (account === 'administrator') {
-        state.auth.isTeamAccount = false
-        state.auth.isAdmin = true
-      }
       if (account === 'foreign-qc') teamId = 900
       if (account === 'inactive-qc') {
         teamId = state.auth.currentUser.team_id = 900
@@ -387,10 +383,6 @@ describe('team workspace material ledger', () => {
   it.each(['own-team', 'administrator', 'other-team', 'inactive', 'permission-error'])(
     'scopes the standalone settings page for %s',
     async (account) => {
-      if (account === 'administrator') {
-        state.auth.isTeamAccount = false
-        state.auth.isAdmin = true
-      }
       if (account === 'other-team') state.auth.currentUser.team_id = 901
       if (account === 'inactive') state.auth.currentUser.active = false
       if (account === 'permission-error') state.auth.currentUserError = '权限失效'
@@ -481,8 +473,9 @@ describe('team workspace material ledger', () => {
       const previous = state.directory.items
       try {
         state.directory.items = [{ id: 914, code, name, kind: 'production', active: true }]
-        state.auth.isTeamAccount = canWrite
-        state.auth.isAdmin = !canWrite
+        state.auth.isTeamAccount = true
+        state.auth.isAdmin = false
+        state.auth.currentUser.team_id = canWrite ? 914 : 999
         vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({
           items: [],
           total: 0,
@@ -920,7 +913,7 @@ describe('team workspace material ledger', () => {
       await flushPromises()
       expect(wrapper.getComponent(TeamInventory).props()).toMatchObject({
         fullscreen: true,
-        canWrite: teamAccount,
+        canWrite: true,
       })
       expect(wrapper.getComponent(TeamInventory).element).toBe(inventory)
       expect(router.currentRoute.value.query).toEqual({
@@ -1006,7 +999,7 @@ describe('team workspace material ledger', () => {
       expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(914, expect.any(Object))
     },
   )
-  it('opens reallocation only for own-team stock and refreshes inventory after saving', async () => {
+  it('allows own-team and administrator reallocation, refreshing inventory after saving', async () => {
     const previous = state.directory.items
     try {
       state.directory.items = [
@@ -1031,10 +1024,13 @@ describe('team workspace material ledger', () => {
       state.auth.isAdmin = true
       state.auth.isTeamAccount = false
       await flushPromises()
-      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(false)
+      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(true)
       wrapper.getComponent(TeamInventory).vm.$emit('reallocate', source())
       await flushPromises()
-      expect(wrapper.findComponent(SerialReallocationDialog).exists()).toBe(false)
+      expect(wrapper.getComponent(SerialReallocationDialog).props()).toMatchObject({
+        modelValue: true,
+        teamId: 914,
+      })
     } finally {
       state.directory.items = previous
     }
@@ -1655,26 +1651,19 @@ describe('team workspace material ledger', () => {
       expect(wrapper.find('.workspace-actions').exists()).toBe(false)
     },
   )
-  it.each(['administrator', 'other-team', 'inactive'])(
-    'does not expose creation for %s accounts',
-    async (kind) => {
-      if (kind === 'administrator') {
-        state.auth.isTeamAccount = false
-        state.auth.isAdmin = true
-      }
-      if (kind === 'other-team') state.auth.currentUser.team_id = 900
-      if (kind === 'inactive') state.auth.currentUser.active = false
-      await render()
-      expect(wrapper.findAll('button').some((button) => button.text() === '新建出库')).toBe(false)
-      expect(wrapper.text()).not.toContain('仅查看')
-      expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
-      expect(wrapper.find('.workspace-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
-      expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
-      wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()])
-      await flushPromises()
-      expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
-    },
-  )
+  it.each(['other-team', 'inactive'])('does not expose creation for %s accounts', async (kind) => {
+    if (kind === 'other-team') state.auth.currentUser.team_id = 900
+    if (kind === 'inactive') state.auth.currentUser.active = false
+    await render()
+    expect(wrapper.findAll('button').some((button) => button.text() === '新建出库')).toBe(false)
+    expect(wrapper.text()).not.toContain('仅查看')
+    expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
+    expect(wrapper.find('.workspace-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
+    expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
+    wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()])
+    await flushPromises()
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
+  })
   it('separates scanning and creation from record filters without removing date or urgency filters', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({
       items: [
@@ -2036,7 +2025,7 @@ describe('team workspace material ledger', () => {
       receiptOnly: false,
     })
   })
-  it('opens the receiving scanner from stock and restricts it to the current team account', async () => {
+  it('opens the receiving scanner for the current team and administrator', async () => {
     await render('/team-workspaces/914?tab=stock')
     await openToolbarMenu()
     await wrapper
@@ -2048,7 +2037,7 @@ describe('team workspace material ledger', () => {
     state.auth.isTeamAccount = false
     state.auth.isAdmin = true
     await flushPromises()
-    expect(wrapper.findComponent(MaterialReceiptScanner).exists()).toBe(false)
+    expect(wrapper.getComponent(MaterialReceiptScanner).props('teamId')).toBe(914)
   })
   it('does not issue global requests for invalid or absent team ids', async () => {
     await render('/team-workspaces/nope?tab=pending')

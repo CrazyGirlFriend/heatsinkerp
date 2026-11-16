@@ -128,8 +128,8 @@ def test_selected_sender_does_not_grant_permissions(client):
     s = _setup_three_teams(client)
     url, headers, team_id, payload = request_for(client, s, "batch")
     payload["sent_employee_id"] = employee(client, team_id)["id"]
-    assert client.post(url, json=payload).status_code == 403
     assert client.post(url, headers=s["third_headers"], json=payload).status_code == 403
+    assert client.post(url, json=payload).status_code == 201
     assert client.post(url, headers=headers, json=payload).status_code == 201
 
 

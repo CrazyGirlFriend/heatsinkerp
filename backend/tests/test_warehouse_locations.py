@@ -9,7 +9,7 @@ import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from receipt_helpers import receipt_post
-from sender_helpers import sender_post
+from sender_helpers import sender_post, sending_employee_id
 from sqlalchemy import create_engine, inspect, text
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -117,8 +117,8 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
         "expected_version": 1,
         "warehouse_location": "B-02",
     }
-    assert receipt_post(client, url, json=payload).status_code == 403
-    result = receipt_post(client, url, headers=warehouse["headers"], json=payload)
+    payload["received_employee_id"] = sending_employee_id(client, warehouse["headers"])
+    result = receipt_post(client, url, json=payload)
     assert result.status_code == 200, result.text
     assert result.json()["warehouse_location"] == "B-02"
     assert returning["warehouse_location"] == "B-02"

@@ -1,4 +1,4 @@
-"""Schedule ownership is independent of system administration."""
+"""Administrators and dispatch own schedule management."""
 
 from fastapi import Depends, HTTPException
 
@@ -18,8 +18,7 @@ def is_dispatch(user):
 
 
 async def require_dispatch(user=Depends(get_current_user)):
-    if not is_dispatch(user):
-        raise HTTPException(403, "仅调度班组可以管理排期")
+    require_planner(user)
     return user
 
 
@@ -31,5 +30,5 @@ def require_unlocked(task):
 
 
 def require_planner(user):
-    if not is_dispatch(user):
-        raise HTTPException(403, "仅调度班组可以管理排期")
+    if not (user.active and user.role == "ADMIN") and not is_dispatch(user):
+        raise HTTPException(403, "仅管理员和调度班组可以管理排期")

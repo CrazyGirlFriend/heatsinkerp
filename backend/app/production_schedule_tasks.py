@@ -201,7 +201,7 @@ def list_tasks(
     page_size=20,
     **filters,
 ):
-    nodes = schedules.filtered_nodes(**filters).where(
+    nodes = schedules.filtered_nodes(db, **filters).where(
         Plan.task_id.in_(select(Task.id).where(Task.cancelled_at.is_(None)))
     )
     if serial_nos:
@@ -231,7 +231,7 @@ def list_tasks(
         token = query.strip().upper()
         if token.startswith("PQ") and token[2:].isdigit() and len(token) <= 16:
             task_match = or_(task_match, Task.id == int(token[2:]))
-        node_matches = schedules.filtered_nodes(query=query)
+        node_matches = schedules.filtered_nodes(db, query=query)
         if serials and serials != [query.strip()]:
             batch_sources = (
                 select(Source.schedule_id)
@@ -338,13 +338,13 @@ def task_status_filter(db, candidates, status, scope=None):
         from .production_schedule_queries import progress_table, status_expression
 
         lots = schedules.execution_lots(all_nodes)
-        progress = progress_table(plan_ids=all_nodes, include_warehouse=True)
+        progress = progress_table(db, plan_ids=all_nodes, include_warehouse=True)
         late_handoffs = (
             select(Plan.task_id)
             .outerjoin(progress, progress.c.schedule_id == Plan.id)
             .where(
                 Plan.id.in_(all_nodes),
-                status_expression(progress, utcnow(), include_warehouse=True) == "overdue",
+                status_expression(db, progress, utcnow(), include_warehouse=True) == "overdue",
             )
         )
         held = (

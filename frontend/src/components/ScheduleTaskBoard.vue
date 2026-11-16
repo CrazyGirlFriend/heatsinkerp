@@ -67,7 +67,13 @@ const props = defineProps<{ fullscreen?: boolean; management?: boolean }>()
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore(),
   route = useRoute()
-const canManage = computed(() => !!props.management && auth.isDispatch)
+const canManage = computed(
+  () =>
+    !!props.management &&
+    (auth.isAdmin || auth.isDispatch) &&
+    auth.currentUser?.active !== false &&
+    !auth.currentUserError,
+)
 const teams = computed(() => directory.items.filter((team) => team.active))
 const selectionKind = ref<'serial' | 'people' | null>(null),
   managingPeople = ref(false)
@@ -999,7 +1005,7 @@ onBeforeUnmount(() => {
                   >
                     <strong>{{ execution(node) }}</strong>
                     <small
-                      >已转出 {{ formatAmount(node.dispatched_quantity) }} 件 /
+                      >有效转出 {{ formatAmount(node.dispatched_quantity) }} 件 /
                       {{ formatAmount(node.dispatched_weight) }} kg</small
                     >
                   </div>

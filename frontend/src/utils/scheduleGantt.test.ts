@@ -22,6 +22,8 @@ const batch = (id: number, overrides: Partial<ScheduleBatch> = {}): ScheduleBatc
   status: 'pending',
   warnings: [],
   dispatched_quantity: 0,
+  actual_dispatched_quantity: 0,
+  quality_pending_quantity: 0,
   dispatched_weight: 0,
   received_quantity: 0,
   received_weight: 0,

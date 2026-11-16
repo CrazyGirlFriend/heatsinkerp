@@ -349,8 +349,7 @@ const hasRows = computed(() => rows.value.length > 0)
 const canCreate = computed(
   () =>
     !props.recordKind &&
-    authStore.isTeamAccount &&
-    Boolean(authStore.currentUser?.team_id) &&
+    (authStore.isAdmin || (authStore.isTeamAccount && Boolean(authStore.currentUser?.team_id))) &&
     !authStore.currentUserError,
 )
 async function openCreate(): Promise<void> {

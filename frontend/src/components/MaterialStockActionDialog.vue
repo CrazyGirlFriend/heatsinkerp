@@ -233,9 +233,9 @@ const processingTeam = computed(
 )
 const canWrite = computed(
   () =>
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     auth.currentUser?.active !== false &&
-    String(auth.currentUser?.team_id) === String(props.teamId) &&
+    (auth.isAdmin || String(auth.currentUser?.team_id) === String(props.teamId)) &&
     !auth.currentUserError,
 )
 const externalOption = computed<ExternalEntryKind | null>(() => {

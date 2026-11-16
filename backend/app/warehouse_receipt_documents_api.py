@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from . import material_stock
 from . import warehouse_receipt_documents as documents
 from .async_api import AsyncAPIRouter
 from .auth import get_current_user
@@ -34,10 +33,10 @@ async def upload_document(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from .warehouse_receipts import require_warehouse
+    from .warehouse_receipts import check_warehouse_actor
 
     try:
-        require_warehouse(material_stock.require_actor(user, team_id))
+        await db.run_sync(lambda session: check_warehouse_actor(session, user, team_id))
         filename = PurePath((file.filename or "").replace("\\", "/")).name
         content = await file.read(MAX_FILE_BYTES + 1)
         parsed = await run_in_threadpool(documents.parsed_document, kind, filename, content)

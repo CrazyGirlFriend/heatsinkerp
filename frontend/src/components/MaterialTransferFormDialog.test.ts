@@ -21,17 +21,21 @@ import {
 vi.mock('@/services/materialInputApi', () => ({
   materialSuggestions: vi.fn().mockResolvedValue([]),
 }))
+const auth = vi.hoisted(() => ({ isAdmin: false }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    isTeamAccount: true,
-    currentUser: { team_id: 2, team: { id: 2, name: '研磨' } },
+    isAdmin: auth.isAdmin,
+    isTeamAccount: !auth.isAdmin,
+    currentUser: auth.isAdmin
+      ? { id: 1, role: 'ADMIN', active: true }
+      : { team_id: 2, team: { id: 2, name: '研磨' } },
   }),
 }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
     items: [
-      { id: 2, name: '研磨', active: true },
-      { id: 3, name: '电镀', active: true },
+      { id: 2, name: '研磨', kind: 'production', active: true },
+      { id: 3, name: '电镀', kind: 'production', active: true },
       { id: 1, name: '中央收发站', kind: 'warehouse', active: true },
     ],
     loading: false,
@@ -61,6 +65,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  auth.isAdmin = false
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
     { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
   ])
@@ -118,7 +123,7 @@ async function number(label: string, value: number | undefined) {
   await flushPromises()
 }
 async function base(type: string | null = 'finished') {
-  const selects = wrapper.findAllComponents(ElSelect)
+  const selects = wrapper.findAllComponents(ElSelect).slice(auth.isAdmin ? 1 : 0)
   if (type !== null) selects[0]!.vm.$emit('update:modelValue', type)
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
@@ -135,6 +140,29 @@ async function submit() {
 }
 
 describe('material transfer document form', () => {
+  it('lets an administrator choose the source team and its sending employee', async () => {
+    auth.isAdmin = true
+    await render()
+    const source = wrapper.findAllComponents(ElSelect)[0]!
+    source.vm.$emit('update:modelValue', 2)
+    await flushPromises()
+    const employee = wrapper.getComponent(TeamEmployeeInput)
+    expect(employee.props('teamId')).toBe(2)
+    await base()
+    await submit()
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    employee.vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ source_team_id: 2, next_team_id: 3, sent_employee_id: 22 }),
+    )
+  })
   it('requires dimensions when creating or editing a normal internal handoff', async () => {
     await render()
     await base()

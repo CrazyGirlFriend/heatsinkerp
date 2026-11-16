@@ -101,9 +101,7 @@ const canManage = computed(
     auth.currentUser?.active !== false &&
     (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId),
 )
-const canManageProblems = computed(
-  () => props.inspectionProblems && auth.isTeamAccount && !auth.isAdmin && canManage.value,
-)
+const canManageProblems = computed(() => props.inspectionProblems && canManage.value)
 const canManageDirectory = computed(
   () => canManage.value && (!editingProblems.value || canManageProblems.value),
 )
@@ -499,7 +497,7 @@ async function submitOpening() {
       </section>
       <section v-else-if="!businessOnly" class="opening-settings">
         <ElAlert
-          v-if="!opening?.enabled"
+          v-if="!opening?.enabled && !auth.isAdmin"
           title="请系统管理员在“班组管理”中开启初始库存录入权限。"
           type="info"
           :closable="false"

@@ -82,7 +82,7 @@ const asNode = (row: unknown) => row as ProductionSchedule
           ><strong>{{ formatAmount(data.planned_quantity) }} <small>件</small></strong>
         </div>
         <div>
-          <span>已发货</span
+          <span>有效发货</span
           ><strong>{{ formatAmount(data.shipped_quantity) }} <small>件</small></strong>
         </div>
         <div>
@@ -194,8 +194,11 @@ const asNode = (row: unknown) => row as ProductionSchedule
         <template #empty>尚未向客户发货</template>
         <ElTableColumn prop="batch_no" label="发货批次" min-width="150" />
         <ElTableColumn prop="team_name" label="发货班组" min-width="100" />
-        <ElTableColumn label="数量（件）" min-width="110"
-          ><template #default="{ row }">{{ formatAmount(row.quantity) }}</template></ElTableColumn
+        <ElTableColumn label="实发 / 有效（件）" min-width="150"
+          ><template #default="{ row }"
+            >{{ formatAmount(row.quantity) }} /
+            {{ formatAmount(row.effective_quantity ?? row.quantity) }}</template
+          ></ElTableColumn
         >
         <ElTableColumn label="重量（kg）" min-width="110"
           ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn

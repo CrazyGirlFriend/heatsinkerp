@@ -265,7 +265,7 @@ def test_business_search_uses_historical_names_and_literal_wildcards(
         assert receipt["total"] == 1 and receipt["items"][0]["id"] == row["id"]
 
 
-def test_opening_requires_admin_authorization_but_only_own_team_can_post(client):
+def test_opening_requires_enablement_and_accepts_admin_or_own_team(client):
     s = _setup_three_teams(client)
     endpoint = url(s, suffix="opening-stock")
     assert (
@@ -274,12 +274,20 @@ def test_opening_requires_admin_authorization_but_only_own_team_can_post(client)
     auth = endpoint + "/authorization"
     assert client.put(auth, headers=s["target_headers"], json={"enabled": True}).status_code == 403
     assert client.put(auth, json={"enabled": True}).status_code == 200
-    for headers in ({}, s["source_headers"]):
+    for headers in (s["source_headers"],):
         assert client.post(endpoint, headers=headers, json=open_payload()).status_code == 403
     assert client.get(endpoint, headers=s["target_headers"]).json()["can_submit"]
+    assert client.get(endpoint).json()["can_submit"]
+    admin_created = client.post(endpoint, json=open_payload())
+    assert admin_created.status_code == 201, admin_created.text
     assert client.put(auth, json={"enabled": False}).status_code == 200
     assert (
-        client.post(endpoint, headers=s["target_headers"], json=open_payload()).status_code == 403
+        client.post(
+            endpoint,
+            headers=s["target_headers"],
+            json={**open_payload(), "idempotency_key": "disabled-team-attempt"},
+        ).status_code
+        == 403
     )
 
 

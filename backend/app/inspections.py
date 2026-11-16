@@ -364,9 +364,6 @@ def create(db, payload, user):
     from . import material_stock as stock
     from .material_transfer_workflow import _require_team_actor
 
-    actor_team = _require_team_actor(user)
-    if actor_team.code != INSPECTION_TEAM_CODE:
-        raise HTTPException(403, "仅检验班组可登记检验结果")
     digest = stock.fingerprint(payload)
 
     def replay(row):
@@ -377,6 +374,11 @@ def create(db, payload, user):
 
     try:
         with db.begin():
+            actor_team = _require_team_actor(
+                user, db.scalar(select(Team).where(Team.code == INSPECTION_TEAM_CODE))
+            )
+            if actor_team.code != INSPECTION_TEAM_CODE:
+                raise HTTPException(403, "仅检验班组可登记检验结果")
             prior = db.scalar(
                 select(Inspection).where(Inspection.idempotency_key == payload.idempotency_key)
             )

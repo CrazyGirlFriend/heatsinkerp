@@ -61,17 +61,13 @@ def test_only_dispatch_plans_batches_and_owns_final_due(client, warehouse):
     with SessionLocal() as db:
         assert db.get(ProductionScheduleTask, item["task_id"]).final_due_at == final
     assert save(client, item, rows).status_code == 409
-    # Dispatch may adjust the same batch plan; administrator cannot.
-    assert (
-        client.put(
-            f"{URL}/{item['id']}/batches",
-            json={
-                "expected_version": updated["version"],
-                "batches": writes(updated),
-            },
-        ).status_code
-        == 403
+    # Administrators may also adjust the same batch plan.
+    admin_update = client.put(
+        f"{URL}/{item['id']}/batches",
+        json={"expected_version": updated["version"], "batches": writes(updated)},
     )
+    assert admin_update.status_code == 200, admin_update.text
+    updated = admin_update.json()
     assert save(client, updated, writes(updated)).status_code == 200
     assert (
         client.put(

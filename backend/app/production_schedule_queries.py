@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import and_, case, func, or_, select, union
 
+from .delivery_quality import credit_events, quantity_columns
 from .models import (
     MaterialStockBalance as Balance,
 )
@@ -37,11 +38,12 @@ def iso(value):
     return value.replace(tzinfo=timezone.utc).isoformat() if value else None
 
 
-def progress_table(*, plan_ids=None, team_id=None, batches=False, include_warehouse=True):
+def progress_table(db, *, plan_ids=None, team_id=None, batches=False, include_warehouse=True):
     """SQL aggregation precedes filtering/paging; cancelled transfers never fulfill."""
     transferred_at = case(
         (Transfer.entry_kind == "transfer", Transfer.created_at), else_=Transfer.dispatched_at
     )
+    effective, original, restored, rejected = quantity_columns(db)
     scope = []
     if plan_ids is not None:
         scope.append(Plan.id.in_(plan_ids))
@@ -55,7 +57,11 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False, include_wareho
             key.label("schedule_id"),
             (~warehouse).label("assessed"),
             Transfer.id.label("transfer_id"),
-            Transfer.quantity,
+            effective.label("quantity"),
+            original.label("original_quantity"),
+            restored.label("restored_at"),
+            Transfer.quantity.label("actual_quantity"),
+            rejected.label("rejected_quantity"),
             Transfer.weight,
             transferred_at.label("transferred_at"),
             case((Transfer.status == "received", Transfer.quantity), else_=0).label(
@@ -67,20 +73,6 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False, include_wareho
             target.target_quantity,
             target.target_weight,
             Plan.completion_basis,
-            func.sum(Transfer.quantity)
-            .over(
-                partition_by=key,
-                order_by=(transferred_at, Transfer.id),
-                rows=(None, 0),
-            )
-            .label("running_quantity"),
-            func.sum(Transfer.weight)
-            .over(
-                partition_by=key,
-                order_by=(transferred_at, Transfer.id),
-                rows=(None, 0),
-            )
-            .label("running_weight"),
         )
         .join(Transfer, Transfer.id == Delivery.transfer_id)
         .join(Plan, Plan.id == Delivery.schedule_id)
@@ -119,33 +111,60 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False, include_wareho
     if batches:
         actual = actual.join(Batch, Batch.id == Delivery.schedule_batch_id)
     actual = actual.subquery("batch_actual_deliveries" if batches else "schedule_actual_deliveries")
-    reached = and_(
-        True if include_warehouse else actual.c.assessed,
-        or_(
-            actual.c.completion_basis == "weight",
-            actual.c.running_quantity >= actual.c.target_quantity,
-        ),
-        or_(
-            actual.c.completion_basis == "quantity",
-            actual.c.running_weight >= actual.c.target_weight,
-        ),
-    )
-    totals = (
+    counts = (
         select(
             actual.c.schedule_id,
             func.sum(actual.c.quantity).label("dispatched_quantity"),
+            func.sum(actual.c.actual_quantity).label("actual_dispatched_quantity"),
+            func.sum(actual.c.rejected_quantity).label("quality_pending_quantity"),
             func.sum(actual.c.weight).label("dispatched_weight"),
             func.sum(actual.c.received_quantity).label("received_quantity"),
             func.sum(actual.c.received_weight).label("received_weight"),
-            func.min(case((reached, actual.c.transferred_at), else_=None)).label("completed_at"),
         )
         .group_by(actual.c.schedule_id)
+        .subquery()
+    )
+    events = credit_events(db, actual)
+    order = dict(
+        partition_by=events.c.schedule_id,
+        order_by=(events.c.transferred_at, events.c.transfer_id),
+        rows=(None, 0),
+    )
+    running = select(
+        events,
+        func.sum(events.c.quantity).over(**order).label("running_quantity"),
+        func.sum(events.c.weight).over(**order).label("running_weight"),
+    ).subquery()
+    reached = and_(
+        True if include_warehouse else running.c.assessed,
+        or_(running.c.completion_basis != "weight", counts.c.quality_pending_quantity == 0),
+        or_(
+            running.c.completion_basis == "weight",
+            running.c.running_quantity >= running.c.target_quantity,
+        ),
+        or_(
+            running.c.completion_basis == "quantity",
+            running.c.running_weight >= running.c.target_weight,
+        ),
+    )
+    completion = (
+        select(
+            running.c.schedule_id,
+            func.min(case((reached, running.c.transferred_at), else_=None)).label("completed_at"),
+        )
+        .join(counts, counts.c.schedule_id == running.c.schedule_id)
+        .group_by(running.c.schedule_id)
+        .subquery()
+    )
+    totals = (
+        select(counts, completion.c.completed_at)
+        .join(completion, completion.c.schedule_id == counts.c.schedule_id)
         .subquery("batch_progress" if batches else "schedule_totals")
     )
     if batches:
         return totals
     batch_progress = progress_table(
-        plan_ids=plan_ids, team_id=team_id, batches=True, include_warehouse=include_warehouse
+        db, plan_ids=plan_ids, team_id=team_id, batches=True, include_warehouse=include_warehouse
     )
     batch_completion = (
         select(
@@ -178,11 +197,11 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False, include_wareho
     )
 
 
-def status_expression(progress, now, *, include_warehouse=True):
+def status_expression(db, progress, now, *, include_warehouse=True):
     local = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_ZONE)
     end_today = datetime.combine(local.date() + timedelta(days=1), time(), LOCAL_ZONE)
     end_today = end_today.astimezone(timezone.utc).replace(tzinfo=None)
-    batches = progress_table(batches=True, include_warehouse=include_warehouse)
+    batches = progress_table(db, batches=True, include_warehouse=include_warehouse)
 
     def batch_matches(condition):
         return (
@@ -480,7 +499,7 @@ def serial_options(db, query=None, page=1, page_size=20):
                 literal_query(query, [ProductionScheduleTask.serial_no]),
                 ProductionScheduleTask.serial_no.in_(
                     select(Plan.serial_no).where(
-                        Plan.id.in_(filtered_nodes(query=query)), Plan.cancelled_at.is_(None)
+                        Plan.id.in_(filtered_nodes(db, query=query)), Plan.cancelled_at.is_(None)
                     )
                 ),
             )

@@ -79,14 +79,14 @@ def test_invalid_uploads_never_create_documents(client, warehouse, kind, filenam
         assert db.scalar(select(func.count()).select_from(WarehouseReceiptDocument)) == 0
 
 
-def test_only_current_warehouse_leader_can_upload(client, warehouse):
+def test_admin_or_current_warehouse_leader_can_upload(client, warehouse):
     assert upload(client, warehouse, headers=warehouse["other_headers"]).status_code == 403
     response = client.post(
         f"/api/teams/{warehouse['team']['id']}/receipt-documents",
         data={"kind": "order"},
         files={"file": ("订单.xlsx", order_bytes())},
     )
-    assert response.status_code == 403
+    assert response.status_code == 201, response.text
 
 
 def test_confirmation_is_required_and_attachment_binding_is_atomic_idempotent(client, warehouse):

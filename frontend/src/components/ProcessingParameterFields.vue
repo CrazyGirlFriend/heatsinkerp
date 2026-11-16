@@ -7,7 +7,6 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { TeamDirectoryItem } from '@/types/teamBusiness'
 import AppInput from './AppInput.vue'
 import AppNumberInput from './AppNumberInput.vue'
-import CompactFormSection from './CompactFormSection.vue'
 import ProcessingDurationInput from './ProcessingDurationInput.vue'
 import {
   processingParameterFields,
@@ -71,80 +70,64 @@ function update(key: ProcessingParameterKey, value: string | number | undefined)
 </script>
 
 <template>
-  <div v-if="fields.length" class="processing-parameter-fields form-field--full dialog-field-wide">
-    <CompactFormSection title="加工参数">
-      <ElFormItem
-        v-for="field in fields"
-        :key="field.key"
-        :label="field.label"
-        required
-        :error="errors[field.key]"
-        :show-message="true"
+  <ElFormItem
+    v-for="field in fields"
+    :key="field.key"
+    :label="field.label"
+    required
+    :error="errors[field.key]"
+    :show-message="true"
+  >
+    <template v-if="isEquipmentParameter(field.key)">
+      <AppSelect
+        :model-value="values.equipment_id ?? undefined"
+        :aria-label="field.label"
+        :placeholder="`请选择${field.label}`"
+        :loading="loading"
+        :disabled="disabled || loading"
+        filterable
+        @update:model-value="selectEquipment(field.key, $event)"
       >
-        <template v-if="isEquipmentParameter(field.key)">
-          <AppSelect
-            :model-value="values.equipment_id ?? undefined"
-            :aria-label="field.label"
-            :placeholder="`请选择${field.label}`"
-            :loading="loading"
-            :disabled="disabled || loading"
-            filterable
-            @update:model-value="selectEquipment(field.key, $event)"
-          >
-            <ElOption
-              v-for="item in equipment"
-              :key="item.id"
-              :value="item.id"
-              :label="item.name"
-            />
-          </AppSelect>
-          <small v-if="loadError" role="alert"
-            >{{ loadError }} <AppButton link @click="loadEquipment">重试</AppButton></small
-          >
-          <small v-else-if="!loading && !equipment.length" role="status"
-            >请先在班组管理 → 设备管理中添加设备</small
-          >
-        </template>
-        <ProcessingDurationInput
-          v-else-if="field.kind === 'duration'"
-          :model-value="values.holding_minutes ?? undefined"
-          label="保温"
-          :disabled="disabled"
-          :invalid="!!errors[field.key]"
-          @update:model-value="update(field.key, $event)"
-        />
-        <AppNumberInput
-          v-else-if="field.kind === 'temperature'"
-          :model-value="values.actual_temperature_c ?? undefined"
-          :min="-273.15"
-          :max="99999.99"
-          :precision="2"
-          :controls="false"
-          :disabled="disabled"
-          :aria-label="field.label"
-          placeholder="实际测得温度"
-          @update:model-value="update(field.key, $event)"
-          ><template #suffix>°C</template></AppNumberInput
-        >
-        <AppInput
-          v-else
-          :model-value="String(values[field.key] ?? '')"
-          :maxlength="field.maxLength"
-          :disabled="disabled"
-          :aria-label="field.label"
-          :placeholder="
-            field.key === 'temperature_requirement' ? '如 900–950 °C' : `请输入${field.label}`
-          "
-          @update:model-value="update(field.key, $event)"
-        />
-      </ElFormItem>
-    </CompactFormSection>
-  </div>
+        <ElOption v-for="item in equipment" :key="item.id" :value="item.id" :label="item.name" />
+      </AppSelect>
+      <small v-if="loadError" role="alert"
+        >{{ loadError }} <AppButton link @click="loadEquipment">重试</AppButton></small
+      >
+      <small v-else-if="!loading && !equipment.length" role="status"
+        >请先在班组管理 → 设备管理中添加设备</small
+      >
+    </template>
+    <ProcessingDurationInput
+      v-else-if="field.kind === 'duration'"
+      :model-value="values.holding_minutes ?? undefined"
+      label="保温"
+      :disabled="disabled"
+      :invalid="!!errors[field.key]"
+      @update:model-value="update(field.key, $event)"
+    />
+    <AppNumberInput
+      v-else-if="field.kind === 'temperature'"
+      :model-value="values.actual_temperature_c ?? undefined"
+      :min="-273.15"
+      :max="99999.99"
+      :precision="2"
+      :controls="false"
+      :disabled="disabled"
+      :aria-label="field.label"
+      placeholder="实际测得温度"
+      @update:model-value="update(field.key, $event)"
+      ><template #suffix>°C</template></AppNumberInput
+    >
+    <AppInput
+      v-else
+      :model-value="String(values[field.key] ?? '')"
+      :maxlength="field.maxLength"
+      :disabled="disabled"
+      :aria-label="field.label"
+      :placeholder="
+        field.key === 'temperature_requirement' ? '如 900–950 °C' : `请输入${field.label}`
+      "
+      @update:model-value="update(field.key, $event)"
+    />
+  </ElFormItem>
 </template>
-
-<style scoped>
-.processing-parameter-fields {
-  min-width: 0;
-  container: form-fields / inline-size;
-}
-</style>

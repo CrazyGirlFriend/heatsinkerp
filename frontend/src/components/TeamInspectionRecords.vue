@@ -53,9 +53,9 @@ const teams = computed(() => directory.items.filter((team) => team.active && tea
 const qc = computed(() => directory.items.find((team) => team.code === 'FACTORY-QC' && team.active))
 const canWrite = computed(
   () =>
-    auth.isTeamAccount &&
+    (auth.isAdmin || auth.isTeamAccount) &&
     !!qc.value &&
-    String(qc.value.id) === String(auth.currentUser?.team_id) &&
+    (auth.isAdmin || String(qc.value.id) === String(auth.currentUser?.team_id)) &&
     auth.currentUser?.active !== false &&
     !auth.currentUserError,
 )

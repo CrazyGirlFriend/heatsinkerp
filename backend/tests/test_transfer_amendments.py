@@ -16,6 +16,7 @@ from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_material_stock import dispatch, receive_lot
 from test_material_transfers import _setup_three_teams
+from test_processing_daily import work
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -88,7 +89,6 @@ def test_request_is_not_effective_until_counterparty_approves_once(client, hando
     assert request(client, setup, lot, requester="third").status_code == 409
     assert decide(client, setup, row, actor="target").status_code == 403
     assert decide(client, setup, row, actor="source").status_code == 404
-    assert client.post(f"/api/transfer-amendments/{row['id']}/approve", json={}).status_code == 403
     detail = client.get(
         f"/api/transfer-amendments/{row['id']}", headers=setup["third_headers"]
     ).json()
@@ -259,24 +259,14 @@ def partial_work(client, setup, lot, *, done, weight, key):
     assert client.patch(f"/api/teams/{team_id}", json={"code": "FACTORY-GRIND"}).status_code == 200
     employees = client.get(f"/api/team-materials/{team_id}/employees").json()
     employee = employees[0]
-    context = client.get(
-        f"/api/team-materials/{team_id}/stock/{lot['id']}/quantity-adjustments"
-    ).json()
-    response = client.post(
-        f"/api/team-materials/{team_id}/quantity-adjustments",
-        headers=setup["third_headers"],
-        json={
-            "source_transfer_id": lot["id"],
-            "quantity": context["quantity"],
-            "expected_revision": context["revision"],
-            "processor_name": employee["name"],
-            "processor_employee_id": employee["id"],
-            "processing_date": "2026-10-15",
-            "processing_mode": "unit",
-            "completed_quantity": done,
-            "completed_weight": weight,
-            "idempotency_key": key,
-        },
+    response = work(
+        client,
+        {"other": setup["third"], "other_headers": setup["third_headers"]},
+        lot,
+        employee,
+        completed_quantity=done,
+        completed_weight=weight,
+        idempotency_key=key,
     )
     assert response.status_code == 201, response.text
     return response.json()

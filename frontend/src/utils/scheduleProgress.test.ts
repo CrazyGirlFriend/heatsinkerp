@@ -179,11 +179,11 @@ describe('individual operation progress', () => {
     })
   })
   it.each([
-    { next_team_id: null, external_destination: '对外转料', label: '已发货' },
-    { next_team_id: 3, external_destination: null, label: '已转出' },
-    { next_team_id: null, external_destination: '库房成品', label: '已转出' },
-    { next_team_id: null, external_destination: '外委库', label: '已转出' },
-    { next_team_id: null, external_destination: null, label: '已转出' },
+    { next_team_id: null, external_destination: '对外转料', label: '有效发货' },
+    { next_team_id: 3, external_destination: null, label: '有效转出' },
+    { next_team_id: null, external_destination: '库房成品', label: '有效转出' },
+    { next_team_id: null, external_destination: '外委库', label: '有效转出' },
+    { next_team_id: null, external_destination: null, label: '有效转出' },
   ])('labels actual outbound progress by its destination: %j', ({ label, ...destination }) => {
     expect(
       nodeWorkProgress({
@@ -210,7 +210,7 @@ describe('individual operation progress', () => {
       dispatched: 40,
     })
     expect(nodeWorkProgress({ ...weight, assessment_enabled: false })).toEqual({
-      label: '已转出',
+      label: '有效转出',
       percent: 40,
     })
     expect(
@@ -221,7 +221,7 @@ describe('individual operation progress', () => {
         dispatched_quantity: 40,
       }),
     ).toEqual({
-      label: '已转出',
+      label: '有效转出',
       percent: 40,
     })
     expect(nodeCompletion({ ...weight, status: 'cancelled' })).toEqual({
@@ -262,6 +262,8 @@ describe('team batch processing intervals', () => {
           warnings: [],
           status: 'pending' as const,
           dispatched_quantity: 10,
+          actual_dispatched_quantity: 10,
+          quality_pending_quantity: 0,
           dispatched_weight: 1,
           received_quantity: 0,
           received_weight: 0,
@@ -278,6 +280,8 @@ describe('team batch processing intervals', () => {
           warnings: [],
           status: 'pending' as const,
           dispatched_quantity: 0,
+          actual_dispatched_quantity: 0,
+          quality_pending_quantity: 0,
           dispatched_weight: 0,
           received_quantity: 0,
           received_weight: 0,

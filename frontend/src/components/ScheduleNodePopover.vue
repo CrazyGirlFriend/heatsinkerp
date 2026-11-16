@@ -74,6 +74,10 @@ const multipleBatches = computed(() => batches.value.length > 1)
           {{ formatAmount(node.dispatched_quantity) }} 件 ·
           {{ formatAmount(node.dispatched_weight) }} kg
         </dd>
+        <template v-if="node.quality_pending_quantity">
+          <dt>检验扣减</dt>
+          <dd>{{ formatAmount(node.quality_pending_quantity) }} 件</dd>
+        </template>
         <template v-if="!shipment">
           <dt>下序已签收</dt>
           <dd>{{ formatAmount(node.received_quantity) }} 件</dd>

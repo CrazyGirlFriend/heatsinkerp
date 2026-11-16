@@ -48,7 +48,7 @@ def _visible(user, transfer):
 
 
 def _actor(user, transfer):
-    team = workflow._require_team_actor(user)
+    team = workflow._require_team_actor(user, transfer.source_team)
     _visible(user, transfer)
     if not eligible(transfer):
         raise HTTPException(409, "仅已签收的跨班组交接单可以申请修改")
@@ -211,7 +211,9 @@ def amendment_dict(db, amendment, user):
     transfer = db.get(MaterialTransfer, amendment.transfer_id)
     _visible(user, transfer)
     actions = []
-    if amendment.status == "pending" and user.role == "TEAM" and user.team and user.team.active:
+    if amendment.status == "pending" and user.role == "ADMIN" and user.active:
+        actions = ["approve", "reject", "cancel"]
+    elif amendment.status == "pending" and user.role == "TEAM" and user.team and user.team.active:
         if (
             user.team_id == amendment.counterparty_team_id
             and user.id != amendment.requested_by_user_id
@@ -388,8 +390,9 @@ def resolve_amendment(db, amendment_id, decision, user, reason=None):
         required_team = (
             row.requester_team_id if decision == "cancelled" else row.counterparty_team_id
         )
-        if user.team_id != required_team or (
-            decision != "cancelled" and user.id == row.requested_by_user_id
+        if user.role != "ADMIN" and (
+            user.team_id != required_team
+            or (decision != "cancelled" and user.id == row.requested_by_user_id)
         ):
             raise HTTPException(403, "仅对方班组可以确认或拒绝，申请方可以撤回")
         if row.status == decision:
@@ -460,9 +463,8 @@ def list_amendments(*, batch_no: str, db: Session, user: User):
         "remaining_weight": float(remaining[1]),
         "editable": bool(
             eligible(transfer)
-            and user.role == "TEAM"
-            and user.team
-            and user.team.active
+            and user.active
+            and (user.role == "ADMIN" or (user.role == "TEAM" and user.team and user.team.active))
             and not any(row.status == "pending" for row in rows)
         ),
     }

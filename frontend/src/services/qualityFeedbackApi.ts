@@ -44,6 +44,7 @@ export interface QualityFilters {
   page_size?: number
 }
 interface Write {
+  team_id?: number
   notes: string
   expected_version: number
   idempotency_key: string
