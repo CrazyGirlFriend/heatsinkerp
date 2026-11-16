@@ -98,6 +98,8 @@ export interface QuantityAdjustmentContext
   completed_task_ids?: number[]
   allowed_task_ids?: number[]
   rework_inspections?: { id: number; kind: string; checked_at: string }[]
+  rework_problem_team_id?: number | null
+  rework_problem_teams?: { id: number; name: string }[] | null
   rework_task_records?: {
     team_id?: number | null
     team_name?: string | null

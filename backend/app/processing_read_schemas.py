@@ -109,6 +109,11 @@ class ReworkInspectionReference(ReadResponse):
     checked_at: datetime
 
 
+class ReworkProblemTeamResponse(ReadResponse):
+    id: int
+    name: str
+
+
 class QuantityAdjustmentContextResponse(
     PageResponse[QuantityAdjustmentResponse], SharedMaterialResponse
 ):
@@ -129,6 +134,8 @@ class QuantityAdjustmentContextResponse(
     completed_task_ids: list[int]
     allowed_task_ids: list[int]
     rework_task_records: list[ReworkTaskRecordResponse]
+    rework_problem_team_id: int | None = None
+    rework_problem_teams: list[ReworkProblemTeamResponse] | None = None
     quantity: int
     weight: float
     processing_status: Literal["partial", "complete"] | None

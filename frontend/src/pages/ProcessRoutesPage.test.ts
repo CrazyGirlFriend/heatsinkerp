@@ -126,6 +126,11 @@ async function render(
           },
         }),
         DocumentViewer: true,
+        TeamProblemDetail: {
+          name: 'TeamProblemDetail',
+          props: ['routeId'],
+          template: '<div class="team-problem-detail" />',
+        },
         ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
       },
     },
@@ -213,6 +218,58 @@ it.each(['normal', 'rework'] as const)(
     })
   },
 )
+it('lets the reporting team open a pending problem without opening unpublished engineering', async () => {
+  state.teamId = 2
+  const pending = {
+    ...reworkRouteFixture,
+    state: 'draft' as const,
+    steps: [],
+    step_summary: [],
+    rework_request: {
+      ...reworkRouteFixture.rework_request!,
+      requesting_team_id: 2,
+      requesting_team_name: '轧制',
+      inspection_id: null,
+    },
+  }
+  vi.mocked(processRouteApi.list).mockResolvedValue({
+    items: [pending],
+    total: 1,
+    page: 1,
+    page_size: 20,
+    pending_rework_count: 1,
+    enforced_after: null,
+  })
+  const detail = vi.spyOn(processRouteApi, 'detail')
+  await render({ kind: 'rework' })
+  expect(wrapper.text()).toContain('未填写')
+  expect(wrapper.getComponent(WatermelonFilter).props('options')[1].count).toBe(1)
+  expect(wrapper.findAll('button').some((button) => button.text() === '制定工艺')).toBe(false)
+  await wrapper.get('button.route-serial').trigger('click')
+  await vi.waitFor(() =>
+    expect(wrapper.findComponent({ name: 'TeamProblemDetail' }).exists()).toBe(true),
+  )
+  expect(wrapper.getComponent({ name: 'TeamProblemDetail' }).props('routeId')).toBe(pending.id)
+  expect(detail).not.toHaveBeenCalled()
+  expect(wrapper.findComponent({ name: 'ProcessRouteEditor' }).exists()).toBe(false)
+
+  vi.mocked(processRouteApi.list).mockResolvedValue({
+    items: [reworkRouteFixture],
+    total: 1,
+    page: 1,
+    page_size: 20,
+    pending_rework_count: 0,
+    enforced_after: null,
+  })
+  detail.mockResolvedValue(reworkRouteFixture)
+  wrapper.getComponent({ name: 'TeamProblemDetail' }).vm.$emit('close')
+  await flushPromises()
+  expect(wrapper.findComponent({ name: 'TeamProblemDetail' }).exists()).toBe(false)
+  expect(wrapper.text()).toContain('已制定')
+  await wrapper.get('button.route-serial').trigger('click')
+  expect((await openedEditor()).props()).toMatchObject({ viewOnly: true, startEditing: false })
+})
+
 it('removes the previous twenty-row page immediately when requesting ten rows', async () => {
   const items = Array.from({ length: 23 }, (_, index) => ({ ...routeFixture, id: index + 1 }))
   const response = (size: number) => ({

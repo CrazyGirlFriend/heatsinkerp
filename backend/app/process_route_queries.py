@@ -107,8 +107,22 @@ def list_routes(
     )
     if kind != "all":
         where.append(ProcessRoute.route_kind == kind)
-    if user.role != "ADMIN" and not is_engineering_user(user):
-        where.append(ProcessRoute.state == "published")
+    can_read_drafts = user.role == "ADMIN" or is_engineering_user(user)
+    visibility = True
+    if not can_read_drafts:
+        own_problem = (
+            and_(
+                ProcessRoute.route_kind == "rework",
+                ProcessRoute.state == "draft",
+                ProcessRoute.parent_id.is_(None),
+                ProcessRoute.rework_inspection_id.is_(None),
+                ProcessRoute.requesting_team_id == user.team_id,
+            )
+            if user.role == "TEAM" and user.team_id is not None
+            else False
+        )
+        visibility = or_(ProcessRoute.state == "published", own_problem)
+        where.append(visibility)
     if state:
         where.append(ProcessRoute.state == state)
     successor = aliased(ProcessRoute)
@@ -180,6 +194,7 @@ def list_routes(
     missing = missing_route_documents(db, [row.id for row in rows])
     items = []
     for row in rows:
+        can_read_instructions = can_read_drafts or row.state == "published"
         item = document(row, detail=False, missing_documents=missing.get(row.id, []))
         item.update(
             material_name=materials[row.id] or "",
@@ -190,8 +205,10 @@ def list_routes(
                     "team_id": step.get("team_id"),
                 }
                 for step in row.steps
-            ],
-            drawings=drawings[row.id],
+            ]
+            if can_read_instructions
+            else [],
+            drawings=drawings[row.id] if can_read_instructions else [],
         )
         scope = requests.get(row.id)
         if scope:
@@ -209,14 +226,15 @@ def list_routes(
         "total": db.scalar(select(func.count()).select_from(ProcessRoute).where(*where)),
         "page": page,
         "page_size": page_size,
-        "pending_rework_count": (
-            db.scalar(
-                select(func.count())
-                .select_from(ProcessRoute)
-                .where(*current, ProcessRoute.route_kind == "rework", ProcessRoute.state == "draft")
+        "pending_rework_count": db.scalar(
+            select(func.count())
+            .select_from(ProcessRoute)
+            .where(
+                *current,
+                visibility,
+                ProcessRoute.route_kind == "rework",
+                ProcessRoute.state == "draft",
             )
-            if user.role == "ADMIN" or is_engineering_user(user)
-            else 0
         ),
         "enforced_after": policy.enforced_after.isoformat() + "Z" if policy else None,
     }

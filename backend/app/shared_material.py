@@ -69,22 +69,48 @@ def common_split_index(db, route_ids):
     routes = [db.get(ProcessRoute, route_id) for route_id in route_ids]
     # Keep the piece together while routes agree; allocate before their paths diverge.
     split = None
+    problem = "共投工艺须在分流前包含可拆料班组（轧制、线切割或雕刻）"
     for i, steps in enumerate(zip(*(route.steps for route in routes), strict=False)):
         first = steps[0]
-        if any(
-            step.get("serial_nos")
-            or any(
-                step.get(key) != first.get(key)
-                for key in ("team_id", "processing_task_id", "purpose_id")
-            )
-            for step in steps
-        ):
+        if any(step.get("serial_nos") for step in steps):
+            problem = f"共投工艺第 {i + 1} 道已有流水号分支，请在分支前安排拆料"
+            break
+        if len({step["team_id"] for step in steps}) > 1:
+            names = "、".join(dict.fromkeys(db.get(Team, step["team_id"]).name for step in steps))
+            problem = f"共投工艺第 {i + 1} 道的执行班组不同（{names}），请在分流前安排拆料"
+            break
+        conflict = next(
+            (
+                label
+                for key, label in (("processing_task_id", "加工任务"), ("purpose_id", "接收任务"))
+                if len({step[key] for step in steps if step.get(key) is not None}) > 1
+            ),
+            None,
+        )
+        if conflict:
+            team = db.get(Team, first["team_id"])
+            problem = f"共投工艺第 {i + 1} 道（{team.name}）指定了不同{conflict}，拆料前须一致"
             break
         if i > 0 and db.get(Team, first["team_id"]).code in SPLITTING_TEAM_CODES:
             split = i
     if split is None:
-        raise HTTPException(422, "共投流水号在拆料前须经过相同工序和业务，且包含可拆料班组")
+        raise HTTPException(422, problem)
     return split
+
+
+def execution_step(lot, index):
+    """Unspecified tasks do not conflict, but explicit common tasks still apply."""
+    step = lot.process_route.steps[index]
+    group = lot.shared_group if lot.shared_unallocated else None
+    if not group or group.split_step_index is None or index > group.split_step_index:
+        return step
+    result = dict(step)
+    for member in group.members:
+        member_step = member.process_route.steps[index]
+        for key in ("processing_task_id", "purpose_id"):
+            if result.get(key) is None:
+                result[key] = member_step.get(key)
+    return result
 
 
 def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
@@ -127,7 +153,9 @@ def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
         require_order_route(db, route, member.serial_no)
         require_dispatch_documents(db, route, lot, member.serial_no)
         routes[route.id] = route
-    common_split_index(db, [member.process_route_id for member in line.shared_serials])
+    split_index = common_split_index(
+        db, [member.process_route_id for member in line.shared_serials]
+    )
     route = routes[line.shared_serials[0].process_route_id]
     return SimpleNamespace(
         process_route_id=route.id,
@@ -138,7 +166,10 @@ def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
         next_team_code=source.code,
         serial_no="",
         shared_unallocated=True,
-        shared_group=None,
+        shared_group=SimpleNamespace(
+            split_step_index=split_index,
+            members=[SimpleNamespace(process_route=route) for route in routes.values()],
+        ),
         rework_route_id=None,
         rework_pending=False,
         rework_count=0,

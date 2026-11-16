@@ -5,8 +5,16 @@ from types import SimpleNamespace
 
 import pytest
 from app.database import SessionLocal
-from app.models import MaterialTransfer, ProcessRoute, SharedMaterialGroup, Team, TeamEmployee
-from app.process_routes import dispatch_fields
+from app.models import (
+    MaterialTransfer,
+    ProcessRoute,
+    SharedMaterialGroup,
+    Team,
+    TeamEmployee,
+    TeamProcessingTask,
+    TeamPurpose,
+)
+from app.process_routes import dispatch_fields, prepare_processing
 from app.shared_material import common_split_index, is_split_step
 from fastapi import HTTPException
 from route_document_helpers import add_documents
@@ -21,6 +29,7 @@ from test_warehouse_receipts import warehouse as warehouse
 
 @pytest.fixture()
 def joint(client, warehouse, request):
+    mode = getattr(request, "param", "with_plan")
     payload = route_payload(client, warehouse)
     first = publish_payload(client, payload)
     with SessionLocal.begin() as db:
@@ -38,6 +47,9 @@ def joint(client, warehouse, request):
             engineering_employee_id=original.engineering_employee_id,
             engineering_employee_name=original.engineering_employee_name,
         )
+        if mode in ("unspecified_first", "unspecified_second"):
+            other.steps[1]["processing_task_id"] = None
+            other.steps[1]["purpose_id"] = None
         db.add(other)
         db.flush()
         other_id = other.id
@@ -64,10 +76,12 @@ def joint(client, warehouse, request):
             ("ORDER-B", second, 4, 40),
         ]
     ]
-    if getattr(request, "param", "with_plan") == "without_plan":
+    if mode != "with_plan":
         for member in members:
             for field in ("planned_weight", "planned_quantity", "planned_specification"):
                 member.pop(field)
+    if mode == "unspecified_first":
+        members.reverse()
     response = intake(client, warehouse, serial_no="", quantity=2, weight=20)
     assert response.status_code == 201, response.text
     return response.json(), members
@@ -90,7 +104,9 @@ def send(client, warehouse, joint, **changes):
     )
 
 
-@pytest.mark.parametrize("joint", ["without_plan", "with_plan"], indirect=True)
+@pytest.mark.parametrize(
+    "joint", ["without_plan", "with_plan", "unspecified_first", "unspecified_second"], indirect=True
+)
 def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     client, warehouse, joint
 ):
@@ -102,6 +118,14 @@ def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     lot = result["items"][0]
     assert lot["quantity"] == 1 and lot["weight"] == 10
     assert lot["shared_unallocated"]
+    with SessionLocal() as db:
+        specified = next(
+            db.get(ProcessRoute, member["process_route_id"]).steps[1]
+            for member in members
+            if member["serial_no"] == "WAREHOUSE-001"
+        )
+        assert lot["purpose_id"] == specified["purpose_id"]
+        assert lot["process_route"]["processing_task_id"] == specified["processing_task_id"]
     for member, stored in zip(members, lot["shared_serials"], strict=True):
         for field in ("planned_weight", "planned_quantity", "planned_specification"):
             assert stored[field] == member.get(field)
@@ -123,7 +147,9 @@ def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
     assert remainder["available_quantity"] == 1 and remainder["available_weight"] == 10
 
 
-@pytest.mark.parametrize("joint", ["without_plan", "with_plan"], indirect=True)
+@pytest.mark.parametrize(
+    "joint", ["without_plan", "with_plan", "unspecified_first", "unspecified_second"], indirect=True
+)
 def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
     client, warehouse, joint
 ):
@@ -195,8 +221,9 @@ def test_cutting_assigns_each_output_its_own_route_and_keeps_shared_remainder(
             db.get(MaterialTransfer, first["id"]),
             db.get(MaterialTransfer, second.json()["outputs"][0]["id"]),
         )
-        assert a.process_route_id == joint[1][0]["process_route_id"]
-        assert b.process_route_id == joint[1][1]["process_route_id"]
+        routes = {member["serial_no"]: member["process_route_id"] for member in joint[1]}
+        assert a.process_route_id == routes["WAREHOUSE-001"]
+        assert b.process_route_id == routes["ORDER-B"]
         assert a.process_step_index == b.process_step_index == 1
         assert a.process_step_complete and b.process_step_complete
         assert not a.shared_unallocated and not b.shared_unallocated
@@ -248,7 +275,16 @@ def test_joint_routes_can_share_processing_before_a_later_cut(client, warehouse,
 
 @pytest.mark.parametrize(
     "change_kind",
-    ["duplicate", "partial_plan", "stale_route", "different_path", "wrong_route", "external"],
+    [
+        "duplicate",
+        "partial_plan",
+        "stale_route",
+        "different_purpose",
+        "different_task",
+        "different_team",
+        "wrong_route",
+        "external",
+    ],
 )
 def test_invalid_joint_transfer_rolls_back_stock_and_group(client, warehouse, joint, change_kind):
     origin, members = joint
@@ -261,11 +297,20 @@ def test_invalid_joint_transfer_rolls_back_stock_and_group(client, warehouse, jo
         members[1]["process_route_version"] += 1
     elif change_kind == "wrong_route":
         members[1]["process_route_id"] = members[0]["process_route_id"]
-    elif change_kind == "different_path":
+    elif change_kind.startswith("different_"):
         with SessionLocal.begin() as db:
             route = db.get(ProcessRoute, members[1]["process_route_id"])
             steps = deepcopy(route.steps)
-            steps[1]["purpose_id"] = None
+            if change_kind == "different_team":
+                other = Team(code="FACTORY-WIRE", name="线切割")
+                field = "team_id"
+            else:
+                model = TeamPurpose if change_kind == "different_purpose" else TeamProcessingTask
+                other = model(team_id=warehouse["other"]["id"], name="其他任务")
+                field = "purpose_id" if change_kind == "different_purpose" else "processing_task_id"
+            db.add(other)
+            db.flush()
+            steps[1][field] = other.id
             route.steps = steps
     if change_kind == "external":
         response = dispatch(
@@ -286,11 +331,38 @@ def test_invalid_joint_transfer_rolls_back_stock_and_group(client, warehouse, jo
     else:
         response = send(client, warehouse, (origin, members))
     assert response.status_code in (409, 422), response.text
+    if change_kind.startswith("different_"):
+        assert "第 2 道" in response.json()["detail"]
+        assert "不同" in response.json()["detail"]
     with SessionLocal() as db:
         assert db.scalar(select(func.count(SharedMaterialGroup.id))) == 0
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 1
     rows = client.get(base(warehouse) + "/stock").json()["items"]
     assert rows[0]["available_weight"] == 20
+
+
+@pytest.mark.parametrize("joint", ["unspecified_first", "unspecified_second"], indirect=True)
+def test_joint_explicit_tasks_still_apply_when_another_route_is_unspecified(
+    client, warehouse, joint
+):
+    other = client.post(base(warehouse, True) + "/purposes", json={"name": "其他任务"}).json()
+    rejected = send(client, warehouse, joint, purpose_id=other["id"])
+    assert rejected.status_code == 422, rejected.text
+    assert "与已发布工艺一致" in rejected.json()["detail"]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(SharedMaterialGroup.id))) == 0
+    response = send(client, warehouse, joint)
+    assert response.status_code == 201, response.text
+    with SessionLocal() as db:
+        lot = db.get(MaterialTransfer, response.json()["items"][0]["id"])
+        # Reordering the serials must not bypass the task specified by either route.
+        for field, message in (("processing_task_id", "具体任务"), ("purpose_id", "指定的业务")):
+            payload = SimpleNamespace(
+                work_kind="normal", processing_task_id=None, purpose_id=None, outputs=[]
+            )
+            setattr(payload, field, -1)
+            with pytest.raises(HTTPException, match=message):
+                prepare_processing(lot, payload)
 
 
 def test_shared_records_list_only_joint_dispatch_with_member_search(client, warehouse, joint):

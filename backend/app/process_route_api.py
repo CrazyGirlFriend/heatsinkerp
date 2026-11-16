@@ -152,12 +152,13 @@ def rework_sources(
     query: str = Query("", max_length=120),
     page: int = Query(1, ge=1),
     lot_id: int | None = Query(None, ge=1),
+    problem_team_id: int | None = Query(None, ge=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     from .rework_routes import source_stock
 
-    return source_stock(db, user, query, page, lot_id)
+    return source_stock(db, user, query, page, lot_id, problem_team_id)
 
 
 @router.post(

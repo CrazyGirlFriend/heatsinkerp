@@ -90,6 +90,7 @@ async function save() {
       inspection_id: props.inspectionId,
       source_transfer_id: props.context.source_transfer_id,
       rework_of_id: original.value,
+      problem_team_id: props.context.rework_problem_team_id || undefined,
       expected_revision: props.context.revision,
       quantity: quantity.value,
       weight: weight.value,

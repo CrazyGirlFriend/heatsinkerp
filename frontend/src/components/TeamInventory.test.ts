@@ -157,9 +157,10 @@ describe('warehouse grouped stock', () => {
       '实际尺寸',
       '操作',
     ])
-    for (const index of [0, 1]) {
-      expect(wrapper.findAll('thead th')[index]!.classes()).toContain('el-table-fixed-column--left')
-    }
+    expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
+    expect(wrapper.findAll('thead th')[1]!.classes().includes('el-table-fixed-column--left')).toBe(
+      !mode.warehouse,
+    )
     const optional = columnSettings().props('columns')
     expect(optional).toEqual(
       expect.arrayContaining([
@@ -192,7 +193,7 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(headers().slice(0, 5)).toEqual(['批次号', '流水号', '仓库', '数量（件）', '材质'])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
-    expect(wrapper.findAll('thead th')[1]!.classes()).toContain('el-table-fixed-column--left')
+    expect(wrapper.findAll('thead th')[1]!.classes()).not.toContain('el-table-fixed-column--left')
     expect(wrapper.findAll('[data-field="on_hand_quantity"]').map((cell) => cell.text())).toEqual(
       data().map((row) => String(row.on_hand_quantity)),
     )

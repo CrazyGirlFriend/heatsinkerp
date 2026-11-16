@@ -1,4 +1,4 @@
-"""Team feedback is local; QC can identify an upstream operation on the same stock."""
+"""Team feedback defaults to local work; upstream work requires an explicit team choice."""
 
 from uuid import uuid4
 
@@ -8,6 +8,8 @@ from app.models import MaterialInspection, MaterialStockBalance, Team
 from app.models import MaterialQuantityAdjustment as Work
 from receipt_helpers import receipt_post
 from sqlalchemy import select
+from test_engineered_rework import save_plan
+from test_material_transfers import _leader
 from test_quantity_adjustments import processing_lot
 from test_team_rework_notices import prepare
 from test_warehouse_classification import dispatch
@@ -124,6 +126,134 @@ def test_no_local_work_does_not_fall_back_to_an_upstream_record(client, warehous
     assert response.status_code == 200, response.text
     assert response.json()["rework_task_records"] == []
     assert response.json()["rework_of_id"] is None
+    teams = response.json()["rework_problem_teams"]
+    upstream = next(team for team in teams if team["name"] == "线切割")
+    response = client.get(
+        URL + "/rework-sources",
+        params={"lot_id": lot["id"], "problem_team_id": upstream["id"]},
+        headers=warehouse["other_headers"],
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["rework_problem_team_id"] == upstream["id"]
+    assert len(response.json()["rework_task_records"]) == 1
+    assert response.json()["rework_task_records"][0]["team_name"] == "线切割"
+
+
+def test_explicit_upstream_report_links_quality_and_engineering_then_transfers_by_route(
+    client, warehouse, history
+):
+    lot, body, foreign_id = history
+    headers = warehouse["other_headers"]
+    with SessionLocal() as db:
+        upstream_id = db.get(Work, foreign_id).team_id
+    response = client.get(
+        URL + "/rework-sources",
+        params={"lot_id": lot["id"], "problem_team_id": upstream_id},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert [r["rework_of_id"] for r in response.json()["rework_task_records"]] == [foreign_id]
+    payload = {**body, "rework_of_id": foreign_id, "problem_team_id": upstream_id}
+    response = client.post(URL + "/rework-requests", json=payload, headers=headers)
+    assert response.status_code == 201, response.text
+    route = response.json()
+    assert route["rework_request"]["requesting_team_id"] == warehouse["other"]["id"]
+    assert route["rework_request"]["problem_teams"] == [{"id": upstream_id, "name": "线切割"}]
+    assert (
+        client.post(URL + "/rework-requests", json=payload, headers=headers).json()["id"]
+        == route["id"]
+    )
+    detail_url = f"/api/quality-feedback/team-problems/{route['id']}"
+    for reader in (headers, client.headers, warehouse["rework_qc_headers"]):
+        detail = client.get(detail_url, headers=reader).json()
+        assert detail["team_id"] == warehouse["other"]["id"]
+        assert detail["involved_teams"][0]["team_id"] == upstream_id
+        assert detail["route_state"] == "draft"
+    rows = client.get(URL, params={"kind": "rework", "state": "draft"}, headers=headers).json()
+    assert rows["items"][0]["id"] == route["id"]
+    assert rows["pending_rework_count"] == 1
+    child_id = route["rework_request"]["source_transfer_id"]
+    lines = [dict(source_transfer_id=child_id, quantity=2, weight=20)]
+    blocked = dispatch(
+        client,
+        warehouse,
+        lines,
+        workshop=True,
+        next_team_id=upstream_id,
+        idempotency_key=uuid4().hex,
+    )
+    assert blocked.status_code == 422 and "工艺" in blocked.text
+    save_plan(client, warehouse, route, team=upstream_id)
+    assert client.get(detail_url, headers=headers).json()["route_state"] == "published"
+    wrong_team = dispatch(client, warehouse, lines, workshop=True, idempotency_key=uuid4().hex)
+    assert wrong_team.status_code == 422, wrong_team.text
+    sent = dispatch(
+        client,
+        warehouse,
+        lines,
+        workshop=True,
+        next_team_id=upstream_id,
+        idempotency_key=uuid4().hex,
+    )
+    assert sent.status_code == 201, sent.text
+    transfer = sent.json()["items"][0]
+    _, upstream_headers = _leader(client, "upstream-rework-leader", upstream_id)
+    received = receipt_post(
+        client,
+        f"/api/material-transfers/{transfer['batch_no']}/confirm",
+        headers=upstream_headers,
+        json={"idempotency_key": uuid4().hex, "expected_version": transfer["version"]},
+    )
+    assert received.status_code == 200, received.text
+    context = client.get(
+        f"/api/team-materials/{upstream_id}/stock/{transfer['id']}/quantity-adjustments",
+        headers=upstream_headers,
+    ).json()
+    assert context["rework_route_ready"] is True
+    assert context["process_route"]["id"] == route["id"]
+    assert "2.50" in context["process_route"]["instructions"]
+    with SessionLocal() as db:
+        assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
+
+
+def test_explicit_team_choice_cannot_bypass_batch_and_record_checks(client, warehouse, history):
+    lot, body, foreign_id = history
+    headers = warehouse["other_headers"]
+    wrong = client.get(
+        URL + "/rework-sources",
+        params={"lot_id": lot["id"], "problem_team_id": warehouse["team"]["id"]},
+        headers=headers,
+    )
+    assert wrong.status_code == 422
+    mismatch = client.post(
+        URL + "/rework-requests",
+        json={**body, "rework_of_id": foreign_id, "problem_team_id": warehouse["other"]["id"]},
+        headers=headers,
+    )
+    assert mismatch.status_code == 422 and "不一致" in mismatch.text
+    other_lot = processing_lot(
+        client, warehouse, quantity=10, weight=100, idempotency_key=uuid4().hex
+    )
+    with SessionLocal() as db:
+        upstream_id = db.get(Work, foreign_id).team_id
+    context = client.get(
+        URL + "/rework-sources", params={"lot_id": other_lot["id"]}, headers=headers
+    ).json()
+    unrelated = client.post(
+        URL + "/rework-requests",
+        json={
+            **body,
+            "source_transfer_id": other_lot["id"],
+            "expected_revision": context["revision"],
+            "rework_of_id": foreign_id,
+            "problem_team_id": upstream_id,
+        },
+        headers=headers,
+    )
+    assert unrelated.status_code == 422 and "不属于本批" in unrelated.text
+    with SessionLocal() as db:
+        assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 10
+        assert db.get(MaterialStockBalance, other_lot["id"]).on_hand_quantity == 10
 
 
 def test_qc_quality_issue_context_keeps_full_cross_team_operation_details(

@@ -1747,61 +1747,74 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
   )
 })
 
-it('dispatches joint material with actual stock quantities and route bindings without requiring cutting plans', async () => {
-  const { routeFixture } = await import('@/testFixtures/processRoute')
-  const { orderFixture } = await import('@/testFixtures/processRouteOrder')
-  const SharedFields = (await import('./SharedDispatchFields.vue')).default
-  const row = source()
-  row.transfer.entry_kind = 'warehouse_receipt'
-  row.transfer.receipt_kind = 'external'
-  row.transfer.serial_no = ''
-  row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
-  vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
-    ...routeFixture,
-    id: serial === 'ORDER-A' ? 8 : 9,
-    state: 'published',
-    serial_nos: [serial],
-    drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
-    source_data: {
-      ...routeFixture.source_data,
-      order_document: { ...orderFixture, serial_no: serial, receipt_fields: {} },
-    },
-    steps: [
-      { ...routeFixture.steps[0]!, team_id: 2 },
-      { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
-    ],
-  }))
-  await render('dispatch', [row])
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text() === '共投')!
-    .trigger('click')
-  await flushPromises()
-  const fields = wrapper.getComponent(SharedFields)
-  expect(fields.text()).not.toMatch(/计划用料|切出件数|切割尺寸/)
-  fields.vm.$emit('update:modelValue', [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }])
-  await new Promise((resolve) => setTimeout(resolve, 350))
-  await flushPromises()
-  await submit()
-  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
-  const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
-  expect(body.lines).toHaveLength(1)
-  expect(body.lines[0]).toMatchObject({
-    quantity: 100,
-    weight: 10,
-    shared_serials: [
-      expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
-      expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
-    ],
-  })
-  expect(body.lines[0]).not.toHaveProperty('serial_no')
-  expect(body.lines[0]).not.toHaveProperty('production_schedule_id')
-  for (const member of body.lines[0]!.shared_serials!) {
-    expect(member).not.toHaveProperty('planned_weight')
-    expect(member).not.toHaveProperty('planned_quantity')
-    expect(member).not.toHaveProperty('planned_specification')
-  }
-})
+it.each([null, 'ORDER-A', 'ORDER-B'])(
+  'dispatches joint material and preserves the task specified by %s without requiring cutting plans',
+  async (specifiedSerial) => {
+    const { routeFixture } = await import('@/testFixtures/processRoute')
+    const { orderFixture } = await import('@/testFixtures/processRouteOrder')
+    const SharedFields = (await import('./SharedDispatchFields.vue')).default
+    const row = source()
+    row.transfer.entry_kind = 'warehouse_receipt'
+    row.transfer.receipt_kind = 'external'
+    row.transfer.serial_no = ''
+    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+    vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
+      ...routeFixture,
+      id: serial === 'ORDER-A' ? 8 : 9,
+      state: 'published',
+      serial_nos: [serial],
+      drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
+      source_data: {
+        ...routeFixture.source_data,
+        order_document: { ...orderFixture, serial_no: serial, receipt_fields: {} },
+      },
+      steps: [
+        { ...routeFixture.steps[0]!, team_id: 2 },
+        {
+          ...routeFixture.steps[1]!,
+          team_id: 3,
+          purpose_id: serial === specifiedSerial ? 55 : null,
+        },
+      ],
+    }))
+    if (specifiedSerial)
+      vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+        { id: 55, team_id: 3, name: '粗切', active: true, version: 1 },
+      ])
+    await render('dispatch', [row])
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '共投')!
+      .trigger('click')
+    await flushPromises()
+    const fields = wrapper.getComponent(SharedFields)
+    expect(fields.text()).not.toMatch(/计划用料|切出件数|切割尺寸/)
+    fields.vm.$emit('update:modelValue', [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }])
+    await vi.waitFor(() => expect(fields.emitted('validation-change')?.at(-1)).toEqual(['']))
+    await flushPromises()
+    await submit()
+    expect(wrapper.findAll('[role="alert"]').map((node) => node.text())).toEqual([])
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+    const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+    expect(body.lines).toHaveLength(1)
+    expect(body.lines[0]).toMatchObject({
+      quantity: 100,
+      weight: 10,
+      ...(specifiedSerial ? { purpose_id: 55 } : {}),
+      shared_serials: [
+        expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
+        expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
+      ],
+    })
+    expect(body.lines[0]).not.toHaveProperty('serial_no')
+    expect(body.lines[0]).not.toHaveProperty('production_schedule_id')
+    for (const member of body.lines[0]!.shared_serials!) {
+      expect(member).not.toHaveProperty('planned_weight')
+      expect(member).not.toHaveProperty('planned_quantity')
+      expect(member).not.toHaveProperty('planned_specification')
+    }
+  },
+)
 
 it('does not show joint production for downstream stock or external returns', async () => {
   await render('dispatch', [source()])

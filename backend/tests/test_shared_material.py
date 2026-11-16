@@ -442,7 +442,8 @@ def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, wareho
             select(SharedMaterialMember).where(SharedMaterialMember.group_id == lot.shared_group_id)
         ):
             member.planned_weight = member.planned_quantity = member.planned_specification = None
-    replay = shared_intake(client, warehouse, shared_serials=members)
+    # Replay the historical body verbatim; intake() adds today's required warehouse fields.
+    replay = client.post(warehouse["url"], headers=warehouse["headers"], json=body)
     assert replay.status_code == 201, replay.text
     assert replay.json()["id"] == created["id"]
     assert all(member["planned_weight"] is None for member in replay.json()["shared_serials"])

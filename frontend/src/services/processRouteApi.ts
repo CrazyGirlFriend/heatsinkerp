@@ -95,6 +95,7 @@ export const processRouteApi = {
   requestRework: (body: {
     source_transfer_id: number
     rework_of_id: number
+    problem_team_id?: number
     inspection_id?: number
     expected_revision: number
     quantity: number
@@ -106,8 +107,10 @@ export const processRouteApi = {
     request<MaterialPage<ReworkSource>>(
       `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
     ),
-  reworkSourceContext: (id: number) =>
-    request<QuantityAdjustmentContext>(`/rework-sources?lot_id=${id}`),
+  reworkSourceContext: (id: number, problemTeamId?: number) =>
+    request<QuantityAdjustmentContext>(
+      `/rework-sources?lot_id=${id}${problemTeamId ? '&problem_team_id=' + problemTeamId : ''}`,
+    ),
   reworkRounds: (id: number) => request<ReworkRound[]>(`/${id}/rework-rounds`),
   resumeRework: (id: number, revision: number) =>
     request(`/rework-lots/${id}/resume`, 'POST', { expected_revision: revision }),

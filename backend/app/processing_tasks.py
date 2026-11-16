@@ -187,8 +187,9 @@ def snapshot(db, lot, payload, prior_work=None):
     # Otherwise the selected task determines the handoff requirement.
     purpose_id = payload.purpose_id or lot.purpose_id
     from .process_routes import processing_step
+    from .shared_material import execution_step
 
-    route_step = lot.process_route.steps[processing_step(lot)] if lot.process_route_id else None
+    route_step = execution_step(lot, processing_step(lot)) if lot.process_route_id else None
     if task and task.purpose_id and not (route_step and route_step.get("purpose_id")):
         if payload.purpose_id is not None and payload.purpose_id != task.purpose_id:
             raise HTTPException(422, "转料与加工须使用同一项加工任务")

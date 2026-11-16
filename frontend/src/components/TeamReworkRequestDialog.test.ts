@@ -5,6 +5,7 @@ import { ElSelect } from 'element-plus'
 import TeamReworkRequestDialog from './TeamReworkRequestDialog.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import AppDialog from './AppDialog.vue'
+import AppSelect from './AppSelect.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { reworkRouteFixture } from '@/testFixtures/processRoute'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -183,4 +184,85 @@ it('shows an unavailable-record warning without hiding the problem form', async 
   expect(wrapper.find('textarea[aria-label="问题描述"]').exists()).toBe(true)
   await wrapper.get('form').trigger('submit')
   expect(request).not.toHaveBeenCalled()
+})
+
+it('requires an explicit upstream team and operation, clearing stale fields when the team changes', async () => {
+  const request = vi.spyOn(processRouteApi, 'requestRework').mockResolvedValue(reworkRouteFixture)
+  await render()
+  const local = {
+    ...context,
+    rework_problem_team_id: 2,
+    rework_problem_teams: [
+      { id: 2, name: '轧制' },
+      { id: 3, name: '线切割' },
+    ],
+    rework_of_id: null,
+    rework_task_records: [],
+  }
+  const upstream = {
+    ...local,
+    rework_problem_team_id: 3,
+    rework_task_records: [
+      {
+        rework_of_id: 15,
+        team_id: 3,
+        team_name: '线切割',
+        process_step_name: '第 1 道工序 · 粗切',
+        process_step_instructions: '按图粗切，留磨削余量。',
+        processing_task_id: 5,
+        processing_task_name: '粗切',
+        purpose_id: null,
+        purpose_name: null,
+      },
+    ],
+  } satisfies QuantityAdjustmentContext
+  vi.mocked(processRouteApi.reworkSourceContext)
+    .mockResolvedValueOnce(local)
+    .mockResolvedValueOnce(upstream)
+  await selectBatch(12)
+  expect(wrapper.text()).toContain('该班组暂无本批次的工艺记录')
+  const select = (label: string) =>
+    wrapper
+      .findAllComponents(AppSelect)
+      .find((s) => s.vm.$attrs['aria-label'] === label)!
+      .getComponent(ElSelect)
+  expect(select('疑似涉及班组').props('modelValue')).toBe(2)
+  await wrapper.get('textarea[aria-label="问题描述"]').setValue('来料切口有裂纹')
+  select('疑似涉及班组').vm.$emit('update:modelValue', 3)
+  select('疑似涉及班组').vm.$emit('change', 3)
+  await flushPromises()
+  expect(processRouteApi.reworkSourceContext).toHaveBeenLastCalledWith(12, 3)
+  expect(select('工艺记录').props('modelValue')).toBeNull()
+  select('工艺记录').vm.$emit('update:modelValue', 15)
+  await flushPromises()
+  expect(wrapper.text()).toContain('按图粗切，留磨削余量。')
+  await wrapper.get('input[aria-label="问题件数"]').setValue('2')
+  await wrapper.get('input[aria-label="问题重量"]').setValue('20')
+  vi.mocked(processRouteApi.reworkSourceContext).mockResolvedValueOnce(local)
+  select('疑似涉及班组').vm.$emit('update:modelValue', 2)
+  select('疑似涉及班组').vm.$emit('change', 2)
+  await flushPromises()
+  expect(select('工艺记录').props('modelValue')).toBeNull()
+  expect(wrapper.get<HTMLInputElement>('input[aria-label="问题件数"]').element.value).toBe('')
+  expect(wrapper.get<HTMLTextAreaElement>('textarea').element.value).toBe('来料切口有裂纹')
+  await wrapper.get('form').trigger('submit')
+  expect(request).not.toHaveBeenCalled()
+  vi.mocked(processRouteApi.reworkSourceContext).mockResolvedValueOnce(upstream)
+  select('疑似涉及班组').vm.$emit('update:modelValue', 3)
+  select('疑似涉及班组').vm.$emit('change', 3)
+  await flushPromises()
+  select('工艺记录').vm.$emit('update:modelValue', 15)
+  await flushPromises()
+  await wrapper.get('input[aria-label="问题件数"]').setValue('2')
+  await wrapper.get('input[aria-label="问题重量"]').setValue('20')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(request).toHaveBeenCalledWith(
+    expect.objectContaining({
+      source_transfer_id: 12,
+      problem_team_id: 3,
+      rework_of_id: 15,
+      reason: '来料切口有裂纹',
+    }),
+  )
 })

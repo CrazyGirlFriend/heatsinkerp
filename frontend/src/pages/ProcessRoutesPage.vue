@@ -44,6 +44,8 @@ import { formatDateTime } from '@/utils/format'
 import { canMaintainProcessRoute } from '@/utils/processRoutePermissions'
 const loadEditor = () => import('@/components/ProcessRouteEditor.vue')
 const ProcessRouteEditor = defineAsyncComponent(loadEditor)
+const TeamProblemDetail = defineAsyncComponent(() => import('@/components/TeamProblemDetail.vue'))
+const pendingProblemId = ref<number | null>(null)
 const PendingReworkPicker = defineAsyncComponent(
   () => import('@/components/PublishedProcessRoutePicker.vue'),
 )
@@ -95,6 +97,7 @@ function showPendingRework() {
 function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
   selectingRework.value = false
+  pendingProblemId.value = null
   if (openingId.value !== null || preparingEditor.value) closeEditor()
   filtersOpen.value = false
   routeState.value = undefined
@@ -170,6 +173,11 @@ function closeEditor() {
   preparingEditor.value = false
   editing.value = false
   creating.value = false
+  pendingProblemId.value = null
+}
+function closeProblem() {
+  pendingProblemId.value = null
+  void load()
 }
 const filterColumns = computed(() => ({
   ...queryColumns([
@@ -356,8 +364,14 @@ async function open(id: number, startEditing = false) {
   noticeSection.value = ''
   stopNoticeFocus?.()
   const request = ++detailGeneration
-  openingId.value = id
   error.value = ''
+  const row = items.value.find((item) => item.id === id)
+  if (row?.route_kind === 'rework' && row.state === 'draft' && !canEdit.value && !auth.isAdmin) {
+    openingId.value = null
+    pendingProblemId.value = id
+    return
+  }
+  openingId.value = id
   try {
     const [result] = await Promise.all([processRouteApi.detail(id), loadEditor()])
     if (request === detailGeneration) {
@@ -430,6 +444,7 @@ useLiveRefresh(load, {
     openingId.value !== null ||
     preparingEditor.value ||
     selectingRework.value ||
+    pendingProblemId.value !== null ||
     !!selected.value ||
     creating.value,
 })
@@ -462,7 +477,7 @@ onBeforeUnmount(() => {
           title="工艺类型"
           :options="[
             { value: 'normal', label: '正常工艺' },
-            { value: 'rework', label: '返工工艺', count: canEdit ? pendingRework : 0 },
+            { value: 'rework', label: '返工工艺', count: pendingRework },
           ]"
           @change="changeKind($event as 'normal' | 'rework')"
         />
@@ -539,7 +554,7 @@ onBeforeUnmount(() => {
           </AsyncStatus>
           <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">未填写</ElTag>
           <ElButton
-            v-else-if="routeKind === 'rework' && canEdit && pendingRework"
+            v-else-if="routeKind === 'rework' && pendingRework"
             class="route-pending-filter"
             @click="showPendingRework"
             >仅看未填写</ElButton
@@ -914,6 +929,11 @@ onBeforeUnmount(() => {
       >
     </WorkspaceDataPanel>
     <template #dialogs>
+      <TeamProblemDetail
+        v-if="pendingProblemId !== null"
+        :route-id="pendingProblemId"
+        @close="closeProblem"
+      />
       <PendingReworkPicker
         v-if="selectingRework && canEdit"
         pending-rework

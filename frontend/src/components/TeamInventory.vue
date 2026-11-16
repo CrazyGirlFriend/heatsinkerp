@@ -1257,10 +1257,11 @@ onBeforeUnmount(() => {
         :label="column.label"
         :min-width="column.width"
         :fixed="
-          (warehouse
-            ? ['batch_no', 'serial_no', searchedColumn?.key]
-            : ['serial_no', 'on_hand_quantity', searchedColumn?.key]
-          ).includes(column.key)
+          (
+            warehouse
+              ? column.key !== 'serial_no' && ['batch_no', searchedColumn?.key].includes(column.key)
+              : ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
+          )
             ? 'left'
             : undefined
         "

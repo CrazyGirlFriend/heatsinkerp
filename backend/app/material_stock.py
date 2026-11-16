@@ -601,6 +601,10 @@ def create_dispatch(db, team_id, payload, user):
                         if selected_route
                         else {"purpose_id": purpose_id}
                     )
+                    if selected_route and route_lot.shared_unallocated:
+                        from .shared_material import execution_step
+
+                        step = execution_step(route_lot, fields["process_step_index"])
                     if step["purpose_id"] is not None:
                         if purpose_id is not None and purpose_id != step["purpose_id"]:
                             raise HTTPException(422, "下序接收业务必须与已发布工艺一致")

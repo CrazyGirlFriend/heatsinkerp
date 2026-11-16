@@ -4,12 +4,16 @@ from datetime import timezone
 
 from fastapi import HTTPException
 from sqlalchemy import case, exists, literal, select
+from sqlalchemy.orm import aliased
 
+from .models import MaterialQuantityAdjustment as Work
 from .models import MaterialTransfer as Lot
 from .models import ProcessRoute as Route
 from .models import ProcessRouteArchive, ProcessRoutePath, Team
 from .process_routes import is_engineering_user
 from .rework_rounds import current_routes, progress_documents
+
+ProblemTeam = aliased(Team)
 
 
 def visible(user):
@@ -40,9 +44,11 @@ def statement(user, team_id=None):
             )
         )
     return (
-        select(Route, Lot, Team)
+        select(Route, Lot, Team, ProblemTeam)
         .join(Lot, Lot.id == Route.rework_source_transfer_id)
         .join(Team, Team.id == Route.requesting_team_id)
+        .outerjoin(Work, Work.id == Route.rework_of_id)
+        .outerjoin(ProblemTeam, ProblemTeam.id == Work.team_id)
         .where(*conditions)
     )
 
@@ -53,7 +59,8 @@ def status(route, progress):
     return "closed" if progress["state"] == "passed" else "processing"
 
 
-def document(route, lot, team, progress):
+def document(route, lot, team, progress, problem_team):
+    involved = problem_team or team
     return dict(
         id=route.id,
         kind="team_report",
@@ -68,7 +75,7 @@ def document(route, lot, team, progress):
         failed_quantity=lot.quantity,
         weight=float(lot.weight),
         created_by=route.requested_by or route.created_by,
-        involved_teams=[dict(team_id=team.id, name=team.name, replied=True)],
+        involved_teams=[dict(team_id=involved.id, name=involved.name, replied=True)],
         feedback_status=status(route, progress),
         disposition="rework",
         route_state=route.state,
@@ -118,5 +125,5 @@ def detail(db, route_id, user):
     row = db.execute(statement(user).where(Route.id == route_id)).first()
     if row is None:
         raise HTTPException(404, "班组反馈不存在或不属于当前班组")
-    route, lot, team = row
-    return document(route, lot, team, progress_documents(db, [route])[route.id])
+    route, lot, team, problem_team = row
+    return document(route, lot, team, progress_documents(db, [route])[route.id], problem_team)

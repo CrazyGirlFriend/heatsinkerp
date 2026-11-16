@@ -6945,6 +6945,10 @@ export interface components {
       rework_of_id: number | null
       /** Rework Pending */
       rework_pending: boolean
+      /** Rework Problem Team Id */
+      rework_problem_team_id?: number | null
+      /** Rework Problem Teams */
+      rework_problem_teams?: components['schemas']['ReworkProblemTeamResponse'][] | null
       /** Rework Round */
       rework_round: number | null
       /** Rework Route Id */
@@ -7280,6 +7284,8 @@ export interface components {
       idempotency_key: string
       /** Inspection Id */
       inspection_id?: number | null
+      /** Problem Team Id */
+      problem_team_id?: number | null
       /** Quantity */
       quantity: number
       /** Reason */
@@ -13108,6 +13114,7 @@ export interface operations {
       query?: {
         lot_id?: number | null
         page?: number
+        problem_team_id?: number | null
         query?: string
       }
       header?: never

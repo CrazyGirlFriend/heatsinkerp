@@ -265,8 +265,8 @@ def list_records(
 
     report_ids = [r["id"] for r in rows if r["kind"] == "team_report"]
     report_documents = {
-        route.id: team_problems.document(route, lot, team, progress[route.id])
-        for route, lot, team in db.execute(
+        route.id: team_problems.document(route, lot, team, progress[route.id], problem_team)
+        for route, lot, team, problem_team in db.execute(
             team_problems.statement(user, team_id).where(ProcessRoute.id.in_(report_ids))
         )
     }

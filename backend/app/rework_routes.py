@@ -33,6 +33,7 @@ class ReworkRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
     rework_of_id: int = Field(ge=1)
+    problem_team_id: int | None = Field(default=None, ge=1)
     inspection_id: int | None = Field(default=None, ge=1)
     expected_revision: int = Field(ge=0)
     quantity: int = Field(gt=0, le=2_147_483_647)
@@ -146,6 +147,14 @@ def request_documents(db, routes):
             )
         )
     }
+    work_teams = {
+        work_id: [{"id": team_id, "name": name}]
+        for work_id, team_id, name in db.execute(
+            select(Work.id, Team.id, Team.name)
+            .join(Team, Team.id == Work.team_id)
+            .where(Work.id.in_([route.rework_of_id for route in routes]))
+        )
+    }
     tasks = dict(
         db.execute(
             select(ProductionSchedule.id, ProductionSchedule.task_id).where(
@@ -181,7 +190,9 @@ def request_documents(db, routes):
             "problem_notes": inspection.notes if inspection else "",
             "dimension_result": inspection.dimension_result if inspection else "",
             "weight_result": inspection.weight_result if inspection else "",
-            "problem_teams": teams.get(route.rework_inspection_id, []),
+            "problem_teams": teams.get(route.rework_inspection_id, [])
+            if route.rework_inspection_id
+            else work_teams.get(route.rework_of_id, []),
             "execution_team_names": execution.get(route.id, []),
             "round": route.rework_round,
             "resume_route_id": route.resume_route_id,
@@ -232,7 +243,7 @@ def request_work_record(record, team_name):
     )
 
 
-def source_stock(db, user, query="", page=1, lot_id=None):
+def source_stock(db, user, query="", page=1, lot_id=None, problem_team_id=None):
     """Direct requests select physical stock held by the submitting team."""
     from .quality_feedback import is_qc
 
@@ -269,17 +280,31 @@ def source_stock(db, user, query="", page=1, lot_id=None):
             .where(
                 Work.source_transfer_id.in_(ids),
                 Work.processing_status.is_not(None),
-                *([] if is_qc(user) else [Work.team_id == team.id]),
             )
             .order_by(Work.id.desc())
-            .limit(100)
+        )
+        records = [
+            (record, name)
+            for record, name in records
+            if not record.outputs
+            or any(item["id"] in ids and item["role"] == "produced" for item in record.outputs)
+        ]
+        problem_teams = {team.id: team.name}
+        problem_teams.update((record.team_id, name) for record, name in records)
+        selected_team = problem_team_id or (None if is_qc(user) else team.id)
+        if selected_team and selected_team not in problem_teams:
+            raise HTTPException(422, "所选班组没有本批物料的工艺记录")
+        result["rework_problem_team_id"] = selected_team
+        result["rework_problem_teams"] = (
+            [{"id": key, "name": name} for key, name in problem_teams.items()]
+            if not is_qc(user)
+            else []
         )
         result["rework_task_records"] = [
             request_work_record(record, team_name)
             for record, team_name in records
-            if not record.outputs
-            or any(item["id"] in ids and item["role"] == "produced" for item in record.outputs)
-        ]
+            if selected_team is None or record.team_id == selected_team
+        ][:100]
         result["rework_of_id"] = None
         return result
     if query.strip():
@@ -380,8 +405,10 @@ def request_rework(db, payload, user):
             )
             if work is None:
                 raise HTTPException(422, "原加工记录不属于本批物料")
-            if not is_qc(user) and work.team_id != team.id:
-                raise HTTPException(403, "只能反馈本班组的工艺记录")
+            if payload.problem_team_id is not None and work.team_id != payload.problem_team_id:
+                raise HTTPException(422, "工艺记录与疑似涉及班组不一致")
+            if not is_qc(user) and work.team_id != team.id and payload.problem_team_id is None:
+                raise HTTPException(403, "默认只能反馈本班组记录，请先选择疑似涉及班组")
             if work.outputs:
                 descendants = set(db.scalars(select(path.c.id)))
                 if not any(

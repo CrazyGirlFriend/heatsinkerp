@@ -99,6 +99,12 @@ it('shows published progress and opens the exact linked route read-only on deman
   expect(processRouteApi.detail).toHaveBeenCalledWith(12)
   expect(wrapper.get('.route-editor').attributes('data-readonly')).toBe('true')
 })
+it('distinguishes the reporting team from the suspected upstream team', async () => {
+  await render({ ...report, involved_teams: [{ team_id: 3, name: '线切割', replied: true }] })
+  expect(wrapper.text()).toContain('轧制')
+  expect(wrapper.text()).toContain('疑似涉及班组')
+  expect(wrapper.text()).toContain('线切割')
+})
 it('lets engineering fill the linked draft and refreshes the quality status after saving', async () => {
   auth.currentUser.role = 'TEAM'
   await render(report)

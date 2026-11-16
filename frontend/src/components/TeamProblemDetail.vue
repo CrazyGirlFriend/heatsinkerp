@@ -92,6 +92,9 @@ onBeforeUnmount(() => {
       <ElDescriptions :column="2" border>
         <ElDescriptionsItem label="反馈班组">{{ detail.team_name }}</ElDescriptionsItem>
         <ElDescriptionsItem label="提交人">{{ detail.created_by }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="疑似涉及班组" :span="2">{{
+          detail.involved_teams.map((team) => team.name).join('、')
+        }}</ElDescriptionsItem>
         <ElDescriptionsItem label="问题件数">{{ detail.failed_quantity }} 件</ElDescriptionsItem>
         <ElDescriptionsItem label="返工轮次">第 {{ detail.rework_round }} 轮</ElDescriptionsItem>
         <ElDescriptionsItem label="返工批次" :span="2">{{ detail.batch_no }}</ElDescriptionsItem>

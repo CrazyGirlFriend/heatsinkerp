@@ -23,6 +23,8 @@ const query = ref(''),
 const rows = ref<ReworkSource[]>([]),
   selected = ref<ReworkSource>(),
   context = ref<QuantityAdjustmentContext>()
+const problemTeams = ref<{ id: number; name: string }[]>([])
+const problemTeamId = ref<number>()
 const options = computed(() =>
   selected.value && !rows.value.some((row) => row.id === selected.value?.id)
     ? [selected.value, ...rows.value]
@@ -60,14 +62,26 @@ function search(value: string) {
 async function select(id?: number) {
   if (busy.value) return
   selected.value = options.value.find((row) => row.id === id)
+  problemTeams.value = []
+  problemTeamId.value = undefined
+  await loadContext()
+}
+async function loadContext(teamId?: number) {
+  if (busy.value) return
   const token = ++contextGeneration
   context.value = undefined
   contextError.value = ''
   loadingContext.value = Boolean(selected.value)
   if (!selected.value) return
   try {
-    const result = await processRouteApi.reworkSourceContext(selected.value.id)
-    if (token === contextGeneration) context.value = result
+    const result = teamId
+      ? await processRouteApi.reworkSourceContext(selected.value.id, teamId)
+      : await processRouteApi.reworkSourceContext(selected.value.id)
+    if (token === contextGeneration) {
+      context.value = result
+      problemTeams.value = result.rework_problem_teams || []
+      problemTeamId.value = result.rework_problem_team_id || undefined
+    }
   } catch (e) {
     if (token === contextGeneration)
       contextError.value = e instanceof Error ? e.message : '批次读取失败'
@@ -147,6 +161,26 @@ onBeforeUnmount(() => {
             在库 {{ context.quantity }} 件 · {{ context.weight }} kg
           </span>
         </ElFormItem>
+        <ElFormItem
+          v-if="problemTeams.length"
+          class="form-field--full"
+          label="疑似涉及班组"
+          required
+        >
+          <AppSelect
+            v-model="problemTeamId"
+            aria-label="疑似涉及班组"
+            :disabled="busy || loadingContext"
+            @change="loadContext"
+          >
+            <ElOption
+              v-for="team in problemTeams"
+              :key="team.id"
+              :value="team.id"
+              :label="team.name"
+            />
+          </AppSelect>
+        </ElFormItem>
         <AppAlert
           v-if="sourceError"
           class="form-field--full"
@@ -163,14 +197,18 @@ onBeforeUnmount(() => {
           type="error"
           :closable="false"
         >
-          <AppButton :disabled="loadingContext || busy" @click="select(selected?.id)"
+          <AppButton :disabled="loadingContext || busy" @click="loadContext(problemTeamId)"
             >重试</AppButton
           >
         </AppAlert>
         <AppAlert
           v-if="context && !context.rework_task_records?.length && !context.rework_of_id"
           class="form-field--full"
-          title="本批次暂无可反馈的工艺记录"
+          :title="
+            problemTeams.length > 1
+              ? '该班组暂无本批次的工艺记录，可选择其他涉及班组'
+              : '本批次暂无可反馈的工艺记录'
+          "
           type="warning"
           :closable="false"
         />

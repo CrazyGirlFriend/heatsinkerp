@@ -250,13 +250,18 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
       : null
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
+function selectedNextStep(line: (typeof lines.value)[number]) {
+  if (!line.shared) return line.selectedRoute?.steps[1]
+  const steps = line.sharedRoutes.map((route) => route.steps[1])
+  return steps.find((step) => step?.purpose_id != null) || steps[0]
+}
 watch(
   () => [form.nextTeamId, form.entryKind],
   () => {
     batchPurposeId.value = undefined
     lines.value.forEach((line) => {
       const route = line.source.transfer.process_route
-      const selectedStep = line.selectedRoute?.steps[1]
+      const selectedStep = selectedNextStep(line)
       line.purposeId =
         selectedStep?.team_id === Number(form.nextTeamId)
           ? selectedStep.purpose_id || undefined
@@ -1031,7 +1036,7 @@ function setSharedRoutes(line: (typeof lines.value)[number], routes: ProcessRout
     const first = routes[0]!.steps[1]
     if (first && routes.every((route) => route.steps[1]?.team_id === first.team_id)) {
       form.nextTeamId = first.team_id || ''
-      line.purposeId = first.purpose_id || undefined
+      line.purposeId = selectedNextStep(line)?.purpose_id || undefined
     }
   }
 }

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from app.database import SessionLocal
-from app.models import MaterialStockBalance, Team
+from app.models import MaterialStockBalance, ProcessRoute, ProcessRouteDrawing, Team
 from test_processing_daily import work
 from test_team_rework_notices import prepare
 from test_warehouse_classification import base
@@ -173,6 +173,68 @@ def test_mixed_quality_list_filters_and_pages_before_hydration(client, warehouse
     filters = {"filters": [{"field": "route_state", "kind": "select", "value": "draft"}]}
     filtered = client.get(QUALITY, params={"table_query": json.dumps(filters)}).json()
     assert filtered["total"] == 1 and filtered["items"][0]["id"] == route["id"]
+
+
+def test_reporting_team_sees_its_pending_rework_without_access_to_unpublished_instructions(
+    client, warehouse
+):
+    _, route, engineering_id, engineering_headers = request(client, warehouse)
+    route_id = route["id"]
+    team_headers = warehouse["other_headers"]
+    params = {"kind": "rework", "rework_scope": "open", "state": "draft"}
+    for headers in (team_headers, engineering_headers, client.headers):
+        response = client.get(URL, headers=headers, params=params)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["total"] == result["pending_rework_count"] == 1
+        assert result["items"][0]["id"] == route_id
+        assert result["items"][0]["state"] == "draft"
+        assert result["items"][0]["rework_progress"]["state"] == "awaiting_route"
+    for headers in (warehouse["headers"], warehouse["rework_qc_headers"]):
+        result = client.get(URL, headers=headers, params=params).json()
+        assert result["total"] == result["pending_rework_count"] == 0
+
+    # Saving a partial draft must not expose unapproved operations or attachments.
+    with SessionLocal.begin() as db:
+        db.get(ProcessRoute, route_id).steps = [
+            {"sequence_no": 1, "name": "尚未审核的工序", "team_id": warehouse["other"]["id"]}
+        ]
+        drawing = ProcessRouteDrawing(
+            route_id=route_id,
+            filename="未发布图纸.pdf",
+            sha256="1" * 64,
+            size_bytes=1,
+            content=b"x",
+        )
+        db.add(drawing)
+        db.flush()
+        drawing_id = drawing.id
+    result = client.get(URL, headers=team_headers, params=params).json()["items"][0]
+    assert result["step_summary"] == result["drawings"] == []
+    assert result["rework_request"]["execution_team_names"] == []
+    assert result["rework_request"]["reason"] == route["rework_request"]["reason"]
+    for suffix in ("", "/source", "/rework-rounds", f"/drawings/{drawing_id}"):
+        assert client.get(f"{URL}/{route_id}{suffix}", headers=team_headers).status_code == 403
+    for method, suffix, body in (
+        ("PUT", "", {key: route[key] for key in ("title", "serial_nos", "steps", "version")}),
+        ("POST", "/publish", {"version": route["version"]}),
+        ("POST", "/revise", {}),
+    ):
+        assert (
+            client.request(
+                method, f"{URL}/{route_id}{suffix}", headers=team_headers, json=body
+            ).status_code
+            == 403
+        )
+    problem = client.get(QUALITY + f"/team-problems/{route_id}", headers=team_headers)
+    assert problem.status_code == 200
+    assert problem.json()["route_state"] == "draft"
+
+    publish(client, warehouse, route, engineering_id, engineering_headers)
+    result = client.get(URL, headers=team_headers, params={"kind": "rework"}).json()
+    assert result["total"] == 1 and result["pending_rework_count"] == 0
+    assert result["items"][0]["state"] == "published"
+    assert client.get(f"{URL}/{route_id}", headers=team_headers).status_code == 200
 
 
 def test_quality_shows_one_report_with_the_latest_published_rework_revision(client, warehouse):

@@ -230,19 +230,19 @@ def route_options(db, team_id):
 
 
 def route_document(lot):
-    from .shared_material import is_split_step
+    from .shared_material import execution_step, is_split_step
 
     if not lot.process_route_id:
         return None
     route = lot.process_route
     from .process_route_paths import execution_serial
 
-    step = route.steps[lot.process_step_index]
+    step = execution_step(lot, lot.process_step_index)
     following = None
     if lot.process_step_complete:
         try:
             index = next_index(route, lot.process_step_index, lot.serial_no, lot.shared_unallocated)
-            following = route.steps[index] if index is not None else None
+            following = execution_step(lot, index) if index is not None else None
         except HTTPException:
             pass  # Unsplit common stock is explained by the route's split marker.
     can_resume = False
@@ -308,9 +308,9 @@ def processing_context(lot):
         index = processing_step(lot)
     except HTTPException:
         return {**doc, "available": False}
-    step = lot.process_route.steps[index]
+    from .shared_material import execution_step, is_split_step
 
-    from .shared_material import is_split_step
+    step = execution_step(lot, index)
 
     return {
         **doc,
@@ -328,6 +328,7 @@ def processing_context(lot):
 
 def prepare_processing(lot, payload):
     from .rework_routes import active, pending
+    from .shared_material import execution_step
 
     if pending(lot):
         raise HTTPException(422, "返工工艺尚未制定，请联系工艺人员")
@@ -336,7 +337,7 @@ def prepare_processing(lot, payload):
     if not lot.process_route_id or (payload.work_kind == "rework" and not active(lot)):
         return payload, None
     index = processing_step(lot)
-    step = lot.process_route.steps[index]
+    step = execution_step(lot, index)
     if step["team_id"] != lot.next_team_id:
         raise HTTPException(409, "本批工艺工序与当前班组不一致")
     if (
