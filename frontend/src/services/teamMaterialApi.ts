@@ -236,6 +236,7 @@ export const teamMaterialApi = {
   processingRecords(
     teamId: number,
     params: MaterialPageParams & {
+      include_summary?: boolean
       processor_id?: number
       work_date?: string
       work_kind?: string
@@ -246,11 +247,11 @@ export const teamMaterialApi = {
     return request<
       MaterialPage<ProcessingRecord> & {
         parameter_fields?: string[]
-        summary?: ProcessingRecordSummary
+        summary?: ProcessingRecordSummary | null
         processors?: { id: number; name: string }[]
         processing_tasks?: { id: number; name: string }[]
       }
-    >(path(teamId, 'processing-records', params))
+    >(path(teamId, 'processing-records', { include_summary: false, ...params }))
   },
   processingSources(
     teamId: number,

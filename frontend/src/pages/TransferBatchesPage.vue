@@ -55,7 +55,6 @@ import type {
   MaterialTransferFilterParams,
   MaterialTransferStatusCounts,
   MaterialTransferStatus as TransferStatusValue,
-  MaterialTransferSummary,
 } from '@/types/materialTransfer'
 import {
   materialSourceLabel,
@@ -128,11 +127,6 @@ const rows = ref<MaterialTransfer[]>([])
 const loading = ref(true)
 const errorMessage = ref('')
 const total = ref(0)
-const summary = ref<MaterialTransferSummary | null>(null)
-const summaryStates = [
-  { key: 'received', label: '已签收' },
-  { key: 'pending', label: '待签收' },
-] as const
 const statusCounts = ref<MaterialTransferStatusCounts | null>(null)
 const countsLoading = ref(true)
 const statusOptions = [
@@ -485,7 +479,6 @@ async function loadRows(background = false): Promise<void> {
   const version = ++requestVersion
   if (!background) {
     loading.value = true
-    summary.value = null
   }
   errorMessage.value = ''
   try {
@@ -494,12 +487,10 @@ async function loadRows(background = false): Promise<void> {
       ...statusParams.value,
       page: page.value,
       page_size: pageSize.value,
-      include_summary: true,
     })
     if (disposed || version !== requestVersion) return
     rows.value = result.items
     total.value = result.total
-    summary.value = result.summary ?? null
     const refreshed = result.items.find((item) => item.batch_no === selected.value?.batch_no)
     if (!background && refreshed && !detailBusy.value) selected.value = refreshed
   } catch (error) {
@@ -582,7 +573,6 @@ function clearWorkspace(): void {
   ++linkedBatchVersion
   rows.value = []
   total.value = 0
-  summary.value = null
   statusCounts.value = null
   selected.value = null
   drawerOpen.value = false
@@ -1223,30 +1213,6 @@ onBeforeUnmount(() => {
             </ElButton>
           </div>
         </WorkspaceDataPanel>
-        <div
-          v-if="!errorMessage"
-          class="transfer-summary"
-          aria-label="全部筛选结果汇总"
-          :aria-busy="loading"
-        >
-          <span class="summary-caption">全部筛选合计</span>
-          <div
-            v-for="state in summaryStates"
-            :key="state.key"
-            class="summary-group"
-            :data-status="state.key"
-          >
-            <span class="summary-status">{{ state.label }}</span>
-            <span class="summary-amount"
-              ><small>件数</small><strong>{{ formatAmount(summary?.[state.key].quantity) }}</strong
-              ><small>件</small></span
-            >
-            <span class="summary-amount"
-              ><small>重量</small><strong>{{ formatAmount(summary?.[state.key].weight) }}</strong
-              ><small>kg</small></span
-            >
-          </div>
-        </div>
         <footer v-if="!errorMessage" class="pagination-bar">
           <WorkspacePagination
             background
@@ -1449,45 +1415,6 @@ onBeforeUnmount(() => {
 .serial-number:hover {
   color: var(--primary);
   text-decoration: underline;
-}
-.transfer-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 8px 24px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--line-light);
-  font-size: 13px;
-}
-.summary-caption,
-.summary-amount small {
-  color: var(--subtle);
-  font-size: inherit;
-}
-.summary-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 16px;
-}
-.summary-status {
-  color: var(--primary);
-  font-weight: 500;
-}
-.summary-group[data-status='pending'] .summary-status {
-  color: var(--el-color-warning-dark-2);
-}
-.summary-amount {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  white-space: nowrap;
-}
-.summary-amount strong {
-  color: var(--text);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 .pagination-bar {
   display: flex;

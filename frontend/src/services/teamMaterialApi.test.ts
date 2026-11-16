@@ -28,6 +28,15 @@ afterEach(() => {
   httpClient.defaults.adapter = originalAdapter
 })
 describe('team material API contract', () => {
+  it('skips processing totals for list and export page reads unless explicitly requested', async () => {
+    data = { items: [], total: 0, page: 1, page_size: 10, summary: null }
+    await teamMaterialApi.processingRecords(8, { query: 'YS-007', page: 2 })
+    await teamMaterialApi.processingRecords(8, { include_summary: true })
+    expect(requests.map((request) => request.url)).toEqual([
+      '/team-materials/8/processing-records?include_summary=false&query=YS-007&page=2',
+      '/team-materials/8/processing-records?include_summary=true',
+    ])
+  })
   it('uses the QC problem directory with versioned edits', async () => {
     data = []
     await teamMaterialApi.inspectionProblems(8)
@@ -64,7 +73,7 @@ describe('team material API contract', () => {
       '/team-materials/2/processing-tasks',
       '/team-materials/2/processing-tasks',
       '/team-materials/2/processing-tasks/8',
-      '/team-materials/2/processing-records?processing_task_id=8&purpose_id=3',
+      '/team-materials/2/processing-records?include_summary=false&processing_task_id=8&purpose_id=3',
       '/team-materials/2/processing-daily?processing_task_id=8&purpose_id=3',
     ])
     expect(JSON.parse(requests[2]!.data)).toEqual({

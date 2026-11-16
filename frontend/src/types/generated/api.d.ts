@@ -6163,7 +6163,7 @@ export interface components {
       processing_tasks: components['schemas']['ProcessingFilterOptionResponse'][]
       /** Processors */
       processors: components['schemas']['ProcessingFilterOptionResponse'][]
-      summary: components['schemas']['ProcessingSummaryResponse']
+      summary: components['schemas']['ProcessingSummaryResponse'] | null
       /** Total */
       total: number
     }
@@ -15960,6 +15960,7 @@ export interface operations {
       query?: {
         date_from?: string | null
         date_to?: string | null
+        include_summary?: boolean
         page?: number
         page_size?: number
         processing_task_id?: number | null

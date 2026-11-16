@@ -161,7 +161,7 @@ describe('cutting processing records', () => {
     expect(wrapper.get('tbody').text()).toContain('2 小时')
     expect(wrapper.get('tbody').text()).toContain('张师傅')
     expect(wrapper.get('tbody').text()).toContain('王师傅')
-    expect(wrapper.get('.processing-totals').text()).toContain('工时合计 2 小时')
+    expect(wrapper.find('.processing-totals').exists()).toBe(false)
     expect(wrapper.find('.summary-note').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('非实物库存产量')
     const source = wrapper.getComponent(TableExportButton).props('source')()!
@@ -194,7 +194,7 @@ describe('cutting processing records', () => {
     await wrapper.setProps({ canWrite: false })
     expect(button()).toBeUndefined()
   })
-  it('filters both exports by task and business and counts employee-task groups independently', async () => {
+  it('filters both exports by task and business without precomputing grouped totals', async () => {
     const result = await teamMaterialApi.processingRecords(5)
     vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
       ...result,
@@ -216,7 +216,7 @@ describe('cutting processing records', () => {
     const exports = wrapper.getComponent(TableExportButton)
     const details = exports.props('source')()!
     const grouped = exports.props('variants')!()[0]!
-    expect(grouped.total).toBe(3)
+    expect(grouped.total).toBeNull()
     expect(grouped.title).toContain('任务')
     await details.load(new AbortController().signal, () => {})
     await grouped.load(new AbortController().signal, () => {})
@@ -452,21 +452,19 @@ describe('unified production records', () => {
     ])
   })
 
-  it('shows totals for every matching record and keeps one entry in normal and fullscreen modes', async () => {
+  it('keeps pagination without totals in normal and fullscreen modes', async () => {
     await render()
-    expect(
-      wrapper.get('.processing-totals').element.closest('.workspace-pagination'),
-    ).not.toBeNull()
+    expect(wrapper.find('.processing-totals').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('个人日产')
-    expect(wrapper.get('[aria-label="筛选结果加工工作量合计"]').text()).toContain(
-      '完成 100 件次 / 98 kg',
-    )
+    expect(wrapper.text()).not.toContain('筛选结果合计')
+    expect(wrapper.getComponent(ElPagination).props('total')).toBe(21)
     expect(wrapper.text()).not.toContain('1 笔历史记录信息不全，未计入工作量')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     await wrapper.setProps({ fullscreen: true })
     expect(wrapper.findComponent(FilterDialog).exists()).toBe(true)
     expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
-    expect(wrapper.find('[aria-label="筛选结果加工工作量合计"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="筛选结果加工工作量合计"]').exists()).toBe(false)
+    expect(wrapper.getComponent(ElPagination).props('total')).toBe(21)
   })
   it('uses the applied actual-date and person filters for both export formats', async () => {
     const router = await render()
@@ -499,7 +497,8 @@ describe('unified production records', () => {
     const detailed = exports.props('source')()!
     const grouped = exports.props('variants')!()[0]!
     expect(detailed.total).toBe(21)
-    expect(grouped.total).toBe(2)
+    expect(grouped.total).toBeNull()
+    expect(teamMaterialApi.processingDaily).not.toHaveBeenCalled()
     const data = await grouped.load(new AbortController().signal, () => {})
     expect(data[0]).toMatchObject({
       completed_quantity: 100,
@@ -567,7 +566,7 @@ it('keeps processing history read-only and does not let production initiate rewo
   })
 })
 
-it('separates rework totals and exports rework identity alongside initial production', async () => {
+it('exports rework identity without showing list totals', async () => {
   vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
     items: [{ ...record(), work_kind: 'rework', rework_round: 3, rework_of_id: 9 }],
     total: 1,
@@ -586,7 +585,7 @@ it('separates rework totals and exports rework identity alongside initial produc
     },
   })
   await render()
-  expect(wrapper.text()).toContain('首次任务完成')
+  expect(wrapper.text()).not.toContain('首次任务完成')
   expect(wrapper.text()).toContain('返工 · 第 3 次')
   const source = wrapper.getComponent(TableExportButton).props('source')()!
   const exported = await source.load(new AbortController().signal, () => {})

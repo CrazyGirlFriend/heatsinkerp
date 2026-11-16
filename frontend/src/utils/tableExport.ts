@@ -15,7 +15,7 @@ export interface ExportField {
 }
 export interface TableExportSource {
   title: string
-  total: number
+  total: number | null
   fields: ExportField[]
   workbook?: (rows: Record<string, ExportValue>[]) => Promise<Blob>
   load: (
@@ -29,7 +29,7 @@ export interface TableExportField<T> extends ExportField {
 
 export function tableExportSource<T>(
   title: string,
-  total: number,
+  total: number | null,
   fields: TableExportField<T>[],
   load: (signal: AbortSignal, progress: (loaded: number, total: number) => void) => Promise<T[]>,
 ): TableExportSource {

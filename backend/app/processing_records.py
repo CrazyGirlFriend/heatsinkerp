@@ -602,6 +602,7 @@ def list_records(
     work_kind=None,
     processing_task_id=None,
     purpose_id=None,
+    include_summary=True,
     page=1,
     page_size=20,
 ):
@@ -647,46 +648,51 @@ def list_records(
         .where(*conditions)
     )
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    groups = production_groups(conditions).subquery()
     people = participant_pairs()
-    employee_days = (
-        select(Adjustment.processing_date, people.c.employee_id)
-        .join(Transfer, Transfer.id == Adjustment.source_transfer_id)
-        .outerjoin(TeamEmployee, TeamEmployee.id == Adjustment.processor_employee_id)
-        .join(people, people.c.processing_id == Adjustment.id)
-        .where(
-            *conditions,
-            Adjustment.processing_date.is_not(None),
-            Adjustment.completed_quantity.is_not(None),
-        )
-        .distinct()
-        .subquery()
-    )
-    totals = (
-        db.execute(
-            select(
-                select(func.count())
-                .select_from(employee_days)
-                .scalar_subquery()
-                .label("employee_day_count"),
-                func.count().label("daily_group_count"),
-                func.sum(groups.c.processing_minutes).label("processing_minutes"),
-                func.sum(groups.c.labor_minutes).label("labor_minutes"),
-                func.coalesce(func.sum(groups.c.duration_record_count), 0).label(
-                    "duration_record_count"
-                ),
-                func.coalesce(func.sum(groups.c.record_count), 0).label("record_count"),
-                *(func.coalesce(func.sum(groups.c[key]), 0).label(key) for key in SUMMARY_METRICS),
+    summary = None
+    if include_summary:
+        groups = production_groups(conditions).subquery()
+        employee_days = (
+            select(Adjustment.processing_date, people.c.employee_id)
+            .join(Transfer, Transfer.id == Adjustment.source_transfer_id)
+            .outerjoin(TeamEmployee, TeamEmployee.id == Adjustment.processor_employee_id)
+            .join(people, people.c.processing_id == Adjustment.id)
+            .where(
+                *conditions,
+                Adjustment.processing_date.is_not(None),
+                Adjustment.completed_quantity.is_not(None),
             )
+            .distinct()
+            .subquery()
         )
-        .mappings()
-        .one()
-    )
-    summary = {
-        key: None if value is None else float(value) if key.endswith("weight") else int(value)
-        for key, value in totals.items()
-    }
-    summary["unreported_count"] = total - summary["record_count"]
+        totals = (
+            db.execute(
+                select(
+                    select(func.count())
+                    .select_from(employee_days)
+                    .scalar_subquery()
+                    .label("employee_day_count"),
+                    func.count().label("daily_group_count"),
+                    func.sum(groups.c.processing_minutes).label("processing_minutes"),
+                    func.sum(groups.c.labor_minutes).label("labor_minutes"),
+                    func.coalesce(func.sum(groups.c.duration_record_count), 0).label(
+                        "duration_record_count"
+                    ),
+                    func.coalesce(func.sum(groups.c.record_count), 0).label("record_count"),
+                    *(
+                        func.coalesce(func.sum(groups.c[key]), 0).label(key)
+                        for key in SUMMARY_METRICS
+                    ),
+                )
+            )
+            .mappings()
+            .one()
+        )
+        summary = {
+            key: None if value is None else float(value) if key.endswith("weight") else int(value)
+            for key, value in totals.items()
+        }
+        summary["unreported_count"] = total - summary["record_count"]
     processors = (
         db.execute(
             select(

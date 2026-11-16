@@ -25,7 +25,7 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
-import type { ProcessingDailyRow, ProcessingRecordSummary } from '@/types/materialProcessing'
+import type { ProcessingDailyRow } from '@/types/materialProcessing'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { ProcessingRecord } from '@/types/materialProcessing'
@@ -88,7 +88,6 @@ const processorName = computed({
     processorId.value = processors.value.find((person) => person.name === name)?.id || null
   },
 })
-const summary = ref<ProcessingRecordSummary | null>(null)
 const filterCount = computed(
   () =>
     Number(Boolean(text('date_from') || text('date_to') || text('work_date'))) +
@@ -183,7 +182,6 @@ async function load(background = false) {
     loading.value = true
     rows.value = []
     parameterKeys.value = []
-    summary.value = null
   }
   error.value = ''
   try {
@@ -201,7 +199,6 @@ async function load(background = false) {
     rows.value = result.items
     parameterKeys.value = result.parameter_fields || []
     total.value = result.total
-    summary.value = result.summary || null
     processors.value = result.processors || []
     tasks.value = result.processing_tasks || []
   } catch (e) {
@@ -441,20 +438,15 @@ function exportSources() {
   }))
   if (props.management && templates.length) return templates
   const sources = [exportSource(), ...templates]
-  if (!summary.value) return sources
   return [
     ...sources,
-    tableExportSource(
-      '按参与人员和任务汇总',
-      summary.value.daily_group_count ?? summary.value.employee_day_count,
-      dailyColumns,
-      (signal, progress) =>
-        loadExportPages(
-          (page, pageSize) =>
-            teamMaterialApi.processingDaily(id, { ...params, page, page_size: pageSize }),
-          signal,
-          progress,
-        ),
+    tableExportSource('按参与人员和任务汇总', null, dailyColumns, (signal, progress) =>
+      loadExportPages(
+        (page, pageSize) =>
+          teamMaterialApi.processingDaily(id, { ...params, page, page_size: pageSize }),
+        signal,
+        progress,
+      ),
     ),
   ]
 }
@@ -474,7 +466,6 @@ watch(
       ++generation
       processors.value = []
       tasks.value = []
-      summary.value = null
       if (text('processor_id') || text('processing_task_id') || text('purpose_id')) {
         void router.replace({
           path: route.path,
@@ -795,26 +786,6 @@ onBeforeUnmount(() => {
       @current-change="paginate($event)"
       @size-change="paginate(1, $event)"
     >
-      <template v-if="summary && !error && !reportTemplate" #statistics>
-        <div class="processing-totals" aria-label="筛选结果加工工作量合计">
-          <span class="summary-label">筛选结果合计</span>
-          <span
-            >首次任务完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件次 /
-            <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
-          >
-          <span
-            >废料 <strong>{{ inventoryAmount(summary.scrap_quantity) }}</strong> 件 /
-            <strong>{{ inventoryAmount(summary.scrap_weight) }}</strong> kg</span
-          >
-          <span
-            >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
-            {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
-          >
-          <span v-if="summary.labor_minutes != null"
-            >工时合计 <strong>{{ formatProcessingMinutes(summary.labor_minutes) }}</strong></span
-          >
-        </div>
-      </template>
       共 {{ total }} 条记录
     </WorkspacePagination>
     <QuantityAdjustmentDialog
@@ -831,24 +802,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.processing-totals {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  flex-shrink: 0;
-  gap: 8px 24px;
-  padding: 0;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.processing-totals strong {
-  color: var(--primary);
-  font-size: 16px;
-}
-.summary-label {
-  color: var(--muted);
-}
-
 .processing-record-detail {
   margin: 8px 16px 12px;
   padding: 14px 16px;

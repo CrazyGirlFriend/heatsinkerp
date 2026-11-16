@@ -58,6 +58,7 @@ def shipment_stock(
 
 @router.get("/{team_id}/processing-records", response_model=ProcessingRecordPageResponse)
 def list_processing_records(
+    include_summary: bool = Query(default=True),
     processor_id: int | None = Query(default=None, ge=1),
     processing_task_id: int | None = Query(default=None, ge=1),
     purpose_id: int | None = Query(default=None, ge=1),
@@ -76,6 +77,7 @@ def list_processing_records(
         lambda session: processing_records.list_records(
             session,
             team_id,
+            include_summary=include_summary,
             record_filters=record_filters,
             processor_id=processor_id,
             processing_task_id=processing_task_id,

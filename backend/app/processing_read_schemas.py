@@ -239,7 +239,7 @@ class ProcessingFilterOptionResponse(ReadResponse):
 
 class ProcessingRecordPageResponse(PageResponse[ProcessingRecordResponse]):
     parameter_fields: list[str]
-    summary: ProcessingSummaryResponse
+    summary: ProcessingSummaryResponse | None
     processors: list[ProcessingFilterOptionResponse]
     processing_tasks: list[ProcessingFilterOptionResponse]
     as_of: datetime

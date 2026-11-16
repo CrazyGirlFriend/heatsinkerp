@@ -421,107 +421,34 @@ describe('transfer header filtering', () => {
   })
 })
 
-describe('transfer amount summary', () => {
-  const summary = {
-    received: { quantity: 3784, weight: 1.1341 },
-    pending: { quantity: 2882, weight: 0.865 },
-  }
-  const summarized = { ...result, total: 105, summary }
-
-  it('shows all filtered totals in separate fields and retains them across pages', async () => {
-    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
+describe('transfer list without amount summaries', () => {
+  it('keeps pagination and stops requesting totals across filters, pages and refreshes', async () => {
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      ...result,
+      total: 105,
+      summary: {
+        received: { quantity: 3784, weight: 1.1341 },
+        pending: { quantity: 2882, weight: 0.865 },
+      },
+    })
     const page = await renderList('/transfer-batches?query=805881-5')
-    const totals = page.get('.transfer-summary')
-    expect(totals.get('[data-status="received"]').text()).toContain('已签收')
-    expect(totals.get('[data-status="pending"]').text()).toContain('待签收')
-    expect(totals.findAll('strong').map((item) => item.text())).toEqual([
-      '3,784',
-      '1.1341',
-      '2,882',
-      '0.865',
-    ])
-    await page.get('input[aria-label="搜索转料记录"]').setValue('未提交搜索')
+    expect(page.find('.transfer-summary').exists()).toBe(false)
+    expect(page.getComponent(ElPagination).props('total')).toBe(105)
     page.getComponent(ElPagination).vm.$emit('current-change', 2)
     await flushPromises()
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ query: '805881-5', page: 2, include_summary: true }),
+      expect.objectContaining({ query: '805881-5', page: 2 }),
     )
-    expect(totals.findAll('strong').map((item) => item.text())).toEqual([
-      '3,784',
-      '1.1341',
-      '2,882',
-      '0.865',
-    ])
-  })
-
-  it('clears totals while changing filters and discards stale results', async () => {
-    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
-    const page = await renderList('/transfer-batches?query=A')
-    let resolveB!: (value: typeof summarized) => void
-    vi.mocked(materialTransferApi.list).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveB = resolve
-      }),
-    )
-    await page.vm.$router.push('/transfer-batches?query=B')
+    await page.vm.$router.push('/transfer-batches?query=NEW&status=pending')
     await flushPromises()
-    expect(page.get('.transfer-summary').attributes('aria-busy')).toBe('true')
-    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
-      '—',
-      '—',
-      '—',
-      '—',
-    ])
-    const zeroSummary = {
-      received: { quantity: 0, weight: 0 },
-      pending: { quantity: 0, weight: 0 },
-    }
-    vi.mocked(materialTransferApi.list).mockResolvedValue({
-      ...result,
-      items: [],
-      total: 0,
-      summary: zeroSummary,
-    })
-    await page.vm.$router.push('/transfer-batches?query=C&status=voided')
-    await flushPromises()
-    resolveB(summarized)
-    await flushPromises()
-    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
-      '0',
-      '0',
-      '0',
-      '0',
-    ])
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ query: 'C', status: 'voided', include_summary: true }),
-    )
-  })
-
-  it('refreshes totals with records and retains the last result on a background failure', async () => {
-    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
-    const page = await renderList('/transfer-batches')
-    vi.mocked(materialTransferApi.list).mockResolvedValue({
-      ...summarized,
-      summary: {
-        received: { quantity: 6666, weight: 1.9991 },
-        pending: { quantity: 0, weight: 0 },
-      },
-    })
     await live.refresh()
-    await flushPromises()
-    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
-      '6,666',
-      '1.9991',
-      '0',
-      '0',
-    ])
-    vi.mocked(materialTransferApi.list).mockRejectedValueOnce(new Error('offline'))
-    await expect(live.refresh()).rejects.toThrow()
-    expect(page.get('.transfer-summary').text()).toContain('6,666')
-    vi.mocked(materialTransferApi.list).mockRejectedValueOnce(new Error('offline'))
-    await page.vm.$router.push('/transfer-batches?query=NEW')
-    await flushPromises()
-    expect(page.find('.transfer-summary').exists()).toBe(false)
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'NEW', status: 'pending' }),
+    )
+    for (const [params] of vi.mocked(materialTransferApi.list).mock.calls) {
+      expect(params?.include_summary).not.toBe(true)
+    }
+    expect(page.text()).not.toContain('全部筛选合计')
   })
 })
 

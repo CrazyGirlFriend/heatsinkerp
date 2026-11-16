@@ -29,6 +29,25 @@ function render(data = source()) {
 const button = (text: string) =>
   wrapper.findAllComponents({ name: 'ElButton' }).find((button) => button.text() === text)!
 describe('export field picker', () => {
+  it('loads grouped export counts only when exporting without requiring a list summary', async () => {
+    const create = vi.spyOn(exports, 'createExportWorkbook').mockResolvedValue(new Blob())
+    vi.spyOn(exports, 'downloadExportWorkbook').mockImplementation(() => undefined)
+    const data = render()
+    await wrapper.setProps({ source: { ...data, total: null } })
+    await flushPromises()
+    expect(document.body.textContent).toContain('当前筛选 · 全部记录')
+    expect(data.load).not.toHaveBeenCalled()
+    expect(button('导出 Excel').attributes('disabled')).toBeUndefined()
+    data.load.mockImplementationOnce(async (_signal, progress) => {
+      progress(1, 1)
+      return [{ serial: '0001', weight: 3.2, other: '20×30' }]
+    })
+    await button('导出 Excel').trigger('click')
+    await flushPromises()
+    expect(data.load).toHaveBeenCalledOnce()
+    expect(create).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('close')).toEqual([[]])
+  })
   it('shows the full filtered count, supports field choice and downloads only those fields', async () => {
     const create = vi.spyOn(exports, 'createExportWorkbook').mockResolvedValue(new Blob())
     const download = vi.spyOn(exports, 'downloadExportWorkbook').mockImplementation(() => undefined)

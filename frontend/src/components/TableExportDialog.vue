@@ -31,8 +31,8 @@ const emit = defineEmits<{ close: [] }>()
 const selected = ref<string[]>([]),
   busy = ref(false),
   error = ref(''),
-  loaded = ref(0),
-  total = ref(0)
+  loaded = ref(0)
+const total = ref<number | null>(0)
 const allSelected = computed(() => selected.value.length === activeSource.value?.fields.length)
 const hasExportFields = computed(
   () => Boolean(activeSource.value?.workbook) || selected.value.length > 0,
@@ -52,7 +52,7 @@ watch(
     cancel()
     error.value = ''
     loaded.value = 0
-    total.value = source?.total || 0
+    total.value = source ? source.total : 0
     selected.value =
       source?.fields.filter((field) => field.selected !== false).map((field) => field.key) || []
   },
@@ -67,7 +67,7 @@ async function exportFile() {
   busy.value = true
   error.value = ''
   try {
-    assertExportSize(selectedSource.total)
+    if (selectedSource.total !== null) assertExportSize(selectedSource.total)
     const rows = await selectedSource.load(task.signal, (count, size) => {
       loaded.value = count
       total.value = size
@@ -122,7 +122,10 @@ onBeforeUnmount(cancel)
       </ElRadioGroup>
       <div class="export-scope">
         <strong>{{ activeSource.title }}</strong
-        ><span>当前筛选 · 全部 {{ total.toLocaleString('zh-CN') }} 条</span>
+        ><span
+          >当前筛选 ·
+          {{ total === null ? '全部记录' : `全部 ${total.toLocaleString('zh-CN')} 条` }}</span
+        >
       </div>
       <p v-if="activeSource.workbook" class="export-scope">
         使用班组原始 Excel 模板；未登记的项目留空。
@@ -149,9 +152,11 @@ onBeforeUnmount(cancel)
       >
       <p v-if="busy" class="export-progress" role="status">
         {{
-          loaded === total
-            ? '正在生成 Excel…'
-            : `正在读取 ${loaded.toLocaleString('zh-CN')} / ${total.toLocaleString('zh-CN')} 条…`
+          total === null
+            ? '正在读取记录…'
+            : loaded === total
+              ? '正在生成 Excel…'
+              : `正在读取 ${loaded.toLocaleString('zh-CN')} / ${total.toLocaleString('zh-CN')} 条…`
         }}
       </p>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -163,7 +168,7 @@ onBeforeUnmount(cancel)
       ><ElButton
         class="action-warm"
         :loading="busy"
-        :disabled="!hasExportFields || !total"
+        :disabled="!hasExportFields || total === 0"
         @click="exportFile"
         >导出 Excel</ElButton
       ></template

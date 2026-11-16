@@ -17,6 +17,33 @@ from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
+def test_list_skips_aggregate_work_without_losing_record_labor_or_filters(
+    client, warehouse, monkeypatch
+):
+    from app import processing_records
+
+    lot, employee = setup_lot(client, warehouse)
+    response = work(client, warehouse, lot, employee, processing_minutes=60)
+    assert response.status_code == 201, response.text
+    record = response.json()
+
+    def unexpected_summary(*args, **kwargs):
+        raise AssertionError("A list request must not compute production totals")
+
+    monkeypatch.setattr(processing_records, "production_groups", unexpected_summary)
+    result = client.get(
+        base(warehouse, True) + "/processing-records",
+        params={"include_summary": False, "processor_id": employee["id"], "page_size": 1},
+    )
+    assert result.status_code == 200, result.text
+    page = result.json()
+    assert page["summary"] is None
+    assert page["total"] == 1
+    assert page["items"][0]["id"] == record["id"]
+    assert page["items"][0]["labor_minutes"] == 60
+    assert page["processors"] == [{"id": employee["id"], "name": employee["name"]}]
+
+
 def test_joint_work_filters_and_totals_count_the_work_once(client, warehouse):
     s = warehouse
     lot, first = setup_lot(client, s)
