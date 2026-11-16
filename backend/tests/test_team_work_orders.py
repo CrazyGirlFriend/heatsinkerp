@@ -176,10 +176,12 @@ def test_shared_stock_counts_each_member_once_and_excludes_arrivals(client, ware
     assert overview(client, warehouse["other"]["id"])["work_orders"]["in_progress_count"] == 2
 
 
+@pytest.mark.parametrize("team_key", ["team", "other"])
 def test_overdue_uses_delivery_status_deduplicates_serials_and_excludes_cancelled(
-    client, warehouse
+    client, warehouse, team_key
 ):
-    team = warehouse["other"]
+    team = warehouse[team_key]
+    destination = warehouse["other" if team_key == "team" else "team"]
     with SessionLocal() as db:
         for key, number, planning, cancelled, done in [
             ("late1", "A", "confirmed", False, False),
@@ -201,7 +203,7 @@ def test_overdue_uses_delivery_status_deduplicates_serials_and_excludes_cancelle
                 task_id=task.id,
                 serial_no=number,
                 team_id=team["id"],
-                next_team_id=warehouse["team"]["id"],
+                next_team_id=destination["id"],
                 due_at=datetime(2026, 11, 6),
                 initial_due_at=datetime(2026, 11, 6),
                 target_quantity=10,
@@ -213,7 +215,7 @@ def test_overdue_uses_delivery_status_deduplicates_serials_and_excludes_cancelle
             db.flush()
             if done:
                 origin = lot(db, team, number, "done-origin")
-                outgoing = send(db, origin, warehouse["team"], "done-out")
+                outgoing = send(db, origin, destination, "done-out")
                 db.add(ProductionScheduleDelivery(schedule_id=plan.id, transfer_id=outgoing.id))
         db.commit()
     assert overview(client, team["id"])["work_orders"]["overdue_count"] == 1
@@ -230,5 +232,5 @@ def test_warehouse_shows_handling_not_fake_processing(client, warehouse):
     result = overview(client, warehouse["team"]["id"])["work_orders"]
     assert result["mode"] == "handling"
     assert result["in_progress_count"] == 1
-    assert result["overdue_count"] is None
+    assert result["overdue_count"] == 0
     assert all(p["processed_count"] == 2 and p["completed_count"] == 1 for p in result["periods"])

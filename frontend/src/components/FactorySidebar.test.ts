@@ -47,6 +47,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
+      { path: '/material-inventory', component: page },
       { path: '/shared-material-records', component: page },
       { path: '/serial-reallocation-records', component: page },
       { path: '/settings/teams', component: page },
@@ -81,6 +82,27 @@ afterEach(() => {
 })
 
 describe('three-level team navigation', () => {
+  it.each(['ADMIN', 'TEAM'] as const)(
+    'opens factory-wide material inventory from a top-level entry for %s',
+    async (role) => {
+      signIn(role)
+      const { wrapper, router } = await renderSidebar('/team-workspaces/2?tab=dashboard')
+      const entry = wrapper.get('[aria-label="物料查询"]')
+      expect(entry.element.parentElement?.classList.contains('el-menu')).toBe(true)
+      expect(entry.element.closest('.el-sub-menu')).toBeNull()
+      await entry.trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.fullPath).toBe('/material-inventory')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('物料查询')
+      expect(wrapper.get('.factory-nav__current').attributes('aria-label')).toBe('物料查询')
+      expect(useSidebarStore(appPinia).opened).toEqual([])
+      expect(wrapper.get('[aria-label="流转查询"]').classes()).toContain('el-sub-menu')
+      expect(wrapper.find('[aria-label="转料记录"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="共投记录"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="转投记录"]').exists()).toBe(true)
+    },
+  )
+
   it('opens the shared quality list under production management and restores the active group', async () => {
     const { wrapper, router } = await renderSidebar('/dispatch-schedules')
     await wrapper.get('[aria-label="质量管理"]').trigger('click')
@@ -352,6 +374,7 @@ describe('three-level team navigation', () => {
       'team-8:inventory',
       'team-8:movement',
       'team-8:delivery',
+      'team-8:quality',
       'team-8:warehouse',
       'team-8:settings',
       'team-7:overview',

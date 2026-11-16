@@ -106,6 +106,12 @@ const router = createRouter({
       }),
     },
     {
+      path: '/material-inventory',
+      name: 'material-inventory',
+      component: () => import('@/pages/SerialInventoryPage.vue'),
+      meta: { title: '物料查询' },
+    },
+    {
       path: '/material-trace',
       name: 'material-trace',
       component: () => import('@/pages/SerialInventoryPage.vue'),

@@ -38,25 +38,27 @@ const menu = ref<MenuInstance>()
 const viewport = ref<HTMLElement>()
 const sidebar = useSidebarStore(appPinia)
 const activeGroup = computed(() =>
-  route.path.startsWith('/settings/')
-    ? 'settings'
-    : ['/factory-analysis', '/production-schedules'].includes(route.path)
-      ? 'factory'
-      : [
-            '/transfer-batches',
-            '/shared-material-records',
-            '/serial-reallocation-records',
-            '/material-trace',
-          ].includes(route.path)
-        ? 'materials'
+  route.path === '/material-inventory'
+    ? 'inventory'
+    : route.path.startsWith('/settings/')
+      ? 'settings'
+      : ['/factory-analysis', '/production-schedules'].includes(route.path)
+        ? 'factory'
         : [
-              '/process-routes',
-              '/business-people',
-              '/dispatch-schedules',
-              '/quality-management',
+              '/transfer-batches',
+              '/shared-material-records',
+              '/serial-reallocation-records',
+              '/material-trace',
             ].includes(route.path)
-          ? 'management'
-          : 'teams',
+          ? 'materials'
+          : [
+                '/process-routes',
+                '/business-people',
+                '/dispatch-schedules',
+                '/quality-management',
+              ].includes(route.path)
+            ? 'management'
+            : 'teams',
 )
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
 function capabilities(team: Team) {
@@ -91,7 +93,7 @@ const activeIndex = computed(() => {
   return route.path
 })
 const routeGroups = computed(() => [
-  ...(activeGroup.value === 'factory' ? [] : [activeGroup.value]),
+  ...(['factory', 'inventory'].includes(activeGroup.value) ? [] : [activeGroup.value]),
   ...(currentTeam.value ? [`team-${currentTeam.value.id}`] : []),
 ])
 function modulesFor(team: Team) {
@@ -428,6 +430,26 @@ const materialLinks = computed(() => [
             </template>
           </template>
         </ElSubMenu>
+        <ElMenuItem
+          index="/material-inventory"
+          aria-label="物料查询"
+          :aria-current="route.path === '/material-inventory' ? 'page' : undefined"
+          :class="{ 'factory-nav__current': activeGroup === 'inventory' }"
+          :aria-description="activeGroup === 'inventory' ? '当前页面所属模块' : undefined"
+        >
+          <ElIcon class="factory-nav__module-icon" aria-hidden="true"
+            ><FactoryNavIcon name="inventory"
+          /></ElIcon>
+          <template #title
+            ><span>物料查询</span
+            ><span
+              v-if="activeGroup === 'inventory' && !compact"
+              class="factory-nav__current-badge"
+              aria-hidden="true"
+              >当前</span
+            ></template
+          >
+        </ElMenuItem>
         <ElSubMenu
           index="materials"
           data-nav-index="materials"

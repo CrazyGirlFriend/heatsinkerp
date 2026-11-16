@@ -77,22 +77,6 @@ def work_order_summary(db, team, stock, *, now=None):
         for number, day in activity:
             if number and number.strip() and number not in unfinished:
                 completed[number] = max(completed.get(number, day), day)
-        progress = progress_table(team_id=team.id)
-        overdue = (
-            db.scalar(
-                select(func.count(func.distinct(ProductionSchedule.serial_no)))
-                .join(
-                    ProductionScheduleTask, ProductionScheduleTask.id == ProductionSchedule.task_id
-                )
-                .outerjoin(progress, progress.c.schedule_id == ProductionSchedule.id)
-                .where(
-                    ProductionSchedule.team_id == team.id,
-                    ProductionScheduleTask.cancelled_at.is_(None),
-                    status_expression(progress, now) == "overdue",
-                )
-            )
-            or 0
-        )
     else:
         # Warehouse handles receipts and dispatches; it does not register machining.
         transfer = MaterialTransfer
@@ -150,7 +134,20 @@ def work_order_summary(db, team, stock, *, now=None):
             activity.append((number, day))
             if dispatched and number not in unfinished:
                 completed[number] = max(completed.get(number, day), day)
-        overdue = None  # Existing warehouse delivery commitments are not assessed.
+    progress = progress_table(team_id=team.id)
+    overdue = (
+        db.scalar(
+            select(func.count(func.distinct(ProductionSchedule.serial_no)))
+            .join(ProductionScheduleTask, ProductionScheduleTask.id == ProductionSchedule.task_id)
+            .outerjoin(progress, progress.c.schedule_id == ProductionSchedule.id)
+            .where(
+                ProductionSchedule.team_id == team.id,
+                ProductionScheduleTask.cancelled_at.is_(None),
+                status_expression(progress, now) == "overdue",
+            )
+        )
+        or 0
+    )
     return {
         "mode": "processing" if processing else "handling",
         "in_progress_count": len(unfinished),

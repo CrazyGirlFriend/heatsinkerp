@@ -117,6 +117,18 @@ describe('phase-one routes', () => {
     expect(router.resolve('/material-trace').name).toBe('material-trace')
   })
 
+  it('allows a team account to query factory inventory and keeps login protection', async () => {
+    authMocks.admin = false
+    authMocks.user = { role: 'TEAM', team_id: 2 }
+    await router.push('/material-inventory?query=TL-001')
+    expect(router.currentRoute.value.fullPath).toBe('/material-inventory?query=TL-001')
+    expect(router.currentRoute.value.meta.title).toBe('物料查询')
+    authMocks.authenticated = false
+    await router.push('/material-inventory?inventory_team_id=3')
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query.redirect).toBe('/material-inventory?inventory_team_id=3')
+  })
+
   it.each([
     '/flows',
     '/flows/42',

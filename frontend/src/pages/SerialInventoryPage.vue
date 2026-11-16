@@ -164,6 +164,8 @@ const defaults = [
   'material_name',
   'material_type',
   'transfer_specification',
+  'batch_no',
+  'warehouse_location',
 ]
 const widths: Record<string, number> = {
   on_hand_quantity: 110,
@@ -442,7 +444,7 @@ function exportSource() {
   <section class="page workspace-page serial-inventory-page">
     <header class="inventory-header">
       <PageBackButton />
-      <h1>流水号查询</h1>
+      <h1>{{ route.path === '/material-inventory' ? '物料查询' : '流水号查询' }}</h1>
       <WatermelonFilter
         view-switch
         :model-value="view"
@@ -460,7 +462,7 @@ function exportSource() {
       <WorkspaceDataToolbar
         v-model="queryDraft"
         search-label="搜索库存"
-        placeholder="流水号、批次号、材质、规格或任务"
+        placeholder="流水号、批次号、仓库、材质、规格或任务"
         :maxlength="160"
         :loading="loading"
         columns

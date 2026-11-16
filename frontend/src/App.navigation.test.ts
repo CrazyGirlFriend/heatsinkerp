@@ -86,6 +86,7 @@ async function renderApp(mobile: boolean, path = '/transfer-batches') {
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
       { path: '/material-trace', component: page },
+      { path: '/material-inventory', meta: { title: '物料查询' }, component: page },
       { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
       { path: '/factory-live', redirect: '/factory-analysis' },
       { path: '/settings/teams', component: page },
@@ -199,6 +200,7 @@ describe('application navigation shell', () => {
       '/transfer-batches',
       '/transfer-batches/scan',
       '/material-trace',
+      '/material-inventory',
       '/settings/teams',
       '/settings/accounts',
       '/factory-analysis',
@@ -212,7 +214,7 @@ describe('application navigation shell', () => {
           .get('.factory-nav .el-menu')
           .findAll(':scope > .el-menu-item, :scope > .el-sub-menu')
           .map((group) => group.attributes('aria-label')),
-      ).toEqual(['全厂总览', '生产管理', '班组工作台', '流转查询', '系统设置'])
+      ).toEqual(['全厂总览', '生产管理', '班组工作台', '物料查询', '流转查询', '系统设置'])
       expect(wrapper.find('.factory-nav--overview').exists()).toBe(false)
       expect(wrapper.find('.topbar').exists()).toBe(false)
       expect(wrapper.find('.topbar-clock').exists()).toBe(false)

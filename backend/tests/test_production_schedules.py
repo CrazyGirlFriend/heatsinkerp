@@ -110,11 +110,68 @@ def test_actual_transfer_counts_before_receipt_receipt_is_separate_and_void_reve
         [{"source_transfer_id": lot["id"], "quantity": 60, "weight": 6}],
         idempotency_key="second",
     ).json()
-    assert get(client, item)["status"] == "not_assessed"
+    finished = get(client, item)
+    assert finished["status"] == "completed"
+    assert finished["assessment_enabled"] is True
+    assert finished["completed_at"] is not None
+    assert all(delivery["counts_toward_delivery"] for delivery in finished["deliveries"])
     endpoint = "/api/material-transfers/" + second["items"][0]["batch_no"]
     assert client.delete(endpoint, headers=s["headers"]).status_code == 204
     progress = get(client, item)
     assert progress["remaining_quantity"] == 60 and progress["dispatched_quantity"] == 40
+
+
+def test_warehouse_overdue_clears_only_after_full_dispatch_and_returns_on_void(client, warehouse):
+    from app.models import ScheduleNotice
+    from app.schedule_notices import refresh_deadlines
+    from test_team_dashboard import overview
+
+    s = warehouse
+    lot = intake(client, s).json()
+    item = plan(client, s, lot, due_at="2000-01-01T12:00:00+08:00")
+    assert item["status"] == "overdue"
+    assert overview(client, s["team"]["id"])["work_orders"]["overdue_count"] == 1
+    first = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 40, "weight": 4}])
+    assert first.status_code == 201, first.text
+    assert get(client, item)["status"] == "overdue"
+    second = dispatch(
+        client,
+        s,
+        [{"source_transfer_id": lot["id"], "quantity": 60, "weight": 6}],
+        idempotency_key="finish-late-warehouse",
+    )
+    assert second.status_code == 201, second.text
+    finished = get(client, item)
+    assert finished["status"] == "completed_late"
+    assert finished["completed_at"] is not None
+    assert finished["received_quantity"] == 0
+    assert all(row["counts_toward_delivery"] for row in finished["deliveries"])
+    assert overview(client, s["team"]["id"])["work_orders"]["overdue_count"] == 0
+    assert (
+        client.get(URL, params={"team_id": s["team"]["id"], "status": "overdue"}).json()["total"]
+        == 0
+    )
+    with SessionLocal.begin() as db:
+        refresh_deadlines(
+            db, db.scalar(select(User).where(User.role == "ADMIN")), datetime(2027, 1, 1)
+        )
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(ScheduleNotice)
+                .where(ScheduleNotice.schedule_id == item["id"], ScheduleNotice.kind == "overdue")
+            )
+            == 0
+        )
+    sent = second.json()["items"][0]
+    assert (
+        client.delete(
+            "/api/material-transfers/" + sent["batch_no"], headers=s["headers"]
+        ).status_code
+        == 204
+    )
+    assert get(client, item)["status"] == "overdue"
+    assert overview(client, s["team"]["id"])["work_orders"]["overdue_count"] == 1
 
 
 def test_no_retroactive_or_same_serial_unrelated_batch_attribution(client, warehouse):
@@ -302,7 +359,7 @@ def test_reallocation_changes_serial_and_requires_separate_schedule_binding(clie
     assert get(client, target)["dispatched_quantity"] == 10
 
 
-def test_warehouse_in_transit_inventory_shows_progress_without_assessment(client, warehouse):
+def test_warehouse_in_transit_inventory_completes_on_dispatch(client, warehouse):
     s = warehouse
     lot = intake(client, s, weight=10).json()
     item = plan(client, s, lot)
@@ -322,7 +379,7 @@ def test_warehouse_in_transit_inventory_shows_progress_without_assessment(client
     )
     assert response.status_code == 200, response.text
     for summary in response.json()["groups"] + response.json()["sources"]:
-        assert summary["count"] == 1 and summary["status"] == "not_assessed"
+        assert summary["count"] == 1 and summary["status"] == "completed"
         assert summary["items"][0]["id"] == item["id"]
         assert summary["items"][0]["received_quantity"] == 0
 

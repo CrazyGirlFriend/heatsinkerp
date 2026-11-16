@@ -132,7 +132,20 @@ it('shows warehouse balances instead of pretending warehouse stock has processin
   expect(wrapper.findAllComponents(DashboardDonut)).toHaveLength(2)
   expect(wrapper.text()).not.toContain('在库加工状态')
   expect(wrapper.text()).toContain('本周收发工单')
-  expect(wrapper.text()).toContain('库房交期不考核')
+  expect(wrapper.text()).not.toContain('库房交期不考核')
+  const overdue = wrapper.findAllComponents(DashboardMetric)[2]!
+  expect(overdue.props()).toMatchObject({ value: 2, detail: '超过约定交期 · 尚未转完' })
+  expect(overdue.props('static')).toBeFalsy()
+  await overdue.get('button[aria-label="查看当前逾期工单"]').trigger('click')
+  expect(wrapper.emitted('navigate')?.at(-1)).toEqual([
+    { tab: 'delivery-schedule', status: 'overdue' },
+  ])
+  expect(wrapper.text()).toContain('质量问题')
+  const period = vi.mocked(factoryPerformanceApi.get).mock.calls.at(-1)![0]!
+  wrapper.findAllComponents(DashboardDonut)[1]!.vm.$emit('select', 'pending')
+  expect(wrapper.emitted('navigate')?.at(-1)).toEqual([
+    { ...period, tab: 'quality-feedback', team_id: '2', status: 'pending' },
+  ])
 })
 it('does not present a failed inventory request as zero stock', async () => {
   await render()

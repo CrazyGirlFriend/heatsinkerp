@@ -160,9 +160,8 @@ const metrics = computed(() => [
     unit: '单',
     icon: IconAlertCircle,
     tone: 'danger' as const,
-    detail: props.processing ? '超过约定交期 · 尚未交完' : '库房交期不考核',
+    detail: '超过约定交期 · 尚未转完',
     help: '与交期页面一致，按流水号去重；任一批次逾期未交完即计入。已交完、已取消及尚未确认的计划不计入。',
-    static: !props.processing,
     open: () => emit('navigate', { tab: 'delivery-schedule', status: 'overdue' }),
   },
   {

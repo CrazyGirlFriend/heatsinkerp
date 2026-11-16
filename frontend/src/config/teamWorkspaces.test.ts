@@ -40,11 +40,15 @@ describe('eight official workspace profiles', () => {
 })
 
 describe('shared workspace navigation', () => {
-  it('omits warehouse quality while preserving production and inspection quality entries', () => {
-    expect(teamWorkspaceModulesFor(true, true, true).map((module) => module.value)).not.toContain(
+  it('includes warehouse quality feedback without enabling inspection registration', () => {
+    expect(teamWorkspaceModulesFor(true, true, true).map((module) => module.value)).toContain(
       'quality',
     )
-    expect(resolveTeamWorkspaceSection({ tab: 'quality-feedback' }, true)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ tab: 'quality-feedback' }, true)).toBe('quality-feedback')
+    expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, true)).toBe('quality-feedback')
+    expect(teamWorkspaceSectionsFor(true).map((section) => section.value)).not.toContain(
+      'inspection-results',
+    )
     for (const inspection of [false, true]) {
       expect(
         teamWorkspaceModulesFor(false, false, true, true, inspection)
@@ -148,7 +152,7 @@ describe('shared workspace navigation', () => {
   })
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, false)).toBe('quality-feedback')
-    expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, true)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ tab: 'inspections' }, true)).toBe('quality-feedback')
     expect(
       teamWorkspaceSectionsFor(false, false, true, true, true).map((item) => item.value),
     ).not.toContain('inspections')

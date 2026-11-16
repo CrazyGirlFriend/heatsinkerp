@@ -103,7 +103,7 @@ def test_task_filters_paginate_matching_tasks_but_return_whole_route(client, war
         ).status_code
         == 201
     )
-    assert task_detail(client, first)["nodes"][0]["status"] == "not_assessed"
+    assert task_detail(client, first)["nodes"][0]["status"] == "completed"
     assert task_detail(client, first)["status"] == "overdue"
     assert client.get(TASKS, params={"status": "completed"}).json()["total"] == 0
     overdue = client.get(TASKS, params={"status": "overdue"}).json()
@@ -308,7 +308,7 @@ def test_partial_completed_outputs_count_but_unprocessed_dispatch_does_not(clien
     ]
 
 
-def test_partial_flow_shows_actual_locations_and_warehouse_is_not_assessed(client, warehouse):
+def test_partial_flow_shows_actual_locations_and_warehouse_is_assessed(client, warehouse):
     s = warehouse
     lot = intake(client, s).json()
     item = create(client, route(s, lot))
@@ -319,8 +319,8 @@ def test_partial_flow_shows_actual_locations_and_warehouse_is_not_assessed(clien
     assert locations[s["team"]["id"]]["quantity"] == 60
     assert locations[s["other"]["id"]]["pending_quantity"] == 40
     assert locations[s["other"]["id"]]["quantity"] == 0
-    assert task["nodes"][0]["status"] == "not_assessed"
-    assert task["nodes"][0]["assessment_enabled"] is False
+    assert task["nodes"][0]["status"] == "pending"
+    assert task["nodes"][0]["assessment_enabled"] is True
     assert task["nodes"][0]["completed_at"] is None
     assert confirm(client, s, sent.json(), workshop=True).status_code == 200
     locations = {row["team_id"]: row for row in task_detail(client, item)["locations"]}
@@ -335,7 +335,7 @@ def test_order_attention_includes_warehouse_customer_commitment(client, warehous
         payload["nodes"][1]["due_at"] = "2000-01-01T12:00:00+08:00"
         create(client, payload)
     warehouse_only = plan(client, s, due_at="2000-01-01T12:00:00+08:00")
-    assert get(client, warehouse_only)["status"] == "not_assessed"
+    assert get(client, warehouse_only)["status"] == "overdue"
     assert client.get(TASKS, params={"scope": "completed"}).json()["total"] == 0
     page = client.get(TASKS, params={"scope": "attention", "page_size": 1, "page": 2}).json()
     assert page["total"] == 3 and len(page["items"]) == 1

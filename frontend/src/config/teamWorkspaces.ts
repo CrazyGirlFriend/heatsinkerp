@@ -80,7 +80,6 @@ export function teamWorkspaceSectionsFor(
       (section.value !== 'settings' || manageSettings) &&
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
-      (section.value !== 'quality-feedback' || !warehouse) &&
       (section.value !== 'inspection-results' || inspection) &&
       (section.value !== 'processing' || processing),
   )
@@ -95,7 +94,7 @@ export function resolveTeamWorkspaceSection(
   inspection = false,
   manageSettings = false,
 ): TeamWorkspaceSection {
-  if (query.tab === 'inspections') return warehouse ? 'stock' : 'quality-feedback'
+  if (query.tab === 'inspections') return 'quality-feedback'
   if (query.tab === 'serials' || query.tab === 'materials' || query.tab === 'material-types')
     return 'stock'
   if (query.tab === 'overview') return 'history'

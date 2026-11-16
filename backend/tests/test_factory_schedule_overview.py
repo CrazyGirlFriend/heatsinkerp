@@ -25,9 +25,7 @@ def overview(client, days=7):
     return response.json()
 
 
-def test_counts_all_nodes_but_limits_attention_and_excludes_warehouse_and_cancelled(
-    client, warehouse
-):
+def test_counts_warehouse_deadlines_but_limits_attention_and_excludes_cancelled(client, warehouse):
     for i in range(8):
         plan(
             client,
@@ -44,10 +42,10 @@ def test_counts_all_nodes_but_limits_attention_and_excludes_warehouse_and_cancel
     with SessionLocal.begin() as db:
         db.get(ProductionScheduleTask, cancelled["task_id"]).cancelled_at = datetime(2026, 10, 21)
     data = overview(client)
-    assert data["period"] == {"completed": 0, "completed_late": 0, "overdue": 8}
-    assert data["overdue_count"] == 9  # Older overdue work remains visible.
+    assert data["period"] == {"completed": 0, "completed_late": 0, "overdue": 9}
+    assert data["overdue_count"] == 10  # Older overdue work remains visible.
     assert data["today_count"] == 1
-    assert data["assessed_count"] == 8
+    assert data["assessed_count"] == 9
     assert data["on_time_rate"] == 0
     assert len(data["attention"]) == 6
     assert all(row["status"] == "overdue" for row in data["attention"])

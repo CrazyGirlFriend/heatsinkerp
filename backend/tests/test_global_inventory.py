@@ -154,14 +154,29 @@ def test_cleared_lots_do_not_inflate_residence_and_shared_stock_is_not_duplicate
         assert stock(client, query=serial)["total"] == 1
 
 
-def test_factory_stock_requires_admin(client, stock_setup):
+def test_factory_stock_requires_login_and_team_accounts_can_query_all_teams(client, stock_setup):
+    teams = [stock_setup["target"], stock_setup["third"]]
+    with SessionLocal() as db:
+        for team in teams:
+            add_lot(db, team, "FACTORY-ALL")
+        db.commit()
     assert (
         client.get("/api/serial-inventory/stock", headers={"Authorization": ""}).status_code == 401
     )
-    assert (
-        client.get("/api/serial-inventory/stock", headers=stock_setup["target_headers"]).status_code
-        == 403
-    )
+    for headers in (stock_setup["source_headers"], stock_setup["target_headers"]):
+        result = client.get(
+            "/api/serial-inventory/stock", params={"query": "FACTORY-ALL"}, headers=headers
+        )
+        assert result.status_code == 200, result.text
+        rows = result.json()["items"]
+        assert {row["team_id"] for row in rows} == {team["id"] for team in teams}
+        for row in rows:
+            detail = client.get(
+                f"/api/team-materials/{row['team_id']}/inventory/{row['group_id']}/sources",
+                headers=headers,
+            )
+            assert detail.status_code == 200, detail.text
+            assert detail.json()["total"] == 1
 
 
 def test_property_filters_apply_to_balances_before_pagination(client, stock_setup, monkeypatch):

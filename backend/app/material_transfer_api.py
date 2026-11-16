@@ -60,7 +60,6 @@ def material_input_suggestions(
 
 @router.get(
     "/serial-inventory/stock",
-    dependencies=[Depends(require_admin)],
     response_model=FactoryInventoryPageResponse,
     response_model_exclude_unset=True,
 )

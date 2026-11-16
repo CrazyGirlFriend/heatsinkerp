@@ -213,7 +213,7 @@ def summaries(db, ids, *, now=None):
             "due_at": iso(plan.due_at),
             "planned_start_at": iso(schedule_batches.handover_start(plan, predecessors)),
             "team_name": values["team_name"],
-            "assessment_enabled": values["team_code"] != WAREHOUSE_TEAM_CODE,
+            "assessment_enabled": True,
             "initial_due_at": iso(plan.initial_due_at),
             "batches": batch_plans.get(plan.id, []),
             "planning_state": plan.planning_state,
@@ -294,6 +294,7 @@ def summaries(db, ids, *, now=None):
 def detail(db, plan_id):
     plan = require_plan(db, plan_id)
     result = summaries(db, [plan_id])[plan_id]
+    requires_processing = db.get(Team, plan.team_id).code != WAREHOUSE_TEAM_CODE
     delivery_batches = dict(
         db.execute(
             select(Delivery.transfer_id, Delivery.schedule_batch_id).where(
@@ -310,8 +311,9 @@ def detail(db, plan_id):
             "quantity": item.quantity,
             "weight": float(item.weight),
             "status": item.status,
-            "counts_toward_delivery": result["assessment_enabled"]
-            and valid_delivery(plan, item, assessed=True),
+            "counts_toward_delivery": valid_delivery(
+                plan, item, requires_processing=requires_processing
+            ),
             "transferred_at": iso(
                 item.created_at if item.entry_kind == "transfer" else item.dispatched_at
             ),
@@ -913,7 +915,7 @@ def candidates(db, team_id, lot_ids, next_team_id=None, external_destination=Non
     }
 
 
-def valid_delivery(plan, delivered, *, assessed):
+def valid_delivery(plan, delivered, *, requires_processing):
     return (
         (
             plan.process_route_id is None
@@ -927,7 +929,7 @@ def valid_delivery(plan, delivered, *, assessed):
         and delivered.next_team_id == plan.next_team_id
         and delivered.external_destination == plan.external_destination
         and delivered.material_type not in EXCLUDED_MATERIAL_TYPES
-        and (not assessed or delivered.sent_processing_status == "complete")
+        and (not requires_processing or delivered.sent_processing_status == "complete")
         and (
             (delivered.entry_kind == "transfer" and delivered.status in ("pending", "received"))
             or (
@@ -990,7 +992,7 @@ def associate_dispatch(db, team_id, payload, transfers):
     ):
         planned_batches.setdefault(batch.schedule_id, []).append(batch)
     totals, batch_totals = {}, {}
-    assessed = db.get(Team, team_id).code != WAREHOUSE_TEAM_CODE
+    requires_processing = db.get(Team, team_id).code != WAREHOUSE_TEAM_CODE
     for plan_id, batch_id, delivered in db.execute(
         select(Delivery.schedule_id, Delivery.schedule_batch_id, Transfer)
         .join(Transfer, Transfer.id == Delivery.transfer_id)
@@ -1000,7 +1002,7 @@ def associate_dispatch(db, team_id, payload, transfers):
         .execution_options(populate_existing=True)
     ):
         plan = locked[plan_id]
-        if valid_delivery(plan, delivered, assessed=assessed):
+        if valid_delivery(plan, delivered, requires_processing=requires_processing):
             quantity, weight = totals.get(plan_id, (0, 0))
             totals[plan_id] = (quantity + delivered.quantity, weight + delivered.weight)
             if batch_id:
@@ -1033,13 +1035,11 @@ def associate_dispatch(db, team_id, payload, transfers):
         choices = set()
         for plan_id, plan in locked.items():
             quantity, weight = totals.get(plan_id, (0, 0))
-            complete = (
-                assessed
-                and (plan.completion_basis == "weight" or quantity >= plan.target_quantity)
-                and (plan.completion_basis == "quantity" or weight >= plan.target_weight)
+            complete = (plan.completion_basis == "weight" or quantity >= plan.target_quantity) and (
+                plan.completion_basis == "quantity" or weight >= plan.target_weight
             )
             if planned_batches.get(plan_id):
-                complete = assessed and all(
+                complete = all(
                     (
                         plan.completion_basis == "weight"
                         or batch_totals.get(b.id, (0, 0))[0] >= b.target_quantity

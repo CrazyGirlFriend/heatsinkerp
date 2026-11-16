@@ -213,7 +213,8 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
     assert dispatch(client, s, [selected], idempotency_key="one-batch").json() == result.json()
     refreshed = get(client, item)
     assert [b["dispatched_quantity"] for b in refreshed["batches"]] == [40, 0]
-    assert all(b["status"] == "not_assessed" for b in refreshed["batches"])
+    assert [b["status"] for b in refreshed["batches"]] == ["completed", "pending"]
+    assert refreshed["batches"][0]["completed_at"] is not None
     assert save(client, refreshed, [writes(refreshed)[1]], s["headers"]).status_code == 409
     sent = result.json()["items"][0]
     assert (
@@ -225,8 +226,9 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
     assert get(client, item)["batches"][0]["dispatched_quantity"] == 0
 
 
-def test_early_batch_deadline_is_visible_in_filters(client, warehouse):
-    item = plan(client, warehouse, workshop=True)
+@pytest.mark.parametrize("workshop", [False, True])
+def test_early_batch_deadline_is_visible_in_filters(client, warehouse, workshop):
+    item = plan(client, warehouse, workshop=workshop)
     response = save(
         client,
         item,
@@ -234,7 +236,7 @@ def test_early_batch_deadline_is_visible_in_filters(client, warehouse):
             batch(1, 40, planned_start_at="2020-01-01T00:00:00Z", due_at="2020-01-02T00:00:00Z"),
             batch(2, 60, planned_start_at="2090-01-01T00:00:00Z", due_at="2090-01-02T00:00:00Z"),
         ],
-        warehouse["other_headers"],
+        warehouse["other_headers" if workshop else "headers"],
     )
     assert response.status_code == 200, response.text
     result = response.json()

@@ -37,7 +37,7 @@ def iso(value):
     return value.replace(tzinfo=timezone.utc).isoformat() if value else None
 
 
-def progress_table(*, plan_ids=None, team_id=None, batches=False, include_warehouse=False):
+def progress_table(*, plan_ids=None, team_id=None, batches=False, include_warehouse=True):
     """SQL aggregation precedes filtering/paging; cancelled transfers never fulfill."""
     transferred_at = case(
         (Transfer.entry_kind == "transfer", Transfer.created_at), else_=Transfer.dispatched_at
@@ -178,7 +178,7 @@ def progress_table(*, plan_ids=None, team_id=None, batches=False, include_wareho
     )
 
 
-def status_expression(progress, now, *, include_warehouse=False):
+def status_expression(progress, now, *, include_warehouse=True):
     local = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_ZONE)
     end_today = datetime.combine(local.date() + timedelta(days=1), time(), LOCAL_ZONE)
     end_today = end_today.astimezone(timezone.utc).replace(tzinfo=None)

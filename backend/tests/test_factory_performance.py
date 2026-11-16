@@ -286,6 +286,19 @@ def test_issue_visibility_cannot_be_bypassed_with_team_filter(client, facts):
     assert report(client)["issues"]["summary"]["total"] == 2
 
 
+def test_warehouse_quality_counts_and_details_stay_scoped_to_involved_team(client, facts):
+    warehouse_id = facts["team"]["id"]
+    own = inspection(facts, members=[warehouse_id], problems=[facts["problems"][0]])
+    inspection(facts, members=[facts["other"]["id"]], problems=[facts["problems"][1]])
+    client.headers.update(facts["headers"])
+    summary = report(client, team_id=warehouse_id)["issues"]["summary"]
+    assert summary == dict(total=1, pending=1, processing=0, closed=0, unresolved=1)
+    response = client.get("/api/quality-feedback", params={"team_id": warehouse_id})
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [own]
+    assert report(client, team_id=facts["other"]["id"])["issues"]["summary"]["total"] == 0
+
+
 def test_local_day_boundaries_empty_data_and_inactive_history(client, facts):
     inspection(facts, checked_at=datetime(2026, 10, 19, 15, 59, 59))
     inspection(facts, checked_at=datetime(2026, 10, 19, 16))

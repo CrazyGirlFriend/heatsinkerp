@@ -27,7 +27,6 @@ from .models import (
 )
 from .notice_schemas import ScheduleNoticeReadAll as ReadAll
 from .production_schedules import LOCAL_ZONE, iso, progress_table
-from .team_constants import WAREHOUSE_TEAM_CODE
 
 
 def insert_once(db, model, values, key):
@@ -160,7 +159,6 @@ def refresh_deadlines(db, user, now=None):
         query = query.join(Team, Team.id == Plan.team_id).where(
             Plan.cancelled_at.is_(None),
             Team.active.is_(True),
-            Team.code != WAREHOUSE_TEAM_CODE,
             target.due_at <= now + timedelta(hours=24),
         )
         if user.role != "ADMIN":

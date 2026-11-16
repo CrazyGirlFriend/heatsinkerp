@@ -76,7 +76,7 @@ def test_noop_failed_changes_and_cancelled_deadlines(client, warehouse):
     assert [n["kind"] for n in notices(client)["items"]] == ["cancelled", "new"]
 
 
-def test_deadline_stages_deduplicate_and_warehouse_is_not_assessed(client, warehouse):
+def test_deadline_stages_deduplicate_for_processing_and_warehouse(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
     plan(client, s)
@@ -89,8 +89,19 @@ def test_deadline_stages_deduplicate_and_warehouse_is_not_assessed(client, wareh
             refresh_deadlines(db, user, due - timedelta(hours=23))
             refresh_deadlines(db, user, due + timedelta(hours=1))
         db.commit()
-    assert [n["kind"] for n in notices(client)["items"]] == ["overdue", "due_soon", "new", "new"]
-    assert notices(client, s["headers"])["total"] == 1
+    assert sorted(n["kind"] for n in notices(client)["items"]) == [
+        "due_soon",
+        "due_soon",
+        "new",
+        "new",
+        "overdue",
+        "overdue",
+    ]
+    assert [n["kind"] for n in notices(client, s["headers"])["items"]] == [
+        "overdue",
+        "due_soon",
+        "new",
+    ]
 
 
 def test_batch_deadlines_use_each_batch_not_parent_and_final_due_notifies_teams(client, warehouse):

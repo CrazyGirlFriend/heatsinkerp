@@ -83,6 +83,7 @@ const breadcrumb = computed(() => {
   const title = String(route.meta.title || '物料流转')
   if (route.path === '/factory-analysis') return ['全厂总览']
   if (route.path.startsWith('/settings/')) return ['系统设置', title]
+  if (route.path === '/material-inventory') return ['物料查询']
   if (['/transfer-batches', '/material-trace'].includes(route.path)) return ['流转查询', title]
   return [title]
 })

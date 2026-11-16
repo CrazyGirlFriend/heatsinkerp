@@ -27,7 +27,6 @@ from .models import (
     utcnow,
 )
 from .production_schedule_schemas import ScheduleNode
-from .team_constants import WAREHOUSE_TEAM_CODE
 
 
 class BatchWrite(BaseModel):
@@ -141,13 +140,11 @@ def summaries(db, plans, *, now=None, predecessors=None):
     tasks = {
         t.id: t for t in db.scalars(select(Task).where(Task.id.in_({p.task_id for p in plans})))
     }
-    warehouse_ids = set(db.scalars(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE)))
     progress = progress_table(plan_ids=list(parents), batches=True, include_warehouse=True)
     totals = {row._mapping["schedule_id"]: row._mapping for row in db.execute(select(progress))}
     result = {}
     for b in batches:
         p = parents[b.schedule_id]
-        assessed = p.team_id not in warehouse_ids
         actual = totals.get(b.id, {})
         q, w = actual.get("dispatched_quantity", 0), actual.get("dispatched_weight", 0)
         rq, rw = actual.get("received_quantity", 0), actual.get("received_weight", 0)
@@ -155,8 +152,6 @@ def summaries(db, plans, *, now=None, predecessors=None):
         state = (
             "cancelled"
             if p.cancelled_at
-            else "not_assessed"
-            if not assessed
             else ("completed_late" if end > b.due_at else "completed")
             if end
             else "overdue"
@@ -183,7 +178,7 @@ def summaries(db, plans, *, now=None, predecessors=None):
                 "dispatched_weight": float(w),
                 "received_quantity": rq,
                 "received_weight": float(rw),
-                "completed_at": iso(end) if assessed else None,
+                "completed_at": iso(end),
                 "handover_completed_at": iso(end),
                 "handover_status": (
                     "cancelled"

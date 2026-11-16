@@ -17,6 +17,7 @@ import { ElOption } from 'element-plus'
 import TableExportButton from '@/components/TableExportButton.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
+import { useAuthStore } from '@/stores/auth'
 import SerialIncomingInventory from '@/components/SerialIncomingInventory.vue'
 import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -72,7 +73,10 @@ const response = (
 async function render(path = '/material-trace') {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/material-trace', component: SerialInventoryPage }],
+    routes: [
+      { path: '/material-trace', component: SerialInventoryPage },
+      { path: '/material-inventory', component: SerialInventoryPage },
+    ],
   })
   await router.push(path)
   wrapper = mount(SerialInventoryPage, {
@@ -255,6 +259,52 @@ it('loads all teams immediately and opens the existing inventory detail for the 
     group: { group_id: 12 },
     canWrite: false,
   })
+})
+
+it('shows all teams and material locations for a rolling-team account without enabling stock writes', async () => {
+  useAuthStore().session = {
+    access_token: 'inventory-reader',
+    token_type: 'Bearer',
+    user: {
+      id: 2,
+      username: 'rolling',
+      display_name: '轧制班组长',
+      role: 'TEAM',
+      team_id: 2,
+      team: { id: 2, code: 'FACTORY-ROLL', name: '轧制', kind: 'production', active: true },
+      active: true,
+    },
+  }
+  vi.spyOn(api, 'stock').mockResolvedValue(
+    response([
+      { ...row, batch_no: 'TL-ALL-1', warehouse_location: '原料区 A01' },
+      response().items[1]!,
+    ]),
+  )
+  const { page, router } = await render('/material-inventory')
+  expect(page.get('h1').text()).toBe('物料查询')
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ team_id: undefined, availability: 'current' }),
+  )
+  const table = page.get('[aria-label="全厂库存明细"]')
+  for (const value of ['库房', '轧制', 'TL-ALL-1', '原料区 A01'])
+    expect(table.text()).toContain(value)
+  await table
+    .findAll('button')
+    .find((button) => button.text() === '明细')!
+    .trigger('click')
+  expect(page.getComponent(TeamInventoryDetail).props()).toMatchObject({
+    teamId: 1,
+    canWrite: false,
+  })
+  page.getComponent(TeamInventoryDetail).vm.$emit('close')
+  await page.get('input[aria-label="搜索库存"]').setValue('TL-ALL-1')
+  await page.get('input[aria-label="搜索库存"]').trigger('keyup.enter')
+  await flushPromises()
+  expect(router.currentRoute.value.query.query).toBe('TL-ALL-1')
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ query: 'TL-ALL-1', team_id: undefined, page: 1 }),
+  )
 })
 
 it('uses receipt time for both processed and unprocessed stock', async () => {
