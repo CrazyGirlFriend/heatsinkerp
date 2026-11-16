@@ -507,6 +507,10 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
 
 def dispatch_fields(db, lot, target, kind, rework_return=False, policy=None):
     if kind in SCRAP_MATERIAL_TYPES:
+        if lot.material_type not in SCRAP_MATERIAL_TYPES and (
+            lot.rework_route_id or lot.rework_pending
+        ):
+            raise HTTPException(422, "本批须按返工工艺加工，不能直接改为废料转出")
         return {}  # Scrap follows existing scrap/quality controls, not product stages.
     from .rework_routes import dispatch_fields as rework_dispatch
 

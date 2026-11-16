@@ -123,6 +123,8 @@ def create(db, team_id, payload, user):
             from .inspections import require_clear
 
             require_clear(db, lot.id)
+            if lot.rework_route_id or lot.rework_pending:
+                raise HTTPException(422, "本批须按返工工艺处理并返回正常工序后再转投")
             team = require_team(
                 db.scalar(
                     select(Team)
