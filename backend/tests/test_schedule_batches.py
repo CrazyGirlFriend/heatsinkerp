@@ -42,14 +42,15 @@ def writes(item):
     return [{k: v for k, v in b.items() if k in fields} for b in item["batches"]]
 
 
-def test_team_proposes_batches_and_dispatch_owns_final_due(client, warehouse):
+def test_only_dispatch_plans_batches_and_owns_final_due(client, warehouse):
     s = warehouse
     item = plan(client, s, workshop=True)
     with SessionLocal() as db:
         final = db.get(ProductionScheduleTask, item["task_id"]).final_due_at
     rows = [batch(), batch(2, 60, due_at="2026-12-22T17:00:00+08:00")]
     assert save(client, item, rows, s["headers"]).status_code == 403
-    response = save(client, item, rows, s["other_headers"])
+    assert save(client, item, rows, s["other_headers"]).status_code == 403
+    response = save(client, item, rows)
     assert response.status_code == 200, response.text
     updated = response.json()
     assert updated["target_quantity"] == 100
@@ -59,7 +60,7 @@ def test_team_proposes_batches_and_dispatch_owns_final_due(client, warehouse):
     assert len(updated["history"][0]["after"]["batches"]) == 2
     with SessionLocal() as db:
         assert db.get(ProductionScheduleTask, item["task_id"]).final_due_at == final
-    assert save(client, item, rows, s["other_headers"]).status_code == 409
+    assert save(client, item, rows).status_code == 409
     # Dispatch may adjust the same batch plan; administrator cannot.
     assert (
         client.put(
@@ -75,7 +76,7 @@ def test_team_proposes_batches_and_dispatch_owns_final_due(client, warehouse):
     assert (
         client.put(
             f"{URL}/{item['id']}/batches",
-            headers=s["other_headers"],
+            headers=dispatcher(client),
             json={"expected_version": 3, "batches": rows, "final_due_at": "2099-01-01T00:00:00Z"},
         ).status_code
         == 422
@@ -99,7 +100,8 @@ def test_handover_start_follows_upstream_without_changing_downstream_commitment(
     s = warehouse
     first = plan(client, s)
     second = plan(client, s, workshop=True, predecessor_id=first["id"])
-    first = save(client, first, [batch(1, 100)], s["headers"]).json()
+    assert save(client, first, [batch(1, 100)], s["headers"]).status_code == 403
+    first = save(client, first, [batch(1, 100)]).json()
     assert first["batches"][0]["planned_start_at"] is None
     bid = first["batches"][0]["id"]
     body = [
@@ -111,7 +113,7 @@ def test_handover_start_follows_upstream_without_changing_downstream_commitment(
             upstream_batch_ids=[bid],
         )
     ]
-    response = save(client, second, body, s["other_headers"])
+    response = save(client, second, body)
     assert response.status_code == 200, response.text
     second = response.json()
     own_start = second["batches"][0]["planned_start_at"]
@@ -119,7 +121,7 @@ def test_handover_start_follows_upstream_without_changing_downstream_commitment(
     own_due = second["batches"][0]["due_at"]
     revised = writes(first)
     revised[0]["due_at"] = "2026-12-23T16:00:00+08:00"
-    assert save(client, first, revised, s["headers"]).status_code == 200
+    assert save(client, first, revised).status_code == 200
     refreshed = get(client, second)
     assert refreshed["batches"][0]["planned_start_at"] == "2026-12-23T08:00:00+00:00"
     assert refreshed["batches"][0]["planned_start_at"] != own_start
@@ -132,11 +134,11 @@ def test_handover_start_follows_upstream_without_changing_downstream_commitment(
         batch(upstream_batch_ids=[999999]),
         batch(id=bid),
     ]:
-        assert save(client, second, [invalid], s["other_headers"]).status_code == 422
-    assert save(client, second, [batch(), batch()], s["other_headers"]).status_code == 422
+        assert save(client, second, [invalid]).status_code == 422
+    assert save(client, second, [batch(), batch()]).status_code == 422
     # Referenced upstream batch cannot be removed by replacing its identity.
     current_first = get(client, first)
-    assert save(client, current_first, [batch(2, 100)], s["headers"]).status_code == 409
+    assert save(client, current_first, [batch(2, 100)]).status_code == 409
 
 
 def test_linked_batches_start_after_all_selected_supplies_and_ignore_legacy_start(
@@ -178,7 +180,7 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
     s = warehouse
     lot = intake(client, s).json()
     item = plan(client, s, lot)
-    assert save(client, item, [batch(1, 50)], s["headers"]).status_code == 422
+    assert save(client, item, [batch(1, 50)]).status_code == 422
     old = dispatch(
         client,
         s,
@@ -186,7 +188,7 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
         idempotency_key="old",
     )
     assert old.status_code == 201, old.text
-    response = save(client, item, [batch(), batch(2, 60)], s["headers"])
+    response = save(client, item, [batch(), batch(2, 60)])
     assert response.status_code == 200, response.text
     item = response.json()
     assert item["dispatched_quantity"] == 10
@@ -215,7 +217,7 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
     assert [b["dispatched_quantity"] for b in refreshed["batches"]] == [40, 0]
     assert [b["status"] for b in refreshed["batches"]] == ["completed", "pending"]
     assert refreshed["batches"][0]["completed_at"] is not None
-    assert save(client, refreshed, [writes(refreshed)[1]], s["headers"]).status_code == 409
+    assert save(client, refreshed, [writes(refreshed)[1]]).status_code == 409
     sent = result.json()["items"][0]
     assert (
         client.delete(
@@ -236,7 +238,6 @@ def test_early_batch_deadline_is_visible_in_filters(client, warehouse, workshop)
             batch(1, 40, planned_start_at="2020-01-01T00:00:00Z", due_at="2020-01-02T00:00:00Z"),
             batch(2, 60, planned_start_at="2090-01-01T00:00:00Z", due_at="2090-01-02T00:00:00Z"),
         ],
-        warehouse["other_headers" if workshop else "headers"],
     )
     assert response.status_code == 200, response.text
     result = response.json()
@@ -266,7 +267,6 @@ def test_each_batch_must_finish_and_date_filter_matches_early_batch(client, ware
             batch(1, 40, planned_start_at="2020-01-01T00:00:00Z", due_at="2020-01-02T00:00:00Z"),
             batch(2, 60, planned_start_at="2090-01-01T00:00:00Z", due_at="2090-01-02T00:00:00Z"),
         ],
-        s["other_headers"],
     )
     assert response.status_code == 200, response.text
     item = response.json()

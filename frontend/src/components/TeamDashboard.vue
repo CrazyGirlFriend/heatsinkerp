@@ -32,6 +32,7 @@ const props = defineProps<{
   overview: TeamMaterialOverview | null
   loading: boolean
   error: string
+  toolbarTarget?: HTMLElement
 }>()
 const emit = defineEmits<{ refresh: []; navigate: [query: Record<string, string>] }>()
 const metric = ref<Metric>('quantity')
@@ -222,21 +223,23 @@ const qualityRows = computed(() =>
 
 <template>
   <section class="team-dashboard wm-dashboard-layout" aria-label="班组概览">
-    <DashboardToolbar :updated-at="overview?.as_of" :loading="loading">
-      <WatermelonSegmented
-        v-model="metric"
-        label="在库统计单位"
-        :options="[
-          { value: 'quantity', label: '件数' },
-          { value: 'weight', label: '重量' },
-        ]"
-      />
-      <template #actions
-        ><AppButton :loading="loading || qualityLoading" @click="emit('refresh')"
-          ><IconRefresh :size="17" />刷新</AppButton
-        ></template
-      >
-    </DashboardToolbar>
+    <Teleport :to="toolbarTarget || 'body'" :disabled="!toolbarTarget">
+      <DashboardToolbar :inline="!!toolbarTarget" :updated-at="overview?.as_of" :loading="loading">
+        <WatermelonSegmented
+          v-model="metric"
+          label="在库统计单位"
+          :options="[
+            { value: 'quantity', label: '件数' },
+            { value: 'weight', label: '重量' },
+          ]"
+        />
+        <template #actions
+          ><AppButton :loading="loading || qualityLoading" @click="emit('refresh')"
+            ><IconRefresh :size="17" />刷新</AppButton
+          ></template
+        >
+      </DashboardToolbar>
+    </Teleport>
     <AppAlert v-if="error" :title="error" type="error" :closable="false" />
     <StatePanel
       v-if="!overview || !current"

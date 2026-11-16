@@ -632,7 +632,7 @@ def validate_plan(db, payload, plan=None):
 
 
 def update_commitment(db, plan_id, payload, user):
-    raise HTTPException(422, "请通过分批排期提交交期，由调度确认")
+    raise HTTPException(422, "请由调度通过分批排期修改交期")
 
 
 def save_plan(db, payload, user, plan_id=None):

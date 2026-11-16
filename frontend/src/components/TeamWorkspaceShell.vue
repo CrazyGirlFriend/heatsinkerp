@@ -247,7 +247,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </header>
-    <div v-show="!fullscreen" class="team-workspace__navigation-bar">
+    <div
+      v-show="!fullscreen"
+      class="team-workspace__navigation-bar"
+      :class="{ 'team-workspace__navigation-bar--tools': $slots['heading-tools'] }"
+    >
       <div class="team-workspace__heading page-heading-start">
         <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
         <slot name="heading-view"
@@ -269,6 +273,9 @@ onBeforeUnmount(() => {
             <span v-else class="team-workspace__module">{{ moduleLabel }}</span></template
           ></slot
         >
+      </div>
+      <div v-if="$slots['heading-tools']" class="team-workspace__heading-tools">
+        <slot name="heading-tools" />
       </div>
       <nav
         v-if="appearance !== 'watermelon'"
@@ -350,6 +357,14 @@ onBeforeUnmount(() => {
   align-items: center;
   flex: 0 0 auto;
   gap: 8px;
+  min-width: 0;
+}
+.team-workspace__navigation-bar--tools {
+  flex-wrap: wrap;
+  column-gap: 24px;
+}
+.team-workspace__heading-tools {
+  flex: 1 1 320px;
   min-width: 0;
 }
 .team-workspace__divider {

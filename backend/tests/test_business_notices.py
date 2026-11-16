@@ -117,7 +117,7 @@ def test_old_notice_targets_own_revision(client, warehouse):
 def test_batch_and_final_due_targets(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
-    r = save(client, p, [batch(1, 100)], s["other_headers"])
+    r = save(client, p, [batch(1, 100)])
     assert r.status_code == 200, r.text
     b = r.json()["batches"][0]
     with SessionLocal.begin() as db:

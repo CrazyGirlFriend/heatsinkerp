@@ -202,7 +202,7 @@ def save(db, plan_id, payload, user):
         plan = require_plan(db, plan_id, lock=True)
         from .schedule_permissions import require_planner, require_unlocked
 
-        require_planner(user, plan)
+        require_planner(user)
         if plan.cancelled_at or plan.version != payload.expected_version:
             raise HTTPException(409, "排期已变更，请刷新后重试")
         task = db.scalar(select(Task).where(Task.id == plan.task_id).with_for_update())

@@ -77,7 +77,7 @@ export const taskQueryColumns = queryColumns([
   ...fulfillmentColumns,
   ['班组排期', 'team_planning', 'select'],
   ['流水号', 'serial_no'],
-  ['数量（件）', 'quantity', 'number'],
+  ['本批数量（件）', 'quantity', 'number'],
   ['交货批数', 'delivery_batches', 'number'],
   ['最终交期', 'final_due_at', 'date'],
   ['创建时间', 'created_at', 'date'],

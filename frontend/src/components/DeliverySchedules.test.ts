@@ -393,7 +393,8 @@ describe('delivery schedule workbench', () => {
       )
     },
   )
-  it('edits the listed team occurrence using the latest schedule and refreshes after saving', async () => {
+  it('lets dispatch edit the listed occurrence using the latest schedule and refresh after saving', async () => {
+    state.auth.isDispatch = true
     const task = mockTaskRoute({ planning_state: 'confirmed' })
     await render()
     const fresh = { ...task.nodes[0]!, version: 4, due_at: '2026-10-23T08:00:00Z' }
@@ -417,6 +418,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
   it('does not open the editor when dispatch locked the order after the list was loaded', async () => {
+    state.auth.isDispatch = true
     const task = mockTaskRoute()
     await render()
     task.nodes[0] = { ...task.nodes[0]!, order_locked: true }
@@ -425,16 +427,22 @@ describe('delivery schedule workbench', () => {
     expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(5)
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
   })
-  it('does not offer list editing to another team or a read-only user', async () => {
-    mockTaskRoute({ team_id: 3, team_name: '研磨' })
-    await render()
-    expect(button('编辑')).toBeUndefined()
-    wrapper.unmount()
-    mockTaskRoute()
-    state.auth.isTeamAccount = false
-    await render()
-    expect(button('编辑')).toBeUndefined()
-  })
+  it.each(['owning team', 'other team', 'administrator'])(
+    'keeps plans read-only for the %s, including route details',
+    async (role) => {
+      mockTaskRoute(role === 'other team' ? { team_id: 3, team_name: '研磨' } : {})
+      if (role === 'administrator') {
+        state.auth.isTeamAccount = false
+        state.auth.isAdmin = true
+      }
+      await render(false, true)
+      expect(button('编辑')).toBeUndefined()
+      expect(wrapper.find('.schedule-task-route').exists()).toBe(true)
+      expect(wrapper.find('.schedule-task-route__plan').exists()).toBe(false)
+      expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+      if (role === 'owning team') expect(button('转出物料')).toBeDefined()
+    },
+  )
   it('confirms viewing the details without saving a plan or dispatching material', async () => {
     mockTaskRoute()
     const save = vi.spyOn(productionScheduleApi, 'saveBatches')
@@ -449,7 +457,8 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.emitted('dispatch')).toBeUndefined()
     expect(wrapper.emitted('changed')).toBeUndefined()
   })
-  it('opens the route before planning and edits the exact occurrence of the owning team', async () => {
+  it('lets dispatch open the route before planning and edit the exact team occurrence', async () => {
+    state.auth.isDispatch = true
     const task = mockTaskRoute()
     await render()
     expect(button('填写交期')).toBeUndefined()
@@ -482,6 +491,7 @@ describe('delivery schedule workbench', () => {
   it.each([{ order_locked: true }, { status: 'cancelled' as const }])(
     'keeps locked or cancelled route nodes read-only: %s',
     async (overrides) => {
+      state.auth.isDispatch = true
       mockTaskRoute(overrides)
       await render(false, true)
       expect(button('编辑')).toBeUndefined()
@@ -502,6 +512,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(6)
   })
   it('does not open a planner from a late response after the details were closed', async () => {
+    state.auth.isDispatch = true
     const task = mockTaskRoute()
     await render(false, true)
     let finish!: (value: ProductionSchedule) => void
@@ -517,6 +528,20 @@ describe('delivery schedule workbench', () => {
     await flushPromises()
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
     expect(wrapper.find('.schedule-task-route').exists()).toBe(false)
+  })
+  it('closes the planner when dispatch permission is lost', async () => {
+    state.auth.isDispatch = true
+    mockTaskRoute()
+    await render()
+    await button('编辑').trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(true)
+    state.auth.isDispatch = false
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    state.auth.isDispatch = true
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
   })
   it('clears the previous larger page while ten-row pagination is pending', async () => {
     const items = Array.from({ length: 23 }, (_, index) => ({ ...record(), id: index + 1 }))
@@ -769,14 +794,16 @@ describe('delivery schedule workbench', () => {
     )
     expect(vi.mocked(productionScheduleApi.list).mock.lastCall?.[0]?.status).toBeUndefined()
   })
-  it('lets the owning team adjust commitments without cancelling or changing the route', async () => {
+  it('lets the owning team view commitments and deliveries without changing the plan', async () => {
     await render(false, true)
     expect(productionScheduleApi.list).toHaveBeenCalledWith(expect.objectContaining({ team_id: 2 }))
     expect(wrapper.text()).toContain('原交货时间：2026-10-22 15:00')
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
     expect(wrapper.text()).toContain('已转出件数')
-    expect(button('修改批次计划')).toBeDefined()
+    expect(button('修改批次计划')).toBeUndefined()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(button('转出物料')).toBeDefined()
     expect(button('取消排期')).toBeUndefined()
     expect(button('添加下序节点')).toBeUndefined()
     expect(button('新建排期')).toBeUndefined()

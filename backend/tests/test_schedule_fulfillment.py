@@ -9,11 +9,14 @@ from app.models import (
     MaterialTransfer,
     ProductionSchedule,
     ProductionScheduleDelivery,
+    ProductionScheduleOrderFile,
     ProductionScheduleTask,
 )
+from app.process_route_orders import parse_order
 from app.schedule_fulfillment import fulfillment_values
 from test_external_outbound import confirm, legacy_dispatch
 from test_external_outbound import outbound as outbound  # noqa: F401
+from test_process_route_orders import VALUES, xlsx
 from test_table_queries import query
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
@@ -102,6 +105,41 @@ def test_customer_quantity_drives_order_completion_lateness_and_paged_filters(cl
         db.get(MaterialTransfer, first).status = "voided"
     assert not client.get(url).json()["order_completed"]
     assert client.get(url).json()["shipment_completed_at"] is None
+
+
+def test_original_order_total_is_reference_only_for_current_delivery(client, outbound):
+    task_id, node_id = order(
+        outbound,
+        batches=[
+            {"batch_number": 1, "target_quantity": 4008, "due_at": "2000-01-03T00:00:00+00:00"}
+        ],
+    )
+    values = VALUES.copy()
+    values[0], values[4] = outbound["lots"][0]["serial_no"], "10800"
+    content = xlsx(values)
+    with SessionLocal.begin() as db:
+        db.get(MaterialTransfer, outbound["lots"][0]["id"]).quantity = 4008
+        db.get(ProductionSchedule, node_id).target_quantity = 4008
+        db.add(
+            ProductionScheduleOrderFile(
+                task_id=task_id,
+                filename="订单.xlsx",
+                content=content,
+                document=parse_order(content, "订单.xlsx"),
+            )
+        )
+    ship(client, outbound, 4007, datetime(2000, 1, 2))
+    url = f"{URL}/tasks/{task_id}"
+    partial = client.get(url).json()
+    assert partial["order_quantity"] == 4008
+    assert not partial["order_completed"]
+    assert partial["order_document"]["receipt_fields"]["delivery_quantity"]["value"] == 10800
+    ship(client, outbound, 1, datetime(2000, 1, 3))
+    complete = client.get(url).json()
+    assert complete["order_quantity"] == complete["shipped_quantity"] == 4008
+    assert complete["order_completed"] and not complete["order_overdue"]
+    assert complete["status"] == "completed"
+    assert complete["order_document"]["receipt_fields"]["delivery_quantity"]["value"] == 10800
 
 
 @pytest.mark.parametrize(

@@ -127,7 +127,7 @@ def test_plan_for_another_lot_or_route_is_rejected(client, warehouse):
     assert get(client, chosen)["processed_quantity"] == 0
 
 
-def test_only_owner_can_change_team_commitment_and_final_deadline_stays_fixed(client, warehouse):
+def test_only_dispatch_changes_team_commitment_and_final_deadline_stays_fixed(client, warehouse):
     s = warehouse
     task = seed_task(
         client,
@@ -162,14 +162,15 @@ def test_only_owner_can_change_team_commitment_and_final_deadline_stays_fixed(cl
             },
             headers=s["other_headers"],
         ).status_code
-        == 422
+        == 403
     )
     rows = [batch(1, 10, due_at="2026-12-22T14:00:00+08:00")]
     assert save(client, node, rows, s["headers"]).status_code == 403
-    result = save(client, node, rows, s["other_headers"])
+    assert save(client, node, rows, s["other_headers"]).status_code == 403
+    result = save(client, node, rows)
     assert result.status_code == 200, result.text
     assert result.json()["target_quantity"] == 10
     assert result.json()["planning_state"] == "confirmed"
-    assert save(client, node, rows, s["other_headers"]).status_code == 409
+    assert save(client, node, rows).status_code == 409
     final = client.get(f"{URL}/tasks/{task['id']}").json()
     assert final["final_due_at"] == "2026-12-25T10:00:00+00:00"

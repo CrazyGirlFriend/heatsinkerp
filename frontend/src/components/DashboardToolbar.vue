@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { formatDateTime } from '@/utils/format'
-defineProps<{ updatedAt?: string; loading?: boolean }>()
+defineProps<{
+  updatedAt?: string
+  loading?: boolean
+  inline?: boolean
+}>()
 </script>
 <template>
-  <header class="dashboard-toolbar" :aria-busy="loading">
-    <div class="dashboard-toolbar__filters"><slot /></div>
+  <header
+    class="dashboard-toolbar"
+    :class="{ 'dashboard-toolbar--inline': inline }"
+    :aria-busy="loading"
+  >
+    <div class="dashboard-toolbar__filters">
+      <slot name="heading" />
+      <slot />
+    </div>
     <div class="dashboard-toolbar__actions">
       <span v-if="updatedAt" class="dashboard-toolbar__updated"
         >{{ formatDateTime(updatedAt) }} 更新</span
@@ -32,6 +43,12 @@ defineProps<{ updatedAt?: string; loading?: boolean }>()
   gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
+}
+.dashboard-toolbar--inline {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .dashboard-toolbar__actions {
   margin-left: auto;

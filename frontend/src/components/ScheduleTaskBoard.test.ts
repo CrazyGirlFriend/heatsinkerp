@@ -17,6 +17,7 @@ import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
 const hooks = vi.hoisted(() => ({ openDetail: vi.fn() }))
 vi.mock('./VTableScheduleTimeline.vue', () => ({
   default: {
@@ -408,6 +409,21 @@ describe('task scheduling board', () => {
 
     expect(wrapper.text()).not.toContain('101 件')
   })
+  it('shows the current delivery target separately from the reference order total in details', async () => {
+    const document = structuredClone(orderFixture)
+    document.receipt_fields.delivery_quantity!.value = 10800
+    vi.mocked(productionScheduleApi.task).mockResolvedValue({
+      ...task,
+      order_document: document,
+      delivery_batches: [{ batch_number: 1, target_quantity: 4008, due_at: task.final_due_at! }],
+    })
+    await render()
+    wrapper.getComponent({ name: 'VTableScheduleTimeline' }).vm.$emit('open-task', task)
+    await flushPromises()
+    const fields = wrapper.findAll('.task-detail__meta > div').map((item) => item.text())
+    expect(fields).toContain('本批交货量4,008 件')
+    expect(fields).toContain('订单总量（参考）10,800 件')
+  })
   it('shares the applied filters between global progress and export data', async () => {
     await render()
     expect(wrapper.find('input[aria-label="任务排期搜索"]').exists()).toBe(true)
@@ -488,6 +504,8 @@ describe('task scheduling board', () => {
     await flushPromises()
     expect(progress).toHaveBeenCalledWith(task.id)
     expect(wrapper.get('[aria-label="客户发货进度"]').text()).toContain('部分发货')
+    expect(wrapper.get('[aria-label="客户发货进度"]').text()).toContain('当前批次')
+    expect(wrapper.get('[aria-label="客户发货进度"]').text()).toContain('本批交货量')
     expect(wrapper.get('[aria-label="客户发货完成比例"]').attributes('aria-valuenow')).toBe('30')
     expect(wrapper.get('[aria-label="1 库房转出比例"]').attributes('aria-valuenow')).toBe('60')
     expect(wrapper.find('[aria-label="2 轧制加工比例"]').exists()).toBe(false)
@@ -735,7 +753,7 @@ describe('task scheduling board', () => {
     await flushPromises()
     settings
       .findAllComponents(ElCheckbox)
-      .find((checkbox) => checkbox.text() === '数量（件）')!
+      .find((checkbox) => checkbox.text() === '本批数量（件）')!
       .vm.$emit('update:modelValue', true)
     await settings.get('button[aria-label="上移流水号"]').trigger('click')
     await settings
@@ -743,7 +761,7 @@ describe('task scheduling board', () => {
       .find((item) => item.text() === '应用')!
       .trigger('click')
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '创建时间', '数量（件）', '操作'])
+    expect(headers()).toEqual(['流水号', '创建时间', '本批数量（件）', '操作'])
     const saved = JSON.parse(localStorage.getItem('heatsink.dispatch-columns.v1:1')!)
     expect(saved.slice(0, 3)).toEqual([
       { key: 'serial_no', visible: true },

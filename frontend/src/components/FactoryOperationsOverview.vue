@@ -303,7 +303,8 @@ function quality() {
 
 <template>
   <div class="operations-overview" :class="{ 'operations-overview--motion': motion }">
-    <DashboardToolbar :updated-at="updated" :loading="loading">
+    <DashboardToolbar inline :updated-at="updated" :loading="loading">
+      <template #heading><slot name="heading" /></template>
       <WatermelonSegmented
         label="概览统计单位"
         :model-value="metric"
@@ -501,12 +502,6 @@ function quality() {
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-}
-.operations-overview :deep(.dashboard-toolbar) {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
 }
 .operations-metrics {
   display: grid;

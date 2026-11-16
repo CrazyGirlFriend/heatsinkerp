@@ -86,7 +86,7 @@ const canDispatch = computed(() =>
     auth.currentUser?.active !== false,
   ),
 )
-const canEditCommitment = computed(() => canDispatch.value || auth.isDispatch)
+const canEditCommitment = computed(() => auth.isDispatch)
 const teams = computed(() =>
   directory.items.filter(
     (team) => team.active && ['warehouse', 'production'].includes(team.kind || ''),
@@ -681,7 +681,7 @@ watch(
   },
 )
 watch(() => [route.query.schedule_id, route.query.notice], openScheduleNotice, { immediate: true })
-watch(canManage, (value) => {
+watch(canEditCommitment, (value) => {
   if (!value) {
     editing.value = false
   }
@@ -1088,7 +1088,7 @@ defineExpose({ exportSource, openDetail })
             :row-class-name="noticeBatchClass"
             border
             class="business-table"
-            empty-text="待班组安排批次"
+            empty-text="待调度安排批次"
             aria-label="分批排期明细"
           >
             <ElTableColumn label="批次" width="85"

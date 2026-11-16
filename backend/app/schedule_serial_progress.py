@@ -1,38 +1,20 @@
-"""A serial's operation plans and actual customer shipments, loaded on demand."""
+"""The selected schedule's operation plans and customer shipments, loaded on demand."""
 
 from sqlalchemy import func, select
 
 from .models import MaterialTransfer as Transfer
-from .models import ProductionScheduleTask as Task
 from .production_schedule_queries import iso
 from .production_schedule_tasks import require_task, task_values
-from .schedule_fulfillment import customer_shipments
+from .schedule_fulfillment import attributed_customer_shipments
 
 
 def progress(db, task_id):
     selected = require_task(db, task_id)
-    ids = list(
-        db.scalars(
-            select(Task.id)
-            .where(Task.serial_no == selected.serial_no, Task.cancelled_at.is_(None))
-            .order_by(Task.created_at.desc(), Task.id.desc())
-        )
-    )
-    values = task_values(db, ids)
-    tasks = [values[task_id] for task_id in ids]
-    targets = []
-    for task in tasks:
-        active = [node for node in task["nodes"] if not node["cancelled_at"]]
-        targets.append(
-            sum(batch["target_quantity"] for batch in task["delivery_batches"])
-            if task["delivery_batches"]
-            else active[-1]["target_quantity"]
-            if active
-            else None
-        )
-    # Warehouse/inspection customer exits count once. Internal handoffs, outsourcing,
-    # unfinished material, pending exits and voided records never count as shipped.
-    filters = (Transfer.serial_no == selected.serial_no, *customer_shipments())
+    task = task_values(db, [task_id])[task_id]
+    shipments = attributed_customer_shipments()
+    # Use the same attribution as the list: another batch of this serial must not
+    # inflate the selected schedule's shipment quantity or completion percentage.
+    filters = (Transfer.id.in_(select(shipments.c.id).where(shipments.c.task_id == task_id)),)
     total = db.execute(
         select(
             func.sum(Transfer.quantity),
@@ -56,10 +38,8 @@ def progress(db, task_id):
     )
     return {
         "serial_no": selected.serial_no,
-        "tasks": tasks,
-        "planned_quantity": sum(targets)
-        if targets and all(t is not None for t in targets)
-        else None,
+        "tasks": [task],
+        "planned_quantity": task["order_quantity"],
         "shipped_quantity": int(total[0] or 0),
         "shipped_weight": float(total[1] or 0),
         "last_shipped_at": iso(total[2]),

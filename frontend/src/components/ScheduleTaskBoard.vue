@@ -17,7 +17,7 @@ import ScheduleSerialProgress from './ScheduleSerialProgress.vue'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { plannedDueLabel } from '@/utils/schedulePlanning'
+import { plannedDueLabel, referenceOrderQuantity } from '@/utils/schedulePlanning'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElOption, ElTag, ElTableColumn, ElTabPane } from 'element-plus'
@@ -107,7 +107,7 @@ const tableQuery = useTableQuery(
 const draftSortOrder = ref(`${sortBy.value}:${sortOrder.value}`)
 const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },
-  { key: 'quantity', label: '数量（件）', width: 110 },
+  { key: 'quantity', label: '本批数量（件）', width: 140 },
   { key: 'delivery_batches', label: '交货批数', width: 100 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
   { key: 'shipped_quantity', label: '客户发货', width: 190 },
@@ -485,6 +485,7 @@ function exportSource() {
       { key: 'task_no', label: '任务编号', value: (task: ScheduleTask) => task.task_no },
       { key: 'title', label: '任务名称', value: (task) => task.title },
       { key: 'serial_no', label: '流水号', value: (task) => task.serial_no },
+      { key: 'quantity', label: '本批数量（件）', value: (task) => taskQuantity(task) },
       {
         key: 'business_person',
         label: '业务人员',
@@ -906,6 +907,15 @@ onBeforeUnmount(() => {
               >
             </div>
             <div class="task-detail__meta">
+              <div>
+                <span>本批交货量</span><strong>{{ formatAmount(taskQuantity(detail)) }} 件</strong>
+              </div>
+              <div>
+                <span>订单总量（参考）</span>
+                <strong
+                  >{{ formatAmount(referenceOrderQuantity(detail.order_document)) }} 件</strong
+                >
+              </div>
               <div>
                 <span>最终交货时间</span><strong>{{ formatDateTime(detail.final_due_at) }}</strong>
               </div>

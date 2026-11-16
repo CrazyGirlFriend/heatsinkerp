@@ -63,7 +63,7 @@ def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00")
     return response.json(), people
 
 
-def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
+def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
     client, warehouse, dispatcher
 ):
     task, people = create(client, warehouse, dispatcher)
@@ -80,14 +80,18 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
         expected_version=plan["version"],
         batches=[dict(batch_number=1, target_quantity=100, due_at="2026-12-29T16:00:00+08:00")],
     )
-    for headers in [None, warehouse["headers"]]:
+    for headers in [None, warehouse["headers"], warehouse["other_headers"]]:
         assert client.put(endpoint + "/batches", headers=headers, json=proposal).status_code == 403
-    response = client.put(endpoint + "/batches", headers=warehouse["other_headers"], json=proposal)
+    response = client.put(endpoint + "/batches", headers=dispatcher, json=proposal)
     assert response.status_code == 200, response.text
     saved = response.json()
     assert saved["planning_state"] == "confirmed" and saved["pending_batches"] is None
     assert saved["due_at"] == saved["batches"][0]["due_at"] == "2026-12-29T08:00:00+00:00"
     assert len(saved["batches"]) == 1
+    for headers in [warehouse["headers"], warehouse["other_headers"]]:
+        detail = client.get(endpoint, headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["batches"] == saved["batches"]
     # The retired approval operation is no longer exposed, even to dispatch.
     assert client.post(endpoint + "/review", headers=dispatcher, json={}).status_code == 404
     notices = client.get("/api/business-notices", headers=dispatcher).json()["items"]
@@ -103,7 +107,7 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
             }
         ],
     )
-    response = client.put(endpoint + "/batches", headers=warehouse["other_headers"], json=changed)
+    response = client.put(endpoint + "/batches", headers=dispatcher, json=changed)
     assert response.status_code == 200, response.text
     revised = response.json()
     assert revised["planning_state"] == "confirmed" and revised["pending_batches"] is None
@@ -132,8 +136,13 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
     assert listed.json()["items"][0]["locked_at"] == locked["locked_at"]
     current = client.get(endpoint).json()
     changed["expected_version"] = current["version"]
-    for headers in [dispatcher, warehouse["other_headers"]]:
-        assert client.put(endpoint + "/batches", headers=headers, json=changed).status_code == 409
+    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 409
+    assert (
+        client.put(
+            endpoint + "/batches", headers=warehouse["other_headers"], json=changed
+        ).status_code
+        == 403
+    )
     assert (
         client.request(
             "DELETE",
@@ -151,12 +160,7 @@ def test_team_plans_take_effect_on_save_and_order_lock_prevents_changes(
     assert client.get(f"{URL}/tasks/{task['id']}").json()["locked_at"] is None
     assert client.get(URL + "/tasks", params={"table_query": lock_filter}).json()["total"] == 0
     changed["expected_version"] = client.get(endpoint).json()["version"]
-    assert (
-        client.put(
-            endpoint + "/batches", headers=warehouse["other_headers"], json=changed
-        ).status_code
-        == 200
-    )
+    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 200
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 
@@ -248,7 +252,7 @@ def test_legacy_proposals_are_preserved_until_saved_directly(client, warehouse, 
     assert client.get(f"/api/business-notices/schedule/{notice_id}/target").status_code == 404
     result = client.put(
         endpoint + "/batches",
-        headers=warehouse["other_headers"],
+        headers=dispatcher,
         json={"expected_version": current["version"], "batches": [draft]},
     )
     assert result.status_code == 200, result.text

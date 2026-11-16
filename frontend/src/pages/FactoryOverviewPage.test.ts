@@ -39,7 +39,10 @@ async function render(path = '/', inventory = true) {
       stubs: {
         FactoryOverviewCharts: true,
         FactoryPerformancePanel: true,
-        FactoryOperationsOverview: true,
+        FactoryOperationsOverview: {
+          props: ['days', 'metric', 'motion'],
+          template: '<div><slot name="heading" /></div>',
+        },
       },
     },
   })
@@ -60,7 +63,7 @@ describe('factory dashboard', () => {
     const scrollTo = vi.fn()
     Object.defineProperty(root, 'scrollTo', { value: scrollTo, configurable: true })
     expect(wrapper.getComponent(FactoryOperationsOverview).props('days')).toBe(7)
-    expect(wrapper.findAll('.factory-section > h2').map((heading) => heading.text())).toEqual([
+    expect(wrapper.findAll('.factory-section-title').map((heading) => heading.text())).toEqual([
       '01运行概览',
       '02生产完成',
       '03检验与质量',

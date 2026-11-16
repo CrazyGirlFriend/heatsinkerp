@@ -1,4 +1,4 @@
-"""Dispatch owns orders; teams save their delivery plans directly."""
+"""Dispatch manages orders and delivery plans; teams view and execute them."""
 
 from datetime import datetime, timezone
 from pathlib import PurePath
@@ -481,7 +481,7 @@ def update(
 def update_batches(
     schedule_id: int,
     payload: schedule_batches.BatchPlanWrite,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedule_batches.save(db, schedule_id, payload, user)
@@ -495,7 +495,7 @@ def update_batches(
 def update_commitment(
     schedule_id: int,
     payload: ScheduleCommitmentUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedules.update_commitment(db, schedule_id, payload, user)

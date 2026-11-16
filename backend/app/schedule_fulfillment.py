@@ -58,11 +58,7 @@ def customer_shipments():
     )
 
 
-def fulfillment_table(db):
-    quantity, due, _ = target_columns(db)
-    targets = select(
-        Task.id.label("task_id"), quantity.label("order_quantity"), due.label("order_due_at")
-    ).subquery()
+def attributed_customer_shipments():
     # Prefer an explicit delivery link, then the source lot's processing/receipt link.
     # Unbound historical shipments may belong to a single active order only; the
     # same serial's shipment must never fulfill two orders or a later new order.
@@ -80,7 +76,7 @@ def fulfillment_table(db):
         .correlate(Transfer)
         .scalar_subquery()
     )
-    attributed = (
+    return (
         select(
             Transfer.id,
             Transfer.quantity,
@@ -98,6 +94,14 @@ def fulfillment_table(db):
         .where(*customer_shipments())
         .subquery()
     )
+
+
+def fulfillment_table(db):
+    quantity, due, _ = target_columns(db)
+    targets = select(
+        Task.id.label("task_id"), quantity.label("order_quantity"), due.label("order_due_at")
+    ).subquery()
+    attributed = attributed_customer_shipments()
     running = select(
         attributed,
         func.sum(attributed.c.quantity)

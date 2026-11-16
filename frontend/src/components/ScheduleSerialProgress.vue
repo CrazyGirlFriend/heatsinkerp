@@ -74,11 +74,11 @@ const asNode = (row: unknown) => row as ProductionSchedule
       <header>
         <h3>客户发货</h3>
         <AppTag :type="shipmentState === '已发齐' ? 'success' : 'info'">{{ shipmentState }}</AppTag
-        ><span class="serial-progress__scope">{{ data.serial_no }} · 累计</span>
+        ><span class="serial-progress__scope">{{ data.serial_no }} · 当前批次</span>
       </header>
       <div class="serial-progress__numbers">
         <div>
-          <span>计划数量</span
+          <span>本批交货量</span
           ><strong>{{ formatAmount(data.planned_quantity) }} <small>件</small></strong>
         </div>
         <div>

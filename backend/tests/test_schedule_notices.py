@@ -119,7 +119,6 @@ def test_batch_deadlines_use_each_batch_not_parent_and_final_due_notifies_teams(
                 due_at="2026-12-23T16:00:00+08:00",
             ),
         ],
-        s["other_headers"],
     )
     assert result.status_code == 200, result.text
     with SessionLocal() as db:
@@ -159,7 +158,7 @@ def test_completed_batch_does_not_create_reminders_and_cancelled_write_rolls_bac
         change(client, s, lot, 100, workshop=True, processing_status="complete").status_code == 201
     )
     p = plan(client, s, lot, workshop=True)
-    response = save(client, p, [batch(1, 100)], s["other_headers"])
+    response = save(client, p, [batch(1, 100)])
     assert response.status_code == 200, response.text
     b = response.json()["batches"][0]
     sent = dispatch(

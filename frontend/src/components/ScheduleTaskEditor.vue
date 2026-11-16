@@ -30,7 +30,8 @@ import type {
 } from '@/types/productionSchedule'
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { materialRequestKey } from '@/utils/materialStock'
-import { formatDateTime } from '@/utils/format'
+import { formatAmount, formatDateTime } from '@/utils/format'
+import { referenceOrderQuantity } from '@/utils/schedulePlanning'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 
 const props = defineProps<{
@@ -116,11 +117,14 @@ const quantity = ref<number | undefined>(
     undefined,
 )
 const importedQuantity = computed(() => Number(steps.value.at(-1)?.planned_quantity) || undefined)
+const orderQuantity = computed(() =>
+  referenceOrderQuantity(props.task ? props.task.order_document : orderDocument.value),
+)
 const quantityConfirmed = ref(false)
 const requiresQuantityConfirmation = computed(() => !props.task && !!importedQuantity.value)
 const quantityConfirmationError = computed(() =>
   submitted.value && requiresQuantityConfirmation.value && !quantityConfirmed.value
-    ? '请核对工艺和计划数量'
+    ? '请核对工艺和本批交货量'
     : '',
 )
 watch(
@@ -456,13 +460,13 @@ onMounted(loadRoutes)
               </div>
             </ElFormItem>
             <ElFormItem
-              label="计划数量"
+              label="本批交货量"
               class="form-field--short"
               required
               :error="submitted ? plannedQuantityError : ''"
             >
               <template #label
-                >计划数量
+                >本批交货量
                 <AutofillBadge
                   v-if="requiresQuantityConfirmation"
                   kind="document"
@@ -478,10 +482,13 @@ onMounted(loadRoutes)
                   :precision="0"
                   :controls="false"
                   :disabled="!task && !selectedRoute"
-                  aria-label="计划数量"
+                  aria-label="本批交货量"
                 />
                 <span>件</span>
               </div>
+            </ElFormItem>
+            <ElFormItem label="订单总量（参考）">
+              <span>{{ formatAmount(orderQuantity) }} 件</span>
             </ElFormItem>
           </CompactFormSection>
           <CompactFormSection title="分批交货">
@@ -614,7 +621,7 @@ onMounted(loadRoutes)
           <ImportedDataConfirmation
             v-if="requiresQuantityConfirmation"
             v-model="quantityConfirmed"
-            label="已核对工艺和计划数量"
+            label="已核对工艺和本批交货量"
             :error="quantityConfirmationError"
             :disabled="saving || !writable"
           />

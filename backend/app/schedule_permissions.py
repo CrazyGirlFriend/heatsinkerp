@@ -30,15 +30,6 @@ def require_unlocked(task):
         raise HTTPException(409, "订单已锁定，请联系调度解锁后修改")
 
 
-def require_planner(user, plan):
-    if is_dispatch(user):
-        return
-    if not (
-        user.role == "TEAM"
-        and user.active
-        and user.team_id == plan.team_id
-        and user.team
-        and user.team.active
-        and user.team.kind in ("production", "warehouse")
-    ):
-        raise HTTPException(403, "仅本班组长或调度可以安排交期")
+def require_planner(user):
+    if not is_dispatch(user):
+        raise HTTPException(403, "仅调度班组可以管理排期")

@@ -330,24 +330,27 @@ onBeforeUnmount(() => {
       </nav>
     </header>
     <section id="factory-overview" class="factory-section" aria-labelledby="factory-overview-title">
-      <h2 id="factory-overview-title"><span>01</span>运行概览</h2>
       <FactoryOperationsOverview
         :days="days"
         :metric="metric"
         :motion="motion"
         @preference="preference"
-      />
+      >
+        <template #heading>
+          <h2 id="factory-overview-title" class="factory-section-title"><span>01</span>运行概览</h2>
+        </template>
+      </FactoryOperationsOverview>
     </section>
     <section
       id="factory-production"
       class="factory-section"
       aria-labelledby="factory-production-title"
     >
-      <h2 id="factory-production-title"><span>02</span>生产完成</h2>
+      <h2 id="factory-production-title" class="factory-section-title"><span>02</span>生产完成</h2>
       <FactoryPerformancePanel scene="production" :motion="motion" />
     </section>
     <section id="factory-quality" class="factory-section" aria-labelledby="factory-quality-title">
-      <h2 id="factory-quality-title"><span>03</span>检验与质量</h2>
+      <h2 id="factory-quality-title" class="factory-section-title"><span>03</span>检验与质量</h2>
       <FactoryPerformancePanel scene="quality" :motion="motion" />
     </section>
     <section
@@ -355,7 +358,7 @@ onBeforeUnmount(() => {
       class="factory-section"
       aria-labelledby="factory-inventory-title"
     >
-      <h2 id="factory-inventory-title"><span>04</span>库存与交接</h2>
+      <h2 id="factory-inventory-title" class="factory-section-title"><span>04</span>库存与交接</h2>
       <DashboardToolbar class="factory-controls" :loading="loading" :updated-at="report?.as_of">
         <WatermelonSegmented
           label="全厂统计单位"
@@ -531,15 +534,16 @@ onBeforeUnmount(() => {
   padding-top: 28px;
   border-top: 1px solid var(--wm-border);
 }
-.factory-section > h2 {
+.factory-section-title {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  white-space: nowrap;
 }
-.factory-section > h2 > span {
+.factory-section-title > span {
   color: var(--wm-muted);
   font-size: 12px;
   font-weight: 500;

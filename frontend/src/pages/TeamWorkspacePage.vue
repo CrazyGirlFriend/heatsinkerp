@@ -95,6 +95,7 @@ import {
 } from '@/utils/teamTableExport'
 
 const columnSettingsTarget = ref<HTMLElement | null>(null)
+const dashboardToolbarTarget = ref<HTMLElement>()
 const emptyListTitle = computed(() => {
   if (tab.value === 'pending') return '暂无来料待签收'
   if (tab.value === 'outgoing') return '暂无出库记录'
@@ -1120,6 +1121,9 @@ onBeforeUnmount(() => {
     @update:model-value="selectSection"
     @fullscreen-change="fullscreen = $event"
   >
+    <template v-if="tab === 'dashboard'" #heading-tools>
+      <div ref="dashboardToolbarTarget" />
+    </template>
     <template v-if="canWrite && hasProcessing" #messages>
       <ElButton @click="reworkRequestOpen = true">提交问题</ElButton>
     </template>
@@ -1202,6 +1206,7 @@ onBeforeUnmount(() => {
           :overview="overview"
           :loading="loading"
           :error="overviewError"
+          :toolbar-target="dashboardToolbarTarget"
           @refresh="loadView()"
           @navigate="router.push({ path: route.path, query: $event })"
         />
