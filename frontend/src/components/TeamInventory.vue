@@ -94,7 +94,6 @@ const emit = defineEmits<{
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
   reallocate: [source: StockBatch]
   process: [groupId?: number]
-  inspect: [groupId?: number]
 }>()
 const route = useRoute(),
   router = useRouter(),
@@ -340,6 +339,8 @@ const searchColumns = computed(() =>
         : column,
     ),
 )
+const fixedColumns = ref<string[] | null>(null)
+const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
 const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(
   warehouseColumns
     .filter((column) => column.key !== 'material_name')
@@ -392,7 +393,7 @@ const actionWidth = computed(
           ? 112
           : 88) +
     (props.processing && props.canWrite ? 64 : 0) +
-    (props.inspection && props.canWrite ? 125 : 0) +
+    (props.inspection && props.canWrite ? 80 : 0) +
     (props.canWrite && props.canReallocate ? 48 : 0),
 )
 function ownershipHint(row: TeamInventoryRow) {
@@ -1193,6 +1194,8 @@ onBeforeUnmount(() => {
               : '流水号、数量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
+          :fixed-column-options="fixedColumnOptions"
+          @fixed-change="fixedColumns = $event"
           :legacy-keys="warehouseLegacyColumnKeys"
           @change="columnChoices = $event"
       /></template>
@@ -1205,9 +1208,6 @@ onBeforeUnmount(() => {
           :disabled="processingLoadingGroupId != null"
           @click="emit('process')"
           >加工登记</ElButton
-        >
-        <ElButton v-if="inspection && canWrite" class="action-cool" @click="emit('inspect')"
-          >检验登记</ElButton
         >
       </template>
       <template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template>
@@ -1243,6 +1243,8 @@ onBeforeUnmount(() => {
       columns-key="TeamInventory-1"
       :column-query="tableQuery.controller.value"
       :column-settings="false"
+      :fixed-columns="fixedColumns"
+      @fixed-options-change="fixedColumnOptions = $event"
       v-else
       class="serial-table warehouse-table"
       :data="rows"
@@ -1451,12 +1453,6 @@ onBeforeUnmount(() => {
         ><template #default="{ row }"
           ><div class="inventory-row-actions">
             <ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton
-            ><ElButton
-              v-if="inspection && canWrite && row.on_hand_quantity > 0"
-              link
-              class="action-cool"
-              @click="emit('inspect', row.group_id)"
-              >检验</ElButton
             ><ElButton
               v-if="
                 processing &&

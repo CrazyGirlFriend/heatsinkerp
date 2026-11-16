@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { computed, defineComponent, reactive, ref } from 'vue'
-import { ElCheckbox, ElInput, ElPopover, ElTableColumn } from 'element-plus'
+import { ElCheckbox, ElInput, ElPopover, ElSelect, ElTableColumn } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ColumnManagedTable from './ColumnManagedTable.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
@@ -64,6 +64,124 @@ async function render(key = 'test-records') {
 }
 
 describe('shared table columns', () => {
+  const fixedLabels = () =>
+    wrapper
+      .findAllComponents({ name: 'ElTableColumn' })
+      .filter((column) => column.props('fixed'))
+      .map((column) => column.props('label'))
+  async function renderFixed(key = 'fixed-records') {
+    wrapper = mount(
+      defineComponent({
+        components: { ColumnManagedTable, ElTableColumn },
+        template: `<ColumnManagedTable columns-key="${key}" :data="[{serial:'A', quantity:10}]">
+        <ElTableColumn prop="serial" label="流水号" fixed="left"/>
+        <ElTableColumn prop="quantity" label="数量" fixed="left"/>
+        <ElTableColumn label="操作" fixed="right"><template #default><button>查看</button></template></ElTableColumn>
+      </ColumnManagedTable>`,
+      }),
+      { global },
+    )
+    await flushPromises()
+  }
+  it('defaults to the first data column and releases other old fixed columns, including actions', async () => {
+    await renderFixed()
+    expect(fixedLabels()).toEqual(['流水号'])
+    const settings = await open()
+    settings
+      .findAllComponents(ElCheckbox)
+      .find((item) => item.text() === '流水号')!
+      .vm.$emit('update:modelValue', false)
+    await apply()
+    expect(fixedLabels()).toEqual(['数量'])
+    expect(wrapper.get('.el-table__body').text()).toContain('查看')
+  })
+  it('applies, remembers and cancels custom fixed columns independently of visibility', async () => {
+    await renderFixed()
+    let settings = await open()
+    settings.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'custom')
+    await flushPromises()
+    settings.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', ['quantity:0', '操作:0'])
+    await apply()
+    expect(fixedLabels()).toEqual(['数量', '操作'])
+    expect(wrapper.get('.el-table__body').text()).toContain('A')
+    wrapper.unmount()
+    await renderFixed()
+    expect(fixedLabels()).toEqual(['数量', '操作'])
+    settings = await open()
+    settings.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'none')
+    await settings
+      .findAll('button')
+      .find((button) => button.text() === '取消')!
+      .trigger('click')
+    await open()
+    expect(settings.findAllComponents(ElSelect)[0]!.props('modelValue')).toBe('custom')
+    settings.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'none')
+    await apply()
+    expect(fixedLabels()).toEqual([])
+    wrapper.unmount()
+    await renderFixed()
+    expect(fixedLabels()).toEqual([])
+    account.currentUser.id = 8
+    await flushPromises()
+    expect(fixedLabels()).toEqual(['流水号'])
+    account.currentUser.id = 7
+    await flushPromises()
+    expect(fixedLabels()).toEqual([])
+    settings = await open()
+    await settings
+      .findAll('button')
+      .find((button) => button.text() === '恢复默认')!
+      .trigger('click')
+    await apply()
+    expect(fixedLabels()).toEqual(['流水号'])
+  })
+  it('supports an external settings toolbar even without shared display settings or query controls', async () => {
+    wrapper = mount(ColumnManagedTable, {
+      props: { columnSettings: false, fixedColumns: [], data: [] },
+      slots: {
+        default:
+          '<ElTableColumn prop="serial" label="流水号" fixed/><ElTableColumn prop="quantity" label="数量" fixed/><ElTableColumn label="操作" fixed="right"/>',
+      },
+      global: { ...global, components: { ElTableColumn } },
+    })
+    await flushPromises()
+    expect(fixedLabels()).toEqual([])
+    expect(wrapper.emitted('fixedOptionsChange')?.at(-1)?.[0]).toEqual([
+      { key: 'serial:0', label: '流水号' },
+      { key: 'quantity:0', label: '数量' },
+      { key: '操作:0', label: '操作' },
+    ])
+    await wrapper.setProps({ fixedColumns: ['quantity:0'] })
+    expect(fixedLabels()).toEqual(['数量'])
+  })
+  it('keeps native fixed columns aligned with header, widths and editable body cells', async () => {
+    wrapper = mount(AppDetailTable, {
+      attrs: { 'columns-key': 'native-fixed' },
+      slots: {
+        default:
+          '<colgroup><col/><col/><col/></colgroup><thead><tr><th>流水号</th><th>数量</th><th>备注</th></tr></thead><tbody><tr><td>A</td><td>10</td><td><input value="保留"/></td></tr><tr><td colspan="3">详情</td></tr></tbody>',
+      },
+      global,
+    })
+    await flushPromises()
+    expect(wrapper.findAll('tbody [data-fixed-column]').map((cell) => cell.text())).toEqual(['A'])
+    const settings = await open()
+    settings.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'custom')
+    await flushPromises()
+    settings.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', ['数量:0', '备注:0'])
+    await apply()
+    expect(wrapper.findAll('thead th').map((cell) => cell.attributes('data-column-index'))).toEqual(
+      ['2', '3', '1'],
+    )
+    expect(
+      wrapper
+        .findAll('tbody tr')[0]!
+        .findAll('td')
+        .map((cell) => cell.attributes('data-column-index')),
+    ).toEqual(['2', '3', '1'])
+    expect(wrapper.get<HTMLInputElement>('tbody input').element.value).toBe('保留')
+    expect(wrapper.findAll('tbody tr')[1]!.find('[data-fixed-column]').exists()).toBe(false)
+  })
   it('keeps toolbar settings after hiding the first column and restores them on remount', async () => {
     const page = defineComponent({
       components: { ColumnManagedTable, ElTableColumn },

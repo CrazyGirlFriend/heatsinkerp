@@ -218,6 +218,8 @@ columns.sort((a, b) => {
     (order.indexOf(b.key) < 0 ? 99 : order.indexOf(b.key))
   )
 })
+const fixedColumns = ref<string[] | null>(null)
+const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
 const choices = ref<InventoryColumnChoice<string>[]>(
   columns.map((c) => ({ key: c.key, visible: c.defaultVisible })),
 )
@@ -698,6 +700,8 @@ function exportSource() {
         ref="columnSettings"
         :storage-key="`global-inventory-columns:${auth.currentUser?.id || 'local'}`"
         :columns="selectableColumns"
+        :fixed-column-options="fixedColumnOptions"
+        @fixed-change="fixedColumns = $event"
         description="流水号、班组、件数、工艺工序、返工情况、加工状态及操作始终显示。"
         :show-trigger="false"
         @change="choices = $event"
@@ -721,6 +725,8 @@ function exportSource() {
         columns-key="SerialInventoryPage-1"
         :column-query="tableQuery.controller.value"
         :column-settings="false"
+        :fixed-columns="fixedColumns"
+        @fixed-options-change="fixedColumnOptions = $event"
         v-else
         :data="result?.items || []"
         row-key="group_id"

@@ -68,11 +68,7 @@ export function tableColumnEntries(nodes: VNode[], native: boolean, required: re
       label,
       node,
       index,
-      pinned:
-        !label ||
-        !!props.fixed ||
-        ['selection', 'expand', 'index'].includes(props.type) ||
-        label === '操作',
+      pinned: !label || ['selection', 'expand', 'index'].includes(props.type) || label === '操作',
       required: required.includes(label) || required.includes(identity),
     }
   })
@@ -93,13 +89,9 @@ export function orderedTableColumns(
   // Keep at least one data column, including when old or manually edited preferences hide all.
   if (!selected.length && configurable[0]) selected.push(configurable[0])
   return [
-    ...entries.filter(
-      (entry) => entry.pinned && entry.label !== '操作' && entry.node.props?.fixed !== 'right',
-    ),
+    ...entries.filter((entry) => entry.pinned && entry.label !== '操作'),
     ...selected,
-    ...entries.filter(
-      (entry) => entry.pinned && (entry.label === '操作' || entry.node.props?.fixed === 'right'),
-    ),
+    ...entries.filter((entry) => entry.pinned && entry.label === '操作'),
   ]
 }
 
@@ -107,7 +99,8 @@ export function projectNativeTable(
   nodes: VNode[],
   entries: TableColumnEntry[],
   selected: TableColumnEntry[],
-  control: VNode,
+  control: VNode | null,
+  fixedKeys: ReadonlySet<string> = new Set(),
 ) {
   const headerIndex = selected.findIndex((entry) => !entry.pinned)
   return nodes.map((section) => {
@@ -140,8 +133,13 @@ export function projectNativeTable(
             key: entry.key,
             'data-column-index': entry.index + 1,
             ...(source.props?.colspan ? { colspan: span } : {}),
+            'data-fixed-column': selected
+              .slice(position, position + span)
+              .every((item) => fixedKeys.has(item.key))
+              ? position
+              : undefined,
           })
-          return header && position === headerIndex
+          return control && header && position === headerIndex
             ? withChildren(cell, [
                 ...(typeof cell.children === 'string'
                   ? [createTextVNode(cell.children)]

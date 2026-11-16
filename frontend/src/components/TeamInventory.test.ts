@@ -158,9 +158,8 @@ describe('warehouse grouped stock', () => {
       '操作',
     ])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
-    expect(wrapper.findAll('thead th')[1]!.classes().includes('el-table-fixed-column--left')).toBe(
-      !mode.warehouse,
-    )
+    expect(wrapper.findAll('thead th')[1]!.classes()).not.toContain('el-table-fixed-column--left')
+    expect(wrapper.find('thead .el-table-fixed-column--right').exists()).toBe(false)
     const optional = columnSettings().props('columns')
     expect(optional).toEqual(
       expect.arrayContaining([
@@ -174,6 +173,17 @@ describe('warehouse grouped stock', () => {
         expect.objectContaining({ key: 'delivery_due_at', defaultVisible: false }),
       ]),
     )
+    expect(columnSettings().props('fixedColumnOptions')).toEqual(
+      expect.arrayContaining([{ key: 'material_name:0', label: '材质' }]),
+    )
+    columnSettings().vm.$emit('fixedChange', ['material_name:0'])
+    await flushPromises()
+    expect(
+      wrapper.findAll('thead th.el-table-fixed-column--left').map((cell) => cell.text()),
+    ).toEqual(['材质'])
+    columnSettings().vm.$emit('fixedChange', [])
+    await flushPromises()
+    expect(wrapper.find('thead .el-table-fixed-column--left').exists()).toBe(false)
   })
   it('keeps batch, serial, location and quantity visible despite old column preferences', async () => {
     localStorage.setItem(
@@ -823,17 +833,33 @@ describe('warehouse grouped stock', () => {
       }
     },
   )
-  it.each([true, false])(
-    'keeps the processing toolbar entry visible in fullscreen=%s and respects permissions',
-    async (fullscreen) => {
+  it.each([
+    { fullscreen: true, inspection: false },
+    { fullscreen: false, inspection: false },
+    { fullscreen: true, inspection: true },
+    { fullscreen: false, inspection: true },
+  ])(
+    'uses one processing registration entry and respects permissions in mode %j',
+    async ({ fullscreen, inspection }) => {
       await render('/team-workspaces/901?tab=stock', true, false)
-      await wrapper.setProps({ processing: true, fullscreen })
+      await wrapper.setProps({ processing: true, fullscreen, inspection })
       const entry = wrapper.get('.workspace-toolbar .inventory-process')
       expect(entry.isVisible()).toBe(true)
+      expect(wrapper.findAll('button').some((button) => button.text() === '检验登记')).toBe(false)
+      const rowButtons = wrapper.findAll('.inventory-row-actions button')
+      expect(rowButtons.some((button) => button.text() === '检验')).toBe(false)
+      expect(rowButtons.some((button) => button.text() === '汇总发货')).toBe(inspection)
       await entry.trigger('click')
       expect(wrapper.emitted('process')).toEqual([[]])
+      await rowButtons.find((button) => button.text() === '加工登记')!.trigger('click')
+      expect(wrapper.emitted('process')).toEqual([[], [data()[0]!.group_id]])
       await wrapper.setProps({ canWrite: false })
       expect(wrapper.find('.inventory-process').exists()).toBe(false)
+      expect(
+        wrapper
+          .findAll('.inventory-row-actions button')
+          .some((button) => ['加工登记', '汇总发货'].includes(button.text())),
+      ).toBe(false)
       await wrapper.setProps({ canWrite: true, processing: false })
       expect(wrapper.find('.inventory-process').exists()).toBe(false)
     },

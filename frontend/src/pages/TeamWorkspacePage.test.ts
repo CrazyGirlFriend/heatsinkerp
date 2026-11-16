@@ -435,6 +435,8 @@ describe('team workspace material ledger', () => {
     ['FACTORY-WIRE', '线切割', false],
     ['FACTORY-ENGRAVE', '雕刻', true],
     ['FACTORY-ENGRAVE', '雕刻', false],
+    ['FACTORY-QC', '检验', true],
+    ['FACTORY-QC', '检验', false],
   ] as const)(
     'scopes processing registration to %s (%s) with write permission=%s',
     async (code, name, canWrite) => {

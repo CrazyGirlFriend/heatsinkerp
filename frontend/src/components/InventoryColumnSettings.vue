@@ -4,7 +4,7 @@ import { showToast } from '@/stores/toast'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { IconColumns3 } from '@tabler/icons-vue'
-import { ElCheckbox } from 'element-plus'
+import { ElCheckbox, ElOption, ElSelect } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import {
   inventoryColumns,
@@ -25,10 +25,45 @@ const props = withDefaults(
     compact?: boolean
     minimumVisible?: number
     initialChoices?: readonly InventoryColumnChoice<K>[]
+    fixedColumnOptions?: readonly { key: string; label: string }[]
+    initialFixedColumns?: string[] | null
   }>(),
   { showTrigger: true },
 )
-const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
+const emit = defineEmits<{
+  change: [columns: InventoryColumnChoice<K>[]]
+  fixedChange: [columns: string[] | null]
+}>()
+const savedFixed = ref<string[] | null>(null)
+const draftFixed = ref<string[] | null>(null)
+const fixedMode = ref('first')
+function resetFixedDraft() {
+  draftFixed.value = savedFixed.value === null ? null : [...savedFixed.value]
+  fixedMode.value =
+    draftFixed.value === null ? 'first' : draftFixed.value.length ? 'custom' : 'none'
+}
+watch(
+  () => props.storageKey,
+  (key) => {
+    savedFixed.value = props.initialFixedColumns ?? null
+    if (key) {
+      try {
+        const stored = localStorage.getItem(`${key}:fixed-columns`)
+        const value = stored === null ? savedFixed.value : JSON.parse(stored)
+        if (
+          value === null ||
+          (Array.isArray(value) && value.every((key) => typeof key === 'string'))
+        )
+          savedFixed.value = value
+      } catch {
+        /* Keep the default first column when stored preferences are invalid. */
+      }
+    }
+    resetFixedDraft()
+    emit('fixedChange', savedFixed.value)
+  },
+  { immediate: true },
+)
 const options = computed(
   () =>
     props.columns ||
@@ -81,7 +116,10 @@ function normalize(value: unknown): InventoryColumnChoice<K>[] {
 watch(
   opened,
   (value) => {
-    if (value) draft.value = copy(saved.value)
+    if (value) {
+      draft.value = copy(saved.value)
+      resetFixedDraft()
+    }
   },
   { flush: 'sync' },
 )
@@ -121,20 +159,34 @@ function move(index: number, offset: number) {
   next.splice(target, 0, item)
   draft.value = next
 }
+function restoreDefaults() {
+  draft.value = defaults()
+  fixedMode.value = 'first'
+  draftFixed.value = null
+}
 function apply() {
   if (draft.value.filter((column) => column.visible).length < (props.minimumVisible || 0)) {
     showToast('请至少保留一列。', 'warning')
     return
   }
   saved.value = copy(draft.value)
+  savedFixed.value =
+    fixedMode.value === 'first'
+      ? null
+      : fixedMode.value === 'none'
+        ? []
+        : [...(draftFixed.value || [])]
   if (props.storageKey) {
     try {
       localStorage.setItem(props.storageKey, JSON.stringify(saved.value))
+      if (props.fixedColumnOptions)
+        localStorage.setItem(`${props.storageKey}:fixed-columns`, JSON.stringify(savedFixed.value))
     } catch {
       showToast('列设置已应用，但浏览器未能保存，下次打开不会保留本次修改。', 'warning')
     }
   }
   emit('change', copy(saved.value))
+  emit('fixedChange', savedFixed.value)
   opened.value = false
 }
 defineExpose({
@@ -174,9 +226,40 @@ defineExpose({
     <div v-if="opened || !compact" class="column-settings">
       <header>
         <strong>显示列</strong
-        ><ElButton link type="primary" @click="draft = defaults()">恢复默认</ElButton>
+        ><ElButton link type="primary" @click="restoreDefaults">恢复默认</ElButton>
       </header>
       <p>{{ description ?? '流水号、操作列始终显示。仅保存在当前浏览器。' }}</p>
+      <div v-if="fixedColumnOptions" class="fixed-column-settings">
+        <div class="fixed-column-mode">
+          <span>固定列</span>
+          <ElSelect v-model="fixedMode" aria-label="固定列方式" :teleported="false">
+            <ElOption value="first" label="默认第一列" />
+            <ElOption value="none" label="不固定" />
+            <ElOption value="custom" label="自选列" />
+          </ElSelect>
+        </div>
+        <ElSelect
+          v-if="fixedMode === 'custom'"
+          :model-value="
+            (draftFixed || []).filter((key) =>
+              fixedColumnOptions?.some((column) => column.key === key),
+            )
+          "
+          @update:model-value="draftFixed = $event"
+          multiple
+          clearable
+          :teleported="false"
+          aria-label="选择固定列"
+          placeholder="选择固定在左侧的列"
+        >
+          <ElOption
+            v-for="column in fixedColumnOptions"
+            :key="column.key"
+            :value="column.key"
+            :label="column.label"
+          />
+        </ElSelect>
+      </div>
       <div class="column-choices" :aria-label="choicesLabel ?? '库存明细可选列'">
         <div v-for="(column, index) in draft" :key="column.key" class="column-choice">
           <ElCheckbox
@@ -238,6 +321,17 @@ defineExpose({
   overflow-y: auto;
   border-block: 1px solid var(--el-border-color-lighter);
   padding: 6px 0;
+}
+.fixed-column-settings {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.fixed-column-mode {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
 }
 .column-choice {
   display: flex;

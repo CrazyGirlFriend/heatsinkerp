@@ -24,7 +24,6 @@ import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamDashboard from '@/components/TeamDashboard.vue'
-import InspectionRegistrationDialog from '@/components/InspectionRegistrationDialog.vue'
 import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
 import TeamReworkRequestDialog from '@/components/TeamReworkRequestDialog.vue'
 import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
@@ -436,17 +435,6 @@ const losses = ref<MaterialLoss[]>([])
 const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
-const inspectionOpen = ref(false),
-  inspectionGroupId = ref<number>()
-function openInspection(groupId?: number) {
-  if (!canWrite.value || team.value?.code !== 'FACTORY-QC') return
-  inspectionGroupId.value = groupId
-  inspectionOpen.value = true
-}
-function inspectionSaved() {
-  inspectionOpen.value = false
-  void loadView()
-}
 const processingPickerOpen = ref(false),
   processingGroupId = ref<number | undefined>()
 const openingProcessing = ref(0)
@@ -653,7 +641,6 @@ function closeDetails() {
   actionSources.value = []
   initialSchedule.value = undefined
   processingPickerOpen.value = processingOpen.value = false
-  inspectionOpen.value = false
   openingProcessing.value = 0
   processingSourceId.value = null
 }
@@ -1270,7 +1257,6 @@ onBeforeUnmount(() => {
             :processing-loading-group-id="openingProcessing ? processingGroupId : undefined"
             @process="openProcessing"
             :inspection="team?.code === 'FACTORY-QC'"
-            @inspect="openInspection"
             @reallocate="openReallocation"
             @refresh="loadView"
             @changed="loadView"
@@ -1951,14 +1937,6 @@ onBeforeUnmount(() => {
             void loadView()
           }
         "
-      />
-      <InspectionRegistrationDialog
-        v-if="inspectionOpen && canWrite"
-        :inspection-team-id="teamId"
-        :group-id="inspectionGroupId"
-        kind="inspection"
-        @close="inspectionOpen = false"
-        @saved="inspectionSaved"
       />
       <ProcessingBatchPicker
         v-if="processingPickerOpen && canWrite && hasProcessing"

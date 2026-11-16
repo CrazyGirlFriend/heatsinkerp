@@ -116,6 +116,8 @@ const taskColumns = [
 ] as const
 const selectableColumns = taskColumns.map((column) => ({ ...column, defaultVisible: true }))
 type TaskColumn = (typeof taskColumns)[number]['key']
+const fixedColumns = ref<string[] | null>(null)
+const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
 const columnChoices = ref<InventoryColumnChoice<TaskColumn>[]>(
   taskColumns.map((column) => ({ key: column.key, visible: true })),
 )
@@ -705,7 +707,9 @@ onBeforeUnmount(() => {
           <InventoryColumnSettings
             :storage-key="columnStorageKey"
             :columns="selectableColumns"
-            description="勾选显示列，上下移动调整顺序；操作列固定在右侧。"
+            :fixed-column-options="fixedColumnOptions"
+            @fixed-change="fixedColumns = $event"
+            description="勾选显示列，上下移动调整顺序。表头固定，固定列可自行选择。"
             choices-label="调度排期可选列"
             @change="columnChoices = $event"
           />
@@ -741,6 +745,8 @@ onBeforeUnmount(() => {
         <WorkspaceTable
           columns-key="ScheduleTaskBoard-1"
           :column-settings="false"
+          :fixed-columns="fixedColumns"
+          @fixed-options-change="fixedColumnOptions = $event"
           v-else
           :data="rows"
           :loading="loading"

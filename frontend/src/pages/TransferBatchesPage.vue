@@ -109,6 +109,8 @@ const displayColumns = computed(() =>
     }
   }),
 )
+const fixedColumns = ref<string[] | null>(null)
+const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
 const columnChoices = ref<InventoryColumnChoice<DisplayColumnKey>[]>(
   displayColumns.value.map((column) => ({ key: column.key, visible: column.defaultVisible })),
 )
@@ -922,6 +924,8 @@ onBeforeUnmount(() => {
               <InventoryColumnSettings
                 :storage-key="columnStorageKey"
                 :columns="displayColumns"
+                :fixed-column-options="fixedColumnOptions"
+                @fixed-change="fixedColumns = $event"
                 description="流水号、转出时间、批次号始终显示。仅保存在当前浏览器。"
                 :choices-label="`${pageTitle}可选列`"
                 @change="columnChoices = $event"
@@ -970,6 +974,8 @@ onBeforeUnmount(() => {
             v-else
             columns-key="TransferBatchesPage-1"
             :column-settings="false"
+            :fixed-columns="fixedColumns"
+            @fixed-options-change="fixedColumnOptions = $event"
             :data="rows"
             :loading="loading"
             class="transfer-table"
