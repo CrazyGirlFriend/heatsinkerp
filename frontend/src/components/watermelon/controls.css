@@ -9,7 +9,6 @@ html.wm-app,
 .wm-control-button.el-button {
   position: relative;
   min-height: 40px;
-  padding-inline: 16px;
   border: 1px solid var(--wm-border, #e4e4e7);
   border-radius: 8px;
   background: var(--wm-surface, #fff);
@@ -20,6 +19,9 @@ html.wm-app,
   transition:
     background-color 140ms,
     border-color 140ms;
+}
+.wm-control-button.el-button:not(.is-link) {
+  padding-inline: 16px;
 }
 .wm-control-button.el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
   background: var(--wm-primary, #18181b);

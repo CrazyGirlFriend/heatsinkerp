@@ -303,8 +303,8 @@ function exportSource() {
       { key: 'processor_name', label: '加工人', value: (row) => row.processor_name || '未登记' },
       {
         key: 'processing_minutes',
-        label: '加工时长（分钟）',
-        value: (row) => row.processing_minutes,
+        label: '加工工时（分钟）',
+        value: (row) => row.labor_minutes,
       },
       ...parameterFields.value.map((field) => ({
         key: field.key,
@@ -334,8 +334,8 @@ function exportSource() {
 const dailyColumns = [
   {
     key: 'processing_minutes',
-    label: '已填加工时长（分钟）',
-    value: (r: ProcessingDailyRow) => r.processing_minutes,
+    label: '加工工时（分钟）',
+    value: (r: ProcessingDailyRow) => r.labor_minutes,
   },
   {
     key: 'duration_record_count',
@@ -677,10 +677,8 @@ onBeforeUnmount(() => {
       >
         <template #default="{ row }">{{ formatProcessingParameter(field.key, row) }}</template>
       </ElTableColumn>
-      <ElTableColumn prop="processing_minutes" label="加工时长" min-width="140">
-        <template #default="{ row }">{{
-          formatProcessingMinutes(row.processing_minutes)
-        }}</template>
+      <ElTableColumn prop="labor_minutes" label="加工工时" min-width="140">
+        <template #default="{ row }">{{ formatProcessingMinutes(row.labor_minutes) }}</template>
       </ElTableColumn>
       <ElTableColumn label="工艺工序" min-width="160" align="center"
         ><template #default="{ row }">
@@ -812,16 +810,8 @@ onBeforeUnmount(() => {
             >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
             {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
           >
-          <span v-if="summary.duration_record_count"
-            >已填时长 <strong>{{ formatProcessingMinutes(summary.processing_minutes) }}</strong> ·
-            {{ summary.duration_record_count }}/{{ summary.record_count }} 笔</span
-          >
-          <span class="summary-note"
-            >{{ summary.record_count }} 笔有效加工 · 按实际加工日期 ·
-            各任务工作量分别统计，非实物库存产量</span
-          >
-          <span v-if="summary.unreported_count" class="summary-note"
-            >{{ summary.unreported_count }} 笔历史记录信息不全，未计入工作量</span
+          <span v-if="summary.labor_minutes != null"
+            >工时合计 <strong>{{ formatProcessingMinutes(summary.labor_minutes) }}</strong></span
           >
         </div>
       </template>
@@ -855,8 +845,7 @@ onBeforeUnmount(() => {
   color: var(--primary);
   font-size: 16px;
 }
-.summary-label,
-.summary-note {
+.summary-label {
   color: var(--muted);
 }
 

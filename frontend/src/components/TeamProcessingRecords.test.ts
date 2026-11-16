@@ -132,6 +132,47 @@ async function openFilters() {
 }
 
 describe('cutting processing records', () => {
+  it('shows and exports two hours of labor for two people working one hour', async () => {
+    const result = await teamMaterialApi.processingRecords(5)
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      ...result,
+      total: 1,
+      items: [
+        {
+          ...record(),
+          processors: [
+            { id: 71, name: '张师傅' },
+            { id: 22, name: '王师傅' },
+          ],
+          processing_minutes: 60,
+          labor_minutes: 120,
+          completed_quantity: 10,
+        },
+      ],
+      summary: {
+        ...result.summary!,
+        processing_minutes: 60,
+        labor_minutes: 120,
+        record_count: 1,
+        duration_record_count: 1,
+      },
+    })
+    await render()
+    expect(wrapper.get('tbody').text()).toContain('2 小时')
+    expect(wrapper.get('tbody').text()).toContain('张师傅')
+    expect(wrapper.get('tbody').text()).toContain('王师傅')
+    expect(wrapper.get('.processing-totals').text()).toContain('工时合计 2 小时')
+    expect(wrapper.find('.summary-note').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('非实物库存产量')
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    const exported = await source.load(new AbortController().signal, () => {})
+    expect(exported[0]).toMatchObject({ processing_minutes: 120, completed_quantity: 10 })
+    await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+    const template = wrapper.getComponent(TableExportButton).props('source')()!
+    const templateRows = await template.load(new AbortController().signal, () => {})
+    expect(templateRows[0]).toMatchObject({ processing_minutes: 120, completed_quantity: 10 })
+  })
+
   it('offers dispatch on writable records and disables it while loading or after clearing', async () => {
     await render()
     const button = () => wrapper.findAll('button').find((item) => item.text() === '转出')!
@@ -420,7 +461,7 @@ describe('unified production records', () => {
     expect(wrapper.get('[aria-label="筛选结果加工工作量合计"]').text()).toContain(
       '完成 100 件次 / 98 kg',
     )
-    expect(wrapper.text()).toContain('1 笔历史记录信息不全，未计入工作量')
+    expect(wrapper.text()).not.toContain('1 笔历史记录信息不全，未计入工作量')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     await wrapper.setProps({ fullscreen: true })
     expect(wrapper.findComponent(FilterDialog).exists()).toBe(true)
@@ -672,7 +713,7 @@ it('keeps actual-date and task filters and loads all matching records for the de
   vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
     ...result,
     total: 1,
-    items: [{ ...record(), completed_quantity: 123, processing_minutes: 90 }],
+    items: [{ ...record(), completed_quantity: 123, processing_minutes: 90, labor_minutes: 90 }],
   })
   await render(
     false,

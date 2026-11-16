@@ -1443,12 +1443,13 @@ watch(
                 </ElFormItem>
                 <ElFormItem
                   v-if="processing[Number(line.source.transfer.id)]!.structured"
-                  label="加工时长"
+                  label="每人加工时长"
                   required
                   :error="lineError(line, 'processingMinutes')"
                 >
                   <ProcessingDurationInput
                     v-model="processing[Number(line.source.transfer.id)]!.minutes"
+                    label="每人加工"
                     :disabled="saving"
                     :invalid="!!lineError(line, 'processingMinutes')"
                   />

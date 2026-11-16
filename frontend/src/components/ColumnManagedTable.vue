@@ -47,7 +47,15 @@ export default defineComponent({
       { flush: 'sync' },
     )
     return () => {
-      const nodes = tableNodes(slots.default?.() || [])
+      const nodes = tableNodes(slots.default?.() || []).map((node) => {
+        if (props.native || node.props?.label !== '操作') return node
+        return cloneVNode(node, {
+          'class-name': [node.props['class-name'] || node.props.className, 'table-action-column']
+            .filter(Boolean)
+            .join(' '),
+          'show-overflow-tooltip': false,
+        })
+      })
       const engine = props.native ? 'table' : ElTable
       const renderTable = (content: VNode[]) =>
         props.native
@@ -181,6 +189,24 @@ export default defineComponent({
 .table-column-settings--toolbar {
   display: inline-flex;
   align-items: center;
+}
+/* Keep complete actions visible, including lists that render their own button group. */
+.el-table td.table-action-column > .cell,
+.el-table td.table-action-column > .cell > div:not(.el-dropdown) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  white-space: normal;
+}
+.el-table td.table-action-column > .cell > div:not(.el-dropdown) {
+  max-width: 100%;
+  min-width: 0;
+}
+.el-table td.table-action-column .el-button {
+  flex: 0 0 auto;
+  margin-inline: 0;
 }
 @media print {
   .table-column-settings,

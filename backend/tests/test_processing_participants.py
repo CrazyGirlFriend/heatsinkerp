@@ -35,6 +35,7 @@ def test_joint_work_filters_and_totals_count_the_work_once(client, warehouse):
     record = result.json()
     assert record["processors"] == [{"id": p["id"], "name": p["name"]} for p in [first, second]]
     assert record["processing_minutes"] == 95
+    assert record["labor_minutes"] == 190
     assert record["reason"] == "两人共同装炉"
     for params in [
         {},
@@ -66,6 +67,8 @@ def test_joint_work_filters_and_totals_count_the_work_once(client, warehouse):
         assert records["items"][0]["processors"] == record["processors"]
         assert records["summary"]["completed_quantity"] == 10
         assert records["summary"]["processing_minutes"] == 95
+        assert records["items"][0]["labor_minutes"] == 190
+        assert records["summary"]["labor_minutes"] == 190
         assert records["summary"]["duration_record_count"] == 1
         assert records["summary"]["employee_day_count"] == 2
         assert {p["id"] for p in records["processors"]} == {first["id"], second["id"]}
@@ -74,6 +77,7 @@ def test_joint_work_filters_and_totals_count_the_work_once(client, warehouse):
         assert daily["items"][0]["processors"] == record["processors"]
         assert daily["items"][0]["completed_quantity"] == 10
         assert daily["items"][0]["processing_minutes"] == 95
+        assert daily["items"][0]["labor_minutes"] == 190
     context = client.get(f"{url}/stock/{lot['id']}/quantity-adjustments").json()
     assert context["items"][0]["processors"] == record["processors"]
     replay_body = json.loads(result.request.content)
@@ -118,6 +122,10 @@ def test_distinct_crews_and_unknown_duration_are_not_merged(client, warehouse):
     totals = client.get(url + "/processing-records").json()["summary"]
     assert totals["completed_quantity"] == 10
     assert totals["processing_minutes"] == 45
+    assert totals["labor_minutes"] == 90
+    assert sorted(
+        row["labor_minutes"] for row in daily["items"] if row["labor_minutes"] is not None
+    ) == [90]
     assert totals["record_count"] == 2
     assert totals["duration_record_count"] == 1
 
@@ -143,6 +151,45 @@ def test_invalid_crew_and_duration_do_not_change_stock(client, warehouse):
     result = work(client, s, lot, first, processing_minutes=5, holding_minutes=5)
     assert result.status_code == 201, result.text
     assert result.json()["completed_quantity"] == 10
+    assert result.json()["labor_minutes"] == 5
+
+
+def test_joint_labor_hours_sort_and_filter_without_multiplying_output(client, warehouse):
+    s = warehouse
+    lot, first = setup_lot(client, s)
+    url = base(s, True)
+    second = client.post(url + "/employees", json={"name": "共同加工员工"}).json()
+    joint = work(
+        client,
+        s,
+        lot,
+        first,
+        processor_employee_ids=[first["id"], second["id"]],
+        processing_minutes=60,
+        completed_quantity=6,
+        completed_weight=60,
+    )
+    assert joint.status_code == 201, joint.text
+    assert joint.json()["labor_minutes"] == 120
+    remainder = next(row for row in joint.json()["outputs"] if row["role"] == "remaining")
+    single = work(client, s, remainder, first, processing_minutes=90, idempotency_key="solo")
+    assert single.status_code == 201, single.text
+    records = client.get(url + "/processing-records", params={"page_size": 1}).json()
+    assert records["total"] == 2
+    assert records["summary"]["labor_minutes"] == 210
+    assert records["summary"]["completed_quantity"] == 10
+    query = {"sort": {"field": "labor_minutes", "direction": "desc"}}
+    ordered = client.get(
+        url + "/processing-records", params={"table_query": json.dumps(query)}
+    ).json()
+    assert [row["labor_minutes"] for row in ordered["items"]] == [120, 90]
+    query["filters"] = [{"field": "labor_minutes", "kind": "number", "value": "120", "end": "120"}]
+    filtered = client.get(
+        url + "/processing-records", params={"table_query": json.dumps(query)}
+    ).json()
+    assert filtered["total"] == 1
+    assert filtered["summary"]["labor_minutes"] == 120
+    assert filtered["summary"]["completed_quantity"] == 6
 
 
 def test_migration_preserves_legacy_names_and_unknown_duration():

@@ -488,6 +488,7 @@ def production_groups(conditions):
             Adjustment.processor_employee_id,
             func.min(Adjustment.id).label("representative_id"),
             func.sum(Adjustment.processing_minutes).label("processing_minutes"),
+            func.sum(labor_minutes_column()).label("labor_minutes"),
             func.count(Adjustment.processing_minutes).label("duration_record_count"),
             func.coalesce(TeamEmployee.name, func.max(Adjustment.processor_name)).label(
                 "processor_name"
@@ -560,6 +561,17 @@ def participant_pairs():
     )
 
 
+def labor_minutes_column():
+    people = participant_pairs()
+    person_count = (
+        select(func.count())
+        .where(people.c.processing_id == Adjustment.id)
+        .correlate(Adjustment)
+        .scalar_subquery()
+    )
+    return Adjustment.processing_minutes * func.nullif(person_count, 0)
+
+
 def record_table_columns():
     participant_names = (
         select(func.group_concat(ProcessingParticipant.name))
@@ -574,6 +586,7 @@ def record_table_columns():
         "material_type": Transfer.material_type,
         "batch_no": Transfer.batch_no,
         "processor_name": func.coalesce(participant_names, Adjustment.processor_name),
+        "labor_minutes": labor_minutes_column(),
         "after_weight": func.coalesce(Adjustment.after_weight, Adjustment.weight_snapshot),
     }
 
@@ -658,6 +671,7 @@ def list_records(
                 .label("employee_day_count"),
                 func.count().label("daily_group_count"),
                 func.sum(groups.c.processing_minutes).label("processing_minutes"),
+                func.sum(groups.c.labor_minutes).label("labor_minutes"),
                 func.coalesce(func.sum(groups.c.duration_record_count), 0).label(
                     "duration_record_count"
                 ),

@@ -120,7 +120,7 @@ export const processingQueryColumns = queryColumns([
   ['批次号', 'batch_no'],
   ['实际加工日期', 'processing_date', 'date'],
   ['加工人', 'processor_name'],
-  ['加工时长', 'processing_minutes', 'number'],
+  ['加工工时', 'labor_minutes', 'number'],
   ['工艺工序', 'process_step_name'],
   ['加工任务', 'processing_task_name'],
   ['物料类型', 'material_type'],

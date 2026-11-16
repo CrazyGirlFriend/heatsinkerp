@@ -147,6 +147,7 @@ export function productionRecordData(record: ProcessingRecord): ExportRow {
         ([, value]) => value == null || typeof value === 'string' || typeof value === 'number',
       ),
     ) as ExportRow),
+    processing_minutes: record.labor_minutes,
     serial_no: sharedSerialLabel(record),
     report_inspections: JSON.stringify(report_inspections || []),
     remaining_quantity: outputs

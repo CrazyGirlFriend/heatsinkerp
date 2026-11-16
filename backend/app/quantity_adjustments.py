@@ -110,6 +110,9 @@ def record_dict(row):
         "processor_employee_id": row.processor_employee_id,
         "processors": participants,
         "processing_minutes": row.processing_minutes,
+        "labor_minutes": row.processing_minutes * len(participants)
+        if row.processing_minutes is not None and participants
+        else None,
         **parameter_snapshot(row),
         "processing_task_id": row.processing_task_id,
         "processing_task_name": row.processing_task_name,

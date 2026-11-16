@@ -656,13 +656,14 @@ onBeforeUnmount(() => {
               </ElFormItem>
               <ElFormItem
                 v-if="structured"
-                label="加工时长"
+                label="每人加工时长"
                 required
                 :show-message="true"
                 :error="submitted && !processingMinutesValid ? '请填写大于零的加工时长' : undefined"
               >
                 <ProcessingDurationInput
                   v-model="processingMinutes"
+                  label="每人加工"
                   :invalid="submitted && !processingMinutesValid"
                   :disabled="saving"
                 />
@@ -1178,9 +1179,9 @@ onBeforeUnmount(() => {
                 >{{ row.before_quantity }} → {{ row.after_quantity }} 件</template
               ></ElTableColumn
             >
-            <ElTableColumn prop="processing_minutes" label="加工时长" min-width="140">
+            <ElTableColumn prop="labor_minutes" label="加工工时" min-width="140">
               <template #default="{ row }">{{
-                formatProcessingMinutes(row.processing_minutes)
+                formatProcessingMinutes(row.labor_minutes)
               }}</template>
             </ElTableColumn>
             <ElTableColumn

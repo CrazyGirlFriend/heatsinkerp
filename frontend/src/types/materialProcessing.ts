@@ -34,6 +34,7 @@ export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFiel
 export interface ProcessingDailyRow {
   processors?: { id: number; name: string | null }[]
   processing_minutes?: number | null
+  labor_minutes?: number | null
   duration_record_count?: number
   process_route_id?: number | null
   process_step_index?: number | null
@@ -64,6 +65,7 @@ export interface ProcessingDailyRow {
 
 export interface ProcessingRecordSummary {
   processing_minutes?: number | null
+  labor_minutes?: number | null
   duration_record_count?: number
   daily_group_count?: number
   employee_day_count: number

@@ -52,6 +52,7 @@ class QuantityAdjustmentResponse(ReadResponse):
     processor_employee_id: int | None
     processors: list[ProcessingPersonResponse]
     processing_minutes: int | None
+    labor_minutes: int | None
     equipment_id: int | None = None
     furnace_no: str | None
     temperature_requirement: str | None
@@ -203,6 +204,7 @@ class ProcessingDailyResponse(RecordedWorkMetricsResponse):
     processor_name: str
     processors: list[ProcessingPersonResponse]
     processing_minutes: int | None
+    labor_minutes: int | None
     duration_record_count: int
     processing_mode: Literal["unit", "split"]
     process_route_id: int | None
@@ -216,6 +218,7 @@ class ProcessingDailyResponse(RecordedWorkMetricsResponse):
 
 class ProcessingSummaryResponse(RecordedWorkMetricsResponse):
     processing_minutes: int | None
+    labor_minutes: int | None
     duration_record_count: int
     employee_day_count: int
     daily_group_count: int

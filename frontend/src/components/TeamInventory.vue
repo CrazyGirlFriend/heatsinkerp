@@ -391,7 +391,7 @@ const actionWidth = computed(
         : props.canWrite
           ? 112
           : 88) +
-    (props.processing && props.canWrite ? 45 : 0) +
+    (props.processing && props.canWrite ? 64 : 0) +
     (props.inspection && props.canWrite ? 125 : 0) +
     (props.canWrite && props.canReallocate ? 48 : 0),
 )

@@ -5906,6 +5906,8 @@ export interface components {
       input_quantity: number
       /** Input Weight */
       input_weight: number
+      /** Labor Minutes */
+      labor_minutes: number | null
       /** Process Route Id */
       process_route_id: number | null
       /** Process Step Index */
@@ -6212,6 +6214,8 @@ export interface components {
       input_quantity: number | null
       /** Input Weight */
       input_weight: number | null
+      /** Labor Minutes */
+      labor_minutes: number | null
       /** Machine No */
       machine_no: string | null
       /** Material Name */
@@ -6328,6 +6332,8 @@ export interface components {
       input_quantity: number
       /** Input Weight */
       input_weight: number
+      /** Labor Minutes */
+      labor_minutes: number | null
       /** Processing Minutes */
       processing_minutes: number | null
       /** Record Count */
@@ -7011,6 +7017,8 @@ export interface components {
       input_quantity: number | null
       /** Input Weight */
       input_weight: number | null
+      /** Labor Minutes */
+      labor_minutes: number | null
       /** Machine No */
       machine_no: string | null
       /**
