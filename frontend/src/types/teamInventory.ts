@@ -133,7 +133,6 @@ const extraKeys = [
   'finished_quantity',
   'lost_quantity',
   'lost_weight',
-  'urgency',
   'last_activity_at',
 ] as const
 const balanceKeys = [
@@ -152,7 +151,6 @@ function extraBalance(row: TeamInventoryRow, key: (typeof balanceKeys)[number]) 
   return key.endsWith('quantity') ? inventoryQuantity(value, row.material_type) : amount(value)
 }
 function extraValue(row: TeamInventoryRow, key: (typeof extraKeys)[number]) {
-  if (key === 'urgency') return row.urgency?.urgent ? '加急' : '普通'
   if (key === 'last_activity_at') return formatDateTime(row.last_activity_at)
   if (key === 'lost_quantity') return inventoryQuantity(row[key], row.material_type)
   if (key === 'lost_weight') return amount(row[key])
@@ -412,13 +410,11 @@ export const warehouseSearchColumns = [
 ]
 export type WarehouseSearchField = 'all' | (typeof warehouseSearchColumns)[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) =>
-  field === 'urgency'
-    ? 'status'
-    : field === 'last_activity_at'
-      ? 'date'
-      : warehouseColumns.some((column) => column.key === field && 'numeric' in column)
-        ? 'number'
-        : 'text'
+  field === 'last_activity_at'
+    ? 'date'
+    : warehouseColumns.some((column) => column.key === field && 'numeric' in column)
+      ? 'number'
+      : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
   table_query?: string
   availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'

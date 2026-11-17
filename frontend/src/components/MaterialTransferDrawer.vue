@@ -34,7 +34,6 @@ import type { TeamEmployee } from '@/types/teamBusiness'
 import MaterialTransferPrintSheet from '@/components/MaterialTransferPrintSheet.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import { isDispatchNumber } from '@/types/teamMaterials'
-import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from '@/components/StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -773,7 +772,6 @@ watch(
             <RouterLink v-else :to="tracePath(current.serial_no)">{{
               sharedSerialLabel(current)
             }}</RouterLink>
-            <SerialUrgencyBadge :urgency="current.urgency" />
           </template>
           <template v-if="canConfirm" #receiver>
             <PersonName v-if="pageReceiver" :name="selectedReceiver?.name || '未选择'" />

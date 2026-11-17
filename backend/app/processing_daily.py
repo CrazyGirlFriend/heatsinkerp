@@ -28,14 +28,13 @@ def list_daily(
     work_kind=None,
     processing_task_id=None,
     purpose_id=None,
-    urgent_only=False,
     page=1,
     page_size=20,
 ):
     team = require_processing_team(db, team_id)
     conditions = record_conditions(
         team_id,
-        RecordFilters(date_from=date_from, date_to=date_to, urgent_only=urgent_only),
+        RecordFilters(date_from=date_from, date_to=date_to),
         query,
         processor_id,
         work_date,

@@ -18,7 +18,6 @@ import MaterialAmount from './MaterialAmount.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
-import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -228,9 +227,9 @@ onBeforeUnmount(() => {
   >
     <template #header
       ><div class="serial-title">
-        <span>流水号详情</span
-        ><strong>{{ serialNo }}<SerialUrgencyBadge :urgency="summary?.urgency" /></strong></div
-    ></template>
+        <span>流水号详情</span><strong>{{ serialNo }}</strong>
+      </div></template
+    >
     <div class="serial-detail-body">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <template v-if="summary">

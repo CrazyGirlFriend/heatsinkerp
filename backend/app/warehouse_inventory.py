@@ -34,7 +34,7 @@ from .models import (
 )
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
-from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
+from .record_filters import RecordFilters, day_bounds, numeric_search_predicate
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
 from .team_constants import WAREHOUSE_TEAM_CODE
@@ -418,8 +418,6 @@ def list_inventory(db, team_id, filters):
             if filters.purpose_id == 0
             else table.c.purpose_id == filters.purpose_id
         )
-    if filters.urgent_only:
-        conditions.append(table.c.serial_no.in_(urgent_serials()))
     if filters.stock_age:
         conditions.append(age_conditions(table.c.stock_age_started_at, now)[filters.stock_age])
     if filters.stock_age_min is not None:
@@ -462,10 +460,7 @@ def list_inventory(db, team_id, filters):
         return statement.where(*matching_sources, predicate).exists()
 
     if term:
-        if field == "urgency":
-            urgent = table.c.serial_no.in_(urgent_serials())
-            conditions.append(urgent if term == "urgent" else ~urgent)
-        elif field in ("batch_no", "previous_batch_no"):
+        if field in ("batch_no", "previous_batch_no"):
             conditions.append(batch_matches(term, previous=field == "previous_batch_no"))
         elif field == "warehouse_location":
             conditions.append(literal_query(term, [table.c[field]]))

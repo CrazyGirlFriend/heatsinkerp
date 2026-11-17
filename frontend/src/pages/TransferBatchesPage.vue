@@ -41,8 +41,6 @@ import { isDispatchNumber } from '@/types/teamMaterials'
 import MaterialTransferStatus from '@/components/MaterialTransferStatus.vue'
 import MaterialTransferFormDialog from '@/components/MaterialTransferFormDialog.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
-import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
-import { ElCheckbox } from 'element-plus'
 import StatePanel from '@/components/StatePanel.vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -171,7 +169,6 @@ function readRouteFilters() {
     query: text('query'),
     dateFrom: text('date_from'),
     dateTo: text('date_to'),
-    urgentOnly: text('urgent_only') === 'true',
     status:
       readChoices(
         text('statuses') || text('status'),
@@ -195,10 +192,8 @@ function readRouteFilters() {
   }
 }
 const initialFilters = readRouteFilters()
-const dateDraft = ref({ from: initialFilters.dateFrom, to: initialFilters.dateTo }),
-  urgentDraft = ref(initialFilters.urgentOnly)
-const dates = ref({ ...dateDraft.value }),
-  urgentOnly = ref(urgentDraft.value)
+const dateDraft = ref({ from: initialFilters.dateFrom, to: initialFilters.dateTo })
+const dates = ref({ ...dateDraft.value })
 const page = ref(initialFilters.page)
 const pageSize = ref(initialFilters.pageSize)
 const queryDraft = ref(initialFilters.query)
@@ -304,7 +299,6 @@ const filterParams = computed<MaterialTransferFilterParams>(() => ({
   query: query.value || undefined,
   date_from: dates.value.from || undefined,
   date_to: dates.value.to || undefined,
-  urgent_only: urgentOnly.value || undefined,
   search_mode: searchMode.value,
   search_field: searchField.value,
   material_type: undefined,
@@ -377,7 +371,6 @@ const appliedFilterCount = computed(
   () =>
     [
       dates.value.from || dates.value.to,
-      urgentOnly.value,
       sourceTeamId.value,
       nextTeamId.value,
       materialType.value,
@@ -403,7 +396,6 @@ function cancelFilters() {
 }
 function syncFilterDrafts() {
   dateDraft.value = { ...dates.value }
-  urgentDraft.value = urgentOnly.value
   sourceTeamDraft.value = sourceTeamId.value
   nextTeamDraft.value = nextTeamId.value
   searchModeDraft.value = searchMode.value
@@ -419,7 +411,6 @@ function applyDialogFilters() {
 }
 function clearFilterDrafts() {
   dateDraft.value = { from: '', to: '' }
-  urgentDraft.value = false
   sourceTeamDraft.value = nextTeamDraft.value = ''
   searchModeDraft.value = 'contains'
   searchFieldDraft.value = 'all'
@@ -479,7 +470,6 @@ function updateRoute(): void {
     query: {
       ...(dates.value.from ? { date_from: dates.value.from } : {}),
       ...(dates.value.to ? { date_to: dates.value.to } : {}),
-      ...(urgentOnly.value ? { urgent_only: 'true' } : {}),
       ...(query.value ? { query: query.value } : {}),
       ...(searchMode.value !== 'contains' ? { search_mode: searchMode.value } : {}),
       ...(searchField.value !== 'all' ? { search_field: searchField.value } : {}),
@@ -545,7 +535,6 @@ function applyFilters(): void {
   if (quantityRangeInvalid.value || weightRangeInvalid.value) return
   if (dates.value.from !== dateDraft.value.from || dates.value.to !== dateDraft.value.to)
     dates.value = { ...dateDraft.value }
-  urgentOnly.value = urgentDraft.value
   query.value = queryDraft.value.trim()
   status.value = statusDraft.value
   sourceTeamId.value = sourceTeamDraft.value
@@ -648,7 +637,6 @@ watch(
       query: query.value,
       dateFrom: dates.value.from,
       dateTo: dates.value.to,
-      urgentOnly: urgentOnly.value,
       status: status.value,
       sourceTeamId: String(sourceTeamId.value),
       nextTeamId: String(nextTeamId.value),
@@ -661,7 +649,6 @@ watch(
     page.value = restored.page
     pageSize.value = restored.pageSize
     dates.value = dateDraft.value = { from: restored.dateFrom, to: restored.dateTo }
-    urgentOnly.value = urgentDraft.value = restored.urgentOnly
     query.value = queryDraft.value = restored.query
     status.value = statusDraft.value = restored.status
     sourceTeamId.value = sourceTeamDraft.value = restored.sourceTeamId
@@ -962,7 +949,6 @@ onBeforeUnmount(() => {
                     clearable
                   /></div
               ></label>
-              <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             </FilterDialog>
             <ElButton class="action-warm" native-type="submit">查询</ElButton>
             <div class="transfer-column-settings">
@@ -1078,8 +1064,10 @@ onBeforeUnmount(() => {
                     :to="traceLink(row.serial_no)"
                     @click.stop
                     >{{ sharedSerialLabel(row) }}</RouterLink
-                  ><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template
-            ></ElTableColumn>
+                  >
+                </div></template
+              ></ElTableColumn
+            >
             <ElTableColumn :label="timeLabel" min-width="180" align="center"
               ><template #header
                 ><TableColumnFilter

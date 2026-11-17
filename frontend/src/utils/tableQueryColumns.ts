@@ -180,7 +180,6 @@ export const inventoryQueryColumns = {
             'process_route',
             'rework',
             'source',
-            'urgency',
             'delivery_due_at',
             'delivery_schedule_status',
             'stock_status',

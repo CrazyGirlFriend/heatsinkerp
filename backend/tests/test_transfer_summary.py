@@ -162,9 +162,9 @@ def test_status_empty_and_column_filters_are_also_applied_to_totals(client, summ
         assert response.json()["summary"] == {
             key: amount if key == status else ZERO for key, amount in EXPECTED.items()
         }
-    for query in ("NO-MATCH", "OTHER"):
+    for query, received in (("NO-MATCH", ZERO), ("OTHER", {"quantity": 90000, "weight": 90})):
         response = client.get("/api/material-transfers", params={**summary_scope, "query": query})
-        assert response.json()["summary"] == {"received": ZERO, "pending": ZERO}
+        assert response.json()["summary"] == {"received": received, "pending": ZERO}
     filtered = client.get(
         "/api/material-transfers", params={**summary_scope, "quantity_max": 300}
     ).json()

@@ -12,7 +12,7 @@ from .config import settings
 from .inventory_age import stock_age_table
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .models import MaterialLoss, MaterialTransfer, utcnow
-from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
+from .record_filters import RecordFilters, day_bounds, numeric_search_predicate
 from .serial_urgency import urgency_dict, urgency_map
 
 Age = Literal["lt1", "1_3", "3_7", "ge7"]
@@ -70,7 +70,6 @@ SearchField = Literal[
     "lost_weight",
     "scrap_quantity",
     "scrap_weight",
-    "urgency",
     "last_activity_at",
 ]
 
@@ -115,8 +114,6 @@ class SerialFilters(RecordFilters):
                 raise ValueError("重量最多保留六位小数")
         elif self.search_operator != "eq":
             raise ValueError("只有数值字段支持大小比较")
-        elif self.search_field == "urgency" and term not in ("urgent", "normal"):
-            raise ValueError("请选择加急或普通")
         elif self.search_field == "last_activity_at":
             try:
                 day = date.fromisoformat(term)
@@ -139,9 +136,6 @@ def serial_search_predicate(team_id, table, filters):
             literal_query(term, [getattr(mt, name) for name in fields]),
         )
         return table.c.serial_no.in_(matches)
-    if field == "urgency":
-        urgent = table.c.serial_no.in_(urgent_serials())
-        return urgent if term == "urgent" else ~urgent
     if field == "last_activity_at":
         start, end = day_bounds(date.fromisoformat(term))
         return and_(table.c.last_activity_at >= start, table.c.last_activity_at < end)
@@ -273,8 +267,6 @@ def serial_table(team_id):
 def serial_predicates(team_id, table, filters, now):
     result = []
     stock = stock_table(team_id)
-    if filters.urgent_only:
-        result.append(table.c.serial_no.in_(urgent_serials()))
     if filters.date_from or filters.date_to or (filters.activity_day and not filters.activity_kind):
         calendar = RecordFilters(
             date_from=filters.date_from or filters.activity_day,

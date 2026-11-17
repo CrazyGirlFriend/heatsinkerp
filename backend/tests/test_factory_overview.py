@@ -4,6 +4,7 @@ import pytest
 from app import factory_overview
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
+from legacy_urgency import seed_legacy_urgency
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from test_external_outbound import dispatch
@@ -379,13 +380,7 @@ def test_inventory_cards_count_remaining_serials_and_urgency_once(client, wareho
         client, warehouse, serial_no="WEIGHT", quantity=0, weight=0.005, idempotency_key="weight"
     ).json()
     for serial in ("SHARED", "WEIGHT"):
-        assert (
-            client.put(
-                "/api/serial-urgency",
-                json={"serial_no": serial, "urgent": True, "expected_version": 0},
-            ).status_code
-            == 200
-        )
+        seed_legacy_urgency(serial, True)
     d = report(client)["teams"][0]
     assert d["serial_count"] == d["urgent_serial_count"] == 2
     assert d["balance"]["on_hand_quantity"] == 5 and d["balance"]["on_hand_weight"] == 0.505
@@ -411,13 +406,7 @@ def test_inventory_cards_count_remaining_serials_and_urgency_once(client, wareho
     d = report(client)["teams"][0]
     assert d["serial_count"] == d["urgent_serial_count"] == 1  # SHARED still has a second lot.
     assert d["balance"]["on_hand_weight"] == 0.375
-    assert (
-        client.put(
-            "/api/serial-urgency",
-            json={"serial_no": "SHARED", "urgent": False, "expected_version": 1},
-        ).status_code
-        == 200
-    )
+    seed_legacy_urgency("SHARED", False)
     assert report(client)["teams"][0]["urgent_serial_count"] == 0
 
 

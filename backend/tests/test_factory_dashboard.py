@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan, Team
+from legacy_urgency import seed_legacy_urgency
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from sqlalchemy import select
@@ -319,3 +320,12 @@ def test_delivery_plan_change_queues_live_overview_refresh(client, outbound):
         )
         assert len(messages) == 1
         assert messages[0].payload["team_ids"] is None
+
+
+def test_historical_urgency_does_not_create_follow_up_items(client, warehouse):
+    lot = intake(client, warehouse, serial_no="LEGACY-URGENT").json()
+    seed_legacy_urgency(lot["serial_no"])
+    data = dashboard(client)
+    assert data["stock"]["total"]["quantity"] > 0
+    assert all("加急" not in row["reasons"] for row in data["attention"])
+    assert all(row["serial_no"] != lot["serial_no"] for row in data["attention"])

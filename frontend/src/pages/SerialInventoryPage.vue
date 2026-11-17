@@ -87,8 +87,10 @@ const tableQuery = useTableQuery(
 )
 const params = computed<GlobalInventoryParams>(() => ({
   ...tableQuery.params.value,
-  query: text('query') || undefined,
-  search_field: (text('search_field') || 'all') as GlobalInventoryParams['search_field'],
+  query: text('search_field') === 'urgency' ? undefined : text('query') || undefined,
+  search_field: (text('search_field') === 'urgency'
+    ? 'all'
+    : text('search_field') || 'all') as GlobalInventoryParams['search_field'],
   search_operator: (text('search_operator') || 'eq') as GlobalInventoryParams['search_operator'],
   serial_no: text('serial_no') || undefined,
   team_id: number('inventory_team_id'),
@@ -517,14 +519,6 @@ function exportSource() {
                 type="date"
                 value-format="YYYY-MM-DD"
               />
-              <AppSelect
-                :append-to="appendTo"
-                v-else-if="searchKind === 'status'"
-                v-model="draft.query"
-                aria-label="加急状态"
-                clearable
-                ><ElOption value="urgent" label="加急" /><ElOption value="normal" label="普通"
-              /></AppSelect>
               <AppInput
                 v-else
                 v-model="draft.query"

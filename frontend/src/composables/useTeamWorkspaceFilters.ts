@@ -29,8 +29,7 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
       : 10,
   )
   const queryDraft = ref('')
-  const dateDraft = ref<CalendarRange>({ from: '', to: '' }),
-    urgentDraft = ref(false)
+  const dateDraft = ref<CalendarRange>({ from: '', to: '' })
   const materialDraft = ref<MaterialType | ''>('')
   const receiptSourceDraft = ref<'external' | 'internal' | 'return' | ''>('')
   const batchStatusLabels = {
@@ -61,7 +60,6 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
   }
   function syncListFilterDrafts() {
     dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }
-    urgentDraft.value = queryText('urgent_only') === 'true'
     materialDraft.value = queryText('material_type') as MaterialType | ''
     receiptSourceDraft.value = queryText('receipt_source') as typeof receiptSourceDraft.value
     kindDraft.value = queryText('entry_kind') as typeof kindDraft.value
@@ -99,17 +97,12 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
         key: 'next_team_id',
         label: directory.items.find((item) => String(item.id) === queryText('next_team_id'))?.name,
       },
-      { key: 'urgent_only', label: '仅看加急' },
-    ].filter(
-      (item) =>
-        queryText(item.key) && (item.key !== 'urgent_only' || queryText(item.key) === 'true'),
-    ),
+    ].filter((item) => queryText(item.key)),
   )
 
   function resetListFilters() {
     queryDraft.value = ''
     dateDraft.value = { from: '', to: '' }
-    urgentDraft.value = false
     materialDraft.value = ''
     receiptSourceDraft.value = ''
     kindDraft.value = ''
@@ -126,7 +119,6 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
           : {}),
         ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}),
         ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}),
-        ...(urgentDraft.value ? { urgent_only: 'true' } : {}),
         ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}),
         ...(['receipts', 'outgoing', 'reallocations'].includes(tab.value) && materialDraft.value
           ? { material_type: materialDraft.value }
@@ -149,7 +141,6 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
     return {
       date_from: queryText('date_from') || undefined,
       date_to: queryText('date_to') || undefined,
-      urgent_only: queryText('urgent_only') === 'true' || undefined,
       query: queryText('query') || undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -179,7 +170,6 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
   }
   function resetFiltersFromRoute() {
     dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }
-    urgentDraft.value = queryText('urgent_only') === 'true'
     receiptSourceDraft.value = ['external', 'internal', 'return'].includes(
       queryText('receipt_source'),
     )
@@ -201,7 +191,6 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
     pageSize,
     queryDraft,
     dateDraft,
-    urgentDraft,
     materialDraft,
     receiptSourceDraft,
     batchStatusLabels,

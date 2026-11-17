@@ -568,3 +568,13 @@ it.each(['waste', 'sludge', 'scrap_chips'] as const)(
     expect(router.currentRoute.value.query.processing_role).toBeUndefined()
   },
 )
+
+it('drops retired urgency search fields from old global-inventory links', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response())
+  await render('/material-inventory?search_field=urgency&query=urgent&urgent_only=true')
+  const params = vi.mocked(api.stock).mock.lastCall?.[0]
+  expect(params?.search_field).toBe('all')
+  expect(params?.query).toBeUndefined()
+  expect(params).not.toHaveProperty('urgent_only')
+  expect(wrapper!.text()).not.toContain('加急')
+})

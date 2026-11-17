@@ -1086,3 +1086,10 @@ it('applies an exact header selection without retaining the old keyword filter, 
   expect(vi.mocked(materialTransferApi.list).mock.calls.at(-1)![0]!.table_query).toBeUndefined()
   expect(vi.mocked(materialTransferApi.list).mock.calls.at(-1)![0]!.status).toBe('pending')
 })
+
+it('ignores retired urgency filters in old transfer-list links', async () => {
+  const page = await renderList('/transfer-batches?urgent_only=true')
+  expect(vi.mocked(materialTransferApi.list).mock.lastCall?.[0]).not.toHaveProperty('urgent_only')
+  expect(vi.mocked(materialTransferApi.counts).mock.lastCall?.[0]).not.toHaveProperty('urgent_only')
+  expect(page.text()).not.toContain('加急')
+})

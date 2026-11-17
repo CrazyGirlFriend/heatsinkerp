@@ -4,7 +4,6 @@ export interface RecordFilterParams {
   table_query?: string
   date_from?: string
   date_to?: string
-  urgent_only?: boolean
 }
 export interface CalendarRange {
   from: string

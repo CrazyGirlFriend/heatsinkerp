@@ -14,7 +14,7 @@ from .processing_parameters import parameter_fields
 from .processing_registration import METRICS, SUMMARY_METRICS
 from .processing_statistics import weight_difference_table
 from .quantity_adjustments import record_dict
-from .record_filters import RecordFilters, urgent_serials
+from .record_filters import RecordFilters
 from .schemas import SCRAP_MATERIAL_TYPES
 from .team_constants import PROCESSING_TEAM_CODES
 
@@ -425,8 +425,6 @@ def record_conditions(
         conditions.append(Adjustment.processing_date >= filters.date_from)
     if filters.date_to:
         conditions.append(Adjustment.processing_date <= filters.date_to)
-    if filters.urgent_only:
-        conditions.append(Transfer.serial_no.in_(urgent_serials()))
     if processor_id:
         conditions.append(
             or_(

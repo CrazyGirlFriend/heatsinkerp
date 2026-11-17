@@ -113,19 +113,20 @@ def test_numeric_search_uses_whole_serial_totals_before_pagination(client, stock
     )
 
 
-def test_status_and_latest_activity_date_use_serial_state_and_factory_timezone(client, stock_setup):
+def test_retired_status_and_latest_activity_date_use_serial_state_and_factory_timezone(
+    client, stock_setup
+):
     s = stock_setup
     a = receive_lot(client, s)
     b = receive_lot(client, s, key="next-day")
     identify([a], "URGENT", updated_at=datetime(2026, 9, 15, 16, 0))  # Shanghai 9/16 00:00
     identify([b], "NORMAL", updated_at=datetime(2026, 9, 16, 16, 0))  # Shanghai 9/17 00:00
-    response = client.put(
-        "/api/serial-urgency", json={"serial_no": "URGENT", "urgent": True, "expected_version": 0}
+    assert (
+        client.get(
+            endpoint(s, "serials"), params={"search_field": "urgency", "query": "urgent"}
+        ).status_code
+        == 422
     )
-    assert response.status_code == 200
-    assert search(client, s, "urgency", "urgent")["items"][0]["serial_no"] == "URGENT"
-    assert search(client, s, "urgency", "normal")["items"][0]["serial_no"] == "NORMAL"
-    assert search(client, s, "urgency", "normal", urgent_only=True)["total"] == 0
     assert search(client, s, "last_activity_at", "2026-09-16")["items"][0]["serial_no"] == "URGENT"
     assert search(client, s, "last_activity_at", "2026-09-17")["items"][0]["serial_no"] == "NORMAL"
     for field in ("batch_no", "source_batch_no", "next_team_id", "password_hash"):

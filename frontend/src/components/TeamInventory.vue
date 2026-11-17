@@ -21,8 +21,6 @@ import InventoryScheduleDetails from './InventoryScheduleDetails.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
-import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
-import SerialUrgencyDialog from './SerialUrgencyDialog.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
@@ -122,14 +120,7 @@ function refreshVisibleSchedules() {
     void inventoryDetail.value?.refreshSchedules?.()
     return
   }
-  if (
-    scheduleLoading.value ||
-    picker.value ||
-    pending.value ||
-    serialOpen.value ||
-    urgencyOpen.value
-  )
-    return
+  if (scheduleLoading.value || picker.value || pending.value || serialOpen.value) return
   void loadSchedules()
 }
 function syncScheduleClock(refresh = false) {
@@ -216,7 +207,6 @@ async function loadPurposes() {
 const filtersOpen = ref(false),
   filterResetRequested = ref(false)
 const dateDraft = ref<CalendarRange>({ from: '', to: '' }),
-  urgentDraft = ref(false),
   locationDraft = ref(false),
   analysisDraft = ref(''),
   daysDraft = ref<7 | 30>(30)
@@ -439,7 +429,10 @@ const filters = computed<TeamInventoryParams>(() => {
     'days',
   ])
     if (text(key)) params[key] = text(key)
-  if (props.warehouse && params.search_field === 'purpose_name') {
+  if (
+    params.search_field === 'urgency' ||
+    (props.warehouse && params.search_field === 'purpose_name')
+  ) {
     delete params.query
     delete params.search_field
     delete params.search_operator
@@ -452,7 +445,7 @@ const filters = computed<TeamInventoryParams>(() => {
     params.location_status = 'unassigned'
   if (!props.warehouse && text('purpose_id')) params.purpose_id = Number(text('purpose_id'))
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
-  for (const key of ['urgent_only', 'has_loss']) if (text(key) === 'true') params[key] = true
+  if (text('has_loss') === 'true') params.has_loss = true
   return { ...params, ...tableQuery.params.value } as TeamInventoryParams
 })
 function exportSource() {
@@ -547,7 +540,6 @@ const activeFilters = computed(() => {
   }
   if (filters.value.availability && filters.value.availability !== 'current')
     chips.push({ key: 'availability', label: availabilityLabels[filters.value.availability] })
-  if (text('urgent_only') === 'true') chips.push({ key: 'urgent_only', label: '仅看加急' })
   return chips
 })
 function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
@@ -639,7 +631,6 @@ function applyDialogFilters() {
     date_to: dateDraft.value.to || undefined,
     activity_day: undefined,
     activity_kind: undefined,
-    urgent_only: urgentDraft.value || undefined,
     location_status: props.warehouse && locationDraft.value ? 'unassigned' : undefined,
     days: daysDraft.value === 7 ? 7 : undefined,
     stock_age: kind === 'age' ? (age as AgeBand) : undefined,
@@ -670,7 +661,7 @@ function resetDialogFilters() {
   queryDraft.value = ''
   inputError.value = ''
   dateDraft.value = { from: '', to: '' }
-  urgentDraft.value = locationDraft.value = false
+  locationDraft.value = false
   analysisDraft.value = ''
 }
 function paginate(value: number, size = pageSize.value) {
@@ -777,22 +768,13 @@ function selectedSources(sources: StockBatch[]) {
   } else action('dispatch', sources)
 }
 const serialOpen = ref(false),
-  serialNo = ref(''),
-  urgencyOpen = ref(false),
-  urgencySerial = ref('')
-const canManageUrgency = computed(
-  () => auth.isAdmin && auth.currentUser?.active !== false && !auth.currentUserError,
-)
+  serialNo = ref('')
 function asRow(row: unknown) {
   return row as TeamInventoryRow
 }
 function openSerial(value: unknown) {
   serialNo.value = asRow(value).serial_no
   serialOpen.value = true
-}
-function flag(value: unknown) {
-  urgencySerial.value = asRow(value).serial_no
-  urgencyOpen.value = true
 }
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
   if (props.canWrite) {
@@ -811,7 +793,7 @@ function resetDetails() {
   ++sourceVersion
   openingSource.value = null
   detail.value = picker.value = pending.value = null
-  serialOpen.value = urgencyOpen.value = false
+  serialOpen.value = false
   expandedScheduleGroups.value = []
 }
 const searchBeforeFilters = ref({
@@ -856,7 +838,6 @@ function syncFilterDrafts() {
   processingStateDraft.value = filters.value.processing_state
   routeStatusDraft.value = filters.value.route_status
   dateDraft.value = { ...dates.value }
-  urgentDraft.value = text('urgent_only') === 'true'
   locationDraft.value = text('location_status') === 'unassigned'
   analysisDraft.value = analysisChoice.value
   daysDraft.value = days.value
@@ -937,19 +918,6 @@ onBeforeUnmount(() => {
               search()
             }
           " />
-        <ElSelect
-          v-else-if="searchKind === 'status'"
-          v-model="queryDraft"
-          aria-label="库存加急状态"
-          clearable
-          @clear="
-            () => {
-              queryDraft = ''
-              search()
-            }
-          "
-          ><ElOption value="urgent" label="加急" /><ElOption value="normal" label="普通"
-        /></ElSelect>
         <ElInput
           v-else
           v-model="queryDraft"
@@ -1171,7 +1139,6 @@ onBeforeUnmount(() => {
                   :value="30"
                   label="近30天" /></ElSelect
             ></label>
-            <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             <ElCheckbox v-if="warehouse" v-model="locationDraft">有未分配仓位的物料</ElCheckbox>
             <label
               >流转日期<RecordDateFilter :append-to="appendTo" v-model="dateDraft" label="流转日期"
@@ -1292,11 +1259,6 @@ onBeforeUnmount(() => {
               @click="openSerial(row)"
               ><strong>{{ sharedSerialLabel(row) }}</strong></ElButton
             >
-            <SerialUrgencyBadge
-              :urgency="row.urgency"
-              :editable="canManageUrgency"
-              @manage="flag(row)"
-            />
           </div>
           <ElTooltip
             v-else-if="column.key === 'material_name'"
@@ -1612,16 +1574,6 @@ onBeforeUnmount(() => {
       @changed="emit('changed')"
       @action="action"
     />
-    <SerialUrgencyDialog
-      v-model="urgencyOpen"
-      :serial-no="urgencySerial"
-      @changed="
-        () => {
-          load()
-          emit('changed')
-        }
-      "
-    />
   </WorkspaceDataPanel>
 </template>
 
@@ -1712,10 +1664,6 @@ onBeforeUnmount(() => {
 }
 .inventory-serial .serial-number-link {
   flex: 0 1 auto;
-}
-.inventory-serial :deep(.serial-urgency-badge) {
-  flex-shrink: 0;
-  margin-left: 0;
 }
 
 @media (max-width: 760px) {

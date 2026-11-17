@@ -11,7 +11,6 @@ import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import RecordDateFilter from './RecordDateFilter.vue'
-import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from './StatePanel.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
@@ -49,27 +48,19 @@ const rows = ref<StockBatch[]>([]),
   total = ref(0),
   loading = ref(false),
   error = ref('')
-const dates = ref({ from: '', to: '' }),
-  urgentOnly = ref(false)
+const dates = ref({ from: '', to: '' })
 const filterOpen = ref(false),
-  dateDraft = ref({ from: '', to: '' }),
-  urgentDraft = ref(false)
-const filterCount = computed(
-  () => Number(Boolean(dates.value.from || dates.value.to)) + Number(urgentOnly.value),
-)
+  dateDraft = ref({ from: '', to: '' })
+const filterCount = computed(() => Number(Boolean(dates.value.from || dates.value.to)))
 function syncFilters() {
   dateDraft.value = { ...dates.value }
-  urgentDraft.value = urgentOnly.value
 }
 function applyFilters() {
   dates.value = { ...dateDraft.value }
-  urgentOnly.value = urgentDraft.value
   filterOpen.value = false
   search()
 }
-const filtered = computed(
-  () => !!(appliedQuery.value || dates.value.from || dates.value.to || urgentOnly.value),
-)
+const filtered = computed(() => !!(appliedQuery.value || dates.value.from || dates.value.to))
 const emptyTitle = computed(() => (filtered.value ? '没有符合筛选条件的来源批次' : '暂无来源批次'))
 const { selected, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } =
   useBatchSelection(rows, (row) => String(row.transfer.id), dispatchableAmounts, stockSelectable)
@@ -96,7 +87,6 @@ async function load() {
     const params = {
       date_from: dates.value.from || undefined,
       date_to: dates.value.to || undefined,
-      urgent_only: urgentOnly.value || undefined,
       query: appliedQuery.value || undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -128,7 +118,6 @@ watch(
   () => {
     selected.clear()
     dates.value = { from: '', to: '' }
-    urgentOnly.value = false
     page.value = 1
     query.value = ''
     appliedQuery.value = ''
@@ -174,7 +163,6 @@ onBeforeUnmount(() => {
         @reset="
           () => {
             dateDraft = { from: '', to: '' }
-            urgentDraft = false
           }
         "
         ><label
@@ -182,8 +170,7 @@ onBeforeUnmount(() => {
             :append-to="appendTo"
             v-model="dateDraft"
             label="接收日期" /></label
-        ><ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox></FilterDialog
-      >
+      ></FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
     </div>
     <BatchSelectionBar
@@ -236,10 +223,10 @@ onBeforeUnmount(() => {
           /></template>
         </ElTableColumn>
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip
-          ><template #default="{ row }"
-            >{{ sharedSerialLabel(row.transfer)
-            }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template
-        ></ElTableColumn>
+          ><template #default="{ row }">{{
+            sharedSerialLabel(row.transfer)
+          }}</template></ElTableColumn
+        >
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip
           ><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn
         >

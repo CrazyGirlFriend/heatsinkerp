@@ -12,12 +12,11 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ElCheckbox, ElOption, ElTableColumn } from 'element-plus'
+import { ElOption, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
-import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import { useTeamWorkspaceFilters } from '@/composables/useTeamWorkspaceFilters'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
@@ -211,7 +210,6 @@ const {
   pageSize,
   queryDraft,
   dateDraft,
-  urgentDraft,
   materialDraft,
   receiptSourceDraft,
   batchStatusLabels,
@@ -1397,7 +1395,6 @@ onBeforeUnmount(() => {
                               " /></ElSelect
                         ></label>
                       </template>
-                      <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
                       <label
                         >{{ tab === 'receipts' ? '入库日期' : '登记日期'
                         }}<RecordDateFilter
@@ -1484,9 +1481,10 @@ onBeforeUnmount(() => {
                     show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span
-                        ><SerialUrgencyBadge :urgency="row.urgency" /></span></template
-                  ></ElTableColumn>
+                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
+                      ></template
+                    ></ElTableColumn
+                  >
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       row.material_name || '—'
@@ -1586,9 +1584,10 @@ onBeforeUnmount(() => {
                     show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span
-                        ><SerialUrgencyBadge :urgency="row.urgency" /></span></template
-                  ></ElTableColumn>
+                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
+                      ></template
+                    ></ElTableColumn
+                  >
                   <ElTableColumn label="入库时间" min-width="170" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       formatDateTime(row.received_at)
@@ -1709,9 +1708,10 @@ onBeforeUnmount(() => {
                     show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span
-                        ><SerialUrgencyBadge :urgency="row.urgency" /></span></template
-                  ></ElTableColumn>
+                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
+                      ></template
+                    ></ElTableColumn
+                  >
                   <ElTableColumn
                     prop="task_batch_number"
                     label="排期批次"
@@ -1904,9 +1904,10 @@ onBeforeUnmount(() => {
                     show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span
-                        ><SerialUrgencyBadge :urgency="row.urgency" /></span></template
-                  ></ElTableColumn>
+                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
+                      ></template
+                    ></ElTableColumn
+                  >
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       row.material_name || '—'
@@ -2099,9 +2100,6 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.record-serial :deep(.serial-urgency-badge) {
-  flex-shrink: 0;
 }
 .batch-link {
   max-width: 100%;

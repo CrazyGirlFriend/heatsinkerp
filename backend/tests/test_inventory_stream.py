@@ -19,6 +19,7 @@ from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -179,14 +180,6 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             lost = await snapshot()
             assert lost["totals"]["on_hand_quantity"] == 98
             assert lost["teams"][0]["balance"]["on_hand_quantity"] == 68
-            response = await asyncio.to_thread(
-                client.put,
-                "/api/serial-urgency",
-                json={"serial_no": lot["serial_no"], "urgent": True, "expected_version": 0},
-            )
-            assert response.status_code == 200
-            urgent = await snapshot()
-            assert urgent["teams"][0]["urgent_serial_count"] == 1
             # A new outbound draft and its void both push their committed state.
             response = await asyncio.to_thread(
                 sender_post,
@@ -260,6 +253,9 @@ def test_external_submission_pushes_completed_stock_in_one_step(client, outbound
 
 
 def test_failed_and_replayed_business_writes_do_not_publish(client, warehouse, monkeypatch):
+    warehouse["intake_locations"] = {
+        key: select_location(client, warehouse) for key in ("warehouse-intake-1", "rollback-event")
+    }
     publish = Mock()
     monkeypatch.setattr(inventory_events, "publish", publish)
     assert intake(client, warehouse).status_code == 201

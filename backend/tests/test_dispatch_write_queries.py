@@ -11,6 +11,7 @@ from app.models import (
     TransferBatchNumberSequence,
 )
 from app.schemas import MaterialTransferResponse
+from legacy_urgency import seed_legacy_urgency
 from receipt_helpers import receipt_post
 from sender_helpers import sending_employee_id
 from sqlalchemy import func, select
@@ -69,18 +70,7 @@ def test_dispatch_shared_reads_do_not_grow_with_line_count(client, warehouse, li
         )
         assert response.status_code == 201, response.text
         purposes.append(response.json())
-    assert (
-        client.put(
-            "/api/serial-urgency",
-            json={
-                "serial_no": "0000123",
-                "urgent": True,
-                "reason": "交期提前",
-                "expected_version": 0,
-            },
-        ).status_code
-        == 200
-    )
+    seed_legacy_urgency("0000123", True)
     lines = [
         {
             "source_transfer_id": origin["id"],
@@ -213,18 +203,7 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
         json={"idempotency_key": "replay-confirm"},
     )
     assert confirmed.status_code == 200, confirmed.text
-    assert (
-        client.put(
-            "/api/serial-urgency",
-            json={
-                "serial_no": origins[0]["serial_no"],
-                "urgent": True,
-                "reason": "交期变更",
-                "expected_version": 0,
-            },
-        ).status_code
-        == 200
-    )
+    seed_legacy_urgency(origins[0]["serial_no"], True)
     assert (
         client.patch(
             f"/api/material-transfers/{origins[0]['batch_no']}/delivery",

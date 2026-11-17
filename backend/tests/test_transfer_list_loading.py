@@ -7,6 +7,7 @@ from app.database import SessionLocal, async_engine, engine
 from app.material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from app.models import MaterialDispatch, MaterialTransfer
 from app.schemas import MaterialTransferResponse
+from legacy_urgency import seed_legacy_urgency
 from sqlalchemy import event, inspect, select
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
@@ -74,16 +75,7 @@ def list_scenario(client, warehouse):  # noqa: F811
         )
         submission.dispatch_no = "CK-LEGACY-LIST"
         db.commit()
-    response = client.put(
-        "/api/serial-urgency",
-        json={
-            "serial_no": "000001",
-            "urgent": True,
-            "reason": "交期提前",
-            "expected_version": 0,
-        },
-    )
-    assert response.status_code == 200, response.text
+    seed_legacy_urgency("000001", True)
     response = client.post(
         f"/api/team-materials/{warehouse['other']['id']}/losses",
         headers=warehouse["other_headers"],

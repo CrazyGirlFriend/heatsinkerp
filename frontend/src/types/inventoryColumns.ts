@@ -103,12 +103,6 @@ export const inventoryColumns = [
     format: (row: SerialSummary) => amount(row.lost_weight),
   },
   {
-    key: 'urgency',
-    label: '加急状态',
-    width: 120,
-    format: (row: SerialSummary) => (row.urgency?.urgent ? '加急' : '普通'),
-  },
-  {
     key: 'last_activity_at',
     label: '最近流转时间',
     width: 200,

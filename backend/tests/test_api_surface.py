@@ -61,7 +61,6 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/factory-dashboard",
         "/api/factory-overview",
         "/api/factory-performance",
-        "/api/serial-urgency",
         "/api/main-system/",
         "/api/notifications/",
     )

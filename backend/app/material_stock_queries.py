@@ -460,18 +460,12 @@ def list_losses(
     page=1,
     page_size=20,
 ):
-    from .record_filters import RecordFilters, urgent_serials
+    from .record_filters import RecordFilters
 
     require_team(db, team_id)
     filters = [MaterialLoss.team_id == team_id]
     record_filters = record_filters or RecordFilters()
     filters.extend(record_filters.dates(MaterialLoss.created_at))
-    if record_filters.urgent_only:
-        filters.append(
-            MaterialLoss.source_transfer_id.in_(
-                select(MaterialTransfer.id).where(MaterialTransfer.serial_no.in_(urgent_serials()))
-            )
-        )
     if serial_no is not None:
         filters.append(
             MaterialLoss.source_transfer_id.in_(
@@ -607,7 +601,7 @@ def list_dispatches(
     page=1,
     page_size=20,
 ):
-    from .record_filters import RecordFilters, urgent_serials
+    from .record_filters import RecordFilters
 
     record_filters = record_filters or RecordFilters()
     require_team(db, team_id)
@@ -686,12 +680,6 @@ def list_dispatches(
         singles = singles.where(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name]))
     grouped = grouped.where(*record_filters.dates(MaterialDispatch.created_at))
     singles = singles.where(*record_filters.dates(mt.created_at))
-    if record_filters.urgent_only:
-        matching = select(mt.dispatch_id).where(
-            mt.serial_no.in_(urgent_serials()), mt.status != "voided"
-        )
-        grouped = grouped.where(MaterialDispatch.id.in_(matching))
-        singles = singles.where(mt.serial_no.in_(urgent_serials()), mt.status != "voided")
     index = union_all(grouped, singles).subquery()
     filters = []
     if next_team_id:

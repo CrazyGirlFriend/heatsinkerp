@@ -21,7 +21,6 @@ from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
 from .processing_statistics import weight_lineage, weight_roots
 from .record_filters import day_bounds
 from .schemas import SCRAP_MATERIAL_TYPES
-from .serial_urgency import urgency_map
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
 mt = MaterialTransfer
@@ -775,7 +774,6 @@ def get_dashboard(*, db: Session):
     grouped = defaultdict(list)
     for row in owned:
         grouped[row["serial_no"]].append(row)
-    priorities = urgency_map(db, list(grouped))
     overdue = defaultdict(list)
     for row in deliveries:
         if row["status"] == "overdue":
@@ -787,12 +785,7 @@ def get_dashboard(*, db: Session):
         age = max(
             ((today - local_day(r["oldest_at"])).days for r in rows if r["oldest_at"]), default=0
         )
-        urgent = priorities.get(serial, {}).get("urgent", False)
-        reasons = (
-            (["超期"] if late else [])
-            + (["加急"] if urgent else [])
-            + (["库龄"] if age >= 7 else [])
-        )
+        reasons = (["超期"] if late else []) + (["库龄"] if age >= 7 else [])
         if reasons:
             attention.append(
                 {
@@ -810,7 +803,6 @@ def get_dashboard(*, db: Session):
     attention.sort(
         key=lambda r: (
             "超期" not in r["reasons"],
-            "加急" not in r["reasons"],
             -r["age_days"],
             r["serial_no"],
         )

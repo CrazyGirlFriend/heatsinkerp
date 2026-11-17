@@ -23,7 +23,6 @@ from .production_schedule_api import router as production_schedule_router
 from .quality_feedback_api import router as quality_feedback_router
 from .rework_notices_api import router as rework_notices_router
 from .schedule_notices_api import router as schedule_notices_router
-from .serial_urgency_api import router as urgency_router
 from .team_business_api import router as team_business_router
 from .team_serial_history import router as serial_history_router
 from .transfer_amendments_api import router as transfer_amendments_router
@@ -47,7 +46,6 @@ router.include_router(analytics_router)
 router.include_router(warehouse_inventory_router)
 router.include_router(factory_router)
 router.include_router(performance_router)
-router.include_router(urgency_router)
 router.include_router(stream_router)
 router.include_router(main_system_router)
 router.include_router(main_system_configuration_router)

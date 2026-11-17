@@ -1876,24 +1876,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/serial-urgency': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Urgency */
-    get: operations['get_urgency_api_serial_urgency_get']
-    /** Set Urgency */
-    put: operations['set_urgency_api_serial_urgency_put']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/team-directory': {
     parameters: {
       query?: never
@@ -10282,17 +10264,6 @@ export interface components {
       /** Version */
       version: number
     }
-    /** UrgencyUpdate */
-    UrgencyUpdate: {
-      /** Expected Version */
-      expected_version: number
-      /** Reason */
-      reason?: string | null
-      /** Serial No */
-      serial_no: string
-      /** Urgent */
-      urgent: boolean
-    }
     /** UserCreate */
     UserCreate: {
       /**
@@ -11970,7 +11941,6 @@ export interface operations {
         statuses?: string
         target_team_id?: number | null
         team_id?: number | null
-        urgent_only?: boolean
         weight_max?: number | string | null
         weight_min?: number | string | null
       }
@@ -14870,7 +14840,6 @@ export interface operations {
           | 'lost_weight'
           | 'scrap_quantity'
           | 'scrap_weight'
-          | 'urgency'
           | 'last_activity_at'
           | 'source'
           | 'purpose_name'
@@ -14899,7 +14868,6 @@ export interface operations {
         stock_age_max?: number | null
         stock_age_min?: number | null
         team_id?: number | null
-        urgent_only?: boolean
         waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         waiting_direction?: ('incoming' | 'outgoing') | null
       }
@@ -14916,70 +14884,6 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['FactoryInventoryPageResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_urgency_api_serial_urgency_get: {
-    parameters: {
-      query: {
-        serial_no: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['UrgencyResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  set_urgency_api_serial_urgency_put: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UrgencyUpdate']
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['UrgencyResponse']
         }
       }
       /** @description Validation Error */
@@ -15058,7 +14962,6 @@ export interface operations {
         page_size?: number
         query?: string | null
         status?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -15489,7 +15392,6 @@ export interface operations {
           | 'lost_weight'
           | 'scrap_quantity'
           | 'scrap_weight'
-          | 'urgency'
           | 'last_activity_at'
           | 'source'
           | 'purpose_name'
@@ -15517,7 +15419,6 @@ export interface operations {
         stock_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         stock_age_max?: number | null
         stock_age_min?: number | null
-        urgent_only?: boolean
         waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         waiting_direction?: ('incoming' | 'outgoing') | null
       }
@@ -15660,7 +15561,6 @@ export interface operations {
         page?: number
         page_size?: number
         query?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -15701,7 +15601,6 @@ export interface operations {
         query?: string | null
         serial_no?: string | null
         source_transfer_id?: number | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -15879,7 +15778,6 @@ export interface operations {
         page_size?: number
         query?: string | null
         status?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -15990,7 +15888,6 @@ export interface operations {
         processor_id?: number | null
         purpose_id?: number | null
         query?: string | null
-        urgent_only?: boolean
         work_date?: string | null
         work_kind?: ('initial' | 'rework') | null
       }
@@ -16034,7 +15931,6 @@ export interface operations {
         processor_id?: number | null
         purpose_id?: number | null
         query?: string | null
-        urgent_only?: boolean
         work_date?: string | null
         work_kind?: ('initial' | 'rework') | null
       }
@@ -16352,7 +16248,6 @@ export interface operations {
         page_size?: number
         query?: string | null
         receipt_source?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -16461,7 +16356,6 @@ export interface operations {
         page?: number
         page_size?: number
         query?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {
@@ -16562,12 +16456,10 @@ export interface operations {
           | 'lost_weight'
           | 'scrap_quantity'
           | 'scrap_weight'
-          | 'urgency'
           | 'last_activity_at'
         search_operator?: 'eq' | 'gte' | 'lte'
         serial_no?: string | null
         stock_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
-        urgent_only?: boolean
         waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         waiting_direction?: ('incoming' | 'outgoing') | null
       }
@@ -16612,7 +16504,6 @@ export interface operations {
         query?: string | null
         serial_no?: string | null
         source_ids?: string | null
-        urgent_only?: boolean
       }
       header?: never
       path: {

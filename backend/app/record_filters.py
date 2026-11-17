@@ -28,7 +28,6 @@ def urgent_serials():
 class RecordFilters(BaseModel):
     date_from: date | None = None
     date_to: date | None = None
-    urgent_only: bool = False
 
     def dates(self, column):
         if self.date_from and self.date_to and self.date_from > self.date_to:
@@ -38,7 +37,7 @@ class RecordFilters(BaseModel):
         )
 
     def predicates(self, column, serial):
-        return self.dates(column) + ([serial.in_(urgent_serials())] if self.urgent_only else [])
+        return self.dates(column)
 
 
 def numeric_search_predicate(

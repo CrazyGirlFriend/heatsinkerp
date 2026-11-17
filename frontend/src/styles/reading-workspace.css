@@ -292,10 +292,6 @@
   flex-wrap: wrap;
   max-width: none;
 }
-.page.reading-workspace .serial-identity .serial-urgency-badge {
-  justify-self: start;
-  width: max-content;
-}
 .page.reading-workspace .trace-search form > .el-input {
   flex: 1 1 240px;
   max-width: 400px;

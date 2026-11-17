@@ -1,13 +1,6 @@
-"""Administrative serial urgency request and response contracts."""
+"""Historical serial urgency response contract."""
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class UrgencyUpdate(BaseModel):
-    serial_no: str = Field(min_length=1, max_length=80)
-    urgent: bool
-    reason: str | None = Field(default=None, max_length=500)
-    expected_version: int = Field(ge=0)
+from pydantic import BaseModel, ConfigDict
 
 
 class UrgencyResponse(BaseModel):

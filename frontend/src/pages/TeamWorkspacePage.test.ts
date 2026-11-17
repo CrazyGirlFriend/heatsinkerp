@@ -864,7 +864,6 @@ describe('team workspace material ledger', () => {
         query: '000A',
         date_from: '2026-09-01',
         date_to: '2026-09-30',
-        urgent_only: true,
         page: 1,
         page_size: 100,
       }
@@ -1344,7 +1343,6 @@ describe('team workspace material ledger', () => {
         availability: 'current',
         query: 'AL',
         date_from: '2026-09-12',
-        urgent_only: true,
         page: 2,
         page_size: 20,
       }),
@@ -1664,7 +1662,7 @@ describe('team workspace material ledger', () => {
     await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
-  it('separates scanning and creation from record filters without removing date or urgency filters', async () => {
+  it('separates scanning and creation from record filters while retaining date filters and retiring urgency', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({
       items: [
         normalizeMaterialTransfer({
@@ -1699,7 +1697,7 @@ describe('team workspace material ledger', () => {
     await flushPromises()
     expect(
       wrapper.findAllComponents(ElCheckbox).some((item) => item.text().includes('仅看加急')),
-    ).toBe(true)
+    ).toBe(false)
     filters.vm.$emit('cancel')
     filters.vm.$emit('update:modelValue', false)
     await flushPromises()
@@ -1788,7 +1786,6 @@ describe('team workspace material ledger', () => {
         query: undefined,
         material_type: undefined,
         status: undefined,
-        urgent_only: undefined,
         date_from: undefined,
         page: 1,
       }),

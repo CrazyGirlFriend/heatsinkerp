@@ -3,15 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  ElCheckbox,
-  ElDatePicker,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTag,
-  ElTooltip,
-} from 'element-plus'
+import { ElDatePicker, ElOption, ElPagination, ElSelect, ElTag, ElTooltip } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import TeamInventory from './TeamInventory.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -92,7 +84,6 @@ async function render(
         TeamInventoryDetail: true,
         SerialMaterialDrawer: true,
         StockSourcePicker: true,
-        SerialUrgencyDialog: true,
         InventoryPendingDialog: true,
       },
     },
@@ -940,7 +931,6 @@ describe('warehouse grouped stock', () => {
         page_size: 100,
         material_name: '材料1',
         receipt_source: 'internal',
-        urgent_only: true,
       }),
     )
   })
@@ -1412,7 +1402,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.get('tbody tr').text()).not.toContain('未指定任务')
   })
 
-  it('combines the administrator urgency status and action while keeping the team badge read-only', async () => {
+  it('does not show urgency controls or badges even for legacy flags and administrators', async () => {
     const row = warehouseFixture({
       serial_no: '000000092700001',
       urgency: {
@@ -1438,19 +1428,12 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     const serial = wrapper.get('.inventory-serial')
     expect(serial.get('.serial-number-link').text()).toBe('000000092700001')
-    expect(serial.findAll('.serial-urgency-badge')).toHaveLength(1)
-    const action = serial.get('button[aria-label="取消加急"]')
-    expect(action.text()).toBe('加急')
-    expect(action.attributes('aria-pressed')).toBe('true')
-    await action.trigger('click')
-    expect(wrapper.getComponent({ name: 'SerialUrgencyDialog' }).props()).toMatchObject({
-      modelValue: true,
-      serialNo: row.serial_no,
-    })
+    expect(serial.find('.serial-urgency-badge').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'SerialUrgencyDialog' }).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('加急')
     useAuthStore().session!.user.role = 'TEAM'
     await flushPromises()
-    expect(serial.find('button[aria-label="取消加急"]').exists()).toBe(false)
-    expect(serial.get('button[aria-label="查看加急原因"]').text()).toBe('加急')
+    expect(serial.find('.serial-urgency-badge').exists()).toBe(false)
   })
 
   it('renders remaining and optional pending balances inline and retains the pending link', async () => {
@@ -1780,7 +1763,7 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(columnSettings().props('storageKey')).toBe('heatsink.classified-columns.v1:42:902')
   })
-  it('retains chart drill-down, date and urgency filters and clears them explicitly', async () => {
+  it('retains chart drill-down, date filters and clears them explicitly', async () => {
     const router = await render(
       '/team-workspaces/901?tab=stock&stock_age=ge7&filter_label=库存停留：7天及以上&page_size=20&activity_day=2026-09-12',
       true,
@@ -1795,15 +1778,12 @@ describe('warehouse grouped stock', () => {
       .getComponent(RecordDateFilter)
       .vm.$emit('update:modelValue', { from: '2026-09-15', to: '2026-09-15' })
     await applyModal()
-    wrapper.getComponent(ElCheckbox).vm.$emit('update:modelValue', true)
-    await applyModal()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
       901,
       expect.objectContaining({
         stock_age: 'ge7',
         date_from: '2026-09-15',
         date_to: '2026-09-15',
-        urgent_only: true,
         page_size: 20,
       }),
     )
@@ -1852,27 +1832,22 @@ describe('warehouse grouped stock', () => {
       expect.objectContaining({ query: '1.234' }),
     )
   })
-  it('switches a weight search to urgency without retaining its numeric query', async () => {
+  it('ignores legacy urgency links and omits urgency from the column settings', async () => {
     await render(
-      '/team-workspaces/901?tab=stock&search_field=available_weight&query=1.234',
+      '/team-workspaces/901?tab=stock&search_field=urgency&query=normal&urgent_only=true',
       true,
       false,
     )
-    select('库存搜索字段').vm.$emit('update:modelValue', 'urgency')
-    select('库存搜索字段').vm.$emit('change')
-    await flushPromises()
-    select('库存加急状态').vm.$emit('update:modelValue', 'normal')
-    await flushPromises()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '查询')!
-      .trigger('click')
-    await flushPromises()
-    expect(headers()[0]).toBe('加急状态')
-    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
-      901,
-      expect.objectContaining({ search_field: 'urgency', query: 'normal' }),
-    )
+    const params = vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]
+    expect(params?.query).toBeUndefined()
+    expect(params?.search_field).toBeUndefined()
+    expect(params).not.toHaveProperty('urgent_only')
+    expect(
+      columnSettings()
+        .props('columns')
+        .some((column: { key: string }) => column.key === 'urgency'),
+    ).toBe(false)
+    expect(wrapper.text()).not.toContain('加急')
   })
   it('switches an urgency search to activity date and clears that date safely', async () => {
     await render('/team-workspaces/901?tab=stock&search_field=urgency&query=normal', true, false)
