@@ -89,7 +89,7 @@ def test_dispatch_shared_reads_do_not_grow_with_line_count(client, warehouse, li
     # One shared inspection-hold check also covers all selected source lots.
     # One current locking read checks this submission's delivery commitments.
     # One shared route-policy read enforces the new-material cutover.
-    assert len(statements) <= 17, len(statements)
+    assert len(statements) <= 18, len(statements)  # includes one batch schedule lookup
     assert sum("FROM process_route_policy" in sql for sql in statements) == 1
     assert sum("FROM material_inspections" in sql for sql in statements) == 1
     assert sum("FROM material_quantity_adjustments" in sql for sql in statements) == 1
@@ -186,7 +186,7 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
         replay = dispatch(client, warehouse, lines, sent_employee_id=sender_id)
     assert replay.status_code == 201, replay.text
     assert replay.json() == created.json()
-    assert len(statements) <= 9, len(statements)
+    assert len(statements) <= 10, len(statements)  # includes one batch schedule lookup
     assert any(
         "LEFT OUTER JOIN serial_urgencies" in sql and "material_transfers.id IN" in sql
         for sql in statements

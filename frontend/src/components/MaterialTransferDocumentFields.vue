@@ -19,6 +19,7 @@ import {
   materialTypeLabel,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { formatDateTime } from '@/utils/format'
 import { processingRoleLabels, processingStateLabels } from '@/types/materialProcessing'
 
@@ -37,7 +38,10 @@ const fields = computed<DocumentField[]>(() => {
   const material = [
     { label: '物料类型', value: materialTypeLabel(t.material_type) },
     { label: '成品件数', value: t.finished_quantity == null ? '—' : `${t.finished_quantity} 件` },
-    { label: '要求发货日期', value: t.delivery_date || '未填写' },
+    {
+      label: t.schedule_due_at ? '本批交期' : '要求发货日期',
+      value: t.schedule_due_at ? formatDateTime(t.schedule_due_at) : t.delivery_date || '未填写',
+    },
     {
       label: '应发成品件数',
       value: t.delivery_quantity == null ? '—' : `${t.delivery_quantity} 件`,
@@ -100,6 +104,7 @@ const fields = computed<DocumentField[]>(() => {
       ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }]
       : []),
     { label: '上一批次', value: t.source_transfer_batch_no || '—' },
+    ...(t.task_batch_number ? [{ label: '排期批次', value: formatScheduleBatch(t) }] : []),
     ...(t.rework_pending || t.rework_count
       ? [
           { label: '返工属性', value: t.rework_pending ? '待返工' : '有返工历史' },

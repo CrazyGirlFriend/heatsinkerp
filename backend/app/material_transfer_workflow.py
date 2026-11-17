@@ -16,6 +16,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name, can_manage_team
 from .batch_numbers import next_transfer_batch_number
+from .material_delivery import with_schedule
 from .material_weight import SLUDGE_FIELDS, sludge_measurement, validate_material_amounts
 from .models import (
     MaterialDispatch,
@@ -493,7 +494,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                         raise _forbidden("idempotency key belongs to another source team")
                     if prior.request_hash != request_hash:
                         raise _conflict("idempotency key was used with a different payload")
-                    return material_transfer_dict(prior, user)
+                    return with_schedule(db, [material_transfer_dict(prior, user)])[0]
 
             from .models import ProcessRoutePolicy
 
@@ -522,7 +523,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             location_name = consume(db, target, payload, user, required=True)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
-                **purpose_snapshot(db, target.id, payload.purpose_id),
+                **purpose_snapshot(db, target.id, payload.purpose_id, required=False),
                 serial_no=payload.serial_no,
                 warehouse_location=location_name,
                 **{field: getattr(payload, field) for field in DOCUMENT_FIELDS},
@@ -547,7 +548,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             db.add(transfer)
             db.flush()
             _record_event(db, transfer, user, "created")
-            result = material_transfer_dict(transfer, user)
+            result = with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         return result
     except IntegrityError as exc:
         db.rollback()
@@ -562,7 +563,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                 and prior.source_team_id == source.id
                 and prior.request_hash == request_hash
             ):
-                return material_transfer_dict(prior, user)
+                return with_schedule(db, [material_transfer_dict(prior, user)])[0]
         raise _conflict("duplicate material-transfer number or idempotency key") from exc
 
 
@@ -570,7 +571,7 @@ def get_material_transfer(db, batch_no: str, user: User) -> dict[str, Any]:
     transfer = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
     if transfer is None:
         raise HTTPException(404, "material transfer not found")
-    return material_transfer_dict(transfer, user)
+    return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
 
 
 def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str, Any]:
@@ -702,7 +703,9 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 payload.purpose_id != transfer.purpose_id
                 or before["next_team_id"] != transfer.next_team_id
             ):
-                purpose = purpose_snapshot(db, target.id if target else None, payload.purpose_id)
+                purpose = purpose_snapshot(
+                    db, target.id if target else None, payload.purpose_id, required=False
+                )
                 transfer.purpose_id, transfer.purpose_name = (
                     purpose["purpose_id"],
                     purpose["purpose_name"],
@@ -752,7 +755,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 )
                 db.flush()
             _record_event(db, transfer, user, "updated", before)
-        result = material_transfer_dict(transfer, user)
+        result = with_schedule(db, [material_transfer_dict(transfer, user)])[0]
     return result
 
 
@@ -814,7 +817,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                 and transfer.receipt_idempotency_key == payload.idempotency_key
             ):
                 _check_receipt_location(transfer, payload, replay=True)
-                return material_transfer_dict(transfer, user)
+                return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
             key_owner = db.scalar(
                 select(MaterialTransfer.id).where(
                     MaterialTransfer.receipt_idempotency_key == payload.idempotency_key
@@ -867,7 +870,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             transfer.version += 1
             db.flush()
             _record_event(db, transfer, user, "received", before)
-            result = material_transfer_dict(transfer, user)
+            result = with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         return result
     except IntegrityError as exc:
         db.rollback()
@@ -879,7 +882,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             and transfer.receipt_idempotency_key == payload.idempotency_key
         ):
             _check_receipt_location(transfer, payload, replay=True)
-            return material_transfer_dict(transfer, user)
+            return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         raise _conflict("duplicate receipt idempotency key") from exc
 
 
@@ -893,7 +896,7 @@ def reject_material_transfer(db, batch_no, payload, user):
             transfer.rejection_reason == payload.reason
             and transfer.version == payload.expected_version + 1
         ):
-            return material_transfer_dict(transfer, user)
+            return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         _assert_version(transfer, payload)
         before = _snapshot(transfer)
         # None means no correction request; an empty reason still marks a return.
@@ -903,7 +906,7 @@ def reject_material_transfer(db, batch_no, payload, user):
         db.flush()
         db.refresh(transfer, attribute_names=["updated_at"])
         _record_event(db, transfer, user, "rejected", before)
-        return material_transfer_dict(transfer, user)
+        return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
 
 
 def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
@@ -933,7 +936,7 @@ def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
                 transfer.status == "dispatched"
                 and transfer.outbound_idempotency_key == payload.idempotency_key
             ):
-                return material_transfer_dict(transfer, user)
+                return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
             if transfer.status != "pending":
                 raise _conflict("only a pending external outbound can be confirmed")
             _assert_version(transfer, payload)
@@ -957,7 +960,7 @@ def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
             # Read MySQL's persisted second precision before the audit/response.
             db.refresh(transfer, attribute_names=["dispatched_at", "updated_at"])
             _record_event(db, transfer, user, "dispatched", before)
-            result = material_transfer_dict(transfer, user)
+            result = with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         return result
     except (IntegrityError, OperationalError) as exc:
         db.rollback()

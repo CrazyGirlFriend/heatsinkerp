@@ -408,33 +408,12 @@ describe('material transfer document form', () => {
     expect(body).not.toHaveProperty('delivery_quantity')
   })
 
-  it('carries the upstream-selected destination purpose and preserves disabled historical snapshots', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
-      { id: 31, team_id: 3, name: '电镀', active: true, version: 1 },
-    ])
-    await render()
-    await base()
-    await submit()
-    expect(materialTransferApi.create).not.toHaveBeenCalled()
-    wrapper
-      .findAllComponents(ElSelect)
-      .find((select) => select.props('ariaLabel') === '接收任务')!
-      .vm.$emit('update:modelValue', 31)
-    await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(
-      expect.objectContaining({ next_team_id: 3, purpose_id: 31 }),
-    )
-    wrapper.unmount()
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
-      { id: 31, team_id: 3, name: '新名称', active: false, version: 2 },
-    ])
+  it('does not change the historical downstream task when editing a transfer', async () => {
     await render(fixture({ purpose_id: 31, purpose_name: '电镀' }))
-    await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith(
-      'TL20260906000001',
-      expect.objectContaining({ purpose_id: 31 }),
-    )
+    expect(wrapper.text()).not.toContain('接收任务')
+    expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
   })
+
   it('keeps linked source identity and group destination fixed while allowing amount and notes changes', async () => {
     await render(
       fixture({
@@ -638,7 +617,9 @@ it('keeps transfer originals bound to the issued batch while edited fields chang
   await render(fixture())
   const rail = wrapper.getComponent(SerialRouteAttachments)
   expect(rail.props('batchNo')).toBe('TL20260906000001')
-  expect(rail.props('items')).toEqual([{ serialNo: 'HS-001', routeId: undefined }])
+  expect(rail.props('items')).toEqual([
+    { serialNo: 'HS-001', routeId: undefined, scheduleTaskId: null },
+  ])
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-EDITED')
   expect(rail.props('batchNo')).toBe('TL20260906000001')
 })

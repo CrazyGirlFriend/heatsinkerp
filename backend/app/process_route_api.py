@@ -363,13 +363,14 @@ async def download_order(
 def dispatch_order(
     route_id: int,
     serial_no: str = Query(min_length=1, max_length=80),
+    task_id: int | None = Query(default=None, ge=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     from .schedule_order_documents import route_order
 
     require_route_reader(require_route(db, route_id), user)
-    order = route_order(db, route_id, serial_no.strip())
+    order = route_order(db, route_id, serial_no.strip(), task_id)
     return {"task_id": order.task_id, "document": order.document} if order else None
 
 

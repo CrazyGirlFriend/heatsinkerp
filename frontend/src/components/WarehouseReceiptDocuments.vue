@@ -19,6 +19,7 @@ const props = withDefaults(
     route?: ProcessRoute
     sourceRoute?: ProcessRoute
     serialNo?: string
+    scheduleTaskId?: number | null
     documents: ReceiptDocument[]
     editable?: boolean
     disabled?: boolean
@@ -48,6 +49,7 @@ const orderDocument = computed(() =>
   props.documents.find(
     (item) =>
       item.kind === 'order' &&
+      !props.scheduleTaskId &&
       (props.editable ||
         !props.serialNo ||
         !item.parsed.serial_no ||
@@ -109,11 +111,16 @@ async function loadOrder() {
   if (!props.route?.id || !serial || orderDocument.value) return
   orderLoading.value = true
   try {
-    const result = await processRouteApi.dispatchOrder(props.route.id, serial)
+    const result = await processRouteApi.dispatchOrder(
+      props.sourceRoute?.id || props.route.id,
+      serial,
+      props.scheduleTaskId,
+    )
     if (generation !== orderGeneration) return
     dispatchOrder.value = result
     const original = props.route.source_data.order_document
-    if (!result && original?.serial_no === serial) legacyOrder.value = original
+    if (!props.scheduleTaskId && !result && original?.serial_no === serial)
+      legacyOrder.value = original
     emit('inherited-order', result?.document ?? legacyOrder.value)
   } catch (error) {
     if (generation !== orderGeneration) return
@@ -127,9 +134,19 @@ watch(
   (busy) => emit('busy', busy),
   { immediate: true },
 )
-watch([() => props.route?.id, () => props.serialNo, () => orderDocument.value?.id], loadOrder, {
-  immediate: true,
-})
+watch(
+  [
+    () => props.route?.id,
+    () => props.sourceRoute?.id,
+    () => props.serialNo,
+    () => props.scheduleTaskId,
+    () => orderDocument.value?.id,
+  ],
+  loadOrder,
+  {
+    immediate: true,
+  },
+)
 watch(
   () => props.teamId,
   () => {

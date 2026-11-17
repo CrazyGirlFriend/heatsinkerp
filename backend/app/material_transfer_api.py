@@ -256,16 +256,21 @@ def list_material_transfers(
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
+    from .material_delivery import with_schedule
+
     return {
-        "items": [
-            {
-                **material_transfer_workflow.material_transfer_dict(
-                    item, current_user, include_history=False
-                ),
-                "task_batch_number": batch_number,
-            }
-            for item, batch_number in transfers
-        ],
+        "items": with_schedule(
+            db,
+            [
+                {
+                    **material_transfer_workflow.material_transfer_dict(
+                        item, current_user, include_history=False
+                    ),
+                    "task_batch_number": batch_number,
+                }
+                for item, batch_number in transfers
+            ],
+        ),
         "total": total,
         "page": page,
         "page_size": page_size,

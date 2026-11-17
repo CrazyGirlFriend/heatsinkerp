@@ -160,6 +160,8 @@ export const productionScheduleApi = {
       body: { expected_version },
     }),
   candidates: (params: {
+    serial_no?: string
+    process_route_id?: number
     team_id: number
     source_transfer_ids: string
     next_team_id?: number

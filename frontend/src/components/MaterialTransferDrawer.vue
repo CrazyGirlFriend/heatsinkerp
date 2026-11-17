@@ -757,7 +757,11 @@ watch(
             (current.shared_unallocated && current.shared_serials?.length
               ? current.shared_serials
               : [{ serial_no: current.serial_no }]
-            ).map((item) => ({ serialNo: item.serial_no, routeId: current!.process_route?.id }))
+            ).map((item) => ({
+              serialNo: item.serial_no,
+              routeId: current!.process_route?.id,
+              scheduleTaskId: current!.schedule_task_id,
+            }))
           "
         />
         <MaterialTransferDocumentFields :transfer="current" group="all">

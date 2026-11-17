@@ -5,6 +5,7 @@ from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import aliased
 
 from . import material_stock as stock
+from .material_delivery import with_schedule
 from .material_transfer_workflow import _utc, material_transfer_dict, material_transfer_list_options
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialTransfer as Transfer
@@ -331,6 +332,7 @@ def list_sources(
         )
         for row in rows
     ]
+    with_schedule(db, [item["transfer"] for item in items])
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 

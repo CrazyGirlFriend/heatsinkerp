@@ -5222,6 +5222,10 @@ export interface components {
        * @default false
        */
       rework_route_ready: boolean
+      /** Schedule Due At */
+      schedule_due_at?: string | null
+      /** Schedule Task Id */
+      schedule_task_id?: number | null
       /** Sent Employee Id */
       sent_employee_id?: number | null
       /** Sent Employee Name */
@@ -10033,6 +10037,10 @@ export interface components {
        * @default false
        */
       rework_route_ready: boolean
+      /** Schedule Due At */
+      schedule_due_at?: string | null
+      /** Schedule Task Id */
+      schedule_task_id?: number | null
       /** Sent Employee Id */
       sent_employee_id?: number | null
       /** Sent Employee Name */
@@ -12534,6 +12542,7 @@ export interface operations {
     parameters: {
       query: {
         serial_no: string
+        task_id?: number | null
       }
       header?: never
       path: {
@@ -13578,6 +13587,8 @@ export interface operations {
       query: {
         external_destination?: string | null
         next_team_id?: number | null
+        process_route_id?: number | null
+        serial_no?: string | null
         source_transfer_ids: string
         team_id: number
       }

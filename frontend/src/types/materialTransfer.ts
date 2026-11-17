@@ -171,6 +171,8 @@ export interface SludgeMeasurement {
 }
 export interface MaterialTransfer
   extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
+  schedule_due_at?: string | null
+  schedule_task_id?: number | null
   task_batch_number?: number | null
   process_route?: import('./processRoute').ProcessRouteContext | null
   sludge_percent_locked?: boolean

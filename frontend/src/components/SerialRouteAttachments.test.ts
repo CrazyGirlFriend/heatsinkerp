@@ -69,6 +69,7 @@ it('ignores a late response after changing serials', async () => {
     props: { items: [{ serialNo: 'A' }] },
     global: { stubs },
   })
+  await flushPromises()
   await wrapper.setProps({ items: [{ serialNo: 'B' }] })
   await flushPromises()
   finish({ ...routeFixture, id: 8 })
@@ -103,7 +104,7 @@ it.each(['missing', 'failed'])(
     const attachments = wrapper.getComponent(ProcessRouteAttachments)
     expect(attachments.props('route')).toEqual(route)
     expect(attachments.props('orderDocument')).toBeNull()
-    expect(processRouteApi.dispatchOrder).toHaveBeenCalledWith(route.id, 'ORDER-NEW')
+    expect(processRouteApi.dispatchOrder).toHaveBeenCalledWith(route.id, 'ORDER-NEW', undefined)
   },
 )
 
@@ -307,4 +308,22 @@ it('keeps separate batches of the same serial selectable and ignores stale origi
   expect(documents.props('route')?.id).toBe(9)
   expect(documents.props('documents')).toEqual([])
   expect(warehouseReceiptDocumentApi.forTransfer).toHaveBeenLastCalledWith('TL-B')
+})
+
+it('carries the bound schedule into receipt attachment lookup', async () => {
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer').mockResolvedValue({ items: [] })
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(routeFixture)
+  vi.mocked(materialTransferApi.get).mockResolvedValue(
+    normalizeMaterialTransfer({
+      serial_no: 'S-001',
+      schedule_task_id: 51,
+      process_route: { id: routeFixture.id },
+    }),
+  )
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [{ serialNo: 'S-001', batchNo: 'TL1' }] },
+    global: { stubs: { ...stubs, WarehouseReceiptDocuments: true } },
+  })
+  await flushPromises()
+  expect(wrapper.getComponent(WarehouseReceiptDocuments).props('scheduleTaskId')).toBe(51)
 })

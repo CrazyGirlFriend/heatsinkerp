@@ -458,6 +458,8 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    schedule_task_id: int | None = None
+    schedule_due_at: str | None = None
     task_batch_number: int | None = None
     rework_route_id: int | None = None
     rework_route_ready: bool = False

@@ -29,7 +29,6 @@ import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
-import { useTeamPurposes } from '@/composables/useTeamPurposes'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
@@ -108,7 +107,6 @@ const form = reactive({
   deliveryDate: '',
   deliveryQuantity: undefined as number | undefined,
   nextTeamId: '' as string | number,
-  purposeId: null as number | null,
   quantity: undefined as number | undefined,
   weight: undefined as number | undefined,
   gross: undefined as number | undefined,
@@ -160,7 +158,6 @@ watch(
   () => form.nextTeamId,
   (value) => {
     if (String(value) !== String(editingSnapshot.value?.next_team.id)) {
-      form.purposeId = null
       form.warehouseLocation = ''
       form.warehouseLocationKey = ''
     }
@@ -187,7 +184,6 @@ const sourceTeam = computed(
 watch(selectedSourceTeamId, () => {
   sender.value = null
   form.nextTeamId = ''
-  form.purposeId = null
 })
 const teamActorReady = computed(
   () =>
@@ -239,11 +235,6 @@ const destination = computed(() =>
   destinationTeams.value.find((team) => String(team.id) === String(form.nextTeamId)),
 )
 const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
-const purposes = useTeamPurposes(() =>
-  props.modelValue && !external.value && !toWarehouse.value && form.nextTeamId
-    ? Number(form.nextTeamId)
-    : null,
-)
 const notesLabel = computed(() =>
   external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注',
 )
@@ -264,14 +255,6 @@ const validationIssues = computed(() => {
     if (form.nextTeamId === '') add('nextTeamId', '请选择接收班组')
     else if (String(form.nextTeamId) === String(sourceTeam.value?.id))
       add('nextTeamId', '接收班组不能与转出班组相同')
-    if (purposes.loading.value || purposes.error.value)
-      add('purposeId', purposes.error.value || '请等待业务加载完成')
-    else if (
-      purposes.items.value.length &&
-      form.purposeId !== editingSnapshot.value?.purpose_id &&
-      !purposes.items.value.some((item) => item.active && item.id === form.purposeId)
-    )
-      add('purposeId', '请选择下序班组的接收任务')
   }
   if (enteredQuantity.value == null)
     add('quantity', `请输入${external.value ? actionLabel.value : '转料'}件数`)
@@ -348,7 +331,6 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   form.deliveryDate = transfer?.delivery_date ?? ''
   form.deliveryQuantity = transfer?.delivery_quantity ?? undefined
   form.nextTeamId = transfer?.next_team.id ?? ''
-  form.purposeId = transfer?.purpose_id ?? null
   form.quantity = transfer?.quantity
   form.weight = transfer?.weight
   form.gross = transfer?.sludge_gross_weight ?? undefined
@@ -443,11 +425,6 @@ async function submit(): Promise<void> {
         }
       : {}),
     next_team_id: form.nextTeamId,
-    ...(!external.value &&
-    !toWarehouse.value &&
-    (form.purposeId || editingSnapshot.value?.purpose_id)
-      ? { purpose_id: form.purposeId }
-      : {}),
     quantity: Number(enteredQuantity.value),
     weight: Number(form.weight),
     ...(useSludge.value || editingSnapshot.value?.sludge_content_percent != null
@@ -627,7 +604,13 @@ onBeforeUnmount(() => {
         <SerialRouteAttachments
           v-if="modelValue"
           :batch-no="editingSnapshot?.batch_no"
-          :items="[{ serialNo: form.serialNo.trim(), routeId: editingSnapshot?.process_route?.id }]"
+          :items="[
+            {
+              serialNo: form.serialNo.trim(),
+              routeId: editingSnapshot?.process_route?.id,
+              scheduleTaskId: editingSnapshot?.schedule_task_id,
+            },
+          ]"
         />
       </template>
       <ElForm
@@ -725,58 +708,6 @@ onBeforeUnmount(() => {
                 :value="team.id"
               />
             </ElSelect>
-          </ElFormItem>
-          <ElFormItem
-            v-if="!external && !toWarehouse"
-            label="接收任务"
-            :required="purposes.items.value.length > 0"
-            :error="fieldErrors.purposeId"
-            data-validation-field="purposeId"
-          >
-            <ElSelect
-              v-model="form.purposeId"
-              aria-label="接收任务"
-              :loading="purposes.loading.value"
-              :disabled="!canSubmit || !form.nextTeamId"
-              :placeholder="
-                !form.nextTeamId
-                  ? '先选择接收班组'
-                  : !purposes.items.value.length
-                    ? '接收班组尚未配置业务'
-                    : purposes.items.value.some((item) => item.active)
-                      ? '请选择接收任务'
-                      : '接收班组暂无启用业务'
-              "
-            >
-              <ElOption
-                v-for="purpose in purposes.items.value.filter((item) => item.active)"
-                :key="purpose.id"
-                :value="purpose.id"
-                :label="purpose.name"
-              />
-              <ElOption
-                v-if="
-                  editingSnapshot?.purpose_id &&
-                  String(form.nextTeamId) === String(editingSnapshot.next_team.id) &&
-                  !purposes.items.value.some(
-                    (item) => item.active && item.id === editingSnapshot?.purpose_id,
-                  )
-                "
-                :value="editingSnapshot.purpose_id"
-                :label="`${editingSnapshot.purpose_name}（原单业务）`"
-              />
-            </ElSelect>
-            <p
-              v-if="
-                purposes.items.value.length && !purposes.items.value.some((item) => item.active)
-              "
-              class="dialog-field-hint"
-            >
-              接收班组暂无启用业务，新转料前需由该班组在工作台中启用。
-            </p>
-            <ElButton v-if="purposes.error.value" link type="danger" @click="purposes.refresh"
-              >业务加载失败，点击重试</ElButton
-            >
           </ElFormItem>
           <ElFormItem
             v-if="!weightOnly"

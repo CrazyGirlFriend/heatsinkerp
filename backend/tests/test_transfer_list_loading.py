@@ -122,7 +122,8 @@ def test_page_reads_have_constant_query_budget(client, list_scenario):
             assert response.json()["items"]
             assert len(response.json()["items"]) <= size
             assert all("material_transfer_events" not in sql for sql in statements)
-            counts[f"{kind}/{size}"] = (len(statements), budget)
+            # One batched read resolves exact schedule requirements for the whole page.
+            counts[f"{kind}/{size}"] = (len(statements), budget + 1)
     assert all(actual <= budget for actual, budget in counts.values()), counts
 
 

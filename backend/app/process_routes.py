@@ -435,14 +435,14 @@ def finish_processing(lot, payload, index, outputs):
         raise HTTPException(422, "部分加工请分别登记已加工产出和未加工余料，才能按批次流转工序")
 
 
-def require_dispatch_documents(db, route, lot, serial):
+def require_dispatch_documents(db, route, lot, serial, task_id=None):
     require_route_documents(db, route)
     if route.route_kind != "rework":
         from .models import ProcessRouteOrderFile
         from .schedule_order_documents import route_order
         from .warehouse_receipt_documents import has_confirmed_order
 
-        order = route_order(db, route.id, serial)
+        order = route_order(db, route.id, serial, task_id)
         legacy = db.get(ProcessRouteOrderFile, route.id)
         if (
             not order
@@ -454,6 +454,15 @@ def require_dispatch_documents(db, route, lot, serial):
             and not has_confirmed_order(db, lot, serial)
         ):
             raise HTTPException(422, "缺少：订单表，请调度上传或在库房入库时补充后再出库")
+        from .models import ProductionScheduleTask
+
+        task = (
+            db.get(ProductionScheduleTask, task_id or order.task_id) if task_id or order else None
+        )
+        requirement = order.document if order else route.source_data.get("order_document") or {}
+        due = ((requirement.get("receipt_fields") or {}).get("delivery_date") or {}).get("value")
+        if not (task and task.final_due_at) and not lot.delivery_date and not due:
+            raise HTTPException(422, "缺少交期，请调度补充本批排期后再出库")
 
 
 def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
@@ -474,7 +483,14 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
     if source.code == WAREHOUSE_TEAM_CODE:
         if selected_route is None:
             raise HTTPException(422, "未找到该流水号的工艺")
-        require_dispatch_documents(db, selected_route, lot, serial)
+        from .models import ProductionSchedule
+
+        plan = (
+            db.get(ProductionSchedule, line.production_schedule_id)
+            if line.production_schedule_id
+            else None
+        )
+        require_dispatch_documents(db, selected_route, lot, serial, plan.task_id if plan else None)
     if anonymous:
         if (
             selected_route is None

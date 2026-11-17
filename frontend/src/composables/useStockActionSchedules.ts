@@ -8,6 +8,8 @@ import { isExternalEntryKind, type MaterialType } from '@/types/materialTransfer
 import type { DispatchKind, StockBatch } from '@/types/teamMaterials'
 
 interface ScheduleLine {
+  serialNo: string
+  selectedRoute?: { id: number }
   source: StockBatch
   shared: boolean
   materialType: MaterialType | ''
@@ -27,13 +29,15 @@ export function useStockActionSchedules(
 ) {
   const isLoss = computed(() => props.mode === 'loss')
   const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
-  const scheduleCandidates = ref<Record<number, ScheduleSummary[]>>({})
+  const scheduleCandidates = ref<Record<string, ScheduleSummary[]>>({})
   const schedulesLoading = ref(false)
   const scheduleError = ref('')
   const scheduleRefresh = ref(0)
+  const scheduleKey = (line: ScheduleLine) =>
+    `${line.source.transfer.id}:${line.serialNo}:${line.selectedRoute?.id || ''}`
   function lineSchedules(line: ScheduleLine) {
     return !line.shared && isScheduleApplicable(line.materialType)
-      ? scheduleCandidates.value[Number(line.source.transfer.id)] || []
+      ? scheduleCandidates.value[scheduleKey(line)] || []
       : []
   }
   function scheduleLabel(schedule: ScheduleSummary) {
@@ -64,7 +68,12 @@ export function useStockActionSchedules(
         form.nextTeamId,
         form.entryKind,
         form.externalDestination,
-        lines.value.map((line) => `${line.source.transfer.id}:${line.materialType}`).join(','),
+        lines.value
+          .map(
+            (line) =>
+              `${line.source.transfer.id}:${line.materialType}:${line.serialNo}:${line.selectedRoute?.id}:${line.shared}`,
+          )
+          .join(','),
         scheduleRefresh.value,
       ] as const,
     async (_, __, onCleanup) => {
@@ -99,10 +108,30 @@ export function useStockActionSchedules(
             ? { external_destination: form.externalDestination }
             : { next_team_id: Number(form.nextTeamId) }),
         })
-        if (!current) return
-        scheduleCandidates.value = Object.fromEntries(
-          result.items.map((item) => [item.source_transfer_id, item.schedules]),
+        const candidates: Record<string, ScheduleSummary[]> = Object.fromEntries(
+          lines.value.map((line) => [
+            scheduleKey(line),
+            result.items.find((item) => item.source_transfer_id === Number(line.source.transfer.id))
+              ?.schedules || [],
+          ]),
         )
+        for (const line of lines.value) {
+          if (!current) return
+          if (line.shared || !line.selectedRoute || !isScheduleApplicable(line.materialType))
+            continue
+          const resolved = await productionScheduleApi.candidates({
+            team_id: props.teamId,
+            source_transfer_ids: String(line.source.transfer.id),
+            serial_no: line.serialNo.trim(),
+            process_route_id: line.selectedRoute.id,
+            ...(external.value
+              ? { external_destination: form.externalDestination }
+              : { next_team_id: Number(form.nextTeamId) }),
+          })
+          candidates[scheduleKey(line)] = resolved.items[0]?.schedules || []
+        }
+        if (!current) return
+        scheduleCandidates.value = candidates
         for (const line of lines.value) {
           const options = lineSchedules(line)
           if (!options.some((option) => option.id === line.scheduleId)) {

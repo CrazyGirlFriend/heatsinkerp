@@ -15,7 +15,13 @@ import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 
 const props = defineProps<{
   batchNo?: string
-  items: { serialNo: string; batchNo?: string; routeId?: number | null; route?: ProcessRoute }[]
+  items: {
+    serialNo: string
+    batchNo?: string
+    routeId?: number | null
+    route?: ProcessRoute
+    scheduleTaskId?: number | null
+  }[]
 }>()
 const options = computed(() =>
   props.items.filter(
@@ -25,16 +31,19 @@ const options = computed(() =>
         (other) =>
           other.serialNo === item.serialNo &&
           (other.routeId || other.route?.id) === (item.routeId || item.route?.id) &&
-          other.batchNo === item.batchNo,
+          other.batchNo === item.batchNo &&
+          other.scheduleTaskId === item.scheduleTaskId,
       ) === index,
   ),
 )
 const selected = ref('')
 const key = (item: (typeof props.items)[number]) =>
-  `${item.serialNo}:${item.routeId || item.route?.id || ''}${item.batchNo ? `:${item.batchNo}` : ''}`
+  `${item.serialNo}:${item.routeId || item.route?.id || ''}${item.batchNo ? `:${item.batchNo}` : ''}${item.scheduleTaskId ? `:task${item.scheduleTaskId}` : ''}`
 const current = computed(() => options.value.find((item) => key(item) === selected.value))
 const selectedBatch = computed(() => current.value?.batchNo || props.batchNo)
 const batchSerial = ref('')
+const batchTaskId = ref<number | null>()
+const scheduleTaskId = computed(() => current.value?.scheduleTaskId || batchTaskId.value)
 const serialNo = computed(() => current.value?.serialNo || batchSerial.value)
 const sourceRoute = ref<ProcessRoute>()
 const route = ref<ProcessRoute>(),
@@ -79,23 +88,28 @@ async function load() {
   route.value = item?.route
   sourceRoute.value = undefined
   batchSerial.value = ''
+  batchTaskId.value = undefined
   dispatchOrder.value = null
   error.value = ''
   loading.value = false
   if (!item && !selectedBatch.value) return
   loading.value = true
   try {
-    let routeId = item?.routeId
-    if (selectedBatch.value && !item?.route && !routeId) {
-      const transfer = await materialTransferApi.get(selectedBatch.value)
-      if (version !== generation) return
+    const [transfer, providedRoute] = await Promise.all([
+      selectedBatch.value && (!item?.scheduleTaskId || (!item?.route && !item?.routeId))
+        ? materialTransferApi.get(selectedBatch.value)
+        : undefined,
+      item?.route || (item?.routeId ? processRouteApi.detail(item.routeId) : undefined),
+    ])
+    if (version !== generation) return
+    if (transfer) {
       batchSerial.value = transfer.serial_no
-      routeId = transfer.process_route?.id
+      batchTaskId.value = transfer.schedule_task_id
     }
     const result =
-      item?.route ||
-      (routeId
-        ? await processRouteApi.detail(routeId)
+      providedRoute ||
+      (transfer?.process_route?.id
+        ? await processRouteApi.detail(transfer.process_route.id)
         : !selectedBatch.value && item?.serialNo
           ? await processRouteApi.resolve(item.serialNo)
           : undefined)
@@ -108,7 +122,11 @@ async function load() {
       sourceRoute.value = original
     }
     if (!selectedBatch.value) {
-      const order = await processRouteApi.dispatchOrder(result.id, serialNo.value)
+      const order = await processRouteApi.dispatchOrder(
+        sourceRoute.value?.id || result.id,
+        serialNo.value,
+        scheduleTaskId.value,
+      )
       if (version === generation) dispatchOrder.value = order
     }
   } catch (e) {
@@ -170,6 +188,7 @@ onBeforeUnmount(() => {
       :route="route"
       :source-route="sourceRoute"
       :serial-no="serialNo"
+      :schedule-task-id="scheduleTaskId"
       :documents="receiptDocuments"
       @error="documentsError = $event"
     />

@@ -100,7 +100,7 @@ def test_upstream_chooses_destination_purpose_and_snapshot_survives_rename_disab
     s = _setup_three_teams(client)
     p = purpose(client, s)
     foreign = purpose(client, s, role="third")
-    assert _create(client, s).status_code == 422
+    assert _create(client, s, idempotency_key="without-purpose").status_code == 201
     assert _create(client, s, purpose_id=foreign["id"]).status_code == 422
     created = _create(client, s, purpose_id=p["id"])
     assert created.status_code == 201, created.text
@@ -118,7 +118,7 @@ def test_upstream_chooses_destination_purpose_and_snapshot_survives_rename_disab
     # Retry is still the original document, despite renamed/disabled vocabulary.
     assert _create(client, s, purpose_id=p["id"]).json()["purpose_name"] == "检验"
     assert _create(client, s, idempotency_key="new", purpose_id=p["id"]).status_code == 422
-    assert _create(client, s, idempotency_key="new").status_code == 422
+    assert _create(client, s, idempotency_key="new").status_code == 201
     batch = "/api/material-transfers/" + row["batch_no"]
     assert (
         client.patch(

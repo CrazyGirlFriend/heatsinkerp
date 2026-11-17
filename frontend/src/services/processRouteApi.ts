@@ -68,9 +68,9 @@ function routePayload(route: ProcessRoute, includeMaterials = true) {
   }
 }
 export const processRouteApi = {
-  dispatchOrder: (id: number, serial: string) =>
+  dispatchOrder: (id: number, serial: string, taskId?: number | null) =>
     request<{ task_id: number; document: RouteOrderDocument } | null>(
-      `/${id}/dispatch-order?serial_no=${encodeURIComponent(serial)}`,
+      `/${id}/dispatch-order?serial_no=${encodeURIComponent(serial)}${taskId ? `&task_id=${taskId}` : ''}`,
     ),
   list: (
     query = '',

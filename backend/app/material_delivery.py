@@ -1,12 +1,56 @@
 """Batch-owned delivery dates, inherited without duplicating order quantities."""
 
+from datetime import timezone
+from zoneinfo import ZoneInfo
+
 from fastapi import HTTPException
 
 from .auth import can_manage_team
+from .config import settings
 from .models import utcnow
 from .observability import record
 
 FIELDS = ("delivery_date", "delivery_quantity")
+
+
+def with_schedule(db, documents):
+    """Carry the lot's actual commitment, never the latest task for its serial."""
+    from sqlalchemy import select
+
+    from .models import ProductionScheduleTask as Task
+    from .schedule_fulfillment import target_columns
+    from .schedule_task_identity import stock_task_bindings, task_batch_number_column
+
+    documents = list(documents)
+    if not documents:
+        return documents
+    bindings = stock_task_bindings()
+    quantity, due, _ = target_columns(db)
+    rows = db.execute(
+        select(
+            bindings.c.lot_id,
+            Task.id,
+            due.label("due_at"),
+            quantity.label("required_quantity"),
+            task_batch_number_column(),
+        )
+        .join(Task, Task.id == bindings.c.task_id)
+        .where(bindings.c.lot_id.in_([item["id"] for item in documents]))
+    ).all()
+    by_id = {row.lot_id: row for row in rows}
+    for item in documents:
+        if row := by_id.get(item["id"]):
+            item.update(schedule_task_id=row.id, task_batch_number=row[4], can_edit_delivery=False)
+            if row.due_at:
+                item["schedule_due_at"] = row.due_at.replace(tzinfo=timezone.utc).isoformat()
+                item["delivery_date"] = (
+                    row.due_at.replace(tzinfo=timezone.utc)
+                    .astimezone(ZoneInfo(settings.factory_timezone))
+                    .date()
+                    .isoformat()
+                )
+            item["delivery_quantity"] = row.required_quantity
+    return documents
 
 
 def validate_pair(day, quantity):
@@ -45,9 +89,18 @@ def document(transfer, user):
             "can_edit_delivery": False,
         }
     origin = transfer.delivery_origin if transfer.delivery_origin_id else transfer
+    day, quantity = origin.delivery_date, origin.delivery_quantity
+    # Older orders keep their requirement in the reviewed engineering attachment.
+    # Raw intake remains optional; exact schedule data overrides this on read.
+    if not day and transfer.source_transfer_id and transfer.process_route:
+        order = transfer.process_route.source_data.get("order_document") or {}
+        if order.get("serial_no") == transfer.serial_no:
+            fields = order.get("receipt_fields") or {}
+            day = (fields.get("delivery_date") or {}).get("value")
+            quantity = (fields.get("delivery_quantity") or {}).get("value")
     return {
-        "delivery_date": origin.delivery_date,
-        "delivery_quantity": origin.delivery_quantity,
+        "delivery_date": day,
+        "delivery_quantity": quantity,
         "delivery_origin_batch_no": origin.batch_no,
         "can_edit_delivery": can_edit(transfer, user),
     }

@@ -80,7 +80,6 @@ import {
   materialRequestKey,
   outboundRemainder,
 } from '@/utils/materialStock'
-import { useTeamPurposes } from '@/composables/useTeamPurposes'
 import type { WarehouseLeaseGroup } from '@/services/warehouseLocationApi'
 import { currentLocations } from '@/utils/warehousePlacement'
 
@@ -148,7 +147,6 @@ const lines = ref<
     gross?: number
     percent?: number
     materialType: MaterialType | ''
-    purposeId?: number
     specification: string
     originalSpecification: string
     specificationValid: boolean
@@ -188,7 +186,6 @@ const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
-const batchPurposeId = ref<number>()
 const processing = reactive<
   Record<
     number,
@@ -251,40 +248,15 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
       : null
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
-function selectedNextStep(line: (typeof lines.value)[number]) {
-  if (!line.shared) return line.selectedRoute?.steps[1]
-  const steps = line.sharedRoutes.map((route) => route.steps[1])
-  return steps.find((step) => step?.purpose_id != null) || steps[0]
-}
 watch(
   () => [form.nextTeamId, form.entryKind],
   () => {
-    batchPurposeId.value = undefined
     lines.value.forEach((line) => {
-      const route = line.source.transfer.process_route
-      const selectedStep = selectedNextStep(line)
-      line.purposeId =
-        selectedStep?.team_id === Number(form.nextTeamId)
-          ? selectedStep.purpose_id || undefined
-          : !form.reworkReturn && route?.next_team_id === Number(form.nextTeamId)
-            ? route.next_purpose_id || undefined
-            : undefined
       line.warehouseLocation = ''
       line.warehouseLocationKey = ''
     })
   },
 )
-function applyBatchPurpose(value: number) {
-  if (
-    busy.value ||
-    !canWrite.value ||
-    !purposes.items.value.some((item) => item.active && item.id === value)
-  )
-    return
-  lines.value.forEach((line) => {
-    line.purposeId = value
-  })
-}
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const dialogTitle = computed(() =>
   isLoss.value
@@ -314,11 +286,6 @@ const warehouse = computed(
     !external.value &&
     destinations.value.find((team) => String(team.id) === String(form.nextTeamId))?.kind ===
       'warehouse',
-)
-const purposes = useTeamPurposes(() =>
-  props.modelValue && !isLoss.value && !external.value && !warehouse.value && form.nextTeamId
-    ? Number(form.nextTeamId)
-    : null,
 )
 const totalQuantity = computed(() =>
   lines.value.reduce((sum, line) => sum + (Number(enteredQuantity(line)) || 0), 0),
@@ -618,13 +585,6 @@ const validation = useDialogValidation(() => {
       !lineScheduleBatches(line).some((b) => b.id === line.scheduleBatchId)
     )
       add('scheduleBatchId', '请选择本次转出对应的交货批次')
-    if (
-      !isLoss.value &&
-      !external.value &&
-      purposes.items.value.length &&
-      !purposes.items.value.some((item) => item.active && item.id === line.purposeId)
-    )
-      add('purposeId', '请选择接收任务')
     const draft = processing[Number(line.source.transfer.id)]
     if (draft) {
       if (!draft.taskFieldsValid) add('processingTask', '请选择有效的加工任务和业务')
@@ -803,10 +763,6 @@ async function submit() {
     errorMessage.value = '当前班组不能使用此对外出库方式'
     return
   }
-  if (!isLoss.value && !external.value && (purposes.loading.value || purposes.error.value)) {
-    errorMessage.value = purposes.error.value || '请等待下序任务加载完成'
-    return
-  }
   lines.value.forEach((line) => {
     if (
       !line.specificationValid ||
@@ -915,9 +871,6 @@ async function submit() {
       weight: Number(line.weight),
       ...(line.specification !== line.originalSpecification
         ? { transfer_specification: line.specification.trim() }
-        : {}),
-      ...(!external.value && !warehouse.value && line.purposeId
-        ? { purpose_id: line.purposeId }
         : {}),
       ...(line.materialType ? { material_type: line.materialType } : {}),
     })),
@@ -1037,14 +990,22 @@ function setSharedRoutes(line: (typeof lines.value)[number], routes: ProcessRout
     const first = routes[0]!.steps[1]
     if (first && routes.every((route) => route.steps[1]?.team_id === first.team_id)) {
       form.nextTeamId = first.team_id || ''
-      line.purposeId = selectedNextStep(line)?.purpose_id || undefined
     }
   }
+}
+function selectedSchedule(line: (typeof lines.value)[number]) {
+  return lineSchedules(line).find((schedule) => schedule.id === line.scheduleId)
 }
 const attachmentItems = computed(() =>
   lines.value
     .filter((line) => !isScrapType(line.materialType))
-    .flatMap((line) => {
+    .flatMap<{
+      serialNo: string
+      batchNo: string
+      routeId?: number
+      route?: ProcessRoute
+      scheduleTaskId?: number | null
+    }>((line) => {
       if (line.shared)
         return line.sharedMembers.flatMap((member) => {
           const route = line.sharedRoutes.find((item) => item.id === member.process_route_id)
@@ -1066,6 +1027,7 @@ const attachmentItems = computed(() =>
           batchNo: line.source.transfer.batch_no,
           routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
           route: line.selectedRoute,
+          scheduleTaskId: selectedSchedule(line)?.task_id || line.source.transfer.schedule_task_id,
         },
       ]
     }),
@@ -1117,11 +1079,6 @@ watch(
           line.selectedRoute?.steps[1]?.team_id || line.source.transfer.process_route?.next_team_id,
       )
       if (targets[0] && targets.every((id) => id === targets[0])) form.nextTeamId = targets[0]
-      lines.value.forEach((line) => {
-        const step = line.selectedRoute?.steps[1]
-        if (step?.team_id === Number(form.nextTeamId))
-          line.purposeId = step?.purpose_id || undefined
-      })
     }, 300)
     onCleanup(() => {
       cancelled = true
@@ -1227,28 +1184,6 @@ watch(
                   :label="teamWorkspaceProfile(team.code)?.name || team.name"
               /></ElSelect>
             </ElFormItem>
-            <ElFormItem
-              v-if="
-                !isLoss &&
-                !external &&
-                lines.length > 1 &&
-                purposes.items.value.some((item) => item.active)
-              "
-              label="统一接收任务"
-              class="batch-purpose-field"
-            >
-              <ElSelect
-                v-model="batchPurposeId"
-                aria-label="统一接收任务"
-                placeholder="选择一次，应用到全部物料"
-                @change="applyBatchPurpose"
-                ><ElOption
-                  v-for="purpose in purposes.items.value.filter((item) => item.active)"
-                  :key="purpose.id"
-                  :value="purpose.id"
-                  :label="purpose.name"
-              /></ElSelect>
-            </ElFormItem>
           </div>
         </section>
         <div class="source-lines">
@@ -1276,9 +1211,11 @@ watch(
                   <span
                     >排期批次
                     {{
-                      line.source.transfer.task_batch_number
-                        ? formatScheduleBatch(line.source.transfer)
-                        : '未关联排期'
+                      selectedSchedule(line)?.task_batch_number
+                        ? formatScheduleBatch(selectedSchedule(line)!)
+                        : line.source.transfer.task_batch_number
+                          ? formatScheduleBatch(line.source.transfer)
+                          : '未关联排期'
                     }}</span
                   >
                   <span
@@ -1666,32 +1603,6 @@ watch(
                     :value="type.value" /></ElSelect
               ></ElFormItem>
               <ElFormItem
-                v-if="!isLoss && !external && !warehouse"
-                class="source-purpose-field"
-                label="下序接收任务"
-                :error="lineError(line, 'purposeId')"
-                :required="purposes.items.value.length > 0"
-                ><ElSelect
-                  v-model="line.purposeId"
-                  :aria-label="`${line.source.transfer.batch_no}接收任务`"
-                  :loading="purposes.loading.value"
-                  :disabled="!form.nextTeamId || !purposes.items.value.length"
-                  :placeholder="
-                    !form.nextTeamId
-                      ? '先选择接收班组'
-                      : !purposes.items.value.length
-                        ? '接收班组尚未配置业务'
-                        : purposes.items.value.some((item) => item.active)
-                          ? '选择接收任务'
-                          : '接收班组暂无启用业务'
-                  "
-                  ><ElOption
-                    v-for="purpose in purposes.items.value.filter((item) => item.active)"
-                    :key="purpose.id"
-                    :value="purpose.id"
-                    :label="purpose.name" /></ElSelect
-              ></ElFormItem>
-              <ElFormItem
                 v-if="!isLoss && lineSchedules(line).length"
                 class="dialog-field-wide"
                 label="排期批次"
@@ -1859,24 +1770,6 @@ watch(
       :closable="false"
       show-icon
     />
-    <ElAlert
-      v-if="
-        !isLoss &&
-        !external &&
-        purposes.items.value.length &&
-        !purposes.items.value.some((item) => item.active)
-      "
-      title="接收班组暂无启用业务，请联系该班组在工作台中启用。"
-      type="warning"
-      :closable="false"
-    />
-    <ElAlert
-      v-if="purposes.error.value"
-      :title="purposes.error.value"
-      type="error"
-      :closable="false"
-      ><ElButton link @click="purposes.refresh">重新加载业务</ElButton></ElAlert
-    >
     <ElButton
       v-if="balanceNotice"
       link
@@ -1967,9 +1860,6 @@ watch(
 .dispatch-context-fields {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-}
-.batch-purpose-field {
-  grid-column: 1 / -1;
 }
 .dispatch-context-fields :deep(.team-employee) {
   width: 100%;

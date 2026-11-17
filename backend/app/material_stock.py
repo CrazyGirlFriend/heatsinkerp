@@ -628,7 +628,7 @@ def create_dispatch(db, team_id, payload, user):
                 route_fields_by_line.append(fields)
                 if purpose_id not in purpose_cache:
                     purpose_cache[purpose_id] = purpose_snapshot(
-                        db, target.id if target else None, purpose_id
+                        db, target.id if target else None, purpose_id, required=False
                     )
                 purposes.append(purpose_cache[purpose_id])
             batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))

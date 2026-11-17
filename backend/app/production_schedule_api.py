@@ -139,6 +139,8 @@ def candidates(
     source_transfer_ids: str = Query(min_length=1, max_length=1200),
     next_team_id: int | None = Query(default=None, ge=1),
     external_destination: str | None = Query(default=None, max_length=240),
+    serial_no: str | None = Query(default=None, min_length=1, max_length=80),
+    process_route_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ):
     try:
@@ -147,7 +149,11 @@ def candidates(
         raise HTTPException(422, "来源批次编号无效") from exc
     if len(ids) > 100 or any(value <= 0 for value in ids):
         raise HTTPException(422, "每次最多查询100个有效批次")
-    return schedules.candidates(db, team_id, ids, next_team_id, external_destination)
+    if (serial_no is not None or process_route_id is not None) and len(ids) != 1:
+        raise HTTPException(422, "填写出库流水号时请逐批查询排期")
+    return schedules.candidates(
+        db, team_id, ids, next_team_id, external_destination, serial_no, process_route_id
+    )
 
 
 @router.post(

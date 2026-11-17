@@ -11,6 +11,7 @@ from sqlalchemy.orm import aliased, lazyload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from . import material_transfer_workflow as workflow
+from .material_delivery import with_schedule
 from .material_weight import (
     stock_sludge_measurements,
 )
@@ -49,7 +50,9 @@ def dispatch_status(items):
     return "partial" if active & {"received", "dispatched"} else "pending"
 
 
-def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
+def dispatch_dict(
+    db, dispatch, user, *, items=None, include_history=False, schedule_documents=None
+):
     from .material_dispatch_workflow import allowed_actions, revision
 
     if items is None:
@@ -102,14 +105,20 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
         for item in items:
             set_committed_value(item, "dispatch", dispatch)
             set_committed_value(item, "urgency", urgencies[item.id])
-    if dispatch.dispatch_no is None:
-        # This is a retry ledger, not a business document or a second batch identity.
-        return {
-            "items": [
+    documents = (
+        [schedule_documents[item.id] for item in items]
+        if schedule_documents is not None
+        else with_schedule(
+            db,
+            [
                 workflow.material_transfer_dict(item, user, include_history=include_history)
                 for item in items
-            ]
-        }
+            ],
+        )
+    )
+    if dispatch.dispatch_no is None:
+        # This is a retry ledger, not a second batch identity.
+        return {"items": documents}
     source_record = (
         workflow.material_transfer_dict(items[0], user, include_history=False)["source_team"]
         if items
@@ -148,10 +157,7 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
             sum((item.weight for item in items if item.status != "voided"), Decimal(0))
         ),
         "line_count": len(items),
-        "items": [
-            workflow.material_transfer_dict(item, user, include_history=include_history)
-            for item in items
-        ],
+        "items": documents,
     }
 
 
@@ -365,6 +371,7 @@ def list_stock(
         )
         for row in rows
     ]
+    with_schedule(db, [item["transfer"] for item in items])
     return {
         "items": stock_positions(db, stock_sludge_measurements(db, items)),
         "total": total,
@@ -577,13 +584,16 @@ def list_outbound_batches(
         .limit(page_size)
     ).all()
     return {
-        "items": [
-            {
-                **workflow.material_transfer_dict(item, user, include_history=False),
-                "task_batch_number": batch_number,
-            }
-            for item, batch_number in items
-        ],
+        "items": with_schedule(
+            db,
+            [
+                {
+                    **workflow.material_transfer_dict(item, user, include_history=False),
+                    "task_batch_number": batch_number,
+                }
+                for item, batch_number in items
+            ],
+        ),
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -731,6 +741,16 @@ def list_dispatches(
         .where(or_(mt.dispatch_id.in_(group_ids), mt.id.in_(single_ids)))
         .order_by(mt.id)
     ).all()
+    schedule_documents = {
+        item["id"]: item
+        for item in with_schedule(
+            db,
+            [
+                workflow.material_transfer_dict(item, user, include_history=False)
+                for item in transfers
+            ],
+        )
+    }
     items = []
     for row in rows:
         if row["group_id"] is not None:
@@ -740,11 +760,12 @@ def list_dispatches(
                     groups[row["group_id"]],
                     user,
                     items=[item for item in transfers if item.dispatch_id == row["group_id"]],
+                    schedule_documents=schedule_documents,
                 )
             )
         else:
             item = next(item for item in transfers if item.id == row["single_id"])
-            record = workflow.material_transfer_dict(item, user, include_history=False)
+            record = schedule_documents[item.id]
             items.append(
                 {
                     "dispatch_no": item.batch_no,

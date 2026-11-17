@@ -189,7 +189,7 @@ it('does not display another shared serial’s uploaded order in read-only detai
   })
   await flushPromises()
   expect(wrapper.findComponent(OrderDocumentPreview).exists()).toBe(false)
-  expect(processRouteApi.dispatchOrder).toHaveBeenCalledWith(routeFixture.id, 'OTHER')
+  expect(processRouteApi.dispatchOrder).toHaveBeenCalledWith(routeFixture.id, 'OTHER', undefined)
 })
 
 it('ignores an upload response after the team changes', async () => {
@@ -233,4 +233,27 @@ it('remains busy until the current serial’s inherited order has loaded, ignori
   finishSecond({ task_id: 52, document: orderFixture })
   await flushPromises()
   expect(wrapper.emitted('busy')?.at(-1)).toEqual([false])
+})
+
+it('uses the exact schedule order ahead of same-serial receipt attachments and refreshes when batch changes', async () => {
+  vi.mocked(processRouteApi.dispatchOrder).mockImplementation(async (_, __, taskId) => ({
+    task_id: taskId!,
+    document: { ...orderFixture, filename: `订单-${taskId}.xlsx` },
+  }))
+  render({
+    route: routeFixture,
+    serialNo: 'S-001',
+    scheduleTaskId: 51,
+    documents: [document('order')],
+  })
+  await flushPromises()
+  expect(processRouteApi.dispatchOrder).toHaveBeenLastCalledWith(routeFixture.id, 'S-001', 51)
+  expect(wrapper.getComponent(OrderDocumentPreview).props('taskId')).toBe(51)
+  await wrapper.setProps({ scheduleTaskId: 52 })
+  await flushPromises()
+  expect(wrapper.getComponent(OrderDocumentPreview).props('taskId')).toBe(52)
+  vi.mocked(processRouteApi.dispatchOrder).mockResolvedValue(null)
+  await wrapper.setProps({ scheduleTaskId: 53 })
+  await flushPromises()
+  expect(wrapper.findComponent(OrderDocumentPreview).exists()).toBe(false)
 })

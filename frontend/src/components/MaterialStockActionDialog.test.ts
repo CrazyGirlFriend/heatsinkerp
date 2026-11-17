@@ -15,7 +15,7 @@ import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { factoryToday } from '@/utils/format'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
-import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
@@ -78,6 +78,9 @@ function warehouseRoute() {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(materialTransferApi, 'get').mockImplementation(async (batch) =>
+    normalizeMaterialTransfer({ batch_no: batch }),
+  )
   vi.spyOn(teamMaterialApi, 'equipment').mockResolvedValue([
     { id: 3, team_id: 2, name: 'ROLL-02', active: true, version: 1 },
   ])
@@ -1004,31 +1007,6 @@ describe('source batch dispatch and loss drafts', () => {
     await wrapper.setProps({ mode: 'loss' })
     expect(wrapper.find('[aria-label="剩余件数清零"]').exists()).toBe(false)
   })
-  it('applies one destination business to every selected batch and clears it when the team changes', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
-      { id: 31, team_id: 3, name: '业务1', active: true, version: 1 },
-    ])
-    await render()
-    await destination()
-    wrapper
-      .findAllComponents(ElSelect)
-      .find((select) => select.props('ariaLabel') === '统一接收任务')!
-      .vm.$emit('change', 31)
-    await flushPromises()
-    await submit()
-    expect(
-      vi
-        .mocked(teamMaterialApi.createDispatch)
-        .mock.calls[0]![1].lines.map((line) => line.purpose_id),
-    ).toEqual([31, 31])
-    await destination(1)
-    expect(
-      wrapper
-        .findAllComponents(ElSelect)
-        .filter((select) => /TL\d+接收任务/.test(select.props('ariaLabel') || ''))
-        .every((select) => select.props('modelValue') === undefined),
-    ).toBe(true)
-  })
   it('warehouse transfers carry the original type and current position without processing controls', async () => {
     const row = source()
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
@@ -1210,67 +1188,22 @@ describe('source batch dispatch and loss drafts', () => {
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
     ).toBeUndefined()
   })
-  it('requires a destination purpose per batch and clears choices when the destination changes', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
-      { id: 31, team_id: 3, name: '检验', active: true, version: 1 },
-      { id: 32, team_id: 3, name: '去毛刺', active: true, version: 1 },
-    ])
-    await render()
-    await destination()
-    await submit()
-    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(
-      wrapper
-        .get('input[aria-label="TL10接收任务"]')
-        .element.closest('.el-form-item')!
-        .classList.contains('is-error'),
-    ).toBe(true)
-    expect(
-      wrapper
-        .get('input[aria-label="TL11接收任务"]')
-        .element.closest('.el-form-item')!
-        .classList.contains('is-error'),
-    ).toBe(true)
-    const selects = wrapper
-      .findAllComponents(ElSelect)
-      .filter((select) => /TL\d+接收任务/.test(select.props('ariaLabel') || ''))
-    selects[0]!.vm.$emit('update:modelValue', 31)
-    selects[1]!.vm.$emit('update:modelValue', 32)
-    await submit()
-    expect(
-      vi
-        .mocked(teamMaterialApi.createDispatch)
-        .mock.calls[0]![1].lines.map((line) => line.purpose_id),
-    ).toEqual([31, 32])
-    await destination(1)
-    expect(wrapper.find('input[aria-label="TL10接收任务"]').exists()).toBe(false)
-    expect(wrapper.find('input[aria-label="TL11接收任务"]').exists()).toBe(false)
-    expect(teamMaterialApi.purposes).not.toHaveBeenCalledWith(1)
-    await submit()
-    expect(vi.mocked(teamMaterialApi.createDispatch).mock.lastCall?.[1]).toMatchObject({
-      next_team_id: 1,
-    })
-    for (const line of vi.mocked(teamMaterialApi.createDispatch).mock.lastCall![1].lines)
-      expect(line).not.toHaveProperty('purpose_id')
-  })
-  it('cannot silently bypass a failed purpose lookup', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockRejectedValue(new Error('业务读取失败'))
-    await render()
-    await destination()
-    await submit()
-    expect(wrapper.text()).toContain('业务读取失败')
-    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-  })
-  it('blocks new transfers when every destination business is disabled', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
-      { id: 31, team_id: 3, name: '检验', active: false, version: 2 },
-    ])
-    await render()
-    await destination()
-    await submit()
-    expect(wrapper.text()).toContain('接收班组暂无启用业务，请联系该班组在工作台中启用。')
-    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-  })
+  it.each([true, false])(
+    'leaves downstream task selection to that team, even with active=%s settings',
+    async (active) => {
+      vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+        { id: 31, team_id: 3, name: '精磨', active, version: 1 },
+      ])
+      await render()
+      await destination()
+      expect(wrapper.text()).not.toMatch(/下序接收任务|统一接收任务/)
+      await submit()
+      expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+      expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
+      for (const line of vi.mocked(teamMaterialApi.createDispatch).mock.lastCall![1].lines)
+        expect(line).not.toHaveProperty('purpose_id')
+    },
+  )
   it('submits excessive split amounts and shows the combined shortage without blocking', async () => {
     await render('dispatch', [source()])
     await destination(1)
@@ -1626,7 +1559,7 @@ it('carries the published route destination and business into dispatch without a
     2,
     expect.objectContaining({
       next_team_id: 3,
-      lines: [expect.objectContaining({ purpose_id: 33, source_transfer_id: 10 })],
+      lines: [expect.objectContaining({ source_transfer_id: 10 })],
     }),
   )
 })
@@ -1655,6 +1588,25 @@ it('automatically resolves a warehouse serial and submits its complete documents
     task_id: 31,
     document: { ...orderFixture, serial_no: row.transfer.serial_no },
   })
+  vi.mocked(productionScheduleApi.candidates).mockImplementation(async (params) => ({
+    items: [
+      {
+        source_transfer_id: 10,
+        schedules: params.process_route_id
+          ? [
+              {
+                id: 71,
+                task_id: 31,
+                task_batch_number: 1,
+                serial_no: row.transfer.serial_no,
+                due_at: '2026-12-01T08:00:00Z',
+                remaining_quantity: 100,
+              } as ScheduleSummary,
+            ]
+          : [],
+      },
+    ],
+  }))
   let resolveRoute!: (value: typeof resolved) => void
   vi.spyOn(processRouteApi, 'resolve').mockImplementation(
     () =>
@@ -1670,6 +1622,13 @@ it('automatically resolves a warehouse serial and submits its complete documents
   await flushPromises()
   expect(processRouteApi.resolve).toHaveBeenCalledWith(row.transfer.serial_no)
   expect(wrapper.text()).not.toContain('选择工艺')
+  expect(productionScheduleApi.candidates).toHaveBeenCalledWith(
+    expect.objectContaining({
+      serial_no: row.transfer.serial_no,
+      process_route_id: routeFixture.id,
+    }),
+  )
+  expect(wrapper.getComponent(SerialRouteAttachments).props('items')[0].scheduleTaskId).toBe(31)
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
     2,
@@ -1679,6 +1638,7 @@ it('automatically resolves a warehouse serial and submits its complete documents
         expect.objectContaining({
           process_route_id: routeFixture.id,
           process_route_version: routeFixture.version,
+          production_schedule_id: 71,
         }),
       ],
     }),
@@ -1808,12 +1768,12 @@ it.each([null, 'ORDER-A', 'ORDER-B'])(
     expect(body.lines[0]).toMatchObject({
       quantity: 100,
       weight: 10,
-      ...(specifiedSerial ? { purpose_id: 55 } : {}),
       shared_serials: [
         expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
         expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
       ],
     })
+    expect(body.lines[0]).not.toHaveProperty('purpose_id')
     expect(body.lines[0]).not.toHaveProperty('serial_no')
     expect(body.lines[0]).not.toHaveProperty('production_schedule_id')
     for (const member of body.lines[0]!.shared_serials!) {

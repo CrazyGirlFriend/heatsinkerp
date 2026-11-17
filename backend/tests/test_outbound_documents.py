@@ -94,7 +94,9 @@ def test_unnamed_receipt_splits_into_serial_specific_routes_without_relabelling_
         )
 
 
-@pytest.mark.parametrize("missing", ["serial", "order", "order_metadata", "word", "drawing"])
+@pytest.mark.parametrize(
+    "missing", ["serial", "order", "order_metadata", "word", "drawing", "deadline"]
+)
 def test_missing_outbound_information_rejects_entire_order_without_stock_change(
     client, warehouse, missing
 ):
@@ -112,6 +114,11 @@ def test_missing_outbound_information_rejects_entire_order_without_stock_change(
             db.execute(
                 delete(ProcessRouteDrawing).where(ProcessRouteDrawing.route_id == first["id"])
             )
+        if missing == "deadline":
+            row = db.get(ProcessRoute, first["id"])
+            data = deepcopy(row.source_data)
+            del data["order_document"]["receipt_fields"]["delivery_date"]
+            row.source_data = data
         if missing == "word":
             db.get(ProcessRoute, first["id"]).source_file = b""
         db.commit()
@@ -182,3 +189,129 @@ def test_selected_version_conflict_does_not_bind_stock(client, warehouse):
     assert result.status_code == 409, result.text
     with SessionLocal() as db:
         assert db.get(MaterialTransfer, receipt["id"]).process_route_id is None
+
+
+def test_dispatch_needs_no_manual_downstream_task_even_when_team_has_tasks(client, warehouse):
+    first, _ = routes(client, warehouse)
+    with SessionLocal.begin() as db:
+        route = db.get(ProcessRoute, first["id"])
+        steps = deepcopy(route.steps)
+        steps[1]["purpose_id"] = None
+        route.steps = steps
+    receipt = intake(client, warehouse, serial_no="").json()
+    result = dispatch(
+        client,
+        warehouse,
+        [
+            {
+                "source_transfer_id": receipt["id"],
+                "serial_no": "ORDER-A",
+                "quantity": 10,
+                "weight": 1,
+            },
+        ],
+    )
+    assert result.status_code == 201, result.text
+    item = result.json()["items"][0]
+    assert item["purpose_id"] is None
+    assert item["process_route"]["processing_task_id"] == steps[1]["processing_task_id"]
+    assert item["delivery_date"] == "2026-06-30"
+
+
+def test_anonymous_outbound_selects_exact_schedule_and_carries_its_documents(client, warehouse):
+    from datetime import datetime
+
+    from app.models import ProductionScheduleOrderFile, ProductionScheduleTask
+    from app.process_route_orders import parse_order
+    from test_process_route_orders import VALUES, xlsx
+    from test_production_schedules import URL, plan
+
+    first, _ = routes(client, warehouse)
+    receipt = intake(client, warehouse, serial_no="").json()
+    plans = [
+        plan(
+            client,
+            warehouse,
+            serial_no="ORDER-A",
+            process_route_id=first["id"],
+            process_step_index=0,
+            target_quantity=10,
+        )
+        for _ in range(2)
+    ]
+    with SessionLocal.begin() as db:
+        for index, node in enumerate(plans):
+            task = db.get(ProductionScheduleTask, node["task_id"])
+            task.final_due_at = datetime(2026, 12, 20 + index, 16)  # midnight in factory timezone
+            task.delivery_batches = [
+                {"batch_number": 1, "target_quantity": 10, "due_at": task.final_due_at.isoformat()}
+            ]
+            content = xlsx(["ORDER-A", *VALUES[1:]])
+            name = f"第{index + 1}批订单.xlsx"
+            db.add(
+                ProductionScheduleOrderFile(
+                    task_id=task.id,
+                    filename=name,
+                    content=content,
+                    document=parse_order(content, name),
+                )
+            )
+    candidates = client.get(
+        URL + "/candidates",
+        params={
+            "team_id": warehouse["team"]["id"],
+            "source_transfer_ids": str(receipt["id"]),
+            "next_team_id": warehouse["other"]["id"],
+            "serial_no": "ORDER-A",
+            "process_route_id": first["id"],
+        },
+    )
+    assert candidates.status_code == 200, candidates.text
+    assert {p["id"] for p in candidates.json()["items"][0]["schedules"]} == {p["id"] for p in plans}
+    response = dispatch(
+        client,
+        warehouse,
+        [
+            {
+                "source_transfer_id": receipt["id"],
+                "serial_no": "ORDER-A",
+                "quantity": 10,
+                "weight": 1,
+                "production_schedule_id": plans[0]["id"],
+            }
+        ],
+    )
+    assert response.status_code == 201, response.text
+    item = response.json()["items"][0]
+    detail = client.get(
+        "/api/material-transfers/" + item["batch_no"], headers=warehouse["other_headers"]
+    )
+    assert detail.status_code == 200, detail.text
+    for row in (item, detail.json()):
+        assert row["serial_no"] == "ORDER-A"
+        assert row["task_batch_number"] == 1
+        assert row["schedule_task_id"] == plans[0]["task_id"]
+        assert row["delivery_date"] == "2026-12-21"
+        assert row["delivery_quantity"] == 10  # never the original 18,100 pieces
+        assert row["process_route"]["id"] == first["id"]
+    order = client.get(
+        f"/api/process-routes/{first['id']}/dispatch-order",
+        params={
+            "serial_no": "ORDER-A",
+            "task_id": item["schedule_task_id"],
+        },
+        headers=warehouse["other_headers"],
+    )
+    assert order.status_code == 200, order.text
+    assert order.json()["document"]["filename"] == "第1批订单.xlsx"
+    missing = client.get(
+        f"/api/process-routes/{first['id']}/dispatch-order",
+        params={
+            "serial_no": "ORDER-B",
+            "task_id": item["schedule_task_id"],
+        },
+    )
+    assert missing.json() is None
+    with SessionLocal() as db:
+        origin = db.get(MaterialTransfer, receipt["id"])
+        assert not origin.serial_no and origin.process_route_id is None

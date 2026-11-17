@@ -894,7 +894,15 @@ def matching_pairs(db, team_id, lot_ids, **options):
     return list(db.execute(matching_statement(db, team_id, lot_ids, **options)))
 
 
-def candidates(db, team_id, lot_ids, next_team_id=None, external_destination=None):
+def candidates(
+    db,
+    team_id,
+    lot_ids,
+    next_team_id=None,
+    external_destination=None,
+    serial_no=None,
+    process_route_id=None,
+):
     pairs = matching_pairs(
         db,
         team_id,
@@ -912,6 +920,49 @@ def candidates(db, team_id, lot_ids, next_team_id=None, external_destination=Non
             .where(Transfer.id.in_(lot_ids), Transfer.next_team_id == team_id)
         )
     )
+    team = db.get(Team, team_id)
+    if serial_no is not None or process_route_id is not None:
+        if not team or team.code != WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "仅库房首次出库可以补充流水号和工艺")
+        if any(lot.serial_no and lot.serial_no != serial_no for lot in lots):
+            raise HTTPException(422, "出库流水号不能与原批次不一致")
+        if any(lot.process_route_id and lot.process_route_id != process_route_id for lot in lots):
+            raise HTTPException(422, "出库工艺不能与原批次不一致")
+    if team and team.code == WAREHOUSE_TEAM_CODE:
+        # Raw intake is deliberately unassigned. Once its outbound portion has
+        # a serial and route, offer the same commitments associate_dispatch accepts.
+        progress = progress_table(db, plan_ids=select(Plan.id).where(Plan.team_id == team_id))
+        plans = list(
+            db.scalars(
+                select(Plan)
+                .outerjoin(progress, progress.c.schedule_id == Plan.id)
+                .where(
+                    Plan.team_id == team_id,
+                    Plan.serial_no.in_({serial_no or lot.serial_no for lot in lots}),
+                    Plan.process_route_id.is_not(None),
+                    Plan.cancelled_at.is_(None),
+                    progress.c.completed_at.is_(None),
+                    Plan.next_team_id.is_not_distinct_from(next_team_id),
+                    Plan.external_destination.is_not_distinct_from(external_destination),
+                )
+            )
+        )
+        for lot in lots:
+            if (
+                lot.shared_unallocated
+                or lot.material_type in EXCLUDED_MATERIAL_TYPES
+                or lot.entry_kind not in ("warehouse_receipt", "opening_stock")
+                or lot.source_transfer_id is not None
+            ):
+                continue
+            for plan in plans:
+                if (
+                    plan.serial_no == (serial_no or lot.serial_no)
+                    and plan.process_route_id == (process_route_id or lot.process_route_id)
+                    and plan.process_step_index == (lot.process_step_index or 0)
+                    and (lot.id, plan.id) not in pairs
+                ):
+                    pairs.append((lot.id, plan.id))
     for lot in lots:
         bound = db.get(Plan, lot.processing_schedule_id) if lot.processing_schedule_id else None
         if bound and bound.process_route_id == lot.process_route_id and bound.team_id == team_id:
