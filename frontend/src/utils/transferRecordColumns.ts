@@ -11,6 +11,7 @@ import {
   type MaterialTransfer,
 } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 
 function column<Key extends string>(
   key: Key,
@@ -39,6 +40,7 @@ function isInternalTransfer(row: MaterialTransfer) {
 }
 
 export const transferRecordColumns = [
+  column('task_batch_number', '排期批次', 120, formatScheduleBatch, true),
   column('material', '材质', 150, (row) => row.material_name, true, 'material_name'),
   column('source', '来源', 156, materialSourceLabel, true),
   column(

@@ -763,7 +763,6 @@ onBeforeUnmount(() => {
             :prop="column.key"
             :min-width="column.width"
             :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
-            :align="['quantity', 'delivery_batches'].includes(column.key) ? 'right' : 'left'"
             :show-overflow-tooltip="column.key !== 'team_planning'"
           >
             <template #default="{ row }">

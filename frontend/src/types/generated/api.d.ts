@@ -5284,6 +5284,8 @@ export interface components {
        * @default false
        */
       stock_tracked: boolean
+      /** Task Batch Number */
+      task_batch_number?: number | null
       /** Technical Requirements */
       technical_requirements?: string | null
       /** Transfer Specification */
@@ -6347,6 +6349,8 @@ export interface components {
       shared_unallocated: boolean
       /** Source Transfer Id */
       source_transfer_id: number
+      /** Task Batch Number */
+      task_batch_number: number | null
       /** Temperature Requirement */
       temperature_requirement: string | null
       /** Weight */
@@ -10093,6 +10097,8 @@ export interface components {
        * @default false
        */
       stock_tracked: boolean
+      /** Task Batch Number */
+      task_batch_number?: number | null
       /** Technical Requirements */
       technical_requirements?: string | null
       /** Transfer Specification */

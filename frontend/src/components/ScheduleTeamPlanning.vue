@@ -127,6 +127,9 @@ const remaining = computed(() => steps.value.length - visibleSteps.value.length)
 <style scoped>
 .team-planning {
   display: flex;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
   flex-wrap: nowrap;
   align-items: center;
   min-width: 0;

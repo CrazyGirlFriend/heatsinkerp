@@ -130,6 +130,7 @@ async function filterColumn(page: VueWrapper, label: string, value: string, end 
 const defaultHeaders = [
   '流水号',
   '转出时间',
+  '排期批次',
   '材质',
   '来源',
   '去向',
@@ -149,6 +150,38 @@ function tableHeaders(page: VueWrapper) {
 }
 
 describe('transfer display columns', () => {
+  it('shows bound schedule batches and sends batch filtering and sorting to the server', async () => {
+    const items = [2, 1, null].map((task_batch_number, index) =>
+      normalizeMaterialTransfer({
+        ...transfer,
+        id: index + 10,
+        batch_no: `TL${index + 10}`,
+        task_batch_number,
+      }),
+    )
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: 3 })
+    const page = await renderList('/transfer-batches')
+    expect(
+      page.findAll('.el-table__body .transfer-task-batch-number-cell').map((cell) => cell.text()),
+    ).toEqual(['第2批', '第1批', '—'])
+    const filter = page
+      .findAllComponents(TableColumnFilter)
+      .find((item) => item.props('label') === '排期批次')!
+    filter.vm.$emit('apply', '2', '2')
+    await flushPromises()
+    filter.vm.$emit('sort', 'desc')
+    await flushPromises()
+    expect(
+      JSON.parse(vi.mocked(materialTransferApi.list).mock.lastCall![0]!.table_query!),
+    ).toMatchObject({
+      filters: [{ field: 'task_batch_number', kind: 'number', value: '2', end: '2' }],
+      sort: { field: 'task_batch_number', direction: 'desc' },
+    })
+    const exported = page.getComponent(TableExportButton).props('source')()!
+    const rows = await exported.load(new AbortController().signal, vi.fn())
+    expect(rows.map((row) => row.task_batch_number)).toEqual(['第2批', '第1批', '—'])
+  })
+
   it('shows dimensions and actual receiving and sending employees by default, separately from accounts', async () => {
     const received = normalizeMaterialTransfer({
       ...transfer,
@@ -196,7 +229,7 @@ describe('transfer display columns', () => {
     const page = await renderList('/transfer-batches')
     const settings = page.getComponent({ name: 'InventoryColumnSettings' })
     const choices = settings.props('columns') as { key: string; label: string }[]
-    expect(choices).toHaveLength(23)
+    expect(choices).toHaveLength(24)
     const expected = {
       transfer_specification: ['实际尺寸', '30 × 20 × 2 mm'],
       sent_employee_name: ['转料人', '张师傅'],
@@ -225,7 +258,7 @@ describe('transfer display columns', () => {
       '批次号',
     ])
     const row = page.get('.el-table__body .el-table__row')
-    expect(row.findAll('td')).toHaveLength(26)
+    expect(row.findAll('td')).toHaveLength(27)
     for (const [key, [label, value]] of Object.entries(expected)) {
       expect(choices.find((column) => column.key === key)?.label).toBe(label)
       const cell = row.get(`.transfer-${key.replaceAll('_', '-')}-cell`)
@@ -233,7 +266,7 @@ describe('transfer display columns', () => {
       expect(cell.classes()).toContain('is-center')
     }
     const exported = page.getComponent(TableExportButton).props('source')()!
-    expect(exported.fields).toHaveLength(26)
+    expect(exported.fields).toHaveLength(27)
     expect(materialTransferApi.list).toHaveBeenCalledTimes(1)
     const [exportedRow] = await exported.load(new AbortController().signal, () => undefined)
     for (const [key, [, value]] of Object.entries(expected)) {
@@ -252,7 +285,7 @@ describe('transfer display columns', () => {
       ]),
     )
     const page = await renderList()
-    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '批次号'])
+    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '排期批次', '批次号'])
     const row = page.get('.el-table__body .el-table__row')
     expect(row.get('td.transfer-weight-cell').text()).toBe('12.5 kg')
     expect(row.get('td.transfer-source-cell').text()).toBe('库房')
@@ -267,7 +300,7 @@ describe('transfer display columns', () => {
     )
     state.auth.currentUser = { id: 1, team_id: null }
     await flushPromises()
-    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '批次号'])
+    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '排期批次', '批次号'])
   })
 
   it('changes display without reloading, losing hidden filters, changing pagination or narrowing export fields', async () => {
@@ -360,7 +393,7 @@ describe('transfer header filtering', () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [], total: 0 })
     await filterColumn(page, '材质', '不存在')
     expect(page.get('.el-table').text()).toContain('暂无转料记录')
-    expect(page.findAllComponents(TableColumnFilter)).toHaveLength(11)
+    expect(page.findAllComponents(TableColumnFilter)).toHaveLength(12)
     await filterColumn(page, '材质', '')
     const last = vi.mocked(materialTransferApi.list).mock.lastCall![0]!
     expect(last.serial_query).toBe('YS-001')

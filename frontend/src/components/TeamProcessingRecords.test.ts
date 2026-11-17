@@ -9,6 +9,7 @@ import RecordDateFilter from './RecordDateFilter.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TableExportButton from './TableExportButton.vue'
+import TableColumnFilter from './TableColumnFilter.vue'
 import TableExportDialog from './TableExportDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -280,6 +281,37 @@ describe('cutting processing records', () => {
     expect(router.currentRoute.value.query.processing_task_id).toBeUndefined()
     expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
   })
+  it('distinguishes schedule batches on the same serial in history and export', async () => {
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [
+        { ...record(1), task_batch_number: 2 },
+        { ...record(2), task_batch_number: 1 },
+        record(3),
+      ],
+      total: 3,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    const table = wrapper.get('.el-table')
+    expect(table.text()).toContain('排期批次')
+    expect(table.text()).toContain('第2批')
+    expect(table.text()).toContain('第1批')
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    const exported = await source.load(new AbortController().signal, () => {})
+    expect(exported.map((row) => row.task_batch_number)).toEqual(['第2批', '第1批', '—'])
+    const filter = wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((item) => item.props('label') === '排期批次')!
+    filter.vm.$emit('apply', '2', '2')
+    await flushPromises()
+    expect(
+      JSON.parse(vi.mocked(teamMaterialApi.processingRecords).mock.lastCall![1]!.table_query!),
+    ).toMatchObject({
+      filters: [{ field: 'task_batch_number', kind: 'number', value: '2', end: '2' }],
+    })
+  })
+
   it('shows and exports the processing person without substituting the login account', async () => {
     vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
       items: [{ ...record(), processor_name: '王师傅' }, record(2)],

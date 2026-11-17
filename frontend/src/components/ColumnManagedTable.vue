@@ -174,6 +174,8 @@ export default defineComponent({
         selected.map((entry, index) => {
           const node = cloneVNode(entry.node, {
             key: entry.key,
+            align: 'center',
+            headerAlign: 'center',
             fixed:
               fixedKeys.has(entry.key) ||
               (fixedKeys.size > 0 &&
@@ -244,6 +246,10 @@ export default defineComponent({
 
 <style>
 @media screen {
+  table.column-managed-native > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+    text-align: center;
+    vertical-align: middle;
+  }
   .column-managed-native > thead {
     position: sticky;
     top: 0;

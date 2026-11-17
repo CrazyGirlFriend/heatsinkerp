@@ -13,6 +13,7 @@ import {
 } from '@/types/materialTransfer'
 import type { MaterialLoss } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import type { TableExportField } from './tableExport'
 import { transferRecordColumns } from './transferRecordColumns'
 
@@ -31,6 +32,9 @@ export function transferExportFields(
       : []),
     field('batch_no', '批次号', (row) => row.batch_no),
     field('serial_no', '流水号', sharedSerialLabel),
+    ...(section === 'outgoing'
+      ? [field('task_batch_number', '排期批次', formatScheduleBatch)]
+      : []),
     ...(section === 'receipts'
       ? [
           field('received_at', '入库时间', (row) => formatDateTime(row.received_at)),

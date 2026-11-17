@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useTableQuery } from '@/composables/useTableQuery'
 import { transferQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
@@ -1711,6 +1712,14 @@ onBeforeUnmount(() => {
                         ><span :title="row.serial_no">{{ row.serial_no }}</span
                         ><SerialUrgencyBadge :urgency="row.urgency" /></span></template
                   ></ElTableColumn>
+                  <ElTableColumn
+                    prop="task_batch_number"
+                    label="排期批次"
+                    min-width="120"
+                    align="center"
+                  >
+                    <template #default="{ row }">{{ formatScheduleBatch(row) }}</template>
+                  </ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       row.material_name || '—'

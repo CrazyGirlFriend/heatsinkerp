@@ -17,6 +17,7 @@ export interface ProcessingSummary {
   processing_unregistered_weight?: number
 }
 export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFields {
+  task_batch_number?: number | null
   finished_quantity?: number | null
   report_inspections?: import('./generated/api').components['schemas']['ProcessingInspectionResponse'][]
   serial_no: string

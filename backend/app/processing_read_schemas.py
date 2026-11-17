@@ -174,6 +174,7 @@ class ProcessingInspectionResponse(ReadResponse):
 
 
 class ProcessingRecordResponse(QuantityAdjustmentResponse, SharedMaterialResponse):
+    task_batch_number: int | None
     serial_no: str
     batch_no: str
     material_name: str | None

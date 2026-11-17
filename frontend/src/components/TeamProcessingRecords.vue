@@ -39,6 +39,7 @@ import {
   processingRoleLabels,
 } from '@/types/materialProcessing'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import {
   createProductionWorkbook,
   productionTemplates,
@@ -230,6 +231,7 @@ function exportSource() {
         label: '流水号',
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
+      { key: 'task_batch_number', label: '排期批次', value: formatScheduleBatch },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
       { key: 'finished_quantity', label: '订单数量', value: (row) => row.finished_quantity },
       {
@@ -698,6 +700,9 @@ onBeforeUnmount(() => {
         show-overflow-tooltip
         ><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn
       >
+      <ElTableColumn prop="task_batch_number" label="排期批次" min-width="120" align="center">
+        <template #default="{ row }">{{ formatScheduleBatch(row) }}</template>
+      </ElTableColumn>
       <ElTableColumn label="加工性质" width="125" align="center"
         ><template #default="{ row }">{{
           row.work_kind === 'rework' ? `返工 · 第 ${row.rework_round} 次` : '首次加工'

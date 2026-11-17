@@ -40,6 +40,7 @@ describe('global transfer record columns', () => {
     expect(
       transferRecordColumns.filter((column) => column.defaultVisible).map(({ key }) => key),
     ).toEqual([
+      'task_batch_number',
       'material',
       'source',
       'destination',
@@ -53,9 +54,9 @@ describe('global transfer record columns', () => {
       'received_employee_name',
       'received_at',
     ])
-    expect(transferRecordColumns).toHaveLength(23)
-    expect(new Set(transferRecordColumns.map(({ key }) => key)).size).toBe(23)
-    expect(new Set(globalTransferExportFields.map(({ key }) => key)).size).toBe(26)
+    expect(transferRecordColumns).toHaveLength(24)
+    expect(new Set(transferRecordColumns.map(({ key }) => key)).size).toBe(24)
+    expect(new Set(globalTransferExportFields.map(({ key }) => key)).size).toBe(27)
   })
 
   it('exports every selectable column once between the fixed serial/date and batch columns', async () => {
@@ -89,6 +90,7 @@ describe('global transfer record columns', () => {
     expect(exported).toEqual([
       {
         serial_no: '0000123',
+        task_batch_number: '—',
         transferred_at: formatDateTime(row.transferred_at),
         material_name: '铜钼合金',
         source: '库房',

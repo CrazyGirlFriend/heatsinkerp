@@ -458,6 +458,7 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    task_batch_number: int | None = None
     rework_route_id: int | None = None
     rework_route_ready: bool = False
     process_route: dict[str, Any] | None = None

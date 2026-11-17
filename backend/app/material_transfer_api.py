@@ -17,6 +17,7 @@ from .material_transfer_query import TransferColumnFilters, search_predicate, te
 from .models import MaterialTransfer, Team, User
 from .read_schemas import PageResponse
 from .record_filters import RecordFilters
+from .schedule_task_identity import transfer_batch_number_column
 from .schemas import (
     DIRECT_MATERIAL_TYPE_PATTERN,
     MaterialDeliveryUpdate,
@@ -219,6 +220,7 @@ def list_material_transfers(
     from .table_query import table_options, table_order, table_predicates
 
     columns = dict(MaterialTransfer.__table__.columns.items())
+    columns["task_batch_number"] = transfer_batch_number_column()
     filters.extend(table_predicates(columns))
     table_options(db, select(MaterialTransfer).where(*filters), columns)
     summary = None
@@ -246,8 +248,8 @@ def list_material_transfers(
     order_columns = table_order(
         columns, MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc()
     )
-    transfers = db.scalars(
-        select(MaterialTransfer)
+    transfers = db.execute(
+        select(MaterialTransfer, columns["task_batch_number"])
         .options(*material_transfer_workflow.material_transfer_list_options())
         .where(*filters)
         .order_by(*order_columns)
@@ -256,10 +258,13 @@ def list_material_transfers(
     ).all()
     return {
         "items": [
-            material_transfer_workflow.material_transfer_dict(
-                item, current_user, include_history=False
-            )
-            for item in transfers
+            {
+                **material_transfer_workflow.material_transfer_dict(
+                    item, current_user, include_history=False
+                ),
+                "task_batch_number": batch_number,
+            }
+            for item, batch_number in transfers
         ],
         "total": total,
         "page": page,

@@ -573,6 +573,8 @@ def labor_minutes_column():
 
 
 def record_table_columns():
+    from .schedule_task_identity import schedule_batch_number_column
+
     participant_names = (
         select(func.group_concat(ProcessingParticipant.name))
         .where(ProcessingParticipant.processing_id == Adjustment.id)
@@ -585,6 +587,7 @@ def record_table_columns():
         "material_name": Transfer.material_name,
         "material_type": Transfer.material_type,
         "batch_no": Transfer.batch_no,
+        "task_batch_number": schedule_batch_number_column(Adjustment.production_schedule_id),
         "processor_name": func.coalesce(participant_names, Adjustment.processor_name),
         "labor_minutes": labor_minutes_column(),
         "after_weight": func.coalesce(Adjustment.after_weight, Adjustment.weight_snapshot),
@@ -630,6 +633,7 @@ def list_records(
             Transfer.shared_group_id,
             Transfer.shared_unallocated,
             Transfer.batch_no,
+            columns["task_batch_number"].label("task_batch_number"),
             Transfer.material_name,
             Transfer.material_type,
             Transfer.finished_quantity,
@@ -793,6 +797,7 @@ def list_records(
                         "shared_group_id",
                         "shared_unallocated",
                         "batch_no",
+                        "task_batch_number",
                         "material_name",
                         "material_type",
                         "finished_quantity",

@@ -151,6 +151,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   ) as Pick<MaterialTransferDocumentFields, (typeof materialDocumentTextFields)[number]['key']>
   return {
     ...documentText,
+    task_batch_number: optionalInteger(raw.task_batch_number, 1),
     process_route:
       raw.process_route && typeof raw.process_route === 'object'
         ? (raw.process_route as import('@/types/processRoute').ProcessRouteContext)

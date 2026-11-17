@@ -436,9 +436,6 @@ watch(
   align-items: center;
   gap: 6px;
 }
-.el-table th.is-right .table-column-filter.el-button > span {
-  flex-direction: row-reverse;
-}
 .table-column-filter svg {
   width: 13px;
   height: 13px;

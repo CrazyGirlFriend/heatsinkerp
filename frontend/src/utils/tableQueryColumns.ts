@@ -86,6 +86,7 @@ export const taskQueryColumns = queryColumns([
 ])
 export const transferQueryColumns = queryColumns([
   ['流水号', 'serial_no'],
+  ['排期批次', 'task_batch_number', 'number'],
   ['批次号', 'batch_no'],
   ['材质', 'material_name'],
   ['物料类型', 'material_type'],
@@ -117,6 +118,7 @@ export const transferQueryColumns = queryColumns([
 ])
 export const processingQueryColumns = queryColumns([
   ['流水号', 'serial_no'],
+  ['排期批次', 'task_batch_number', 'number'],
   ['批次号', 'batch_no'],
   ['实际加工日期', 'processing_date', 'date'],
   ['加工人', 'processor_name'],

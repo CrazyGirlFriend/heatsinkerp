@@ -1713,6 +1713,33 @@ describe('team workspace material ledger', () => {
       expect.objectContaining({ query: '去毛刺', status: 'pending' }),
     )
   })
+  it('shows and exports the actual schedule batch in outgoing history', async () => {
+    const items = [2, 1, null].map((task_batch_number, index) =>
+      normalizeMaterialTransfer({
+        ...source().transfer,
+        id: index + 30,
+        batch_no: `TL${index + 30}`,
+        task_batch_number,
+      }),
+    )
+    vi.mocked(teamMaterialApi.dispatches).mockResolvedValue({
+      items,
+      total: 3,
+      page: 1,
+      page_size: 10,
+    })
+    await render('/team-workspaces/914?tab=outgoing')
+    const table = wrapper.get('.dispatch-table')
+    expect(table.text()).toContain('排期批次')
+    expect(table.text()).toContain('第2批')
+    expect(table.text()).toContain('第1批')
+    await wrapper.get('.team-workspace__export').trigger('click')
+    await flushPromises()
+    const data = wrapper.getComponent(TableExportDialog).props('source')!
+    const exported = await data.load(new AbortController().signal, vi.fn())
+    expect(exported.map((row) => row.task_batch_number)).toEqual(['第2批', '第1批', '—'])
+  })
+
   it('removes one applied record filter while retaining search, dates and the other filters', async () => {
     const router = await render(
       '/team-workspaces/914?tab=outgoing&query=YS-007&material_type=semi_finished&status=pending&date_from=2026-09-01&page=2',

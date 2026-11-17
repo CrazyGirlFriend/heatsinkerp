@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useTableQuery } from '@/composables/useTableQuery'
 import ElSkeleton from '@/components/AppSkeleton.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -276,7 +277,7 @@ function headerColumn(field: string): TableQueryColumn {
   if (field === 'status') return { field, kind: 'select', options: columnStatusOptions.value }
   return {
     field,
-    kind: ['quantity', 'weight'].includes(field)
+    kind: ['quantity', 'weight', 'task_batch_number'].includes(field)
       ? 'number'
       : field === 'created_at'
         ? 'date'
@@ -968,6 +969,7 @@ onBeforeUnmount(() => {
               <InventoryColumnSettings
                 :storage-key="columnStorageKey"
                 :columns="displayColumns"
+                :new-visible-keys="recordKind ? [] : ['task_batch_number']"
                 :fixed-column-options="fixedColumnOptions"
                 @fixed-change="fixedColumns = $event"
                 description="流水号、转出时间、批次号始终显示。仅保存在当前浏览器。"
@@ -1187,6 +1189,22 @@ onBeforeUnmount(() => {
                   :options="columnStatusOptions"
                   @apply="(value, end, details) => applyColumn('status', value, end, details)"
                 />
+                <TableColumnFilter
+                  v-else-if="column.key === 'task_batch_number'"
+                  label="排期批次"
+                  v-bind="headerSort('task_batch_number')"
+                  :context="route.fullPath"
+                  kind="number"
+                  @apply="
+                    (value, end, details) =>
+                      tableQuery.controller.value.filter(
+                        headerColumn('task_batch_number'),
+                        value,
+                        end,
+                        details,
+                      )
+                  "
+                />
                 <span v-else>{{ column.label }}</span>
               </template>
               <template #default="{ row }">
@@ -1243,6 +1261,7 @@ onBeforeUnmount(() => {
             >
               <span class="mobile-row-head"
                 ><strong>{{ sharedSerialLabel(transfer) }}</strong
+                ><span>{{ formatScheduleBatch(transfer) }}</span
                 ><MaterialTransferStatus
                   :status="transfer.status"
                   :entry-kind="transfer.entry_kind"

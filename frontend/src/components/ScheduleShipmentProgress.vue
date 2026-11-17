@@ -31,16 +31,19 @@ const percent = computed(() =>
   display: grid;
   gap: 3px;
   min-width: 150px;
+  max-width: 220px;
+  margin-inline: auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .shipment-progress > span {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 4px;
 }
 .shipment-progress small {
-  margin-left: auto;
+  margin-left: 8px;
   color: var(--muted);
 }
 </style>
