@@ -140,6 +140,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()).toEqual([
       ...(mode.warehouse ? ['批次号'] : []),
       '流水号',
+      '排期批次',
       ...(mode.warehouse ? ['仓库'] : []),
       '数量（件）',
       ...(mode.processing ? ['工艺工序', '返工情况', '加工状态'] : []),
@@ -192,7 +193,14 @@ describe('warehouse grouped stock', () => {
       user: { id: 42 },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    expect(headers().slice(0, 5)).toEqual(['批次号', '流水号', '仓库', '数量（件）', '材质'])
+    expect(headers().slice(0, 6)).toEqual([
+      '批次号',
+      '流水号',
+      '排期批次',
+      '仓库',
+      '数量（件）',
+      '材质',
+    ])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
     expect(wrapper.findAll('thead th')[1]!.classes()).not.toContain('el-table-fixed-column--left')
     expect(wrapper.findAll('[data-field="on_hand_quantity"]').map((cell) => cell.text())).toEqual(
@@ -1506,7 +1514,15 @@ describe('warehouse grouped stock', () => {
       as_of: '2026-09-27T00:00:00Z',
     })
     const router = await render(undefined, true, false)
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '物料类型', '实际尺寸', '操作'])
+    expect(headers()).toEqual([
+      '流水号',
+      '排期批次',
+      '数量（件）',
+      '材质',
+      '物料类型',
+      '实际尺寸',
+      '操作',
+    ])
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
       901,
       expect.objectContaining({ availability: 'current' }),
@@ -1627,7 +1643,15 @@ describe('warehouse grouped stock', () => {
       user: { id: 42 },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '上序班组', '重量（kg）', '操作'])
+    expect(headers()).toEqual([
+      '流水号',
+      '排期批次',
+      '数量（件）',
+      '材质',
+      '上序班组',
+      '重量（kg）',
+      '操作',
+    ])
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['70', '70'])
     expect(localStorage.getItem('heatsink.classified-columns.v1:42:901')).toBe(
       JSON.stringify([
@@ -1706,7 +1730,15 @@ describe('warehouse grouped stock', () => {
       { id: 901, name: '本班组' },
     ] as ReturnType<typeof useTeamDirectoryStore>['items']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '物料类型', '实际尺寸', '操作'])
+    expect(headers()).toEqual([
+      '流水号',
+      '排期批次',
+      '数量（件）',
+      '材质',
+      '物料类型',
+      '实际尺寸',
+      '操作',
+    ])
     expect(wrapper.text()).not.toContain('车间转入 ·')
     expect(select('库存来源筛选')).toBeUndefined()
     expect(
@@ -1876,6 +1908,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()).toEqual([
       '批次号',
       '流水号',
+      '排期批次',
       '仓库',
       '数量（件）',
       '材质',
@@ -1886,18 +1919,24 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
     const rowCells = () =>
       wrapper.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
-    expect(rowCells().map((cells) => [cells[1], cells[4]])).toEqual(
-      data().map((row) => [row.serial_no, row.material_name]),
-    )
+    expect(
+      rowCells().map((cells) => [
+        cells[headers().indexOf('流水号')],
+        cells[headers().indexOf('材质')],
+      ]),
+    ).toEqual(data().map((row) => [row.serial_no, row.material_name]))
     expect(
       wrapper
         .findAll('.inventory-serial')
         .some((cell) => cell.find('.inventory-material').exists()),
     ).toBe(false)
     await wrapper.setProps({ fullscreen: true })
-    expect(rowCells().map((cells) => [cells[1], cells[4]])).toEqual(
-      data().map((row) => [row.serial_no, row.material_name]),
-    )
+    expect(
+      rowCells().map((cells) => [
+        cells[headers().indexOf('流水号')],
+        cells[headers().indexOf('材质')],
+      ]),
+    ).toEqual(data().map((row) => [row.serial_no, row.material_name]))
     expect(wrapper.findAll('tr.serial-group-start')).toHaveLength(0)
     await showColumns('source')
     expect(
@@ -2211,4 +2250,26 @@ describe('warehouse grouped stock', () => {
       expect.objectContaining({ page: 1 }),
     )
   })
+})
+
+it('identifies separate schedule batches in stock and its export for the same serial', async () => {
+  vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+    items: [
+      warehouseFixture({ group_id: 1, task_batch_number: 2 }),
+      warehouseFixture({ group_id: 2, task_batch_number: 1 }),
+      warehouseFixture({ group_id: 3, task_batch_number: null }),
+    ],
+    total: 3,
+    page: 1,
+    page_size: 10,
+  })
+  await render(undefined, true, false, false)
+  expect(headers().slice(0, 2)).toEqual(['流水号', '排期批次'])
+  expect(wrapper.findAll('tbody tr').map((row) => row.findAll('td')[1]!.text())).toEqual([
+    '第2批',
+    '第1批',
+    '未关联排期',
+  ])
+  const column = warehouseColumns.find((column) => column.key === 'task_batch_number')!
+  expect(column.format(warehouseFixture({ task_batch_number: 2 }))).toBe('第2批')
 })

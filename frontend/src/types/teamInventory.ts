@@ -17,6 +17,7 @@ import {
   type MaterialType,
 } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { inventoryScheduleDue, inventoryScheduleLabel } from '@/utils/inventorySchedule'
 import type { InventoryScheduleSummary } from './productionSchedule'
 
@@ -25,6 +26,7 @@ export type WarehouseSource =
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
+  task_batch_number?: number | null
   batch_no?: string | null
   batch_nos?: string[]
   previous_batch_no?: string | null
@@ -158,6 +160,14 @@ function extraValue(row: TeamInventoryRow, key: (typeof extraKeys)[number]) {
   return key === 'finished_quantity' ? amount(row[key]) : row[key] || '—'
 }
 export const warehouseColumns = [
+  {
+    key: 'task_batch_number',
+    label: '排期批次',
+    width: 130,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) =>
+      row.task_batch_number ? formatScheduleBatch(row) : '未关联排期',
+  },
   {
     key: 'batch_no',
     label: '批次号',
@@ -397,6 +407,7 @@ export const warehouseSearchColumns = [
   ...warehouseColumns.filter(
     (column) =>
       ![
+        'task_batch_number',
         'process_route',
         'material_type',
         'processing_role',

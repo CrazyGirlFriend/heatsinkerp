@@ -18,6 +18,7 @@ import { processingRoleLabels, type ProcessingRole } from '@/types/materialProce
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockSelectable } from '@/utils/materialStock'
 import { currentLocations } from '@/utils/warehousePlacement'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useBatchSelection } from '@/composables/useBatchSelection'
 import BatchSelectionBar from './BatchSelectionBar.vue'
 
@@ -227,6 +228,11 @@ onBeforeUnmount(() => {
             sharedSerialLabel(row.transfer)
           }}</template></ElTableColumn
         >
+        <ElTableColumn prop="transfer.task_batch_number" label="排期批次" min-width="130">
+          <template #default="{ row }">{{
+            row.transfer.task_batch_number ? formatScheduleBatch(row.transfer) : '未关联排期'
+          }}</template>
+        </ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip
           ><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn
         >

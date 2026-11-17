@@ -3581,6 +3581,8 @@ export interface components {
       stock_age_hours: number | null
       /** Stock Age Started At */
       stock_age_started_at: string | null
+      /** Task Batch Number */
+      task_batch_number: number | null
       /** Team Code */
       team_code: string
       /** Team Id */
@@ -4288,6 +4290,8 @@ export interface components {
       stock_age_hours: number | null
       /** Stock Age Started At */
       stock_age_started_at: string | null
+      /** Task Batch Number */
+      task_batch_number: number | null
       /** Transfer Specification */
       transfer_specification: string
       urgency: components['schemas']['UrgencyResponse']

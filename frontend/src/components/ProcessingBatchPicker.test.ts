@@ -44,3 +44,41 @@ it('identifies rework stock and only allows it to be selected after engineering 
   await buttons[1]!.trigger('click')
   expect(wrapper.emitted('selected')).toEqual([[2]])
 })
+
+it('shows the schedule batch beside the same serial and selects the correct lot', async () => {
+  const items = [2, 1, null].map(
+    (batch, index) =>
+      ({
+        transfer: {
+          id: index + 1,
+          serial_no: '691236-50',
+          batch_no: `TL${index + 1}`,
+          task_batch_number: batch,
+          material_type: 'semi_finished',
+        },
+        on_hand_quantity: 10,
+        on_hand_weight: 1,
+      }) as StockBatch,
+  )
+  vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue({
+    items,
+    total: 3,
+    page: 1,
+    page_size: 10,
+  })
+  wrapper = mount(ProcessingBatchPicker, {
+    props: { teamId: 2 },
+    global: { stubs: { AppDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+  })
+  await flushPromises()
+  expect(wrapper.findAll('tbody tr').map((row) => row.findAll('td')[1]!.text())).toEqual([
+    '第2批',
+    '第1批',
+    '未关联排期',
+  ])
+  await wrapper
+    .findAll('button')
+    .filter((button) => button.text() === '选择')[1]!
+    .trigger('click')
+  expect(wrapper.emitted('selected')).toEqual([[2]])
+})

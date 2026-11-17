@@ -569,6 +569,26 @@ it.each(['waste', 'sludge', 'scrap_chips'] as const)(
   },
 )
 
+it('shows schedule batches in global stock without confusing the physical lot number', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(
+    response([
+      { ...row, group_id: 1, task_batch_number: 2 },
+      { ...row, group_id: 2, task_batch_number: 1 },
+      { ...row, group_id: 3, task_batch_number: null },
+    ]),
+  )
+  const { page } = await render()
+  const table = page.get('[aria-label="全厂库存明细"]')
+  const labels = table.findAll('thead th').map((cell) => cell.text())
+  expect(labels).toContain('排期批次')
+  const index = labels.indexOf('排期批次')
+  expect(table.findAll('tbody tr').map((row) => row.findAll('td')[index]!.text())).toEqual([
+    '第2批',
+    '第1批',
+    '未关联排期',
+  ])
+})
+
 it('drops retired urgency search fields from old global-inventory links', async () => {
   vi.spyOn(api, 'stock').mockResolvedValue(response())
   await render('/material-inventory?search_field=urgency&query=urgent&urgent_only=true')

@@ -11,6 +11,7 @@ from .serial_urgency_schemas import UrgencyResponse
 
 class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     group_id: int
+    task_batch_number: int | None
     serial_no: str
     batch_no: str | None
     batch_nos: list[str] = Field(default_factory=list)

@@ -352,6 +352,9 @@ const visibleColumns = computed(() => {
   const saved = [
     ...(props.warehouse ? [columns.value.find((column) => column.key === 'batch_no')!] : []),
     { ...warehouseSerialColumn, width: 200 },
+    ...(columnChoices.value.some((choice) => choice.key === 'task_batch_number' && choice.visible)
+      ? [columns.value.find((column) => column.key === 'task_batch_number')!]
+      : []),
     ...requiredColumnKeys.value
       .filter((key) => key !== 'batch_no')
       .map((key) => columns.value.find((column) => column.key === key)!),
@@ -359,6 +362,7 @@ const visibleColumns = computed(() => {
       .filter(
         (choice) =>
           choice.visible &&
+          choice.key !== 'task_batch_number' &&
           !requiredColumnKeys.value.includes(choice.key) &&
           columns.value.some((column) => column.key === choice.key),
       )
@@ -1165,6 +1169,7 @@ onBeforeUnmount(() => {
               : '流水号、数量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
+          :new-visible-keys="['task_batch_number']"
           :fixed-column-options="fixedColumnOptions"
           @fixed-change="fixedColumns = $event"
           :legacy-keys="warehouseLegacyColumnKeys"

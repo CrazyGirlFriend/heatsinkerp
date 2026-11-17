@@ -413,3 +413,17 @@ it('explains inspection holds and selects only unaffected lots', async () => {
   await nextButton().trigger('click')
   expect(wrapper.emitted('selected')![0]![0]).toEqual([source(2)])
 })
+
+it('distinguishes schedule batches of the same serial before selecting outbound stock', async () => {
+  const items = [2, 1, null].map((batch, index) => ({
+    ...source(index + 1),
+    transfer: { ...source(index + 1).transfer, serial_no: '691236-50', task_batch_number: batch },
+  }))
+  vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items, total: 3, page: 1, page_size: 20 })
+  await render()
+  const rows = wrapper.findAll('tbody tr')
+  expect(rows.map((row) => row.findAll('td')[2]!.text())).toEqual(['第2批', '第1批', '未关联排期'])
+  await wrapper.get('[aria-label="选择出库 TL2"] input').setValue(true)
+  await nextButton().trigger('click')
+  expect(wrapper.emitted('selected')).toEqual([[[items[1]]]])
+})

@@ -35,6 +35,11 @@ from .models import (
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate
+from .schedule_task_identity import (
+    stock_task_bindings,
+    stock_task_id_column,
+    task_batch_number_column,
+)
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
 from .team_constants import WAREHOUSE_TEAM_CODE
@@ -123,7 +128,7 @@ class WarehouseInventoryFilters(SerialFilters):
         return self
 
 
-def origin_columns(include_team=False, registered=None):
+def origin_columns(include_team=False, registered=None, task_bindings=None):
     manual = mt.entry_kind == "warehouse_receipt"
     # Keep this key in the shared grouping so list rows, source pickers and
     # drill-downs cannot combine processed lots with unprocessed ones.
@@ -145,6 +150,9 @@ def origin_columns(include_team=False, registered=None):
     return {
         **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
+        "schedule_task_id": (
+            task_bindings.c.task_id if task_bindings is not None else stock_task_id_column(mt.id)
+        ),
         "warehouse_batch_no": case((mt.next_team_code == WAREHOUSE_TEAM_CODE, mt.batch_no)),
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
@@ -183,7 +191,10 @@ def warehouse_groups(team_id, filters):
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     # Group the joined processing columns directly. A correlated scalar subquery
     # in GROUP BY is not recognized as deterministic by MySQL ONLY_FULL_GROUP_BY.
-    origins = origin_columns(include_team=team_id is None, registered=registered)
+    task_bindings = stock_task_bindings()
+    origins = origin_columns(
+        include_team=team_id is None, registered=registered, task_bindings=task_bindings
+    )
     parent = aliased(mt)
     placements = (
         select(
@@ -289,6 +300,7 @@ def warehouse_groups(team_id, filters):
         )
         .select_from(stock)
         .join(mt, mt.id == stock.c.transfer_id)
+        .outerjoin(task_bindings, task_bindings.c.lot_id == mt.id)
         .outerjoin(parent, parent.id == mt.source_transfer_id)
         .outerjoin(placements, placements.c.transfer_id == mt.id)
         .outerjoin(moves, moves.c.lot_id == mt.id)
@@ -597,6 +609,14 @@ def list_inventory(db, team_id, filters):
             for unit in ("quantity", "weight")
         },
     }
+    from .models import ProductionScheduleTask as Task
+
+    columns["task_batch_number"] = (
+        select(task_batch_number_column())
+        .where(Task.id == table.c.schedule_task_id)
+        .correlate_except(Task)
+        .scalar_subquery()
+    )
     columns["team_name"] = (
         select(Team.name)
         .where(Team.id == (table.c.team_id if team_id is None else team_id))
@@ -637,7 +657,11 @@ def list_inventory(db, team_id, filters):
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
     rows = (
         db.execute(
-            select(table, processing_state.label("processing_state"))
+            select(
+                table,
+                processing_state.label("processing_state"),
+                columns["task_batch_number"].label("task_batch_number"),
+            )
             .where(*conditions)
             .order_by(
                 *table_order(columns, table.c.last_activity_at.desc(), table.c.group_id.desc())
@@ -712,6 +736,7 @@ def list_inventory(db, team_id, filters):
         item = dict(row)
         item.pop("matches_date")
         item.pop("warehouse_batch_no")
+        item.pop("schedule_task_id")
         current, previous = batches[tuple(row[name] for name in origins)]
         item["batch_nos"] = sorted(current)
         item["previous_batch_nos"] = sorted(previous)

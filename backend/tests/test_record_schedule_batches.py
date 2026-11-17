@@ -6,7 +6,7 @@ from test_processing_daily import work
 from test_processing_route_methods import routed_lot
 from test_processing_schedule_link import commitment
 from test_table_queries import query
-from test_warehouse_classification import base, dispatch
+from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
@@ -105,3 +105,109 @@ def test_history_uses_bound_batch_for_display_filter_sort_and_unlinked_history(c
         )
         assert rows[legacy_id]["task_batch_number"] is None
         assert rows[ids[2]]["task_batch_number"] == 2
+
+
+def test_stock_and_pickers_separate_same_serial_by_bound_schedule(client, warehouse):
+    s = warehouse
+    lot, worker, route = routed_lot(client, s)
+    first = commitment(client, s, lot, route, 3)
+    second = commitment(client, s, lot, route, 3)
+    source = lot
+    outputs = {}
+    for number, schedule in [(2, second), (1, first)]:
+        response = work(
+            client,
+            s,
+            source,
+            worker,
+            production_schedule_id=schedule["id"],
+            completed_quantity=3,
+            completed_weight=30,
+            idempotency_key=uuid4().hex,
+        )
+        assert response.status_code == 201, response.text
+        outputs[number] = next(
+            row for row in response.json()["outputs"] if row["role"] == "produced"
+        )
+        source = next(row for row in response.json()["outputs"] if row["role"] == "remaining")
+
+    url = base(s, True)
+    expected = {outputs[1]["id"]: 1, outputs[2]["id"]: 2, source["id"]: None}
+    for endpoint in ("/stock", "/processing-stock"):
+        response = client.get(url + endpoint)
+        assert response.status_code == 200, response.text
+        rows = {
+            row["transfer"]["id"]: row["transfer"]["task_batch_number"]
+            for row in response.json()["items"]
+        }
+        assert rows == expected
+
+    response = client.get(url + "/inventory")
+    assert response.status_code == 200, response.text
+    groups = response.json()["items"]
+    assert len(groups) == 3
+    assert {row["task_batch_number"]: row["on_hand_quantity"] for row in groups} == {
+        1: 3,
+        2: 3,
+        None: 4,
+    }
+    for group in groups:
+        group_id = group["group_id"]
+        for endpoint, params in [
+            (f"/inventory/{group_id}/sources", {"current_only": True}),
+            ("/processing-stock", {"group_id": group_id}),
+        ]:
+            selected = client.get(url + endpoint, params=params)
+            assert selected.status_code == 200, selected.text
+            assert {row["transfer"]["task_batch_number"] for row in selected.json()["items"]} == {
+                group["task_batch_number"]
+            }
+    for endpoint in ("/inventory", "/stock"):
+        filtered = client.get(
+            url + endpoint,
+            params={"table_query": query("task_batch_number", "2", "2", "number"), "page_size": 1},
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        row = filtered.json()["items"][0]
+        assert row.get("transfer", row)["task_batch_number"] == 2
+
+    # The next team's receipt has a delivery binding rather than a processing ID.
+    finished = work(
+        client,
+        s,
+        outputs[2],
+        worker,
+        completed_quantity=1,
+        completed_weight=10,
+        idempotency_key=uuid4().hex,
+    )
+    assert finished.status_code == 201, finished.text
+    output = next(row for row in finished.json()["outputs"] if row["role"] == "produced")
+    remaining = next(row for row in finished.json()["outputs"] if row["role"] == "remaining")
+    stock = client.get(url + "/stock")
+    assert stock.status_code == 200, stock.text
+    inherited = next(
+        row for row in stock.json()["items"] if row["transfer"]["id"] == remaining["id"]
+    )
+    assert inherited["transfer"]["task_batch_number"] == 2
+    sent = dispatch(
+        client,
+        s,
+        [{"source_transfer_id": output["id"], "quantity": 1, "weight": 10}],
+        workshop=True,
+        idempotency_key=uuid4().hex,
+    )
+    assert sent.status_code == 201, sent.text
+    received = confirm(client, s, sent.json())
+    assert received.status_code == 200, received.text
+    received_id = sent.json()["items"][0]["id"]
+    for endpoint in ("/inventory", "/stock"):
+        result = client.get(base(s) + endpoint)
+        assert result.status_code == 200, result.text
+        row = next(
+            row
+            for row in result.json()["items"]
+            if row.get("group_id", row.get("transfer", {}).get("id")) == received_id
+        )
+        assert row.get("transfer", row)["task_batch_number"] == 2

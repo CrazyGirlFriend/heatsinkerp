@@ -162,12 +162,14 @@ def state(
 def source_metadata(team_id):
     """Join processing and weight-family facts into the existing page read."""
     from .inspections import hold_column
+    from .schedule_task_identity import stock_batch_number_column
 
     registered = registered_lots(team_id)
     differences = weight_difference_table(team_id)
     return (
         select(
             differences.c.transfer_id.label("lot_id"),
+            stock_batch_number_column(differences.c.transfer_id).label("task_batch_number"),
             hold_column(differences.c.transfer_id).label("inspection_hold_id"),
             differences.c.weight_root_transfer_id,
             differences.c.weight_difference,
@@ -182,6 +184,7 @@ def source_metadata(team_id):
 
 
 def annotate_source(item, metadata):
+    item["transfer"]["task_batch_number"] = metadata.get("task_batch_number")
     item["inspection_hold_id"] = metadata.get("inspection_hold_id")
     item["processing_state"] = state(
         item["transfer"]["material_type"],

@@ -45,6 +45,7 @@ import { validProcessingMinutes } from '@/utils/processingDuration'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { factoryToday, formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useStockActionSchedules } from '@/composables/useStockActionSchedules'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -1272,6 +1273,14 @@ watch(
                   :material-type="line.source.transfer.material_type"
                 />
                 <div class="source-meta">
+                  <span
+                    >排期批次
+                    {{
+                      line.source.transfer.task_batch_number
+                        ? formatScheduleBatch(line.source.transfer)
+                        : '未关联排期'
+                    }}</span
+                  >
                   <span
                     v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
                     >批次 {{ line.source.transfer.batch_no }}</span

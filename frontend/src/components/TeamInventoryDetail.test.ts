@@ -598,7 +598,8 @@ it('shows each shared order and its original cutting plan directly in inventory 
     },
   })
   expect(wrapper.get('.shared-current-serial').text()).toContain('ORDER-A')
-  expect(wrapper.get('.shared-current-serial').text()).toContain('未登记')
+  expect(wrapper.get('.shared-material-info header').text()).toContain('共投流水号')
+  expect(wrapper.get('.shared-plan-table').text()).not.toContain('计划切出')
 })
 
 it('retains a nested serial detail until the dialog reports it has closed', async () => {

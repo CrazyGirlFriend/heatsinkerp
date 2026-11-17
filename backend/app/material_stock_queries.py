@@ -267,6 +267,7 @@ def list_stock(
 ):
     from .processing_records import annotate_source, source_metadata
     from .record_filters import RecordFilters
+    from .schedule_task_identity import stock_batch_number_column
 
     team = require_team(db, team_id)
     stock = stock_table(team_id)
@@ -325,6 +326,7 @@ def list_stock(
     from .table_query import table_options, table_order, table_predicates
 
     columns = dict(stock.c.items())
+    columns["task_batch_number"] = stock_batch_number_column(stock.c.transfer_id)
     filters.extend(table_predicates(columns))
     table_options(db, select(stock).where(*filters), columns)
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0

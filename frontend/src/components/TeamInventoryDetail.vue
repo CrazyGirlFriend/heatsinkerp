@@ -41,6 +41,7 @@ import {
 import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { processingRoleLabels } from '@/types/materialProcessing'
 import {
   inventoryScheduleBaseline,
@@ -244,6 +245,12 @@ function exportStock() {
     total.value,
     [
       { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
+      {
+        key: 'task_batch_number',
+        label: '排期批次',
+        value: (row: StockBatch) =>
+          row.transfer.task_batch_number ? formatScheduleBatch(row.transfer) : '未关联排期',
+      },
       {
         key: 'material_type',
         label: '物料类型',
@@ -508,6 +515,11 @@ onBeforeUnmount(() => {
               }}</ElButton></template
             ></ElTableColumn
           >
+          <ElTableColumn prop="transfer.task_batch_number" label="排期批次" min-width="130">
+            <template #default="{ row }">{{
+              row.transfer.task_batch_number ? formatScheduleBatch(row.transfer) : '未关联排期'
+            }}</template>
+          </ElTableColumn>
           <ElTableColumn label="数量（件）" min-width="110" align="right"
             ><template #default="{ row }">{{
               inventoryQuantity(row.on_hand_quantity, row.transfer.material_type)

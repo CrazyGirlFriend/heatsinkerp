@@ -163,6 +163,7 @@ function ageHint(row: GlobalInventoryRow) {
   return `从本班组接收起算：${at}`
 }
 const defaults = [
+  'task_batch_number',
   'on_hand_quantity',
   'process_route',
   'rework',
@@ -701,6 +702,7 @@ function exportSource() {
         ref="columnSettings"
         :storage-key="`global-inventory-columns:${auth.currentUser?.id || 'local'}`"
         :columns="selectableColumns"
+        :new-visible-keys="['task_batch_number']"
         :fixed-column-options="fixedColumnOptions"
         @fixed-change="fixedColumns = $event"
         description="流水号、班组、件数、工艺工序、返工情况、加工状态及操作始终显示。"

@@ -13,6 +13,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { inventoryAmount } from '@/types/teamInventory'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import type { StockBatch } from '@/types/teamMaterials'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
 
 const props = defineProps<{ teamId: number; groupId?: number; reworkRecordId?: number }>()
@@ -109,6 +110,11 @@ onBeforeUnmount(() => {
       <ElTableColumn label="流水号" min-width="150" show-overflow-tooltip
         ><template #default="{ row }">{{ row.transfer.serial_no }}</template></ElTableColumn
       >
+      <ElTableColumn prop="transfer.task_batch_number" label="排期批次" min-width="130">
+        <template #default="{ row }">{{
+          row.transfer.task_batch_number ? formatScheduleBatch(row.transfer) : '未关联排期'
+        }}</template>
+      </ElTableColumn>
       <ElTableColumn label="工艺性质" min-width="155" align="center">
         <template #default="{ row }">
           <ElTag

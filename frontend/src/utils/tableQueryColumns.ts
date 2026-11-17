@@ -189,7 +189,7 @@ export const inventoryQueryColumns = {
       .map((column): Definition => [
         column.label,
         column.key,
-        'numeric' in column && column.numeric
+        column.key === 'task_batch_number' || ('numeric' in column && column.numeric)
           ? 'number'
           : column.key.endsWith('_at')
             ? 'date'
