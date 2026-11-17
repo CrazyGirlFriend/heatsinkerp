@@ -5,6 +5,7 @@ import type { TableColumnCondition } from '@/types/tableQuery'
 
 import { useTableQuery } from '@/composables/useTableQuery'
 import { taskQueryColumns } from '@/utils/tableQueryColumns'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
@@ -113,7 +114,7 @@ const tableQuery = useTableQuery(
 const draftSortOrder = ref(`${sortBy.value}:${sortOrder.value}`)
 const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },
-  { key: 'task_no', label: '排期编号', width: 150 },
+  { key: 'task_batch_number', label: '排期批次', width: 110 },
   { key: 'quantity', label: '本批数量（件）', width: 150 },
   { key: 'delivery_batches', label: '交货批数', width: 110 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
@@ -472,7 +473,11 @@ function exportSource() {
     '生产排期任务',
     total.value,
     [
-      { key: 'task_no', label: '排期编号', value: (task: ScheduleTask) => task.task_no },
+      {
+        key: 'task_batch_number',
+        label: '排期批次',
+        value: (task: ScheduleTask) => formatScheduleBatch(task),
+      },
       { key: 'title', label: '任务名称', value: (task) => task.title },
       { key: 'serial_no', label: '流水号', value: (task) => task.serial_no },
       { key: 'quantity', label: '本批数量（件）', value: (task) => taskQuantity(task) },
@@ -702,7 +707,7 @@ onBeforeUnmount(() => {
           <InventoryColumnSettings
             :storage-key="columnStorageKey"
             :columns="selectableColumns"
-            :new-visible-keys="['task_no']"
+            :new-visible-keys="['task_batch_number']"
             :fixed-column-options="fixedColumnOptions"
             @fixed-change="fixedColumns = $event"
             description="勾选显示列，上下移动调整顺序。表头固定，固定列可自行选择。"
@@ -763,11 +768,13 @@ onBeforeUnmount(() => {
           >
             <template #default="{ row }">
               <ElButton
-                v-if="column.key === 'serial_no' || column.key === 'task_no'"
+                v-if="column.key === 'serial_no' || column.key === 'task_batch_number'"
                 link
                 type="primary"
                 @click="openTask(asTask(row))"
-                >{{ row[column.key] }}</ElButton
+                >{{
+                  column.key === 'serial_no' ? row.serial_no : formatScheduleBatch(row)
+                }}</ElButton
               >
               <template v-else-if="column.key === 'quantity'">{{
                 formatAmount(taskQuantity(row))
@@ -866,7 +873,7 @@ onBeforeUnmount(() => {
             <div class="task-detail__heading">
               <div>
                 <strong>{{ detail.title }}</strong
-                ><span>{{ detail.task_no }} · 流水号 {{ detail.serial_no }}</span>
+                ><span>{{ detail.serial_no }} · {{ formatScheduleBatch(detail) }}</span>
                 <span
                   >业务人员：<span class="schedule-people"
                     ><template v-if="detail.business_people?.length"

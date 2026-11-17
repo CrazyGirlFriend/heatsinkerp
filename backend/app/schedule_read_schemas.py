@@ -123,6 +123,7 @@ class ScheduleResponse(OrderFulfillmentResponse):
     id: int
     task_id: int
     task_no: str
+    task_batch_number: int
     task_title: str
     process_route_id: int | None
     process_step_index: int | None
@@ -221,6 +222,7 @@ class ScheduleReworkResponse(ReadResponse):
 class ScheduleTaskResponse(OrderFulfillmentResponse):
     id: int
     task_no: str
+    task_batch_number: int
     title: str
     serial_no: str
     business_person_id: int | None

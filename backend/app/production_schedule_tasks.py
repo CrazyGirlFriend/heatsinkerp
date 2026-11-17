@@ -66,9 +66,11 @@ def legacy_task(db, payload, request_hash):
 def task_values(db, ids):
     if not ids:
         return {}
+    from .schedule_task_identity import task_batch_number_column
+
     tasks = list(
         db.execute(
-            select(Task, BusinessPerson.name)
+            select(Task, BusinessPerson.name, task_batch_number_column())
             .outerjoin(BusinessPerson, BusinessPerson.id == Task.business_person_id)
             .where(Task.id.in_(ids))
         )
@@ -139,7 +141,7 @@ def task_values(db, ids):
         grouped.setdefault(row.task_id, []).append(values[row.id])
     result = {}
     fulfillment = fulfillment_values(db, ids)
-    for task, person_name in tasks:
+    for task, person_name, batch_number in tasks:
         route = grouped.get(task.id, [])
         active = [node for node in route if node["status"] != "cancelled"]
         delivery = fulfillment[task.id]
@@ -148,6 +150,7 @@ def task_values(db, ids):
         result[task.id] = {
             "id": task.id,
             "task_no": task.task_no,
+            "task_batch_number": batch_number,
             "title": task.title,
             "serial_no": task.serial_no,
             "business_person_id": task.business_person_id,
@@ -265,6 +268,7 @@ def list_tasks(
     quantity, final_due, batch_count = target_columns(db)
     fulfillment = fulfillment_table(db)
     sort_column = Task.created_at if sort_by == "created_at" else final_due
+    from .schedule_task_identity import task_batch_number_column
     from .table_query import query_statement
 
     people = (
@@ -287,6 +291,7 @@ def list_tasks(
         **dict(Task.__table__.columns.items()),
         **dict(fulfillment.c.items()),
         "task_no": task_number,
+        "task_batch_number": task_batch_number_column(),
         "final_due_at": final_due,
         "quantity": quantity,
         "delivery_batches": batch_count,

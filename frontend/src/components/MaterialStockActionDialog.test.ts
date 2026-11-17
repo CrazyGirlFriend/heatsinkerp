@@ -4,7 +4,7 @@ import ProcessingDurationInput from './ProcessingDurationInput.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, reactive } from 'vue'
-import { ElInputNumber, ElPopover, ElSelect } from 'element-plus'
+import { ElInputNumber, ElOption, ElPopover, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
@@ -226,6 +226,8 @@ describe('source batch dispatch and loss drafts', () => {
   const schedule = (id: number) =>
     ({
       id,
+      serial_no: 'SAME-SERIAL',
+      task_batch_number: id - 3,
       due_at: '2026-10-24T08:00:00Z',
       remaining_quantity: 100,
       remaining_weight: null,
@@ -265,7 +267,8 @@ describe('source batch dispatch and loss drafts', () => {
       })
       await render('dispatch', [source()])
       await destination()
-      expect(wrapper.text()).toContain('第一批交货 · #4')
+      expect(wrapper.text()).toContain('SAME-SERIAL · 第1批')
+      expect(wrapper.text()).not.toContain('#4')
       expect(wrapper.text().includes('待交 17 件')).toBe(completionBasis !== 'weight')
       expect(wrapper.text().includes('待交 4.875 kg')).toBe(completionBasis !== 'quantity')
     },
@@ -281,6 +284,11 @@ describe('source batch dispatch and loss drafts', () => {
     const picker = wrapper
       .findAllComponents(ElSelect)
       .find((item) => item.props('ariaLabel') === 'TL10交货排期')!
+    const labels = picker.findAllComponents(ElOption).map((option) => option.props('label'))
+    expect(labels).toEqual([
+      expect.stringContaining('SAME-SERIAL · 第1批'),
+      expect.stringContaining('SAME-SERIAL · 第2批'),
+    ])
     picker.vm.$emit('update:modelValue', 5)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
@@ -362,8 +370,8 @@ describe('source batch dispatch and loss drafts', () => {
     await destination(1)
     finishOld({ items: [{ source_transfer_id: 10, schedules: [schedule(4)] }] })
     await flushPromises()
-    expect(wrapper.text()).toContain('#5 ·')
-    expect(wrapper.text()).not.toContain('#4 ·')
+    expect(wrapper.text()).toContain('SAME-SERIAL · 第2批')
+    expect(wrapper.text()).not.toContain('SAME-SERIAL · 第1批')
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]).toMatchObject({
       next_team_id: 1,

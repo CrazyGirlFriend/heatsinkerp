@@ -19,6 +19,10 @@ def test_same_serial_tasks_are_searchable_and_filterable_by_schedule_number(clie
     number = f"PQ{second:08d}"
     listed = client.get(URL, params={"query": "SAME-SERIAL"}).json()
     assert {row["task_no"] for row in listed["items"]} == {f"PQ{first:08d}", number}
+    assert {row["id"]: row["task_batch_number"] for row in listed["items"]} == {
+        first: 1,
+        second: 2,
+    }
     assert client.get(URL, params={"query": number}).json()["items"][0]["id"] == second
     filtered = client.get(
         URL,
@@ -40,6 +44,39 @@ def test_same_serial_tasks_are_searchable_and_filterable_by_schedule_number(clie
         },
     ).json()["items"]
     assert [row["id"] for row in sorted_rows] == [first, second]
+
+
+def test_batch_numbers_use_serial_creation_order_and_survive_cancellation_and_pagination(
+    client, warehouse
+):
+    with SessionLocal.begin() as db:
+        first = task(db, warehouse["other"]["id"], "BATCH-A", 1, 9)
+        second = task(db, warehouse["other"]["id"], "BATCH-A", 1, 9)
+        earlier = task(db, warehouse["other"]["id"], "BATCH-A", 1, 9)
+        other = task(db, warehouse["other"]["id"], "BATCH-B", 1, 9)
+        for item_id in (first, second, other):
+            db.get(ProductionScheduleTask, item_id).created_at = datetime(2040, 1, 2)
+        db.get(ProductionScheduleTask, earlier).created_at = datetime(2040, 1, 1)
+        db.get(ProductionScheduleTask, first).cancelled_at = datetime(2040, 1, 3)
+    for item_id, number in ((earlier, 1), (first, 2), (second, 3), (other, 1)):
+        row = client.get(f"{URL}/{item_id}").json()
+        assert row["task_batch_number"] == number
+        assert all(node["task_batch_number"] == number for node in row["nodes"])
+    latest = client.get(URL, params={"query": "BATCH-A", "page_size": 1}).json()
+    assert latest["items"][0]["id"] == second
+    assert latest["items"][0]["task_batch_number"] == 3
+    query = json.dumps(
+        {
+            "filters": [
+                {"field": "task_batch_number", "kind": "number", "value": "3", "operator": "eq"}
+            ]
+        }
+    )
+    for endpoint in (URL, "/api/production-schedules"):
+        filtered = client.get(endpoint, params={"table_query": query})
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == (1 if endpoint == URL else 2)
+        assert all(row["task_batch_number"] == 3 for row in filtered.json()["items"])
 
 
 def task(db, team_id, serial, first_day, last_day, final_day=None, cancelled_day=None):

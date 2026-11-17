@@ -16,6 +16,7 @@ describe('inventory schedule expansion', () => {
           items: [
             scheduleSummaryFixture({
               task_title: '第一批交货',
+              task_batch_number: 1,
               completion_basis: 'quantity',
               execution_state: 'completed',
               status: 'completed',
@@ -27,7 +28,7 @@ describe('inventory schedule expansion', () => {
       },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('第一批交货')
+    expect(wrapper.text()).toContain('第1批')
     expect(wrapper.text()).toContain('按件数')
     expect(wrapper.text()).toContain('按时完成')
     expect(wrapper.text()).not.toContain('4.875')

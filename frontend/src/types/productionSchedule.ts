@@ -154,6 +154,7 @@ export type ScheduleSummary = Pick<
   | 'task_id'
   | 'task_no'
   | 'task_title'
+  | 'task_batch_number'
   | 'completion_basis'
   | 'execution_state'
   | 'quality_held'

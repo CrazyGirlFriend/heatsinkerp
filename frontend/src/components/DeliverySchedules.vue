@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TableFilterFields from './TableFilterFields.vue'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import ScheduleShipmentProgress from './ScheduleShipmentProgress.vue'
 import type { TableColumnCondition } from '@/types/tableQuery'
 
@@ -482,7 +483,11 @@ function exportSource() {
     '交货排期',
     total.value,
     [
-      { key: 'id', label: '排期编号', value: (row: ProductionSchedule) => row.id },
+      {
+        key: 'task_batch_number',
+        label: '排期批次',
+        value: (row: ProductionSchedule) => formatScheduleBatch(row),
+      },
       { key: 'serial_no', label: '流水号', value: (row) => row.serial_no },
       { key: 'quality_held', label: '质量冻结', value: (row) => (row.quality_held ? '是' : '否') },
       { key: 'team_name', label: '交货班组', value: (row) => row.team_name },
@@ -812,6 +817,9 @@ defineExpose({ exportSource, openDetail })
           align="center"
           show-overflow-tooltip
         />
+        <ElTableColumn label="排期批次" prop="task_batch_number" min-width="110" align="center">
+          <template #default="{ row }">{{ formatScheduleBatch(row) }}</template>
+        </ElTableColumn>
         <ElTableColumn
           v-if="!teamId"
           label="交货班组"
@@ -959,7 +967,7 @@ defineExpose({ exportSource, openDetail })
           <div v-if="detail.task_id" class="schedule-task-context">
             <div class="schedule-task-context__heading">
               <strong>{{ detail.task_title || '交货任务' }}</strong>
-              <span>{{ detail.task_no }}</span>
+              <span>{{ formatScheduleBatch(detail) }}</span>
               <ElTag v-if="detail.quality_held" type="danger" size="small">质量冻结</ElTag>
               <span v-if="taskLoading">正在读取任务路线</span>
             </div>
@@ -1029,13 +1037,13 @@ defineExpose({ exportSource, openDetail })
             <ElDescriptionsItem label="实际交完时间">{{
               formatDateTime(detail.completed_at)
             }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="排期编号"
-              >#{{ detail.id
+            <ElDescriptionsItem label="排期批次"
+              >{{ formatScheduleBatch(detail)
               }}<ElButton
                 v-if="detail.predecessor_id"
                 link
                 @click="openDetail(detail.predecessor_id)"
-                >上序 #{{ detail.predecessor_id }}</ElButton
+                >查看上序</ElButton
               ></ElDescriptionsItem
             >
             <ElDescriptionsItem label="计划件数">{{

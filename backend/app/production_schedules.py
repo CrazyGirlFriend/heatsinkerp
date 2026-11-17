@@ -107,6 +107,8 @@ def require_plan(db, plan_id, *, lock=False):
 def summaries(db, ids, *, now=None):
     if not ids:
         return {}
+    from .schedule_task_identity import task_batch_number_column
+
     progress = progress_table(db, plan_ids=ids)
     target = aliased(Team)
     rows = db.execute(
@@ -116,6 +118,7 @@ def summaries(db, ids, *, now=None):
             Team.code.label("team_code"),
             target.name.label("next_team_name"),
             Task.title.label("task_title"),
+            task_batch_number_column().label("task_batch_number"),
             Task.delivery_batches.label("customer_batches"),
             Task.final_due_at.label("customer_due_at"),
             progress,
@@ -210,6 +213,7 @@ def summaries(db, ids, *, now=None):
             "handover_completed_at": iso(handover_states[plan.id].completed_at),
             "task_id": plan.task_id,
             "task_no": f"PQ{plan.task_id:08d}",
+            "task_batch_number": values["task_batch_number"],
             "task_title": values["task_title"],
             **{field: getattr(plan, field) for field in FIELDS},
             "due_at": iso(plan.due_at),
@@ -379,6 +383,7 @@ def list_plans(
     )
     from .production_schedule_queries import linked_batch_rows
     from .schedule_fulfillment import fulfillment_table
+    from .schedule_task_identity import task_batch_number_column
     from .table_query import current_table_query, query_statement
 
     fulfillment = fulfillment_table(db)
@@ -422,6 +427,7 @@ def list_plans(
         **dict(Plan.__table__.columns.items()),
         **dict(fulfillment.c.items()),
         "team_name": Team.name,
+        "task_batch_number": task_batch_number_column(),
         "destination": func.coalesce(next_team.name, Plan.external_destination),
         "final_due_at": Task.final_due_at,
         "planning_state": case((Plan.planning_state == "confirmed", "已填写"), else_="待填写"),

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber, ElSelect, ElSwitch } from 'element-plus'
+import { ElInputNumber, ElOption, ElSelect, ElSwitch } from 'element-plus'
 import WeightInput from './WeightInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
@@ -15,6 +15,7 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ProcessExecutionPanel from './ProcessExecutionPanel.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
+import type { ProductionSchedule } from '@/types/productionSchedule'
 import { processRouteApi } from '@/services/processRouteApi'
 import { reworkRouteFixture } from '@/testFixtures/processRoute'
 
@@ -99,6 +100,50 @@ async function edit() {
 }
 
 describe('processing piece adjustment', () => {
+  it.each([false, true])(
+    'shows the selected order batch and preserves its schedule binding (inherited: %s)',
+    async (inherited) => {
+      const plans = [1, 2].map((number) => ({
+        id: number * 101,
+        serial_no: 'SAME-SERIAL',
+        task_title: '相同任务名称',
+        task_batch_number: number,
+        due_at: '2026-12-24T08:00:00Z',
+        target_quantity: 10,
+        dispatched_quantity: 0,
+        remaining_quantity: 10,
+      })) as ProductionSchedule[]
+      vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+        ...context(),
+        processing_schedules: plans,
+        production_schedule_id: inherited ? 202 : null,
+        production_schedule_locked: inherited,
+      })
+      await render()
+      await wrapper.setProps({ processing: true })
+      const picker = wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.props('ariaLabel') === '交货排期')
+      if (inherited) {
+        expect(picker).toBeUndefined()
+        expect(wrapper.get('.processing-auto-value').text()).toContain('SAME-SERIAL · 第2批')
+      } else {
+        const labels = picker!.findAllComponents(ElOption).map((option) => option.props('label'))
+        expect(labels).toEqual([
+          expect.stringContaining('SAME-SERIAL · 第1批'),
+          expect.stringContaining('SAME-SERIAL · 第2批'),
+        ])
+        picker!.vm.$emit('update:modelValue', 202)
+      }
+      await edit()
+      await click('保存加工登记')
+      expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+        2,
+        expect.objectContaining({ production_schedule_id: 202 }),
+      )
+    },
+  )
+
   it('marks an empty processing person and preserves the entered name on save', async () => {
     await render(true, '')
     await wrapper.setProps({ processing: true })

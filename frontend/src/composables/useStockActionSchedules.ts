@@ -3,6 +3,7 @@ import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
 import { isScheduleApplicable } from '@/utils/inventorySchedule'
 import { formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { isExternalEntryKind, type MaterialType } from '@/types/materialTransfer'
 import type { DispatchKind, StockBatch } from '@/types/teamMaterials'
 
@@ -43,8 +44,7 @@ export function useStockActionSchedules(
         : 'weight')
     const quantity = basis === 'weight' ? null : schedule.remaining_quantity
     const weight = basis === 'quantity' ? null : schedule.remaining_weight
-    const task = schedule.task_title || schedule.task_no
-    return `${task ? `${task} · ` : ''}#${schedule.id} · ${formatDateTime(schedule.due_at)}${quantity == null ? '' : ` · 待交 ${quantity} 件`}${weight == null ? '' : ` · 待交 ${weight} kg`}`
+    return `${schedule.serial_no} · ${formatScheduleBatch(schedule)} · ${formatDateTime(schedule.due_at)}${quantity == null ? '' : ` · 待交 ${quantity} 件`}${weight == null ? '' : ` · 待交 ${weight} kg`}`
   }
   function lineScheduleBatches(line: ScheduleLine) {
     const options = lineSchedules(line)

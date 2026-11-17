@@ -31,6 +31,10 @@ def test_partial_work_links_exact_team_visit_and_dispatch_without_reselection(cl
     second = commitment(client, s, lot, route, 7)
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     assert {p["id"] for p in context["processing_schedules"]} == {first["id"], second["id"]}
+    assert {p["id"]: p["task_batch_number"] for p in context["processing_schedules"]} == {
+        first["id"]: 1,
+        second["id"]: 2,
+    }
     assert context["production_schedule_id"] is None
     missing = work(client, s, lot, worker)
     assert missing.status_code == 422, missing.text
@@ -56,6 +60,10 @@ def test_partial_work_links_exact_team_visit_and_dispatch_without_reselection(cl
     ctx = client.get(base(s, True) + f"/stock/{produced['id']}/quantity-adjustments").json()
     assert ctx["process_route"]["step_index"] == 2
     assert ctx["production_schedule_id"] == first["id"]
+    assert (
+        next(p for p in ctx["processing_schedules"] if p["id"] == first["id"])["task_batch_number"]
+        == 1
+    )
     wrong = work(
         client,
         s,
@@ -79,6 +87,7 @@ def test_partial_work_links_exact_team_visit_and_dispatch_without_reselection(cl
         },
     ).json()
     assert [p["id"] for p in candidates["items"][0]["schedules"]] == [first["id"]]
+    assert candidates["items"][0]["schedules"][0]["task_batch_number"] == 1
     wrong = dispatch(
         client,
         s,

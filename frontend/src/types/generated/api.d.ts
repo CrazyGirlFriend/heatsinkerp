@@ -8064,6 +8064,8 @@ export interface components {
       target_quantity: number | null
       /** Target Weight */
       target_weight: number | null
+      /** Task Batch Number */
+      task_batch_number: number
       /** Task Id */
       task_id: number
       /** Task No */
@@ -8376,6 +8378,8 @@ export interface components {
       target_quantity: number | null
       /** Target Weight */
       target_weight: number | null
+      /** Task Batch Number */
+      task_batch_number: number
       /** Task Id */
       task_id: number
       /** Task No */
@@ -8616,6 +8620,8 @@ export interface components {
         | 'completed_late'
         | 'cancelled'
         | 'not_assessed'
+      /** Task Batch Number */
+      task_batch_number: number
       /** Task No */
       task_no: string
       /** Title */
@@ -8684,6 +8690,8 @@ export interface components {
         | 'completed_late'
         | 'cancelled'
         | 'not_assessed'
+      /** Task Batch Number */
+      task_batch_number: number
       /** Task No */
       task_no: string
       /** Title */

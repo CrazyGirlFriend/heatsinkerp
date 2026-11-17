@@ -11,6 +11,7 @@ import {
   type ScheduleSummary,
 } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 
 defineProps<{ summary: InventoryScheduleSummary; serialNo: string }>()
 const emit = defineEmits<{ close: []; view: [id: number]; viewAll: [] }>()
@@ -50,8 +51,8 @@ const batches = (value: unknown) => {
       <ElTableColumn label="关联批次" min-width="195" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ batches(row) }}</template>
       </ElTableColumn>
-      <ElTableColumn label="交货任务" min-width="170" align="center" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.task_title || row.task_no || '—' }}</template>
+      <ElTableColumn label="排期批次" prop="task_batch_number" min-width="110" align="center">
+        <template #default="{ row }">{{ formatScheduleBatch(row) }}</template>
       </ElTableColumn>
       <ElTableColumn label="完成依据" min-width="110" align="center">
         <template #default="{ row }">{{

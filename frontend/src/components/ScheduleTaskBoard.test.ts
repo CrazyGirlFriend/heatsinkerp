@@ -81,6 +81,7 @@ const node = (id = 1): ProductionSchedule => ({
 const task: ScheduleTask = {
   id: 7,
   task_no: 'PQ00000007',
+  task_batch_number: 1,
   title: '首批板料',
   serial_no: 'S-001',
   notes: null,
@@ -658,8 +659,8 @@ describe('task scheduling board', () => {
       }),
     )
   })
-  it('distinguishes schedules sharing a serial by number and opens the selected task', async () => {
-    const nextTask = { ...task, id: 8, task_no: 'PQ00000008' }
+  it('distinguishes schedules sharing a serial by batch and opens the selected task', async () => {
+    const nextTask = { ...task, id: 8, task_no: 'PQ00000008', task_batch_number: 2 }
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
       items: [task, nextTask],
       total: 2,
@@ -671,12 +672,13 @@ describe('task scheduling board', () => {
     const rows = wrapper.findAll('.dispatch-task-table .el-table__body tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('S-001')
-    expect(rows[0]!.text()).toContain('PQ00000007')
+    expect(rows[0]!.text()).toContain('第1批')
     expect(rows[1]!.text()).toContain('S-001')
-    expect(rows[1]!.text()).toContain('PQ00000008')
-    await button('PQ00000008')
+    expect(rows[1]!.text()).toContain('第2批')
+    expect(wrapper.text()).not.toContain('PQ000000')
+    await button('第2批')
     expect(productionScheduleApi.task).toHaveBeenLastCalledWith(8)
-    expect(wrapper.get('.task-detail__heading').text()).toContain('PQ00000008')
+    expect(wrapper.get('.task-detail__heading').text()).toContain('第2批')
   })
   it('keeps legacy locked tasks editable and removes lock controls and filters', async () => {
     const legacyTask = { ...task, locked_at: '2026-10-30T00:00:00Z' }
@@ -787,7 +789,7 @@ describe('task scheduling board', () => {
             ? header.get('.table-column-filter').text()
             : header.text(),
         )
-    expect(headers()).toEqual(['创建时间', '流水号', '排期编号', '操作'])
+    expect(headers()).toEqual(['创建时间', '流水号', '排期批次', '操作'])
     const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
     settings.vm.open()
     await flushPromises()
@@ -801,7 +803,7 @@ describe('task scheduling board', () => {
       .find((item) => item.text() === '应用')!
       .trigger('click')
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '创建时间', '本批数量（件）', '排期编号', '操作'])
+    expect(headers()).toEqual(['流水号', '创建时间', '本批数量（件）', '排期批次', '操作'])
     const saved = JSON.parse(localStorage.getItem('heatsink.dispatch-columns.v1:1')!)
     expect(saved.slice(0, 3)).toEqual([
       { key: 'serial_no', visible: true },

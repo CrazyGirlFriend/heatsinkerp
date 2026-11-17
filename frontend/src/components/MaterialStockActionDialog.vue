@@ -1685,7 +1685,7 @@ watch(
               <ElFormItem
                 v-if="!isLoss && lineSchedules(line).length"
                 class="dialog-field-wide"
-                label="交货排期"
+                label="排期批次"
                 :error="lineError(line, 'scheduleId')"
                 :required="lineSchedules(line).length > 1"
               >
@@ -1696,7 +1696,7 @@ watch(
                   v-else
                   v-model="line.scheduleId"
                   :aria-label="`${line.source.transfer.batch_no}交货排期`"
-                  placeholder="选择本次转出对应的交期"
+                  placeholder="选择本次转出对应的排期批次"
                 >
                   <ElOption
                     v-for="schedule in lineSchedules(line)"

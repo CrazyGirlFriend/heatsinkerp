@@ -64,6 +64,7 @@ import type {
 } from '@/types/teamMaterials'
 import { materialRequestKey } from '@/utils/materialStock'
 import { factoryToday, formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import {
   isScrapType,
   isWeightOnlyType,
@@ -821,7 +822,7 @@ onBeforeUnmount(() => {
               <ElFormItem
                 class="form-field--full"
                 v-if="processing && snapshot.processing_schedules?.length"
-                label="交货排期"
+                label="排期批次"
                 :required="!snapshot.production_schedule_locked"
                 :class="{ 'is-error': submitted && scheduleMissing }"
               >
@@ -829,7 +830,7 @@ onBeforeUnmount(() => {
                   v-if="snapshot.production_schedule_locked && selectedSchedule"
                   class="processing-auto-value"
                 >
-                  {{ selectedSchedule.task_title || selectedSchedule.task_no }} ·
+                  {{ selectedSchedule.serial_no }} · {{ formatScheduleBatch(selectedSchedule) }} ·
                   {{ formatDateTime(selectedSchedule.due_at) }} ·
                   {{ selectedSchedule.target_quantity ?? '—' }} 件
                 </span>
@@ -838,13 +839,13 @@ onBeforeUnmount(() => {
                   v-model="scheduleId"
                   :disabled="snapshot.production_schedule_locked"
                   aria-label="交货排期"
-                  placeholder="选择本次加工对应的排期"
+                  placeholder="选择本次加工对应的排期批次"
                 >
                   <ElOption
                     v-for="plan in snapshot.processing_schedules"
                     :key="plan.id"
                     :value="plan.id"
-                    :label="`${plan.task_title || plan.task_no} · ${formatDateTime(plan.due_at)} · ${plan.target_quantity ?? '—'} 件`"
+                    :label="`${plan.serial_no} · ${formatScheduleBatch(plan)} · ${formatDateTime(plan.due_at)} · ${plan.target_quantity ?? '—'} 件`"
                   />
                 </ElSelect>
                 <div v-if="selectedSchedule" class="processing-plan-summary">

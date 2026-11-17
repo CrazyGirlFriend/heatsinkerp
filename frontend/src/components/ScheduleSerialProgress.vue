@@ -12,6 +12,7 @@ import { boardTeamColor } from '@/utils/scheduleBoard'
 import { nodeCompletion, nodeTarget } from '@/utils/scheduleProgress'
 import { plannedDueLabel } from '@/utils/schedulePlanning'
 import { formatAmount, formatDateTime } from '@/utils/format'
+import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 
 const props = defineProps<{ taskId: number }>()
@@ -98,7 +99,7 @@ const asNode = (row: unknown) => row as ProductionSchedule
     <section v-for="task in data.tasks" :key="task.id" class="serial-progress__task">
       <header>
         <h3>{{ task.title }}</h3>
-        <span>{{ task.task_no }}</span
+        <span>{{ formatScheduleBatch(task) }}</span
         ><AppTag v-if="task.id === taskId" type="info">当前任务</AppTag
         ><span class="serial-progress__deadline"
           >最终交期 {{ formatDateTime(task.final_due_at) }}</span
