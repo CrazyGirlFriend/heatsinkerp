@@ -98,8 +98,11 @@ def test_three_reworks_do_not_add_quota_or_complete_delivery(client, warehouse):
     progress = get(client, node)
     assert (progress["dispatched_quantity"], progress["remaining_quantity"]) == (10, 0)
     assert progress["status"] == "completed_late"
-    assert task_detail(client, node)["status"] == "completed_late"
-    assert client.get(URL + "/tasks", params={"status": "completed_late"}).json()["total"] == 1
+    # Team handover is complete; the customer order still has no finished-goods shipment.
+    task = task_detail(client, node)
+    assert task["status"] == "overdue"
+    assert task["shipped_quantity"] == 0 and not task["order_completed"]
+    assert client.get(URL + "/tasks", params={"status": "completed_late"}).json()["total"] == 0
 
 
 def test_link_old_rework_requires_actual_batch_and_preserves_commitment(client, warehouse):
@@ -160,8 +163,11 @@ def test_final_deadline_is_not_replaced_by_later_team_commitment(client, warehou
     )
     assert sent.status_code == 201, sent.text
     assert get(client, node)["status"] == "completed"
-    assert task_detail(client, node)["status"] == "completed_late"
-    assert client.get(URL + "/tasks", params={"status": "completed_late"}).json()["total"] == 1
+    task = task_detail(client, node)
+    assert task["final_due_at"] == "2000-01-01T00:00:00+00:00"
+    assert task["status"] == "overdue" and not task["order_completed"]
+    assert task["shipped_quantity"] == 0
+    assert client.get(URL + "/tasks", params={"status": "completed_late"}).json()["total"] == 0
     assert client.get(URL + "/tasks", params={"status": "completed"}).json()["total"] == 0
 
 

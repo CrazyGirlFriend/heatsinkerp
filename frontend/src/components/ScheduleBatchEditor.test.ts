@@ -71,22 +71,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('team batch planner', () => {
-  it('sums decimal proposal weights numerically and submits numeric weights', async () => {
-    await render(
-      {},
-      {
-        ...schedule,
-        completion_basis: 'weight',
-        pending_batches: ['10.500000', '20.250000'].map((weight, index) => ({
-          id: null,
-          batch_number: index + 1,
-          due_at: '2026-12-21T08:00:00Z',
-          target_quantity: null,
-          target_weight: weight,
-          upstream_batch_ids: [],
-        })),
-      },
-    )
+  it('sums decimal weights and saves even when the task carries a legacy lock timestamp', async () => {
+    const legacyTask = { id: 2, locked_at: '2026-10-30T00:00:00Z' }
+    await render(legacyTask, {
+      ...schedule,
+      completion_basis: 'weight',
+      pending_batches: ['10.500000', '20.250000'].map((weight, index) => ({
+        id: null,
+        batch_number: index + 1,
+        due_at: '2026-12-21T08:00:00Z',
+        target_quantity: null,
+        target_weight: weight,
+        upstream_batch_ids: [],
+      })),
+    })
     expect(wrapper.text()).toContain('30.75 kg')
     await click('保存排期')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {

@@ -262,20 +262,6 @@ def new_task_route_options(
     return dispatch_planning.route_options(db, serial_no.strip())
 
 
-@router.put(
-    "/tasks/{task_id}/lock",
-    response_model=ScheduleTaskDetailResponse,
-    response_model_exclude_unset=True,
-)
-def lock_task(
-    task_id: int,
-    payload: dispatch_planning.TaskLock,
-    user: User = Depends(require_dispatch),
-    db: Session = Depends(get_db),
-):
-    return dispatch_planning.lock_task(db, task_id, payload, user)
-
-
 @router.delete("/tasks/{task_id}", status_code=204)
 def delete_task(
     task_id: int,

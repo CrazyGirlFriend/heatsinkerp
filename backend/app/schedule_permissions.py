@@ -22,11 +22,9 @@ async def require_dispatch(user=Depends(get_current_user)):
     return user
 
 
-def require_unlocked(task):
+def require_active_task(task):
     if task.cancelled_at:
         raise HTTPException(409, "排期已删除")
-    if task.locked_at:
-        raise HTTPException(409, "订单已锁定，请联系调度解锁后修改")
 
 
 def require_planner(user):

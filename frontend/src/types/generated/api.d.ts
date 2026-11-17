@@ -1467,23 +1467,6 @@ export interface paths {
     patch: operations['update_task_api_production_schedules_tasks__task_id__patch']
     trace?: never
   }
-  '/api/production-schedules/tasks/{task_id}/lock': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    /** Lock Task */
-    put: operations['lock_task_api_production_schedules_tasks__task_id__lock_put']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/production-schedules/tasks/{task_id}/order': {
     parameters: {
       query?: never
@@ -8010,8 +7993,6 @@ export interface components {
       notes: string | null
       /** Order Completed */
       order_completed: boolean
-      /** Order Locked */
-      order_locked: boolean
       /** Order Overdue */
       order_overdue: boolean
       /** Order Quantity */
@@ -8324,8 +8305,6 @@ export interface components {
       notes: string | null
       /** Order Completed */
       order_completed: boolean
-      /** Order Locked */
-      order_locked: boolean
       /** Order Overdue */
       order_overdue: boolean
       /** Order Quantity */
@@ -8597,8 +8576,6 @@ export interface components {
       id: number
       /** Locations */
       locations: components['schemas']['ScheduleLocationResponse'][]
-      /** Locked At */
-      locked_at: string | null
       /** Nodes */
       nodes: components['schemas']['ScheduleResponse'][]
       /** Notes */
@@ -8668,8 +8645,6 @@ export interface components {
       id: number
       /** Locations */
       locations: components['schemas']['ScheduleLocationResponse'][]
-      /** Locked At */
-      locked_at: string | null
       /** Nodes */
       nodes: components['schemas']['ScheduleResponse'][]
       /** Notes */
@@ -9552,13 +9527,6 @@ export interface components {
     TaskDelete: {
       /** Expected Version */
       expected_version: number
-    }
-    /** TaskLock */
-    TaskLock: {
-      /** Expected Version */
-      expected_version: number
-      /** Locked */
-      locked: boolean
     }
     /** TaskTeamPlan */
     TaskTeamPlan: {
@@ -14041,41 +14009,6 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['ScheduleTaskUpdate']
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ScheduleTaskDetailResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  lock_task_api_production_schedules_tasks__task_id__lock_put: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        task_id: number
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TaskLock']
       }
     }
     responses: {

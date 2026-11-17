@@ -396,7 +396,6 @@ function canPlan(row: ProductionSchedule) {
   return (
     canEditCommitment.value &&
     (canManage.value || row.team_id === props.teamId) &&
-    !row.order_locked &&
     row.status !== 'cancelled'
   )
 }
@@ -945,7 +944,6 @@ defineExpose({ exportSource, openDetail })
       <template v-else-if="detail">
         <div class="schedule-detail__heading">
           <strong>{{ detail.serial_no }}</strong
-          ><ElTag v-if="detail.order_locked" type="warning">订单已锁定</ElTag
           ><span>{{ detail.team_name }} → {{ destination(detail) }}</span
           ><ElTag :type="scheduleStatusTone(detail.status)">{{
             scheduleStatusLabels[detail.status]

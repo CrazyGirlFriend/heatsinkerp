@@ -480,11 +480,20 @@ it('requires dates in batch order', async () => {
   await vi.waitFor(() => expect(wrapper.text()).toContain('第 2 批交期不能早于上一批'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
-it.each(['locked', 'team'])('blocks writes for %s', async (mode) => {
-  if (mode === 'team') role.isDispatch = false
-  await render(mode === 'locked' ? { ...task, locked_at: '2026-10-30T00:00:00Z' } : task)
+it('blocks writes from production teams', async () => {
+  role.isDispatch = false
+  await render(task)
   await button('保存排期')
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+})
+it('allows dispatch to edit an order carrying a legacy lock timestamp', async () => {
+  const legacyTask = { ...task, locked_at: '2026-10-30T00:00:00Z' }
+  await render(legacyTask)
+  await button('保存排期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
+    task.id,
+    expect.objectContaining({ expected_version: task.version }),
+  )
 })
 it('keeps the editor until its closing transition finishes', async () => {
   await render()

@@ -1,6 +1,10 @@
 """Dispatch can correct the order total independently of the engineering original."""
 
+from datetime import datetime
+
 import pytest
+from app.database import SessionLocal
+from app.models import ProductionScheduleTask
 from test_dispatch_order_documents import setup_order
 from test_dispatch_planning import URL, create, submit
 from test_dispatch_planning import dispatcher as dispatcher
@@ -14,7 +18,7 @@ def test_create_corrected_total_preserves_process_and_retry(client, warehouse, d
     response = submit(client, body, dispatcher)
     assert response.status_code == 422 and "各批数量合计" in response.text
     body["delivery_batches"][0]["target_quantity"] = 80
-    assert submit(client, body).status_code == 403
+    assert submit(client, body, warehouse["other_headers"]).status_code == 403
     response = submit(client, body, dispatcher)
     assert response.status_code == 201, response.text
     task = response.json()
@@ -30,9 +34,7 @@ def test_create_corrected_total_preserves_process_and_retry(client, warehouse, d
     assert submit(client, body, dispatcher).status_code == 409
 
 
-def test_correct_existing_total_is_atomic_versioned_and_dispatch_only(
-    client, warehouse, dispatcher
-):
+def test_correct_existing_total_is_atomic_versioned_and_planner_only(client, warehouse, dispatcher):
     task, _ = create(client, warehouse, dispatcher)
     endpoint = f"{URL}/tasks/{task['id']}"
     update = dict(
@@ -41,7 +43,7 @@ def test_correct_existing_total_is_atomic_versioned_and_dispatch_only(
         planned_quantity=120,
         delivery_batches=[{**task["delivery_batches"][0], "target_quantity": 120}],
     )
-    for headers in [None, warehouse["headers"], warehouse["other_headers"]]:
+    for headers in [warehouse["headers"], warehouse["other_headers"]]:
         assert client.patch(endpoint, headers=headers, json=update).status_code == 403
     invalid = {**update, "planned_quantity": 110}
     assert client.patch(endpoint, headers=dispatcher, json=invalid).status_code == 422
@@ -59,13 +61,11 @@ def test_correct_existing_total_is_atomic_versioned_and_dispatch_only(
     update["expected_version"] = saved["version"]
     missing_batches = {key: value for key, value in update.items() if key != "delivery_batches"}
     assert client.patch(endpoint, headers=dispatcher, json=missing_batches).status_code == 422
-    locked = client.put(
-        endpoint + "/lock",
-        headers=dispatcher,
-        json={"expected_version": saved["version"], "locked": True},
-    ).json()
-    update["expected_version"] = locked["version"]
-    assert client.patch(endpoint, headers=dispatcher, json=update).status_code == 409
+    with SessionLocal.begin() as db:
+        db.get(ProductionScheduleTask, task["id"]).locked_at = datetime(2026, 1, 1)
+    response = client.patch(endpoint, headers=dispatcher, json=update)
+    assert response.status_code == 200, response.text
+    assert sum(b["target_quantity"] for b in response.json()["delivery_batches"]) == 120
 
 
 @pytest.mark.parametrize("quantity", [None, 0, -1, 1.5, 2147483648, True])

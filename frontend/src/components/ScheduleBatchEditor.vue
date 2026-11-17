@@ -93,7 +93,7 @@ async function load() {
   }
 }
 async function save() {
-  if (saving.value || loading.value || !task.value || task.value.locked_at) return
+  if (saving.value || loading.value || !task.value) return
   error.value = ''
   if (!rows.value.length) {
     error.value = '请至少安排一批'
@@ -172,12 +172,6 @@ const defaultTime = new Date(2000, 0, 1, 8)
       :task-id="schedule.task_id"
       :order-document="task?.order_document ?? null"
     >
-      <ElAlert
-        v-if="task?.locked_at"
-        title="订单已锁定，请联系调度解锁"
-        type="warning"
-        :closable="false"
-      />
       <CompactFormSection v-if="task?.delivery_batches?.length" title="调度交货要求">
         <ElTable
           columns-key="ScheduleBatchEditor-1"
@@ -213,7 +207,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :min="1"
                   :max="9999"
                   :controls="false"
-                  :disabled="saving || !!task?.locked_at"
+                  :disabled="saving"
                   aria-label="批次序号" /></template
             ></ElTableColumn>
             <ElTableColumn v-if="basis !== 'weight'" label="数量（件）" width="120" align="center"
@@ -223,7 +217,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :min="1"
                   :precision="0"
                   :controls="false"
-                  :disabled="saving || !!task?.locked_at"
+                  :disabled="saving"
                   :aria-label="`第${row.batch_number}批数量`" /></template
             ></ElTableColumn>
             <ElTableColumn v-if="basis !== 'quantity'" label="重量（kg）" width="130" align="center"
@@ -233,7 +227,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :min="0.000001"
                   :precision="6"
                   :controls="false"
-                  :disabled="saving || !!task?.locked_at"
+                  :disabled="saving"
                   :aria-label="`第${row.batch_number}批重量`" /></template
             ></ElTableColumn>
             <ElTableColumn label="转交时间" min-width="195"
@@ -246,7 +240,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :default-time="defaultTime"
                   :disabled-minutes="nonZeroMinutes"
                   :disabled-seconds="nonZeroMinutes"
-                  :disabled="saving || !!task?.locked_at"
+                  :disabled="saving"
                   placeholder="选择转交时间"
                   :aria-label="`第${row.batch_number}批转交时间`" /></template
             ></ElTableColumn>
@@ -256,7 +250,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   v-model="row.upstream_batch_ids"
                   multiple
                   collapse-tags
-                  :disabled="saving || !!task?.locked_at"
+                  :disabled="saving"
                   placeholder="选择供料批次"
                   :aria-label="`第${row.batch_number}批上游供料`"
                   ><ElOption
@@ -278,7 +272,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
             >
           </ElTable>
           <div class="batch-plan-actions">
-            <ElButton :disabled="saving || !!task?.locked_at" @click="add">＋ 增加一批</ElButton
+            <ElButton :disabled="saving" @click="add">＋ 增加一批</ElButton
             ><span
               >合计
               <b>{{
@@ -345,12 +339,8 @@ const defaultTime = new Date(2000, 0, 1, 8)
       </CompactFormSection>
     </ScheduleDocuments>
     <template #footer
-      ><ElButton :disabled="saving || !!task?.locked_at" @click="visible = false">取消</ElButton
-      ><ElButton
-        type="primary"
-        :loading="saving"
-        :disabled="loading || !task || !!task.locked_at"
-        @click="save"
+      ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
+      ><ElButton type="primary" :loading="saving" :disabled="loading || !task" @click="save"
         >保存排期</ElButton
       ></template
     >

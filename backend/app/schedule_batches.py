@@ -154,10 +154,10 @@ def summaries(db, plans, *, now=None, predecessors=None):
 def apply_batches(db, plan, task, payload, user):
     """Apply one team's plan inside the caller's transaction."""
     from .production_schedules import record_event, snapshot
-    from .schedule_permissions import require_planner, require_unlocked
+    from .schedule_permissions import require_active_task, require_planner
 
     require_planner(user)
-    require_unlocked(task)
+    require_active_task(task)
     if plan.cancelled_at or plan.version != payload.expected_version:
         raise HTTPException(409, "排期已变更，请刷新后重试")
     plan_id = plan.id

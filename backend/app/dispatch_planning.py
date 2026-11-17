@@ -17,7 +17,7 @@ from .production_schedule_schemas import (
     ScheduleTaskCreate,
     TaskTeamPlan,
 )
-from .schedule_permissions import require_unlocked
+from .schedule_permissions import require_active_task
 
 
 class DispatchTaskCreate(BaseModel):
@@ -163,39 +163,9 @@ def build_task(db, payload):
     ), customer_values(batches)
 
 
-class TaskLock(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    expected_version: int = Field(ge=1)
-    locked: bool
-
-
 class TaskDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
-
-
-def lock_task(db, task_id, payload, user):
-    from .production_schedule_tasks import detail, require_task
-
-    with db.begin():
-        db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
-        task = require_task(db, task_id, lock=True)
-        if task.cancelled_at or task.version != payload.expected_version:
-            raise HTTPException(409, "订单已变化，请刷新后重试")
-        if bool(task.locked_at) != payload.locked:
-            task.locked_at = utcnow() if payload.locked else None
-            task.version += 1
-            task.updated_at = utcnow()
-            for plan in db.scalars(
-                select(Plan).where(Plan.task_id == task_id, Plan.cancelled_at.is_(None))
-            ):
-                before = schedules.snapshot(db, plan)
-                plan.version += 1
-                plan.updated_at = task.updated_at
-                schedules.record_event(
-                    db, plan, user, "order_locked" if payload.locked else "order_unlocked", before
-                )
-    return detail(db, task_id)
 
 
 def delete_task(db, task_id, payload, user):
@@ -204,7 +174,7 @@ def delete_task(db, task_id, payload, user):
     with db.begin():
         db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
         task = require_task(db, task_id, lock=True)
-        require_unlocked(task)
+        require_active_task(task)
         if task.version != payload.expected_version:
             raise HTTPException(409, "订单已变化，请刷新后重试")
         task.cancelled_at = task.updated_at = utcnow()

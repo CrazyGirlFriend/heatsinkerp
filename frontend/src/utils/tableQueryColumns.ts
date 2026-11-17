@@ -31,7 +31,6 @@ export function queryColumns(definitions: readonly Definition[]) {
         order_completed: { '1': '已完成', '0': '未完成' },
         order_overdue: { '1': '已逾期', '0': '未逾期' },
         team_planning: { filled: '全部已填', pending: '有待填班组' },
-        locked: { 已锁定: '已锁定', 未锁定: '未锁定' },
         planning_state: { 已填写: '已填写', 待填写: '待填写' },
         scope: { full: '全检', sample: '抽检' },
         kind: { inspection: '检验', patrol: '巡检' },
@@ -77,12 +76,12 @@ export const taskQueryColumns = queryColumns([
   ...fulfillmentColumns,
   ['班组排期', 'team_planning', 'select'],
   ['流水号', 'serial_no'],
+  ['排期编号', 'task_no'],
   ['本批数量（件）', 'quantity', 'number'],
   ['交货批数', 'delivery_batches', 'number'],
   ['最终交期', 'final_due_at', 'date'],
   ['创建时间', 'created_at', 'date'],
   ['业务人员', 'business_people'],
-  ['订单锁定', 'locked'],
 ])
 export const transferQueryColumns = queryColumns([
   ['流水号', 'serial_no'],

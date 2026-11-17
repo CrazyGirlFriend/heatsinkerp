@@ -116,7 +116,6 @@ def summaries(db, ids, *, now=None):
             Team.code.label("team_code"),
             target.name.label("next_team_name"),
             Task.title.label("task_title"),
-            Task.locked_at.label("order_locked_at"),
             Task.delivery_batches.label("customer_batches"),
             Task.final_due_at.label("customer_due_at"),
             progress,
@@ -222,7 +221,6 @@ def summaries(db, ids, *, now=None):
             "batches": batch_plans.get(plan.id, []),
             "planning_state": plan.planning_state,
             "pending_batches": plan.pending_batches,
-            "order_locked": bool(values["order_locked_at"]),
             "delivery_batches": values["customer_batches"] or [],
             "final_due_at": iso(values["customer_due_at"]),
             "next_team_name": values["next_team_name"],
@@ -735,9 +733,9 @@ def _save_plan(db, payload, user, plan_id, request_hash):
             from .production_schedule_tasks import legacy_task
 
             task = legacy_task(db, payload, request_hash)
-            from .schedule_permissions import require_unlocked
+            from .schedule_permissions import require_active_task
 
-            require_unlocked(task)
+            require_active_task(task)
             if payload.predecessor_id and payload.sequence_no == 1:
                 values["sequence_no"] = require_plan(db, payload.predecessor_id).sequence_no + 1
             plan = Plan(
@@ -755,9 +753,9 @@ def _save_plan(db, payload, user, plan_id, request_hash):
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
-            from .schedule_permissions import require_unlocked
+            from .schedule_permissions import require_active_task
 
-            require_unlocked(task)
+            require_active_task(task)
             for field, value in values.items():
                 setattr(plan, field, value)
             plan.version += 1
@@ -792,9 +790,9 @@ def cancel_plan(db, plan_id, payload, user):
             .with_for_update()
             .execution_options(populate_existing=True)
         )
-        from .schedule_permissions import require_unlocked
+        from .schedule_permissions import require_active_task
 
-        require_unlocked(task)
+        require_active_task(task)
         task.version += 1
         task.updated_at = utcnow()
         record_event(db, plan, user, "cancelled", before, reason=payload.reason.strip())

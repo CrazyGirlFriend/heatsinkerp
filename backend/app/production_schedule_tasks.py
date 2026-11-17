@@ -5,7 +5,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
@@ -162,7 +162,6 @@ def task_values(db, ids):
             ),
             "notes": task.notes,
             "delivery_batches": task.delivery_batches or [],
-            "locked_at": schedules.iso(task.locked_at),
             "cancelled_at": schedules.iso(task.cancelled_at),
             "version": task.version,
             "created_at": schedules.iso(task.created_at),
@@ -277,9 +276,17 @@ def list_tasks(
         .where(ProductionScheduleTaskPerson.task_id == Task.id)
         .scalar_subquery()
     )
+    task_number = (
+        func.concat(
+            "PQ", func.lpad(cast(Task.id, String), func.greatest(8, func.length(Task.id)), "0")
+        )
+        if db.bind.dialect.name == "mysql"
+        else func.printf("PQ%08d", Task.id)
+    )
     columns = {
         **dict(Task.__table__.columns.items()),
         **dict(fulfillment.c.items()),
+        "task_no": task_number,
         "final_due_at": final_due,
         "quantity": quantity,
         "delivery_batches": batch_count,
@@ -302,7 +309,6 @@ def list_tasks(
             .where(BusinessPerson.id == Task.business_person_id)
             .scalar_subquery(),
         ),
-        "locked": case((Task.locked_at.is_not(None), "已锁定"), else_="未锁定"),
     }
     statement = query_statement(
         select(matched.c.task_id)
@@ -473,9 +479,9 @@ def update_task(db, task_id, payload, user):
     with db.begin():
         db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
         task = require_task(db, task_id, lock=True)
-        from .schedule_permissions import require_unlocked
+        from .schedule_permissions import require_active_task
 
-        require_unlocked(task)
+        require_active_task(task)
         if task.version != payload.expected_version:
             raise HTTPException(409, "排期任务已被修改，请刷新后重试")
         before = {"task_title": task.title, "task_notes": task.notes, "task_version": task.version}

@@ -217,7 +217,7 @@ def test_creation_requires_complete_and_matching_team_plans_when_supplied(
         assert db.scalar(select(func.count(ProductionScheduleTask.id))) == 1
 
 
-def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
+def test_dispatch_plans_take_effect_on_save_and_ignore_legacy_order_locks(
     client, warehouse, dispatcher
 ):
     task, people = create(client, warehouse, dispatcher)
@@ -269,56 +269,52 @@ def test_dispatch_plans_take_effect_on_save_and_order_lock_prevents_changes(
     assert revised["batches"][0]["id"] == saved["batches"][0]["id"]
     assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 409
     task = client.get(f"{URL}/tasks/{task['id']}").json()
-    lockurl = f"{URL}/tasks/{task['id']}/lock"
-    assert (
-        client.put(
-            lockurl,
-            headers=warehouse["headers"],
-            json={"expected_version": task["version"], "locked": True},
-        ).status_code
-        == 403
-    )
-    locked = client.put(
-        lockurl, headers=dispatcher, json={"expected_version": task["version"], "locked": True}
-    )
-    assert locked.status_code == 200, locked.text
-    locked = locked.json()
-    assert locked["locked_at"]
-    assert client.get(f"{URL}/tasks/{task['id']}").json()["locked_at"] == locked["locked_at"]
-    lock_filter = json.dumps(
-        {"filters": [{"field": "locked", "kind": "select", "value": "已锁定"}]}
-    )
-    listed = client.get(URL + "/tasks", params={"table_query": lock_filter})
-    assert listed.status_code == 200, listed.text
-    assert listed.json()["total"] == 1
-    assert listed.json()["items"][0]["locked_at"] == locked["locked_at"]
+    # Existing lock timestamps remain historical data and cannot block dispatch.
+    with SessionLocal.begin() as db:
+        db.get(ProductionScheduleTask, task["id"]).locked_at = datetime(2026, 1, 1)
+    for headers in [dispatcher, warehouse["headers"]]:
+        assert (
+            client.put(
+                f"{URL}/tasks/{task['id']}/lock",
+                headers=headers,
+                json={"expected_version": task["version"], "locked": True},
+            ).status_code
+            == 404
+        )
+    listed = client.get(URL + "/tasks").json()
+    assert listed["total"] == 1
+    assert "locked_at" not in listed["items"][0]
     current = client.get(endpoint).json()
+    assert "order_locked" not in current
     changed["expected_version"] = current["version"]
-    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 409
+    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 200
     assert (
         client.put(
             endpoint + "/batches", headers=warehouse["other_headers"], json=changed
         ).status_code
         == 403
     )
-    assert (
-        client.request(
-            "DELETE",
+    latest = client.get(f"{URL}/tasks/{task['id']}").json()
+    assert "locked_at" not in latest
+    for headers in [dispatcher, None]:  # Dispatch and administrators retain editing rights.
+        updated = client.patch(
             f"{URL}/tasks/{task['id']}",
-            headers=dispatcher,
-            json={"expected_version": locked["version"]},
-        ).status_code
-        == 409
+            headers=headers,
+            json={"expected_version": latest["version"], "title": latest["title"]},
+        )
+        assert updated.status_code == 200, updated.text
+        latest = updated.json()
+    deleted = client.request(
+        "DELETE",
+        f"{URL}/tasks/{task['id']}",
+        headers=dispatcher,
+        json={"expected_version": latest["version"]},
     )
-    unlock = client.put(
-        lockurl, headers=dispatcher, json={"expected_version": locked["version"], "locked": False}
-    )
-    assert unlock.status_code == 200
-    assert unlock.json()["locked_at"] is None
-    assert client.get(f"{URL}/tasks/{task['id']}").json()["locked_at"] is None
-    assert client.get(URL + "/tasks", params={"table_query": lock_filter}).json()["total"] == 0
+    assert deleted.status_code == 204, deleted.text
     changed["expected_version"] = client.get(endpoint).json()["version"]
-    assert client.put(endpoint + "/batches", headers=dispatcher, json=changed).status_code == 200
+    rejected = client.put(endpoint + "/batches", headers=dispatcher, json=changed)
+    assert rejected.status_code == 409 and "已删除" in rejected.text
+
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 

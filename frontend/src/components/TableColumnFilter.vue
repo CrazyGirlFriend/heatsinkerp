@@ -421,16 +421,23 @@ watch(
 .table-column-filter.el-button {
   height: 28px;
   max-width: 100%;
-  padding: 2px 5px;
   margin: 0;
   font: inherit;
   color: inherit;
   vertical-align: middle;
 }
+.table-column-filter.el-button.is-text:not(.is-link) {
+  min-height: 28px;
+  padding: 2px 0;
+  border: 0;
+}
 .table-column-filter.el-button > span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.el-table th.is-right .table-column-filter.el-button > span {
+  flex-direction: row-reverse;
 }
 .table-column-filter svg {
   width: 13px;

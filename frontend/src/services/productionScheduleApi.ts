@@ -154,8 +154,6 @@ export const productionScheduleApi = {
     request<ScheduleRouteOption[]>(
       `/production-schedules/route-options?${queryString({ serial_no })}`,
     ),
-  lockTask: (id: number, body: { expected_version: number; locked: boolean }) =>
-    request<ScheduleTask>(`/production-schedules/tasks/${id}/lock`, { method: 'PUT', body }),
   deleteTask: (id: number, expected_version: number) =>
     request<void>(`/production-schedules/tasks/${id}`, {
       method: 'DELETE',

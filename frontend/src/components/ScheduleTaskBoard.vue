@@ -113,8 +113,9 @@ const tableQuery = useTableQuery(
 const draftSortOrder = ref(`${sortBy.value}:${sortOrder.value}`)
 const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },
-  { key: 'quantity', label: '本批数量（件）', width: 140 },
-  { key: 'delivery_batches', label: '交货批数', width: 100 },
+  { key: 'task_no', label: '排期编号', width: 150 },
+  { key: 'quantity', label: '本批数量（件）', width: 150 },
+  { key: 'delivery_batches', label: '交货批数', width: 110 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
   { key: 'shipped_quantity', label: '客户发货', width: 190 },
   { key: 'order_completed', label: '订单完成', width: 110 },
@@ -122,7 +123,6 @@ const taskColumns = [
   { key: 'team_planning', label: '班组排期', width: 280 },
   { key: 'created_at', label: '创建时间', width: 180 },
   { key: 'business_people', label: '业务人员', width: 140 },
-  { key: 'locked', label: '订单锁定', width: 100 },
 ] as const
 const selectableColumns = taskColumns.map((column) => ({ ...column, defaultVisible: true }))
 type TaskColumn = (typeof taskColumns)[number]['key']
@@ -335,23 +335,6 @@ function resetFilters() {
 const actionBusy = ref(false),
   actionError = ref(''),
   deleteTarget = ref<ScheduleTask | null>(null)
-async function toggleLock(task: ScheduleTask) {
-  if (actionBusy.value || !canManage.value) return
-  actionBusy.value = true
-  actionError.value = ''
-  try {
-    const updated = await productionScheduleApi.lockTask(task.id, {
-      expected_version: task.version,
-      locked: !task.locked_at,
-    })
-    if (detail.value?.id === updated.id) detail.value = updated
-    await load()
-  } catch (e) {
-    actionError.value = e instanceof Error ? e.message : '锁定操作失败'
-  } finally {
-    actionBusy.value = false
-  }
-}
 async function removeTask() {
   if (!deleteTarget.value || !canManage.value || actionBusy.value) return
   actionBusy.value = true
@@ -489,7 +472,7 @@ function exportSource() {
     '生产排期任务',
     total.value,
     [
-      { key: 'task_no', label: '任务编号', value: (task: ScheduleTask) => task.task_no },
+      { key: 'task_no', label: '排期编号', value: (task: ScheduleTask) => task.task_no },
       { key: 'title', label: '任务名称', value: (task) => task.title },
       { key: 'serial_no', label: '流水号', value: (task) => task.serial_no },
       { key: 'quantity', label: '本批数量（件）', value: (task) => taskQuantity(task) },
@@ -719,6 +702,7 @@ onBeforeUnmount(() => {
           <InventoryColumnSettings
             :storage-key="columnStorageKey"
             :columns="selectableColumns"
+            :new-visible-keys="['task_no']"
             :fixed-column-options="fixedColumnOptions"
             @fixed-change="fixedColumns = $event"
             description="勾选显示列，上下移动调整顺序。表头固定，固定列可自行选择。"
@@ -774,16 +758,16 @@ onBeforeUnmount(() => {
             :prop="column.key"
             :min-width="column.width"
             :class-name="column.key === 'serial_no' ? 'table-identity' : undefined"
-            :align="column.key === 'quantity' ? 'right' : 'left'"
+            :align="['quantity', 'delivery_batches'].includes(column.key) ? 'right' : 'left'"
             :show-overflow-tooltip="column.key !== 'team_planning'"
           >
             <template #default="{ row }">
               <ElButton
-                v-if="column.key === 'serial_no'"
+                v-if="column.key === 'serial_no' || column.key === 'task_no'"
                 link
                 type="primary"
                 @click="openTask(asTask(row))"
-                >{{ row.serial_no }}</ElButton
+                >{{ row[column.key] }}</ElButton
               >
               <template v-else-if="column.key === 'quantity'">{{
                 formatAmount(taskQuantity(row))
@@ -820,36 +804,26 @@ onBeforeUnmount(() => {
                 /></template>
                 <PersonName v-else :name="row.business_person_name" />
               </span>
-              <ElTag
-                v-else-if="column.key === 'locked'"
-                :type="row.locked_at ? 'warning' : 'info'"
-                >{{ row.locked_at ? '已锁定' : '未锁定' }}</ElTag
-              >
             </template>
           </ElTableColumn>
           <ElTableColumn
             v-if="canManage"
             label="操作"
-            width="264"
+            width="180"
+            align="center"
+            header-align="center"
             fixed="right"
             :show-overflow-tooltip="false"
           >
             <template #default="{ row }">
               <div class="dispatch-task-actions">
-                <ElButton
-                  link
-                  type="primary"
-                  :disabled="!!row.locked_at || actionBusy"
-                  @click="editTask(asTask(row))"
+                <ElButton link type="primary" :disabled="actionBusy" @click="editTask(asTask(row))"
                   >修改排期</ElButton
                 >
-                <ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
-                  row.locked_at ? '解锁' : '锁定'
-                }}</ElButton>
                 <ElButton
                   link
                   type="danger"
-                  :disabled="!!row.locked_at || actionBusy"
+                  :disabled="actionBusy"
                   @click="deleteTarget = asTask(row)"
                   >删除</ElButton
                 >
@@ -903,15 +877,13 @@ onBeforeUnmount(() => {
                     ><PersonName v-else :name="detail.business_person_name || '未指定'" /></span
                 ></span>
               </div>
-              <ElButton v-if="canManage && !detail.locked_at" @click="routeLinkOpen = true">{{
+              <ElButton v-if="canManage" @click="routeLinkOpen = true">{{
                 detail.route_changed ? '核对工艺变更' : '关联工艺'
               }}</ElButton>
               <ElTag :type="scheduleStatusTone(detail.status)">{{
                 scheduleStatusLabels[detail.status]
               }}</ElTag
-              ><ElButton v-if="canManage && !detail.locked_at" @click="editTask(detail)"
-                >修改排期</ElButton
-              >
+              ><ElButton v-if="canManage" @click="editTask(detail)">修改排期</ElButton>
             </div>
             <div class="task-detail__meta">
               <div>
@@ -1020,7 +992,7 @@ onBeforeUnmount(() => {
               </div>
               <ScheduleReworkPanel
                 :task="detail"
-                :manage="canManage && !detail.locked_at"
+                :manage="canManage"
                 @saved="
                   (task) => {
                     detail = task

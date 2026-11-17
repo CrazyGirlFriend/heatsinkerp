@@ -1,5 +1,6 @@
 """Final delivery ordering uses the displayed deadline before paginating tasks."""
 
+import json
 from datetime import datetime
 from uuid import uuid4
 
@@ -9,6 +10,36 @@ from app.models import ProductionSchedule, ProductionScheduleTask
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 URL = "/api/production-schedules/tasks"
+
+
+def test_same_serial_tasks_are_searchable_and_filterable_by_schedule_number(client, warehouse):
+    with SessionLocal.begin() as db:
+        first = task(db, warehouse["other"]["id"], "SAME-SERIAL", 1, 9, final_day=12)
+        second = task(db, warehouse["other"]["id"], "SAME-SERIAL", 1, 9, final_day=12)
+    number = f"PQ{second:08d}"
+    listed = client.get(URL, params={"query": "SAME-SERIAL"}).json()
+    assert {row["task_no"] for row in listed["items"]} == {f"PQ{first:08d}", number}
+    assert client.get(URL, params={"query": number}).json()["items"][0]["id"] == second
+    filtered = client.get(
+        URL,
+        params={
+            "table_query": json.dumps(
+                {"filters": [{"field": "task_no", "kind": "text", "value": number}]}
+            )
+        },
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["total"] == 1
+    assert filtered.json()["items"][0]["id"] == second
+    sorted_rows = client.get(
+        URL,
+        params={
+            "table_query": json.dumps(
+                {"filters": [], "sort": {"field": "task_no", "direction": "asc"}}
+            )
+        },
+    ).json()["items"]
+    assert [row["id"] for row in sorted_rows] == [first, second]
 
 
 def task(db, team_id, serial, first_day, last_day, final_day=None, cancelled_day=None):

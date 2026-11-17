@@ -658,6 +658,45 @@ describe('task scheduling board', () => {
       }),
     )
   })
+  it('distinguishes schedules sharing a serial by number and opens the selected task', async () => {
+    const nextTask = { ...task, id: 8, task_no: 'PQ00000008' }
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [task, nextTask],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    vi.mocked(productionScheduleApi.task).mockResolvedValue(nextTask)
+    await render('/production-schedules', true)
+    const rows = wrapper.findAll('.dispatch-task-table .el-table__body tbody tr')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.text()).toContain('S-001')
+    expect(rows[0]!.text()).toContain('PQ00000007')
+    expect(rows[1]!.text()).toContain('S-001')
+    expect(rows[1]!.text()).toContain('PQ00000008')
+    await button('PQ00000008')
+    expect(productionScheduleApi.task).toHaveBeenLastCalledWith(8)
+    expect(wrapper.get('.task-detail__heading').text()).toContain('PQ00000008')
+  })
+  it('keeps legacy locked tasks editable and removes lock controls and filters', async () => {
+    const legacyTask = { ...task, locked_at: '2026-10-30T00:00:00Z' }
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [legacyTask],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await render('/production-schedules', true)
+    const actions = wrapper.get('.dispatch-task-actions')
+    expect(actions.findAll('button').map((button) => button.text())).toEqual(['修改排期', '删除'])
+    expect(actions.findAll('button').every((button) => !button.attributes('disabled'))).toBe(true)
+    expect(wrapper.text()).not.toContain('订单锁定')
+    await button('筛选')
+    expect(wrapper.text()).not.toMatch(/已锁定|未锁定|订单锁定/)
+    await button('取消')
+    await button('修改排期')
+    expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toEqual(legacyTask)
+  })
   it('shows each route occurrence without opening details on icon click', async () => {
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
       items: [
@@ -696,7 +735,8 @@ describe('task scheduling board', () => {
     expect(wrapper.text()).not.toContain('待确认')
     await steps[2]!.trigger('click')
     expect(hooks.openDetail).not.toHaveBeenCalled()
-    expect(wrapper.get('.dispatch-task-actions').text()).toContain('锁定')
+    expect(wrapper.get('.dispatch-task-actions').text()).not.toMatch(/锁定|解锁/)
+    expect(wrapper.text()).not.toContain('订单锁定')
     expect(wrapper.get('.dispatch-task-actions').text()).toContain('删除')
   })
   it('keeps long routes compact and reveals omitted occurrences on focus without navigation', async () => {
@@ -747,7 +787,7 @@ describe('task scheduling board', () => {
             ? header.get('.table-column-filter').text()
             : header.text(),
         )
-    expect(headers()).toEqual(['创建时间', '流水号', '操作'])
+    expect(headers()).toEqual(['创建时间', '流水号', '排期编号', '操作'])
     const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
     settings.vm.open()
     await flushPromises()
@@ -761,7 +801,7 @@ describe('task scheduling board', () => {
       .find((item) => item.text() === '应用')!
       .trigger('click')
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '创建时间', '本批数量（件）', '操作'])
+    expect(headers()).toEqual(['流水号', '创建时间', '本批数量（件）', '排期编号', '操作'])
     const saved = JSON.parse(localStorage.getItem('heatsink.dispatch-columns.v1:1')!)
     expect(saved.slice(0, 3)).toEqual([
       { key: 'serial_no', visible: true },

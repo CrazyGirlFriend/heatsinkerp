@@ -67,13 +67,11 @@ def notify_change(db, plan, action, before, after):
         "updated": ("changed", "交货计划已调整"),
         "batches_updated": ("changed", "分批计划已调整"),
         "cancelled": ("cancelled", "排期已取消"),
-        "order_locked": ("locked", "调度已锁定订单"),
-        "order_unlocked": ("unlocked", "调度已解锁订单"),
     }
     if action not in labels:
         return
     changed = {k for k in after if k != "version" and (before or {}).get(k) != after[k]}
-    if before is not None and not changed and action not in ("order_locked", "order_unlocked"):
+    if before is not None and not changed:
         return
     kind, message = labels[action]
     key = f"plan:{plan.id}:{plan.version}:{action}"

@@ -417,11 +417,11 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.get('.schedule-table').text()).toContain(formatDateTime(saved.due_at))
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
-  it('does not open the editor when dispatch locked the order after the list was loaded', async () => {
+  it('still rejects a plan cancelled after the list was loaded', async () => {
     state.auth.isDispatch = true
     const task = mockTaskRoute()
     await render()
-    task.nodes[0] = { ...task.nodes[0]!, order_locked: true }
+    task.nodes[0] = { ...task.nodes[0]!, status: 'cancelled' }
     await button('编辑').trigger('click')
     await flushPromises()
     expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(5)
@@ -488,8 +488,8 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.get('[data-schedule-id="5"]').text()).toContain(formatDateTime(saved.due_at))
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
-  it.each([{ order_locked: true }, { status: 'cancelled' as const }])(
-    'keeps locked or cancelled route nodes read-only: %s',
+  it.each([{ status: 'cancelled' as const }])(
+    'keeps cancelled route nodes read-only: %s',
     async (overrides) => {
       state.auth.isDispatch = true
       mockTaskRoute(overrides)

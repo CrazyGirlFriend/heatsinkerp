@@ -275,8 +275,7 @@ const writable = computed(
   () =>
     (auth.isAdmin || auth.isDispatch) &&
     auth.currentUser?.active !== false &&
-    !auth.currentUserError &&
-    !props.task?.locked_at,
+    !auth.currentUserError,
 )
 const allocated = computed(() =>
   batches.value.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0),

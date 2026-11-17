@@ -145,7 +145,6 @@ class ScheduleResponse(OrderFulfillmentResponse):
     batches: list[ScheduleBatchResponse]
     planning_state: PlanningState
     pending_batches: list[ScheduleBatchProposalResponse] | None
-    order_locked: bool
     delivery_batches: list[CustomerDeliveryBatchResponse]
     final_due_at: str | None
     next_team_name: str | None
@@ -229,7 +228,6 @@ class ScheduleTaskResponse(OrderFulfillmentResponse):
     business_people: list[SchedulePersonResponse]
     notes: str | None
     delivery_batches: list[CustomerDeliveryBatchResponse]
-    locked_at: str | None
     cancelled_at: str | None
     version: int
     created_at: str
