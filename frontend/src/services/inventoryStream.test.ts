@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { subscribeInventory, subscribeInventoryChanges } from './inventoryStream'
+import { subscribeInventoryChanges } from './inventoryStream'
 import { HTTP_AUTH_SESSION_STORAGE_KEY } from './httpClient'
 import { reportDiagnostic } from './diagnostics'
 vi.mock('./diagnostics', () => ({
@@ -10,7 +10,6 @@ vi.mock('./diagnostics', () => ({
     typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : undefined,
 }))
 import { SITE_ACCESS_REQUIRED_EVENT } from '@/stores/access'
-import { factoryFixture } from '@/testFixtures/factoryOverview'
 
 let stop: (() => void) | undefined
 let stream: ReadableStreamDefaultController<Uint8Array>
@@ -97,18 +96,20 @@ describe('authenticated inventory SSE', () => {
     vi.mocked(fetch).mockResolvedValue(response())
     const onData = vi.fn(),
       onState = vi.fn()
-    stop = subscribeInventory({ onData, onState })
+    stop = subscribeInventoryChanges({ onData, onState })
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith(
-      '/api/factory-overview/stream',
+      '/api/factory-overview/changes',
       expect.objectContaining({
         headers: { Accept: 'text/event-stream', Authorization: 'Bearer private-token' },
         credentials: 'include',
         cache: 'no-store',
       }),
     )
-    const data = factoryFixture()
-    const bytes = encoder.encode(`event: inventory\r\ndata: ${JSON.stringify(data)}\r\n\r\n`)
+    const data = { changed: true, team_ids: [1], note: '班组库存更新' }
+    const bytes = encoder.encode(
+      `event: inventory-changed\r\ndata: ${JSON.stringify(data)}\r\n\r\n`,
+    )
     for (let index = 0; index < bytes.length; index += 13)
       stream.enqueue(bytes.slice(index, index + 13))
     await flushPromises()
@@ -125,13 +126,15 @@ describe('authenticated inventory SSE', () => {
     await vi.advanceTimersByTimeAsync(60000)
     expect(fetch).toHaveBeenCalledOnce()
   })
-  it('reconnects after an ended connection and accepts a fresh complete snapshot', async () => {
+  it('reconnects after an ended connection and accepts a fresh scoped change', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(response())
     const onData = vi.fn(),
       onState = vi.fn()
-    stop = subscribeInventory({ onData, onState })
+    stop = subscribeInventoryChanges({ onData, onState })
     await flushPromises()
-    push(`event: inventory\ndata: ${JSON.stringify(factoryFixture())}\n\n`)
+    push(
+      `event: inventory-changed\ndata: ${JSON.stringify({ changed: true, team_ids: [1], note: '班组库存更新' })}\n\n`,
+    )
     await flushPromises()
     stream.close()
     await flushPromises()
@@ -139,9 +142,9 @@ describe('authenticated inventory SSE', () => {
     vi.mocked(fetch).mockResolvedValueOnce(response())
     await vi.advanceTimersByTimeAsync(1000)
     await flushPromises()
-    const next = factoryFixture()
-    next.totals.on_hand_quantity = 987
-    push(`event: inventory\ndata: ${JSON.stringify(next)}\n\n`)
+    const next = { changed: true, team_ids: [1], note: '班组库存更新' }
+    next.team_ids = [2]
+    push(`event: inventory-changed\ndata: ${JSON.stringify(next)}\n\n`)
     await flushPromises()
     expect(onData).toHaveBeenLastCalledWith(next)
     expect(fetch).toHaveBeenCalledTimes(2)
@@ -154,7 +157,7 @@ describe('authenticated inventory SSE', () => {
       return Promise.resolve(response())
     })
     const onState = vi.fn()
-    stop = subscribeInventory({ onData: vi.fn(), onState })
+    stop = subscribeInventoryChanges({ onData: vi.fn(), onState })
     await flushPromises()
     await vi.advanceTimersByTimeAsync(45000)
     await flushPromises()
@@ -172,7 +175,7 @@ describe('authenticated inventory SSE', () => {
         listener = vi.fn()
       const event = status === 401 ? 'heatsink-auth-expired' : SITE_ACCESS_REQUIRED_EVENT
       window.addEventListener(event, listener)
-      stop = subscribeInventory({ onData: vi.fn(), onState })
+      stop = subscribeInventoryChanges({ onData: vi.fn(), onState })
       await flushPromises()
       expect(listener).toHaveBeenCalledOnce()
       expect(onState).toHaveBeenLastCalledWith('expired')
@@ -190,7 +193,7 @@ describe('authenticated inventory SSE', () => {
       vi.mocked(fetch).mockResolvedValue(response())
       const onState = vi.fn(),
         onData = vi.fn()
-      stop = subscribeInventory({ onState, onData })
+      stop = subscribeInventoryChanges({ onState, onData })
       await flushPromises()
       push(`event: ${event}\ndata: {}\n\n`)
       await flushPromises()
@@ -202,11 +205,11 @@ describe('authenticated inventory SSE', () => {
   )
 })
 
-it('classifies malformed snapshots without logging their contents and stays silent on stop', async () => {
+it('classifies malformed changes without logging their contents and stays silent on stop', async () => {
   vi.mocked(fetch).mockResolvedValue(response())
-  stop = subscribeInventory({ onData: vi.fn(), onState: vi.fn() })
+  stop = subscribeInventoryChanges({ onData: vi.fn(), onState: vi.fn() })
   await flushPromises()
-  push('event: inventory\ndata: PRIVATE-INVALID-JSON\n\n')
+  push('event: inventory-changed\ndata: PRIVATE-INVALID-JSON\n\n')
   await flushPromises()
   expect(reportDiagnostic).toHaveBeenCalledWith('stream.parse', { status: 200, requestId: null })
   expect(JSON.stringify(vi.mocked(reportDiagnostic).mock.calls)).not.toContain('PRIVATE')

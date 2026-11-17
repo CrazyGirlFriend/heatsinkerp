@@ -10,7 +10,6 @@ from app.models import (
     MaterialTransfer,
     MaterialTransferAmendment,
     MaterialTransferEvent,
-    TransferAmendmentNotice,
 )
 from receipt_helpers import receipt_post
 from sqlalchemy import func, select
@@ -101,7 +100,6 @@ def test_request_is_not_effective_until_counterparty_approves_once(client, hando
     assert balances(source, lot) == [(50, Decimal(5)), (50, Decimal(5))]
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(MaterialTransferAmendment)) == 1
-        assert db.scalar(select(func.count()).select_from(TransferAmendmentNotice)) == 4
         assert (
             db.scalar(
                 select(func.count())
@@ -373,7 +371,6 @@ def test_concurrent_proposals_and_double_confirmation_do_not_double_apply(client
     assert balances(source, lot) == [(50, Decimal(5)), (50, Decimal(5))]
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(MaterialTransferAmendment)) == 1
-        assert db.scalar(select(func.count()).select_from(TransferAmendmentNotice)) == 4
 
 
 def test_unknown_legacy_partial_work_cannot_be_reduced(client, handoff):

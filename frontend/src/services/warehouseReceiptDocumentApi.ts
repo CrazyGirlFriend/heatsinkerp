@@ -1,4 +1,4 @@
-import { httpClient, httpRequest, HttpRequestError } from './httpClient'
+import { httpClient, httpRequest, httpErrorMessage } from './httpClient'
 import type { ReceiptDocument, ReceiptDocumentKind } from '@/types/warehouseReceiptDocuments'
 
 const extensions = { process: '.docx', drawing: '.pdf', order: '.xlsx' } as const
@@ -19,14 +19,8 @@ export const warehouseReceiptDocumentApi = {
         body,
       })
     } catch (error) {
-      if (
-        error instanceof HttpRequestError &&
-        error.body &&
-        typeof error.body === 'object' &&
-        'detail' in error.body &&
-        typeof error.body.detail === 'string'
-      )
-        throw new Error(error.body.detail, { cause: error })
+      const message = httpErrorMessage(error)
+      if (message !== undefined) throw new Error(message, { cause: error })
       throw error
     }
   },

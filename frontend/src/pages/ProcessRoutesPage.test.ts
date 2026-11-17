@@ -20,7 +20,6 @@ import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import AppSelect from '@/components/AppSelect.vue'
 import { processRouteApi } from '@/services/processRouteApi'
-import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 const state = vi.hoisted(() => ({ admin: false, teamId: 9, active: true, authError: '' }))
 vi.mock('@/stores/auth', () => ({
@@ -607,31 +606,6 @@ it('omits editing actions for a production account while keeping serial details 
   await wrapper.get('button.route-serial').trigger('click')
   await flushPromises()
   expect((await openedEditor()).props('startEditing')).toBe(false)
-})
-it('opens a rework notice for a production account with viewing permission only', async () => {
-  state.teamId = 2
-  const target = vi.spyOn(businessNoticeApi, 'target').mockResolvedValue({
-    href: '/process-routes?rework_notice=7',
-    section: 'steps',
-    step_index: 0,
-    route: { ...reworkRouteFixture, state: 'published' },
-  })
-  await render({ business_notice: 'rework:7', notice: 'open-7' })
-  expect(target).toHaveBeenCalledWith('rework', 7)
-  expect(processRouteApi.list).toHaveBeenLastCalledWith(
-    '',
-    1,
-    undefined,
-    'desc',
-    20,
-    'rework',
-    'open',
-    undefined,
-  )
-  const editor = await openedEditor()
-  expect(editor.props('route')?.id).toBe(reworkRouteFixture.id)
-  expect(editor.props('viewOnly')).toBe(true)
-  expect(editor.props('startEditing')).toBe(false)
 })
 it('requests global time ordering and resets to page one on sort or size changes', async () => {
   await render()

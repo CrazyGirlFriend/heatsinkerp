@@ -1,6 +1,5 @@
 import { API_BASE, authorizationValue, invalidateAccountSession } from './httpClient'
 import { notifySiteAccessRequired } from './siteAccessEvents'
-import type { FactoryOverview } from '@/types/factoryOverview'
 import { reportDiagnostic, type DiagnosticCode } from './diagnostics'
 
 export type InventoryConnection = 'connecting' | 'live' | 'reconnecting' | 'expired'
@@ -11,18 +10,13 @@ export interface InventoryChange {
   accounts_changed?: boolean
   current_user_changed?: boolean
 }
-export interface InventorySubscription<T = FactoryOverview> {
+export interface InventorySubscription<T> {
   onData: (report: T) => void
   onState: (state: InventoryConnection) => void
 }
 
 // Fetch streaming preserves the existing Authorization header and access cookie;
 // native EventSource cannot attach a Bearer header. Tokens never enter the URL.
-export function subscribeInventory(subscription: InventorySubscription): () => void {
-  return subscribeStream('/factory-overview/stream', 'inventory', subscription, (data) =>
-    Boolean(data?.as_of && data?.totals && Array.isArray(data?.teams)),
-  )
-}
 export function subscribeInventoryChanges(
   subscription: InventorySubscription<InventoryChange>,
 ): () => void {

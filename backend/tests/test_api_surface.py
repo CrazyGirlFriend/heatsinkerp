@@ -4,17 +4,50 @@ import ast
 import sys
 from pathlib import Path
 
+import pytest
 from app.database import Base, SessionLocal
-from app.legacy_models import Product, ProductRouteOperation
 from app.main import app
-from sqlalchemy import select
+from app.models import LegacyRecord
 from test_material_transfers import _leader, _team
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "contract_path"),
+    [
+        ("GET", "/api/factory-dashboard", "/api/factory-dashboard"),
+        ("GET", "/api/factory-dashboard/serials", "/api/factory-dashboard/serials"),
+        ("GET", "/api/factory-dashboard/shipments", "/api/factory-dashboard/shipments"),
+        ("GET", "/api/factory-dashboard/delivery-plan", "/api/factory-dashboard/delivery-plan"),
+        ("PUT", "/api/factory-dashboard/delivery-plan", "/api/factory-dashboard/delivery-plan"),
+        ("GET", "/api/factory-dashboard/yields", "/api/factory-dashboard/yields"),
+        ("GET", "/api/factory-dashboard/team-yields", "/api/factory-dashboard/team-yields"),
+        ("GET", "/api/factory-dashboard/stock-detail", "/api/factory-dashboard/stock-detail"),
+        ("GET", "/api/factory-dashboard/deliveries", "/api/factory-dashboard/deliveries"),
+        (
+            "GET",
+            "/api/team-materials/1/warehouse-inventory",
+            "/api/team-materials/{team_id}/warehouse-inventory",
+        ),
+        (
+            "GET",
+            "/api/team-materials/1/warehouse-inventory/1/sources",
+            "/api/team-materials/{team_id}/warehouse-inventory/{group_id}/sources",
+        ),
+        (
+            "GET",
+            "/api/process-routes/1/rework-rounds",
+            "/api/process-routes/{route_id}/rework-rounds",
+        ),
+    ],
+)
+def test_retired_read_paths_are_unregistered(client, method, path, contract_path):
+    assert contract_path not in app.openapi()["paths"]
+    assert client.request(method, path).status_code == 404
 
 
 def test_successful_json_responses_have_explicit_contracts():
     # These retained compatibility endpoints always reject writes (410 / 422).
     disabled_writes = {
-        ("put", "/api/factory-dashboard/delivery-plan"),
         ("post", "/api/production-schedules"),
     }
     missing = []
@@ -34,6 +67,7 @@ def test_successful_json_responses_have_explicit_contracts():
 
 def test_only_supported_business_routes_are_registered(client):
     paths = set(app.openapi()["paths"])
+    assert "/api/process-routes/options/{team_id}" not in paths
     supported_prefixes = (
         "/api/access/",
         "/api/auth/",
@@ -55,10 +89,6 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/quality-feedback",
         "/api/production-schedules",
         "/api/process-routes",
-        "/api/rework-notices",
-        "/api/schedule-notices",
-        "/api/business-notices",
-        "/api/factory-dashboard",
         "/api/factory-overview",
         "/api/factory-performance",
         "/api/main-system/",
@@ -67,6 +97,12 @@ def test_only_supported_business_routes_are_registered(client):
     unexpected = sorted(path for path in paths if not path.startswith(supported_prefixes))
     assert not unexpected, unexpected
     for method, path in (
+        ("GET", "/api/process-routes/options/1"),
+        ("GET", "/api/business-notices"),
+        ("GET", "/api/rework-notices"),
+        ("GET", "/api/schedule-notices"),
+        ("POST", "/api/schedule-notices/refresh"),
+        ("POST", "/api/business-notices/read-all"),
         ("GET", "/api/work-orders"),
         ("POST", "/api/work-orders"),
         ("GET", "/api/products"),
@@ -104,36 +140,34 @@ def test_remaining_modules_have_no_deleted_local_imports():
                     assert (directory / f"{name}.py").exists(), (file.name, name)
 
 
-def test_history_table_metadata_and_references_remain_protected(client):
-    assert {
-        "work_orders",
-        "operations",
-        "operation_reports",
-        "transfer_batches",
-        "transfer_batch_lines",
-        "products",
-        "product_route_operations",
-        "external_inventory_movements",
-    } <= Base.metadata.tables.keys()
+@pytest.mark.parametrize(
+    "field",
+    [
+        "responsible_team_id",
+        "scrap_destination_team_id",
+        "operator_team_id",
+        "source_team_id",
+        "next_team_id",
+        "created_by_team_id",
+        "destination_team_id",
+        "printed_by_team_id",
+        "actor_team_id",
+    ],
+)
+def test_archived_references_remain_protected(client, field):
+    assert "legacy_records" in Base.metadata.tables
+    assert "work_orders" not in Base.metadata.tables
     team = _team(client, "HISTORY-ONLY", "有历史记录的班组")
+    data = {"id": 42, field: team["id"], "name": "历史原记录"}
     with SessionLocal() as db:
-        product = Product(
-            code="HIST-P",
-            name="保留的历史产品",
-            route_operations=[
-                ProductRouteOperation(
-                    sequence=1, code="HIST", name="历史工序", responsible_team_id=team["id"]
-                )
-            ],
-        )
-        db.add(product)
+        db.add(LegacyRecord(source_table="operations", source_id=42, data=data))
         db.commit()
-        product_id = product.id
     assert client.delete(f"/api/teams/{team['id']}").status_code == 409
     assert client.patch(f"/api/teams/{team['id']}", json={"kind": "warehouse"}).status_code == 409
     with SessionLocal() as db:
-        assert db.get(Product, product_id).name == "保留的历史产品"
-        assert db.scalar(select(ProductRouteOperation.responsible_team_id)) == team["id"]
+        assert db.get(LegacyRecord, ("operations", 42)).data == data
+    unrelated = _team(client, "NO-HISTORY", "没有历史记录的班组")
+    assert client.delete(f"/api/teams/{unrelated['id']}").status_code == 204
 
 
 def test_authentication_and_last_administrator_guards_remain(client):

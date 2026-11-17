@@ -4,18 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElCheckbox, ElPopover } from 'element-plus'
 import * as toast from '@/stores/toast'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
-import {
-  defaultInventoryColumns,
-  inventoryColumns,
-  normalizeInventoryColumns,
-  type InventoryColumnChoice,
-} from '@/types/inventoryColumns'
+import { inventoryColumns, type InventoryColumnChoice } from '@/types/inventoryColumns'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
 import {
   warehouseColumns,
   warehouseLegacyColumnKeys,
   warehousePreviousDefaults,
 } from '@/types/teamInventory'
+
+const defaultInventoryColumns = (): InventoryColumnChoice[] =>
+  inventoryColumns.map((column, index) => ({ key: column.key, visible: index < 4 }))
 
 let wrapper: VueWrapper
 const key = 'heatsink.inventory-columns.v1:1:914'
@@ -341,13 +339,19 @@ describe('inventory display columns', () => {
     localStorage.setItem(key, '{broken')
     await render()
     expect(latest()).toEqual(defaultInventoryColumns())
-    const normalized = normalizeInventoryColumns([
-      { key: 'product_code', visible: true },
-      { key: 'product_code', visible: false },
-      { key: 'batch_no', visible: true },
-      null,
-      { key: 'available_weight', visible: 'yes' },
-    ])
+    wrapper.unmount()
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        { key: 'product_code', visible: true },
+        { key: 'product_code', visible: false },
+        { key: 'batch_no', visible: true },
+        null,
+        { key: 'available_weight', visible: 'yes' },
+      ]),
+    )
+    await render()
+    const normalized = latest()
     expect(normalized).toHaveLength(inventoryColumns.length)
     expect(normalized[0]).toEqual({ key: 'product_code', visible: true })
     expect(normalized.some((item) => String(item.key) === 'batch_no')).toBe(false)

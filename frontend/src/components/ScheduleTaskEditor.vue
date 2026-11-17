@@ -31,7 +31,7 @@ import type {
   TaskTeamPlanWrite,
 } from '@/types/productionSchedule'
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
-import { materialRequestKey } from '@/utils/materialStock'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import { formatAmount, formatDateTime } from '@/utils/format'
 import { referenceOrderQuantity } from '@/utils/schedulePlanning'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
@@ -67,7 +67,7 @@ async function importOrder(event: Event) {
   orderFile.value = undefined
   orderDocument.value = undefined
   orderError.value = ''
-  key = ''
+  submission.reset()
   if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 5 * 1024 * 1024) {
     orderError.value = '请选择不超过 5 MB 的 XLSX 订单表'
     return
@@ -325,9 +325,8 @@ function batchDueError(index: number) {
     return `第 ${index + 1} 批交期不能早于上一批`
   return ''
 }
-let generation = 0,
-  key = '',
-  fingerprint = ''
+let generation = 0
+const submission = createMaterialSubmissionKey()
 async function loadRoutes() {
   if (props.task) return
   const current = ++generation
@@ -461,11 +460,7 @@ async function save() {
         route_id: selectedRoute.value!.id,
         route_version: selectedRoute.value!.version,
       }
-      const next = JSON.stringify(body)
-      if (!key || fingerprint !== next) {
-        key = materialRequestKey()
-        fingerprint = next
-      }
+      const key = submission.get(body)
       emit(
         'saved',
         await productionScheduleApi.createTask({ ...body, idempotency_key: key }, orderFile.value!),

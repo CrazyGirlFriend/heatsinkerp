@@ -13,7 +13,7 @@ import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
-import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { EditPen } from '@element-plus/icons-vue'
 import {
@@ -29,8 +29,6 @@ import {
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
-import { businessNoticeApi, parseNotice, type NoticeTarget } from '@/services/businessNoticeApi'
-import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
@@ -253,10 +251,6 @@ function paginate(next: number, size = pageSize.value) {
 function destination(row: ProductionSchedule) {
   return row.next_team_name || row.external_destination || '—'
 }
-function noticeBatchClass({ row }: { row: { id: number } }) {
-  return `notice-batch-${row.id}`
-}
-const noticeTarget = ref<NoticeTarget | null>(null)
 const detailOpened = ref(false)
 const taskRoute = ref<HTMLOListElement>()
 watch(
@@ -284,67 +278,12 @@ watch(
   { flush: 'post' },
 )
 const expandedEvents = ref<number[]>([])
-let stopNoticeFocus: (() => void) | undefined
-let landingGeneration = 0
-let focusedNotice = ''
-async function openScheduleNotice() {
-  const token = ++landingGeneration
+async function openLinkedSchedule() {
   const id = route.query.schedule_id
   if (typeof id !== 'string' || !/^\d+$/.test(id)) return
-  const notice = parseNotice(route.query.business_notice)
-  noticeTarget.value = null
   expandedEvents.value = []
-  focusedNotice = ''
-  stopNoticeFocus?.()
-  if (notice?.source !== 'schedule') {
-    await openDetail(Number(id))
-    return
-  }
-  const key = String(route.query.notice || '')
-  try {
-    const target = await businessNoticeApi.target('schedule', notice.id)
-    if (token !== landingGeneration || key !== route.query.notice) return
-    if (target.schedule_id !== Number(id)) throw new Error('排期与消息不一致，请重新打开消息')
-    noticeTarget.value = target
-    await openDetail(target.schedule_id)
-    if (token !== landingGeneration) return
-    if (!detail.value) throw new Error(detailError.value || '排期读取失败')
-    await focusScheduleNotice()
-  } catch (e) {
-    if (token === landingGeneration) noticeFailed(key, e)
-  }
+  await openDetail(Number(id))
 }
-async function focusScheduleNotice() {
-  const target = noticeTarget.value
-  const key = String(route.query.notice || '')
-  if (!target || !detail.value || !detailOpened.value || focusedNotice === key) return
-  if (detail.value.id !== target.schedule_id) return
-  let eventId = target.event_id
-  if (target.batch_id && !detail.value.batches?.some((b) => b.id === target.batch_id)) {
-    // A removed batch must lead to its history, not highlight a different current batch.
-    eventId = detail.value.history?.find((event) =>
-      event.before?.batches?.some((b) => b.id === target.batch_id),
-    )?.id
-  }
-  if (eventId) expandedEvents.value = [eventId]
-  await nextTick()
-  if (noticeTarget.value !== target || key !== route.query.notice) return
-  const selector = eventId
-    ? `[data-notice-event="${eventId}"]`
-    : target.batch_id
-      ? `.notice-batch-${target.batch_id}`
-      : '.schedule-summary'
-  const element = document.querySelector<HTMLElement>(`.schedule-detail ${selector}`)
-  if (!element) {
-    noticeFailed(key, new Error('对应记录已调整，未能定位，请从排期明细查看'))
-    return
-  }
-  stopNoticeFocus?.()
-  stopNoticeFocus = focusNoticeTarget(element)
-  focusedNotice = key
-  noticeOpened(key)
-}
-watch([detailOpened, detail], () => void focusScheduleNotice(), { flush: 'post' })
 async function openDetail(id: number) {
   const token = ++detailGeneration
   detailId.value = id
@@ -383,10 +322,7 @@ async function loadTask(id: number, token = detailGeneration) {
   }
 }
 function closeDetail() {
-  ++landingGeneration
   detailOpened.value = false
-  noticeTarget.value = null
-  stopNoticeFocus?.()
   ++detailGeneration
   detailId.value = undefined
   detail.value = null
@@ -700,7 +636,7 @@ watch(
     live.request()
   },
 )
-watch(() => [route.query.schedule_id, route.query.notice], openScheduleNotice, { immediate: true })
+watch(() => route.query.schedule_id, openLinkedSchedule, { immediate: true })
 watch(canEditCommitment, (value) => {
   if (!value) {
     editing.value = false
@@ -710,8 +646,6 @@ onMounted(() => {
   if (!props.detailOnly) clockRefresh = setInterval(live.request, 60_000)
 })
 onBeforeUnmount(() => {
-  ++landingGeneration
-  stopNoticeFocus?.()
   ++generation
   ++detailGeneration
   ++dispatchGeneration
@@ -935,7 +869,7 @@ defineExpose({ exportSource, openDetail })
     </template>
     <AppDialog
       :model-value="!!detailId"
-      :title="noticeTarget && detail ? `${detail.serial_no} · ${detail.team_name}` : '交货排期明细'"
+      title="交货排期明细"
       width="min(1120px, 94vw)"
       class="schedule-detail"
       @opened="detailOpened = true"
@@ -1107,7 +1041,6 @@ defineExpose({ exportSource, openDetail })
             columns-key="DeliverySchedules-3"
             :data="detail.batches || []"
             row-key="id"
-            :row-class-name="noticeBatchClass"
             border
             class="business-table"
             empty-text="待调度安排批次"
@@ -1281,7 +1214,7 @@ defineExpose({ exportSource, openDetail })
               v-for="event in detail.history || []"
               :key="event.id"
               :name="event.id"
-              :data-notice-event="event.id"
+              :data-schedule-event="event.id"
               ><template #title
                 ><span
                   >{{ formatDateTime(event.occurred_at) }} · <PersonName :name="event.actor" /> ·

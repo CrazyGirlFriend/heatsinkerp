@@ -18,7 +18,6 @@ from .models import (
     MaterialTransferAmendment,
     MaterialTransferEvent,
     Team,
-    TransferAmendmentNotice,
     User,
     utcnow,
 )
@@ -276,22 +275,6 @@ def _record(db, amendment, transfer, user, action):
             changes=changes,
         )
     )
-    labels = {
-        "requested": "申请修改交接单",
-        "approved": "已确认交接修改",
-        "rejected": "已拒绝交接修改",
-        "cancelled": "已撤回交接修改",
-    }
-    for team_id in (amendment.requester_team_id, amendment.counterparty_team_id):
-        db.add(
-            TransferAmendmentNotice(
-                amendment_id=amendment.id,
-                team_id=team_id,
-                kind=f"amendment_{action}",
-                event_key=f"transfer-amendment:{amendment.id}:{action}:{team_id}",
-                message=f"{transfer.serial_no} · {actor_name(user)}{labels[action]}",
-            )
-        )
 
 
 @contextmanager

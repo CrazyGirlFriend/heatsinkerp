@@ -1,4 +1,4 @@
-"""Current material ledger and identity models; historical tables register separately."""
+"""Current material ledger, identities and read-only legacy record archive."""
 
 from __future__ import annotations
 
@@ -26,6 +26,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 from .model_base import TRANSFER_BATCH_NUMBER_TYPE, utcnow
+
+
+class LegacyRecord(Base):
+    """Original rows from the retired workflow, keyed by their source identity."""
+
+    __tablename__ = "legacy_records"
+    source_table: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
 class MainSystemConfiguration(Base):
@@ -220,18 +229,6 @@ class OpeningStockSubmission(Base):
     request_hash: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-
-
-class SerialDeliveryPlan(Base):
-    """Versioned delivery installments; fulfillment is derived from confirmed shipments."""
-
-    __tablename__ = "serial_delivery_plans"
-    serial_no: Mapped[str] = mapped_column(String(80), primary_key=True)
-    installments: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_by: Mapped[str] = mapped_column(String(80), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (CheckConstraint("version > 0", name="ck_delivery_plan_version"),)
 
 
 class SharedMaterialGroup(Base):
@@ -847,34 +844,6 @@ class MaterialTransferAmendment(Base):
     response_reason: Mapped[str | None] = mapped_column(Text)
 
 
-class TransferAmendmentNotice(Base):
-    __tablename__ = "transfer_amendment_notices"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
-    amendment_id: Mapped[int] = mapped_column(
-        ForeignKey("material_transfer_amendments.id", ondelete="RESTRICT"), nullable=False
-    )
-    team_id: Mapped[int] = mapped_column(
-        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
-    )
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    message: Mapped[str] = mapped_column(String(300), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_tan_team_id", "team_id", "id"),)
-
-
-class TransferAmendmentNoticeRead(Base):
-    __tablename__ = "transfer_amendment_notice_reads"
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    notice_id: Mapped[int] = mapped_column(
-        ForeignKey("transfer_amendment_notices.id", ondelete="CASCADE"), primary_key=True
-    )
-    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_tanr_notice", "notice_id"),)
-
-
 class AdminAuditEvent(Base):
     """Immutable IDs are snapshots, not FKs: deleting identities retains history."""
 
@@ -970,12 +939,8 @@ class ProductionScheduleTask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     serial_no: Mapped[str] = mapped_column(String(80), nullable=False)
-    business_person_id: Mapped[int | None] = mapped_column(
-        ForeignKey("business_people.id", ondelete="RESTRICT"), index=True
-    )
     final_due_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivery_batches: Mapped[list | None] = mapped_column(JSON)
-    locked_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -1127,7 +1092,7 @@ class ProductionScheduleSource(Base):
 
 
 class ProductionScheduleDelivery(Base):
-    """A real transfer belongs to exactly one commitment, never two deadlines."""
+    """Each transfer line credits one commitment; a submission may serve several."""
 
     __tablename__ = "production_schedule_deliveries"
     transfer_id: Mapped[int] = mapped_column(
@@ -1154,32 +1119,6 @@ class ProductionScheduleEvent(Base):
     after: Mapped[dict] = mapped_column(JSON, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     __table_args__ = (Index("ix_pse_schedule", "schedule_id", "id"),)
-
-
-class ScheduleNotice(Base):
-    __tablename__ = "schedule_notices"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
-    schedule_id: Mapped[int] = mapped_column(
-        ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False
-    )
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
-    kind: Mapped[str] = mapped_column(String(24), nullable=False)
-    message: Mapped[str] = mapped_column(String(300), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_sn_team_id", "team_id", "id"),)
-
-
-class ScheduleNoticeRead(Base):
-    __tablename__ = "schedule_notice_reads"
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    notice_id: Mapped[int] = mapped_column(
-        ForeignKey("schedule_notices.id", ondelete="CASCADE"), primary_key=True
-    )
-    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_snr_notice", "notice_id"),)
 
 
 class MaterialInspection(Base):
@@ -1270,34 +1209,6 @@ class InspectionFeedbackTeam(Base):
     team_id: Mapped[int] = mapped_column(
         ForeignKey("teams.id", ondelete="RESTRICT"), primary_key=True, index=True
     )
-
-
-class QualityNotice(Base):
-    __tablename__ = "quality_notices"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
-    inspection_id: Mapped[int] = mapped_column(
-        ForeignKey("material_inspections.id", ondelete="RESTRICT"), nullable=False
-    )
-    team_id: Mapped[int] = mapped_column(
-        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
-    )
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    message: Mapped[str] = mapped_column(String(300), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_qn_team_id", "team_id", "id"),)
-
-
-class QualityNoticeRead(Base):
-    __tablename__ = "quality_notice_reads"
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    notice_id: Mapped[int] = mapped_column(
-        ForeignKey("quality_notices.id", ondelete="CASCADE"), primary_key=True
-    )
-    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_qnr_notice", "notice_id"),)
 
 
 class InspectionFeedbackEvent(Base):
@@ -1407,34 +1318,6 @@ class ProcessRoute(Base):
     )
 
 
-class ReworkNotice(Base):
-    """A team's durable inbox entry, committed with the rework transition."""
-
-    __tablename__ = "rework_notices"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
-    route_id: Mapped[int] = mapped_column(ForeignKey("process_routes.id", ondelete="RESTRICT"))
-    kind: Mapped[str] = mapped_column(String(16))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    read_at: Mapped[datetime | None] = mapped_column(DateTime)
-    __table_args__ = (
-        UniqueConstraint("team_id", "route_id", "kind", name="uq_rework_notice_delivery"),
-        Index("ix_rework_notices_team_read", "team_id", "read_at", "id"),
-    )
-
-
-class ReworkNoticeRead(Base):
-    __tablename__ = "rework_notice_reads"
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    notice_id: Mapped[int] = mapped_column(
-        ForeignKey("rework_notices.id", ondelete="CASCADE"), primary_key=True
-    )
-    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    __table_args__ = (Index("ix_rnr_notice", "notice_id"),)
-
-
 class ProcessRouteSerial(Base):
     """One normal engineering identity, shared by its immutable revisions."""
 
@@ -1536,9 +1419,7 @@ class WarehouseReceiptDocument(Base):
 
 
 # Register ledger/outbox hooks for HTTP and maintenance ORM writers alike.
-# Preserve historical table metadata without reviving the old workflows.
 from . import (  # noqa: E402
     inventory_events,  # noqa: F401
-    legacy_models,  # noqa: E402,F401
     stock_balances,  # noqa: E402,F401
 )

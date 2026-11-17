@@ -15,7 +15,7 @@ const watermelon = useWatermelonAppearance()
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
-import SpecificationInput from './SpecificationInput.vue'
+import MaterialDocumentInput from './MaterialDocumentInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
@@ -26,7 +26,6 @@ import { useDocumentImport } from '@/composables/useDocumentImport'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, RouteMaterialField, RouteOrderDocument } from '@/types/processRoute'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
-import type { MaterialInputField } from '@/services/materialInputApi'
 
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
@@ -41,6 +40,8 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import {
   materialDocumentTextFields,
+  materialSpecificationKeys as specificationKeys,
+  materialDocumentFormSections,
   isScrapType,
   isWeightOnlyType,
   materialTypeOptions,
@@ -81,31 +82,10 @@ const identity = computed(() => `${auth.currentUser?.id ?? ''}:${props.teamId}`)
 const saving = ref(false),
   locationBusy = ref(false)
 const error = ref('')
-const specificationKeys = ['finished_specification', 'transfer_specification']
-const documentSections = [
-  {
-    name: 'document',
-    label: '物料资料',
-    fields: materialDocumentTextFields.filter(
-      (field) =>
-        !field.multiline && !specificationKeys.includes(field.key) && field.key !== 'material_name',
-    ),
-  },
-  {
-    name: 'specification',
-    label: '规格工艺',
-    fields: materialDocumentTextFields.filter(
-      (field) =>
-        specificationKeys.includes(field.key) ||
-        ['technical_requirements', 'special_process'].includes(field.key),
-    ),
-  },
-  {
-    name: 'notes',
-    label: '补充说明',
-    fields: materialDocumentTextFields.filter((field) => field.key === 'material_description'),
-  },
-]
+const documentSections = materialDocumentFormSections.map((section) => ({
+  ...section,
+  fields: section.fields.filter((field) => field.key !== 'material_name'),
+}))
 const importedRoute = ref<ProcessRoute | null>(null)
 const importBusy = ref(false),
   routeEditorOpen = ref(false),
@@ -331,7 +311,6 @@ const intakeSerials = computed(() => [form.serialNo.trim()])
 watch(intakeSerials, () => {
   routeReviewed.value = importedRoute.value?.state === 'published'
 })
-const visibleSections = computed(() => documentSections)
 const detailsOpen = ref(false)
 const weightOnly = computed(() => isWeightOnlyType(form.materialType))
 const enteredQuantity = computed(() => (weightOnly.value ? 0 : form.quantity))
@@ -340,13 +319,7 @@ const specificationValidity = reactive<Record<string, boolean>>({
   finished_specification: true,
   transfer_specification: true,
 })
-const suggestionFields = [
-  'material_name',
-  'customer_code',
-  'product_code',
-  'part_no',
-  'outsourced_unit',
-]
+
 let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
 
@@ -949,7 +922,7 @@ onBeforeUnmount(() => {
               "
             />
           </CompactFormSection>
-          <template v-for="section in visibleSections" :key="section.name">
+          <template v-for="section in documentSections" :key="section.name">
             <CompactFormSection
               :title="section.label"
               :class="{
@@ -972,27 +945,11 @@ onBeforeUnmount(() => {
                     :source="documentSource(field.key) || autofill.source(field.key)"
                     :kind="documentSource(field.key) ? 'document' : undefined"
                     :modified="documentChanged(field.key)" /></template
-                ><SpecificationInput
-                  v-if="specificationKeys.includes(field.key)"
+                ><MaterialDocumentInput
                   v-model="form.document[field.key]"
-                  :label="field.label"
+                  :field="field"
                   :disabled="readonly"
-                  @validity-change="specificationValidity[field.key] = $event" /><MaterialInput
-                  v-else-if="suggestionFields.includes(field.key)"
-                  v-model="form.document[field.key]"
-                  :field="field.key as MaterialInputField"
-                  :label="field.label"
-                  :maxlength="field.maxLength"
-                  :disabled="readonly" /><ElInput
-                  v-else
-                  v-model="form.document[field.key]"
-                  :aria-label="field.label"
-                  :type="field.multiline ? 'textarea' : 'text'"
-                  :rows="2"
-                  :maxlength="field.maxLength"
-                  :show-word-limit="field.multiline"
-                  :disabled="readonly"
-                  placeholder="选填"
+                  @validity-change="specificationValidity[field.key] = $event"
               /></ElFormItem>
               <ElFormItem
                 v-if="section.name === 'document' && !weightOnly"

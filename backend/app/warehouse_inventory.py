@@ -780,6 +780,29 @@ def list_inventory(db, team_id, filters):
     }
 
 
+def source_group_conditions(db, team_id, group_id):
+    """Resolve a tracked receipt in its team before reading the related group."""
+    require_team(db, team_id)
+    origins = origin_columns()
+    scope = (
+        mt.next_team_id == team_id,
+        mt.status == "received",
+        mt.stock_tracked.is_(True),
+    )
+    anchor = (
+        db.execute(
+            select(*(column.label(name) for name, column in origins.items())).where(
+                mt.id == group_id, *scope
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if anchor is None:
+        raise HTTPException(404, "未找到该班组的库存来源")
+    return [*scope, *group_conditions(origins, anchor)]
+
+
 def list_group_sources(
     db,
     team_id,
@@ -792,28 +815,9 @@ def list_group_sources(
     query=None,
     record_filters=None,
 ):
-    require_team(db, team_id)
-    origins = origin_columns()
-    anchor = (
-        db.execute(
-            select(*(column.label(name) for name, column in origins.items())).where(
-                mt.id == group_id,
-                mt.next_team_id == team_id,
-                mt.status == "received",
-                mt.stock_tracked.is_(True),
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if anchor is None:
-        raise HTTPException(404, "未找到该班组的库存来源")
+    conditions = source_group_conditions(db, team_id, group_id)
     stock = stock_table(team_id)
-    statement = (
-        select(mt, stock)
-        .join(stock, stock.c.transfer_id == mt.id)
-        .where(*group_conditions(origins, anchor))
-    )
+    statement = select(mt, stock).join(stock, stock.c.transfer_id == mt.id).where(*conditions)
     if current_only:
         statement = statement.where(or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0))
     if query and query.strip():
@@ -859,28 +863,8 @@ def list_group_sources(
 
 
 def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
-    require_team(db, team_id)
-    origins = origin_columns()
-    anchor = (
-        db.execute(
-            select(*(column.label(name) for name, column in origins.items())).where(
-                mt.id == group_id,
-                mt.next_team_id == team_id,
-                mt.status == "received",
-                mt.stock_tracked.is_(True),
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if anchor is None:
-        raise HTTPException(404, "未找到该班组的库存来源")
-    sources = select(mt.id).where(
-        *group_conditions(origins, anchor),
-        mt.next_team_id == team_id,
-        mt.status == "received",
-        mt.stock_tracked.is_(True),
-    )
+    conditions = source_group_conditions(db, team_id, group_id)
+    sources = select(mt.id).where(*conditions)
     conditions = [
         mt.source_team_id == team_id,
         mt.status == "pending",
@@ -909,28 +893,8 @@ def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
 
 
 def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
-    require_team(db, team_id)
-    origins = origin_columns()
-    anchor = (
-        db.execute(
-            select(*(column.label(name) for name, column in origins.items())).where(
-                mt.id == group_id,
-                mt.next_team_id == team_id,
-                mt.status == "received",
-                mt.stock_tracked.is_(True),
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if anchor is None:
-        raise HTTPException(404, "未找到该班组的库存来源")
-    sources = select(mt.id).where(
-        *group_conditions(origins, anchor),
-        mt.next_team_id == team_id,
-        mt.status == "received",
-        mt.stock_tracked.is_(True),
-    )
+    conditions = source_group_conditions(db, team_id, group_id)
+    sources = select(mt.id).where(*conditions)
     # Each actual receipt/outbound document appears once, with its own TL number.
     # Match children by source identity, not their destination nature or purpose.
     scope = and_(
@@ -964,6 +928,3 @@ def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
         "page_size": page_size,
         "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
     }
-
-
-# Keep published warehouse URLs scoped to the warehouse for existing clients.

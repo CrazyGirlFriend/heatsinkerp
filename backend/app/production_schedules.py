@@ -576,8 +576,6 @@ def snapshot(db, plan):
 
 
 def record_event(db, plan, user, action, before=None, **extra):
-    from .schedule_notices import notify_change
-
     after = {**snapshot(db, plan), **extra}
     db.add(
         Event(
@@ -589,7 +587,6 @@ def record_event(db, plan, user, action, before=None, **extra):
             after=after,
         )
     )
-    notify_change(db, plan, action, before, after)
 
 
 def validate_plan(db, payload, plan=None):

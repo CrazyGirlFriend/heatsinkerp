@@ -61,8 +61,9 @@ def customer_shipments():
 
 def attributed_customer_shipments(db):
     # Prefer an explicit delivery link, then the source lot's processing/receipt link.
-    # Unbound historical shipments may belong to a single active order only; the
-    # same serial's shipment must never fulfill two orders or a later new order.
+    # Unbound historical shipments may belong to a single active order only;
+    # each shipment line credits one order. A combined submission may contain
+    # separate lines for different orders, even when they have the same serial.
     source = aliased(Transfer)
     direct, received = aliased(Delivery), aliased(Delivery)
     direct_plan, work_plan, received_plan = aliased(Plan), aliased(Plan), aliased(Plan)

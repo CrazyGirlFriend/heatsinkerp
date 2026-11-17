@@ -53,7 +53,7 @@ def test_qc_decision_does_not_automatically_create_engineering_or_move_stock(cli
     assert client.get(base(s, True) + "/overview").json()["totals"] == before
     assert chosen["disposition"] == "rework"
     assert client.get(path, headers=s["other_headers"]).status_code == 403
-    assert client.get(path).status_code == 403
+    assert client.get(path).status_code == 200
 
 
 def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client, inspection):
@@ -93,15 +93,8 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
         assert rows["items"][0]["rework_request"]["problem_names"] == ["表面划伤"]
         assert rows["items"][0]["rework_request"]["material_name"] == material_name
     saved = save_plan(client, s, route, instructions="轻磨除划伤，不得减薄超过0.01mm")
-    for team_id, actor in (
-        (scope["requesting_team_id"], headers),
-        (s["other"]["id"], s["other_headers"]),
-    ):
-        inbox = client.get(f"/api/rework-notices?team_id={team_id}", headers=actor).json()
-        assert inbox["total"] == inbox["unread"] == 1
-        message = inbox["items"][0]
-        assert message["kind"] == "ready" and message["submitting_team"] == "检验"
-        opened = client.get(f"/api/rework-notices/{message['id']}/route", headers=actor)
+    for actor in (headers, s["other_headers"]):
+        opened = client.get(f"/api/process-routes/{saved['id']}", headers=actor)
         assert opened.status_code == 200 and opened.json()["id"] == saved["id"]
     rows = client.get("/api/process-routes", params={"kind": "rework"}).json()["items"]
     assert rows[0]["rework_request"]["execution_team_names"] == [s["other"]["name"]]
@@ -144,7 +137,7 @@ def test_qc_cannot_submit_unrelated_stock_or_closed_issue(client, inspection):
         assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0
 
 
-def test_only_qc_can_submit_an_inspection_issue_but_team_can_submit_its_own_problem(
+def test_only_qc_team_can_submit_an_inspection_issue_but_owner_can_submit_own_problem(
     client, inspection
 ):
     s, lot, headers, _ = inspection
@@ -152,7 +145,7 @@ def test_only_qc_can_submit_an_inspection_issue_but_team_can_submit_its_own_prob
     assert decide(client, headers, issue).status_code == 200
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     before = client.get(base(s, True) + "/overview").json()["totals"]
-    for actor in (s["headers"], s["other_headers"], client.headers):
+    for actor in (s["headers"], s["other_headers"]):
         for issue_id in (issue["id"],) if actor == s["other_headers"] else (None, issue["id"]):
             denied = client.post(
                 "/api/process-routes/rework-requests",

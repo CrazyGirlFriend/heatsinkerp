@@ -195,12 +195,11 @@ it('keeps team reports distinct from inspection IDs and opens their linked rewor
   expect(wrapper.getComponent({ name: 'TeamProblemDetail' }).props('routeId')).toBe(report.id)
   expect(wrapper.findComponent(QualityFeedbackDetail).exists()).toBe(false)
 })
-it('opens the exact issue from a quality notification and passes its navigation key', async () => {
-  route.query = { issue: '42', business_notice: 'quality:8', notice: 'quality-landing' }
+it('opens the exact issue from its business link', async () => {
+  route.query = { issue: '42' }
   await render()
   expect(wrapper.getComponent(QualityFeedbackDetail).props()).toMatchObject({
     issueId: 42,
-    noticeKey: 'quality-landing',
   })
 })
 it('clears the larger page while a smaller page is loading and after a failed request', async () => {

@@ -122,8 +122,6 @@ def test_actual_transfer_counts_before_receipt_receipt_is_separate_and_void_reve
 
 
 def test_warehouse_overdue_clears_only_after_full_dispatch_and_returns_on_void(client, warehouse):
-    from app.models import ScheduleNotice
-    from app.schedule_notices import refresh_deadlines
     from test_team_dashboard import overview
 
     s = warehouse
@@ -151,18 +149,6 @@ def test_warehouse_overdue_clears_only_after_full_dispatch_and_returns_on_void(c
         client.get(URL, params={"team_id": s["team"]["id"], "status": "overdue"}).json()["total"]
         == 0
     )
-    with SessionLocal.begin() as db:
-        refresh_deadlines(
-            db, db.scalar(select(User).where(User.role == "ADMIN")), datetime(2027, 1, 1)
-        )
-        assert (
-            db.scalar(
-                select(func.count())
-                .select_from(ScheduleNotice)
-                .where(ScheduleNotice.schedule_id == item["id"], ScheduleNotice.kind == "overdue")
-            )
-            == 0
-        )
     sent = second.json()["items"][0]
     assert (
         client.delete(

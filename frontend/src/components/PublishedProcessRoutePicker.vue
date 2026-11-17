@@ -6,7 +6,6 @@ import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import WorkspaceTable from './WorkspaceTable.vue'
-import WatermelonButton from './watermelon/WatermelonButton.vue'
 import WatermelonSearch from './watermelon/WatermelonSearch.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
@@ -156,12 +155,7 @@ onBeforeUnmount(() => {
         :disabled="busy"
         @keyup.enter="search"
         @clear="search"
-      /><component
-        :is="watermelon ? WatermelonButton : ElButton"
-        :disabled="loading || busy"
-        @click="search"
-        >查询</component
-      >
+      /><ElButton :disabled="loading || busy" @click="search">查询</ElButton>
     </div>
     <WorkspaceTable
       :columns-key="pendingRework ? 'PendingReworkRoutePicker' : 'PublishedProcessRoutePicker-1'"
@@ -220,14 +214,7 @@ onBeforeUnmount(() => {
       layout="total, prev, pager, next"
       @current-change="changePage"
     />
-    <template #footer
-      ><component
-        :is="watermelon ? WatermelonButton : ElButton"
-        :disabled="busy"
-        @click="visible = false"
-        >取消</component
-      ></template
-    >
+    <template #footer><ElButton :disabled="busy" @click="visible = false">取消</ElButton></template>
   </AppDialog>
 </template>
 <style scoped>

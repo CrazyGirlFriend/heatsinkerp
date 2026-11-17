@@ -140,6 +140,24 @@ async function submit() {
 }
 
 describe('material transfer document form', () => {
+  it('keeps an uncertain submission id on retry and renews it after changing the transfer', async () => {
+    vi.mocked(materialTransferApi.create).mockRejectedValue(new Error('连接中断'))
+    await render()
+    await base()
+    await submit()
+    const first = vi.mocked(materialTransferApi.create).mock.calls[0]![0]
+    expect(first.idempotency_key).toBeTruthy()
+    expect(wrapper.text()).toContain('连接中断')
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenLastCalledWith(first)
+    await number('转料重量', 9)
+    await submit()
+    const edited = vi.mocked(materialTransferApi.create).mock.calls[2]![0]
+    expect(edited.weight).toBe(9)
+    expect(edited.idempotency_key).not.toBe(first.idempotency_key)
+    expect(wrapper.emitted('saved')).toBeUndefined()
+  })
+
   it('lets an administrator choose the source team and its sending employee', async () => {
     auth.isAdmin = true
     await render()

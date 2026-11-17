@@ -2,7 +2,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { computed, reactive } from 'vue'
 import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
-import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialReceiptScanner from './MaterialReceiptScanner.vue'
 import ReceiptPersonInput from './ReceiptPersonInput.vue'
@@ -84,13 +83,17 @@ describe('scan directly into receiving inventory', () => {
     })
     await flushPromises()
     expect(wrapper.classes()).toContain('receipt-scanner--watermelon')
-    expect(wrapper.getComponent(WatermelonButton).props('disabled')).toBe(true)
+    const receiveButton = () =>
+      wrapper.findAll('button').find((button) => button.text() === '入库')!
+    expect(receiveButton().classes()).toContain('wm-control-button')
+    expect(receiveButton().element.disabled).toBe(true)
+    await receiveButton().trigger('click')
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
     await flushPromises()
     await wrapper.get('input').setValue('TL000001')
-    expect(wrapper.getComponent(WatermelonButton).props('disabled')).toBe(false)
-    await wrapper.getComponent(WatermelonButton).trigger('click')
+    expect(receiveButton().element.disabled).toBe(false)
+    await receiveButton().trigger('click')
     await flushPromises()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith(
       'TL000001',

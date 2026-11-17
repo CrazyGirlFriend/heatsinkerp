@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
+from inventory_assertions import owned_total
 from receipt_helpers import receipt_post
 from test_material_stock import dispatch, endpoint, loss, receive_lot, totals  # noqa: F401
 from test_material_stock import stock_setup as stock_setup
@@ -45,8 +46,7 @@ def test_excess_split_receipt_replay_and_factory_conservation(client, stock_setu
     assert (totals(client, s)["owned_quantity"], totals(client, s)["owned_weight"]) == (-20, -2)
     downstream = client.get(f"/api/team-materials/{s['third']['id']}/overview").json()["totals"]
     assert (downstream["on_hand_quantity"], downstream["on_hand_weight"]) == (120, 12)
-    factory = client.get("/api/factory-dashboard").json()
-    assert (factory["stock"]["total"]["quantity"], factory["stock"]["total"]["weight"]) == (100, 10)
+    assert owned_total(client) == {"quantity": 100, "weight": 10}
     with SessionLocal() as db:
         b = db.get(MaterialStockBalance, lot["id"])
         assert (

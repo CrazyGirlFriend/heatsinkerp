@@ -16,21 +16,11 @@ import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
-import {
-  computed,
-  defineAsyncComponent,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-  nextTick,
-} from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowDown, Plus, Setting } from '@element-plus/icons-vue'
 import { ElIcon, ElTag, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute, useRouter } from 'vue-router'
-import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
-import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
@@ -52,9 +42,6 @@ const PendingReworkPicker = defineAsyncComponent(
 const selectingRework = ref(false)
 const location = useRoute()
 const router = useRouter()
-const noticeSection = ref('')
-const noticeStep = ref(0)
-let stopNoticeFocus: (() => void) | undefined
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const team = computed(() =>
@@ -165,8 +152,6 @@ async function designRework(route: ProcessRoute) {
   }
 }
 function closeEditor() {
-  stopNoticeFocus?.()
-  noticeSection.value = ''
   ++detailGeneration
   selected.value = null
   openingId.value = null
@@ -375,8 +360,6 @@ async function openDrawing(routeId: number, drawing: ProcessRouteDrawing) {
   }
 }
 async function open(id: number, startEditing = false) {
-  noticeSection.value = ''
-  stopNoticeFocus?.()
   const request = ++detailGeneration
   error.value = ''
   const row = items.value.find((item) => item.id === id)
@@ -398,44 +381,6 @@ async function open(id: number, startEditing = false) {
     if (request === detailGeneration) openingId.value = null
   }
 }
-async function openReworkNotice() {
-  const notice = parseNotice(location.query.business_notice)
-  if (notice?.source !== 'rework') return
-  const request = ++detailGeneration
-  const key = String(location.query.notice || '')
-  try {
-    const target = await businessNoticeApi.target('rework', notice.id)
-    if (request !== detailGeneration || key !== location.query.notice) return
-    await directory.refreshTeamDirectory()
-    if (request !== detailGeneration) return
-    stopNoticeFocus?.()
-    selected.value = null
-    await nextTick()
-    changeKind('rework')
-    noticeSection.value = target.section || 'problem'
-    noticeStep.value = target.step_index || 0
-    editing.value = canEdit.value && target.route?.state === 'draft'
-    selected.value = target.route || null
-  } catch (e) {
-    if (request === detailGeneration) noticeFailed(key, e)
-  }
-}
-async function focusReworkNotice() {
-  if (!noticeSection.value) return
-  await nextTick()
-  const selector =
-    noticeSection.value === 'problem'
-      ? '.route-rework-context'
-      : `[data-notice-route-step="${noticeStep.value}"]`
-  const element = document.querySelector<HTMLElement>(`.process-route-dialog ${selector}`)
-  if (!element) return
-  stopNoticeFocus?.()
-  stopNoticeFocus = focusNoticeTarget(element)
-  noticeOpened(String(location.query.notice || ''))
-}
-watch(() => [location.query.business_notice, location.query.notice], openReworkNotice, {
-  immediate: true,
-})
 watch(
   () => location.query.kind,
   (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
@@ -469,7 +414,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   routeMedia?.removeEventListener('change', resizeRouteSummary)
-  stopNoticeFocus?.()
   closeDrawing()
   ++generation
   ++detailGeneration
@@ -966,7 +910,6 @@ onBeforeUnmount(() => {
         :route="selected || undefined"
         :start-editing="editing"
         :view-only="!canEdit"
-        @opened="focusReworkNotice"
         @close="closeEditor"
         @saved="saved"
       />

@@ -135,26 +135,10 @@ def test_processing_stock_classifications_and_statistics_do_not_duplicate_intake
     assert all(row["entry_kind"] != "processing_output" for row in overview["recent_batches"])
     assert overview["period_totals"]["inbound"]["weight"] == 100
     assert overview["period_totals"]["internal"]["weight"] == 100
-    yielded = get(client, "/api/factory-dashboard/yields")["items"][0]
-    assert {
-        key: yielded[key]
-        for key in (
-            "input_weight",
-            "output_weight",
-            "lost_weight",
-            "current_weight",
-            "processing_delta_weight",
-        )
-    } == {
-        "input_weight": 100,
-        "output_weight": 0,
-        "lost_weight": 0,
-        "current_weight": 99.5,
-        "processing_delta_weight": -0.5,
-    }
-    detail = get(client, "/api/factory-dashboard/stock-detail", team_id=setup["other"]["id"])
-    assert detail["total"] == 4
-    assert get(client, "/api/factory-dashboard/deliveries")["total"] == 1
+    trace = get(client, "/api/material-trace", serial_no=lot["serial_no"])
+    assert trace["totals"]["on_hand"]["weight"] == 99.5
+    assert trace["totals"]["dispatched"]["weight"] == trace["totals"]["lost"]["weight"] == 0
+    assert trace["processing_delta_weight"] == -0.5
 
 
 def test_remaining_and_produced_with_identical_dimensions_stay_separate_through_reprocessing(
@@ -232,7 +216,7 @@ def test_remaining_and_produced_with_identical_dimensions_stay_separate_through_
     assert len(history["flows"]) == 2
 
 
-def test_measured_weight_delta_is_separate_from_input_yield_and_loss(client, machining):
+def test_measured_weight_delta_is_separate_from_intake_shipments_and_loss(client, machining):
     setup = machining
     lot = receive(client, setup)
     record = process(client, setup, lot, [output("produced", 10, 100.5, "20×20", "finished")])
@@ -255,22 +239,14 @@ def test_measured_weight_delta_is_separate_from_input_yield_and_loss(client, mac
         idempotency_key="ship-finished",
     )
     assert shipment.status_code == 201, shipment.text
-    yielded = get(client, "/api/factory-dashboard/yields")["items"][0]
-    assert yielded["status"] == "complete"
-    assert yielded["input_weight"] == 100 and yielded["output_weight"] == 100.5
-    assert (
-        yielded["processing_delta_weight"] == 0.5
-        and yielded["lost_weight"] == yielded["current_weight"] == 0
-    )
-    team = next(
-        row
-        for row in get(client, "/api/factory-dashboard/team-yields", serial_no=lot["serial_no"])[
-            "items"
-        ]
-        if row["team_id"] == setup["other"]["id"]
-    )
-    assert team["input_weight"] == 100 and team["output_weight"] == 100.5
-    assert team["processing_delta_weight"] == 0.5 and team["status"] == "complete"
+    trace = get(client, "/api/material-trace", serial_no=lot["serial_no"])
+    assert trace["totals"]["dispatched"]["weight"] == 100.5
+    assert trace["processing_delta_weight"] == 0.5
+    assert trace["totals"]["lost"]["weight"] == trace["totals"]["on_hand"]["weight"] == 0
+    history = get(client, base(setup, True) + "/serial-history", serial_no=lot["serial_no"])
+    assert sum(row["incoming_weight"] for row in history["groups"]) == 100
+    assert sum(row["outgoing_weight"] for row in history["groups"]) == 100.5
+    assert sum(row["processing_delta_weight"] for row in history["groups"]) == 0.5
 
 
 @pytest.mark.parametrize("step", [Decimal(".6"), Decimal("-.6")])
@@ -305,16 +281,6 @@ def test_repeated_processing_uses_one_signed_weight_difference_for_its_received_
     assert trace["max_weight_difference"] == 1.2 and trace["shortage"]["weight"] == 0
     assert trace["totals"]["lost"]["weight"] == 0
     assert sum(Decimal(str(item["processing_delta_weight"])) for item in trace["items"]) == 2 * step
-    yielded = get(client, "/api/factory-dashboard/yields")["items"][0]
-    assert yielded["status"] == "needs_review" and yielded["input_weight"] == 100
-    team = next(
-        row
-        for row in get(client, "/api/factory-dashboard/team-yields", serial_no=lot["serial_no"])[
-            "items"
-        ]
-        if row["team_id"] == setup["other"]["id"]
-    )
-    assert team["status"] == "needs_review" and team["max_weight_difference"] == 1.2
     # A correction reduces the net difference instead of accumulating absolute
     # measurements or granting a fresh allowance to this newly created lot.
     corrected = process(
@@ -325,7 +291,10 @@ def test_repeated_processing_uses_one_signed_weight_difference_for_its_received_
     own = get(client, f"{url}/stock/{child['id']}/quantity-adjustments")
     assert own["items"][0]["id"] == corrected["id"] and own["total"] == 1
     assert own["origin_processing_record"]["id"] == second["id"]
-    assert get(client, "/api/factory-dashboard/yields")["items"][0]["status"] == "in_progress"
+    trace = get(client, "/api/material-trace", serial_no=lot["serial_no"])
+    assert trace["weight_difference"] == float(step)
+    assert trace["max_weight_difference"] == 0.6
+    assert trace["totals"]["on_hand"]["weight"] == float(100 + step)
 
 
 def test_sibling_processing_outputs_share_root_without_duplicating_group_difference(
@@ -347,8 +316,6 @@ def test_sibling_processing_outputs_share_root_without_duplicating_group_differe
     assert len(inventory) == 1
     assert inventory[0]["weight_difference"] == inventory[0]["max_weight_difference"] == 1.2
     assert inventory[0]["on_hand_weight"] == 101.2
-    yielded = get(client, "/api/factory-dashboard/yields")["items"][0]
-    assert yielded["input_weight"] == 100 and yielded["status"] == "needs_review"
     trace = get(client, "/api/material-trace", serial_no=lot["serial_no"])
     assert trace["weight_difference"] == trace["max_weight_difference"] == 1.2
 
@@ -379,7 +346,6 @@ def test_processing_and_outbound_overage_accumulate_but_real_receipt_starts_new_
     assert trace["shortage"]["weight"] == 0.6
     assert trace["processing_delta_weight"] == 0.6
     assert trace["weight_difference"] == trace["max_weight_difference"] == 1.2
-    assert get(client, "/api/factory-dashboard/yields")["items"][0]["status"] == "needs_review"
 
 
 def test_processing_record_current_outputs_exclude_earlier_reserved_input(client, machining):
@@ -398,7 +364,7 @@ def test_processing_record_current_outputs_exclude_earlier_reserved_input(client
     assert current["in_transit_weight"] == 0
 
 
-def test_measured_gain_then_full_reallocation_has_no_unexplained_negative_input(client, machining):
+def test_measured_gain_then_full_reallocation_preserves_stock_and_provenance(client, machining):
     from test_serial_reallocations import reallocate
 
     setup = machining
@@ -416,10 +382,9 @@ def test_measured_gain_then_full_reallocation_has_no_unexplained_negative_input(
         client, setup, pending.json()["items"][0], quantity=10, weight=100.6, serial_no="NEW-SERIAL"
     )
     assert assigned.status_code == 201, assigned.text
-    original = next(
-        row
-        for row in get(client, "/api/factory-dashboard/yields")["items"]
-        if row["serial_no"] == lot["serial_no"]
-    )
-    assert original["input_weight"] == -0.6 and original["processing_delta_weight"] == 0.6
-    assert original["status"] == "complete" and original["rate"] is None
+    original = get(client, "/api/material-trace", serial_no=lot["serial_no"])
+    target = get(client, "/api/material-trace", serial_no="NEW-SERIAL")
+    assert original["processing_delta_weight"] == 0.6
+    assert original["totals"]["on_hand"]["weight"] == 0
+    assert target["totals"]["on_hand"]["weight"] == 100.6
+    assert original["reallocations"][0]["weight"] == target["reallocations"][0]["weight"] == 100.6

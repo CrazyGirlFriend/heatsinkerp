@@ -26,11 +26,6 @@ async function request<T>(url: string, method = 'GET', body?: unknown): Promise<
 }
 
 export const warehouseLocationApi = {
-  list(query = '', page = 1, pageSize = 20, state?: WarehouseLocationFilter) {
-    const params = new URLSearchParams({ query, page: String(page), page_size: String(pageSize) })
-    if (state) params.set('state', state)
-    return request<components['schemas']['WarehouseLocationPage']>(`/warehouse-locations?${params}`)
-  },
   save(payload: { name: string; active: boolean; expected_version?: number }, id?: number) {
     return request<WarehouseLocation>(
       `/warehouse-locations${id ? `/${id}` : ''}`,

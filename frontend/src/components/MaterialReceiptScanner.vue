@@ -7,7 +7,6 @@ import ElButton from '@/components/AppButton.vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { IconScan } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
-import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { showToast, type ToastTone } from '@/stores/toast'
 import { materialTransferApi } from '@/services/materialTransferApi'
@@ -223,12 +222,12 @@ onBeforeUnmount(() => {
           :disabled="!allowed || paused || !receiver || selectingReceiver"
           @keyup.enter="scan()"
         />
-        <component
-          :is="watermelon ? WatermelonButton : ElButton"
-          v-bind="watermelon ? { primary: true } : { icon: FullScreen }"
+        <ElButton
+          :type="watermelon ? 'primary' : undefined"
+          :icon="watermelon ? undefined : FullScreen"
           :disabled="!allowed || paused || !receiver || selectingReceiver || !value.trim()"
           @click="scan()"
-          ><IconScan v-if="watermelon" :size="17" aria-hidden="true" />入库</component
+          ><IconScan v-if="watermelon" :size="17" aria-hidden="true" />入库</ElButton
         >
       </div>
       <span v-if="currentCode" class="scanner-progress" role="status"

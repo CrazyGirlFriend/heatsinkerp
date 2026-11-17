@@ -78,6 +78,7 @@ import {
   amountError,
   dispatchableAmounts,
   materialRequestKey,
+  createMaterialSubmissionKey,
   outboundRemainder,
 } from '@/utils/materialStock'
 import type { WarehouseLeaseGroup } from '@/services/warehouseLocationApi'
@@ -169,7 +170,6 @@ function converted(line: (typeof lines.value)[number]) {
   )
 }
 const form = reactive({
-  reworkReturn: false,
   nextTeamId: '' as string | number,
   entryKind: 'transfer' as DispatchKind,
   externalDestination: '',
@@ -212,8 +212,7 @@ const processing = reactive<
   >
 >({})
 let generation = 0
-let requestKey = ''
-let fingerprint = ''
+const submission = createMaterialSubmissionKey()
 const isLoss = computed(() => props.mode === 'loss')
 const sourceWarehouse = computed(
   () =>
@@ -677,7 +676,6 @@ watch(
         form.externalDestination = props.initialSchedule.external_destination
       }
     }
-    form.reworkReturn = false
     form.notes = ''
     form.reason = ''
     sender.value = null
@@ -686,8 +684,7 @@ watch(
     Object.keys(clearanceSelected).forEach((key) => delete clearanceSelected[key])
     errorMessage.value = ''
     balanceNotice.value = ''
-    requestKey = ''
-    fingerprint = ''
+    submission.reset()
   },
   { immediate: true },
 )
@@ -832,7 +829,6 @@ async function submit() {
   }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = {
     sent_employee_id: sender.value?.id ?? 0,
-    ...(!external.value && form.reworkReturn ? { rework_return: true } : {}),
     ...(isExternalEntryKind(form.entryKind)
       ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() }
       : { next_team_id: Number(form.nextTeamId) }),
@@ -911,15 +907,11 @@ async function submit() {
       reason: draft.reason.trim(),
       ...(draft.status ? { processing_status: draft.status } : {}),
     }))
-  const nextFingerprint = JSON.stringify({
+  const requestKey = submission.get({
     teamId,
     mode: props.mode,
     body: isLoss.value ? lossBody : dispatchBody,
   })
-  if (!requestKey || fingerprint !== nextFingerprint) {
-    requestKey = materialRequestKey()
-    fingerprint = nextFingerprint
-  }
   saving.value = true
   try {
     await auth.refreshCurrentUser()
@@ -965,7 +957,6 @@ function canShare(line: (typeof lines.value)[number]) {
     !isLoss.value &&
     sourceWarehouse.value &&
     !external.value &&
-    !form.reworkReturn &&
     !isScrapType(line.materialType) &&
     !lot.shared_group_id &&
     !lot.rework_route_id &&
@@ -1844,18 +1835,6 @@ watch(
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 1px;
-}
-.dispatch-rework {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
-}
-.dispatch-rework .el-checkbox {
-  height: 24px;
-  margin: 0;
 }
 .dispatch-context-fields {
   grid-template-columns: repeat(2, minmax(0, 1fr));

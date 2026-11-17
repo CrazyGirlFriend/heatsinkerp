@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt && pip check
 COPY backend/app/ /app/app/
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/alembic/ /app/alembic/
+COPY backend/migration_support/ /app/migration_support/
 
 # Each worker receives RabbitMQ fan-out. Keep the tested deployment worker count.
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log"]

@@ -1,9 +1,9 @@
-"""QC submissions and engineering replies are durable, scoped and stock-neutral."""
+"""QC submissions remain available through engineering and business workspaces."""
 
 from uuid import uuid4
 
 from app.database import SessionLocal
-from app.models import MaterialStockBalance, ProcessRoute, ReworkNotice, Team
+from app.models import MaterialStockBalance, ProcessRoute, Team
 from sqlalchemy import select
 from test_engineered_rework import approved_quality_issue, save_plan
 from test_engineering_team import author
@@ -39,7 +39,7 @@ def prepare(client, warehouse):
     return lot, body, engineering_id, engineering_headers
 
 
-def test_qc_problem_notifies_engineering_then_authoring_notifies_submitter(client, warehouse):
+def test_qc_problem_and_published_rework_remain_visible_without_messages(client, warehouse):
     lot, body, engineering_id, engineering_headers = prepare(client, warehouse)
     headers = warehouse["rework_qc_headers"]
     with SessionLocal() as db:
@@ -54,50 +54,34 @@ def test_qc_problem_notifies_engineering_then_authoring_notifies_submitter(clien
     assert route["state"] == "draft"
     retry = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert retry.status_code == 201 and retry.json()["id"] == route["id"]
-    path = f"/api/rework-notices?team_id={engineering_id}"
-    inbox = client.get(path, headers=engineering_headers).json()
-    assert inbox["unread"] == inbox["total"] == 1
-    notice = inbox["items"][0]
-    assert notice["kind"] == "requested" and notice["problem"] == body["reason"]
-    assert notice["submitting_team"] == "检验"
-    assert (
-        client.get(f"/api/rework-notices/{notice['id']}/route", headers=headers).status_code == 403
-    )
-    assert client.get(path, headers=headers).status_code == 403
-    assert (
-        client.post(f"/api/rework-notices/{notice['id']}/read", headers=headers).status_code == 403
-    )
-    for _ in range(2):
-        assert (
-            client.post(
-                f"/api/rework-notices/{notice['id']}/read", headers=engineering_headers
-            ).status_code
-            == 200
-        )
-    assert client.get(path, headers=engineering_headers).json()["unread"] == 0
+    drafts = client.get(
+        "/api/process-routes",
+        headers=engineering_headers,
+        params={"kind": "rework", "state": "draft"},
+    ).json()
+    assert drafts["pending_rework_count"] == 1
+    assert drafts["items"][0]["id"] == route["id"]
     with SessionLocal() as db:
         assert db.get(ProcessRoute, route["id"]).state == "draft"
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
     saved = save_plan(client, warehouse, route)
-    # Publishing/retrying does not send duplicate messages or physically transfer anything.
+    # Publishing/retrying exposes instructions without physically transferring material.
     repeat = client.post(
         f"/api/process-routes/{saved['id']}/publish",
         headers=author(client)[0],
         json={"version": saved["version"]},
     )
     assert repeat.status_code == 200, repeat.text
-    team_inbox = client.get(f"/api/rework-notices?team_id={team_id}", headers=headers).json()
-    assert team_inbox["unread"] == team_inbox["total"] == 1
-    assert team_inbox["items"][0]["kind"] == "ready"
+    ready = client.get(f"/api/process-routes/{saved['id']}", headers=headers)
+    assert ready.status_code == 200
+    assert ready.json()["state"] == "published"
     assert client.get(base(warehouse, True) + "/overview").json()["totals"] == before
-    with SessionLocal() as db:
-        assert len(list(db.scalars(select(ReworkNotice)))) == 3
 
 
 def test_direct_request_cannot_mutate_foreign_stock_and_failure_sends_no_message(client, warehouse):
     lot, body, engineering_id, _ = prepare(client, warehouse)
     before = client.get(base(warehouse, True) + "/overview").json()["totals"]
-    for headers in (warehouse["headers"], warehouse["other_headers"], client.headers):
+    for headers in (warehouse["headers"], warehouse["other_headers"]):
         result = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
         assert result.status_code == 403, result.text
     for suffix in ("", f"?lot_id={lot['id']}"):
@@ -113,11 +97,16 @@ def test_direct_request_cannot_mutate_foreign_stock_and_failure_sends_no_message
         headers=warehouse["rework_qc_headers"],
     )
     assert stale.status_code == 409
-    assert client.get(f"/api/rework-notices?team_id={engineering_id}").json()["total"] == 0
+    assert (
+        client.get("/api/process-routes", params={"kind": "rework", "state": "draft"}).json()[
+            "total"
+        ]
+        == 0
+    )
     assert client.get(base(warehouse, True) + "/overview").json()["totals"] == before
 
 
-def test_existing_message_opens_the_current_engineered_revision(client, warehouse):
+def test_team_rework_list_opens_the_current_engineered_revision(client, warehouse):
     _, body, engineering_id, _ = prepare(client, warehouse)
     headers = warehouse["other_headers"]
     result = client.post(
@@ -125,15 +114,13 @@ def test_existing_message_opens_the_current_engineered_revision(client, warehous
     )
     assert result.status_code == 201
     saved = save_plan(client, warehouse, result.json())
-    messages = client.get(
-        f"/api/rework-notices?team_id={warehouse['other']['id']}", headers=headers
-    ).json()
-    notice_id = messages["items"][0]["id"]
     revision = client.post(
         f"/api/process-routes/{saved['id']}/revise", headers=author(client)[0]
     ).json()
     latest = save_plan(client, warehouse, revision, instructions="最新修订的要求")
-    opened = client.get(f"/api/rework-notices/{notice_id}/route", headers=headers)
+    rows = client.get("/api/process-routes", params={"kind": "rework"}, headers=headers).json()
+    assert [row["id"] for row in rows["items"]] == [latest["id"]]
+    opened = client.get(f"/api/process-routes/{latest['id']}", headers=headers)
     assert opened.status_code == 200, opened.text
     assert opened.json()["id"] == latest["id"]
     assert opened.json()["steps"][0]["instructions"] == "最新修订的要求"

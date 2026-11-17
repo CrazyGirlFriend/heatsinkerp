@@ -23,17 +23,15 @@ from .models import (
     MaterialLoss,
     MaterialQuantityAdjustment,
     MaterialTransfer,
+    MaterialTransferAmendment,
     NotificationOutbox,
     OpeningStockSubmission,
     ProcessRoute,
     ProductionSchedule,
-    ReworkNotice,
-    SerialDeliveryPlan,
     SerialUrgency,
     Team,
     TeamProcessingTask,
     TeamPurpose,
-    TransferAmendmentNotice,
     User,
     WarehouseLocation,
     utcnow,
@@ -169,11 +167,10 @@ class InventoryEvents:
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
 WATCHED = (
-    ReworkNotice,
-    TransferAmendmentNotice,
     ProcessRoute,
     ProductionSchedule,
     MaterialTransfer,
+    MaterialTransferAmendment,
     MaterialLoss,
     MaterialQuantityAdjustment,
     MaterialInspection,
@@ -181,7 +178,6 @@ WATCHED = (
     InspectionFeedbackEvent,
     MaterialDispatch,
     SerialUrgency,
-    SerialDeliveryPlan,
     Team,
     User,
     AuthSession,
@@ -196,7 +192,14 @@ PENDING = "inventory_changed_transactions"
 def affected_teams(row):
     state = inspect(row)
     result = set()
-    for name in ("source_team_id", "next_team_id", "team_id", "inspection_team_id"):
+    for name in (
+        "source_team_id",
+        "next_team_id",
+        "team_id",
+        "inspection_team_id",
+        "requester_team_id",
+        "counterparty_team_id",
+    ):
         if name not in state.attrs:
             continue
         history = state.attrs[name].history
@@ -253,7 +256,7 @@ def change_for(row, db):
         )
     if isinstance(row, Team):
         return InventoryChange(team_ids=None, directory=True)
-    if isinstance(row, (SerialUrgency, SerialDeliveryPlan)):
+    if isinstance(row, SerialUrgency):
         # The serial may exist in several teams; refresh all affected views.
         return InventoryChange(team_ids=None)
     if (

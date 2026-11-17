@@ -1,13 +1,11 @@
-import { httpClient, httpRequest, HttpRequestError } from './httpClient'
+import { httpClient, httpRequest, HttpRequestError, httpErrorMessage } from './httpClient'
 import type {
   ProcessRoute,
   ProcessRouteContext,
   RouteOrderDocument,
-  ReworkRound,
   ReworkSource,
 } from '@/types/processRoute'
 import type { MaterialPage, QuantityAdjustmentContext } from '@/types/teamMaterials'
-import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 export class ProcessRouteSerialConflictError extends Error {}
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   try {
@@ -35,14 +33,8 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
         '工艺单上传被服务器拒绝，请使用不超过 5 MB 的 .docx 文件；若文件符合要求，请联系管理员检查上传限制。',
         { cause: error },
       )
-    if (
-      error instanceof HttpRequestError &&
-      error.body &&
-      typeof error.body === 'object' &&
-      'detail' in error.body &&
-      typeof error.body.detail === 'string'
-    )
-      throw new Error(error.body.detail, { cause: error })
+    const message = httpErrorMessage(error)
+    if (message !== undefined) throw new Error(message, { cause: error })
     throw error
   }
 }
@@ -90,8 +82,6 @@ export const processRouteApi = {
     >(
       `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}${kind === 'rework' ? '&rework_scope=' + reworkScope : ''}${tableQuery ? '&table_query=' + encodeURIComponent(tableQuery) : ''}`,
     ),
-  options: (teamId: number) =>
-    request<{ tasks: TeamProcessingTask[]; purposes: TeamPurpose[] }>(`/options/${teamId}`),
   requestRework: (body: {
     source_transfer_id: number
     rework_of_id: number
@@ -111,7 +101,6 @@ export const processRouteApi = {
     request<QuantityAdjustmentContext>(
       `/rework-sources?lot_id=${id}${problemTeamId ? '&problem_team_id=' + problemTeamId : ''}`,
     ),
-  reworkRounds: (id: number) => request<ReworkRound[]>(`/${id}/rework-rounds`),
   resumeRework: (id: number, revision: number) =>
     request(`/rework-lots/${id}/resume`, 'POST', { expected_revision: revision }),
   resolve: (serialNo: string) =>

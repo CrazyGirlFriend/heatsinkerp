@@ -204,8 +204,6 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert totals["on_hand_weight"] == 100 and totals["received_weight"] == 100
     assert totals["on_hand_quantity"] == 50 and totals["scrap_weight"] == 7
-    plans = client.get("/api/factory-dashboard/deliveries").json()
-    assert plans["total"] == 2
     import json
     import os
     from pathlib import Path
@@ -368,15 +366,14 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
     assert trace(client, "ORDER-B")["totals"]["on_hand"]["weight"] == 39.9
     assert origin["id"] in {row["id"] for row in final["items"]}
     assert any(row["other_processing_outputs"] for row in final["items"])
-    plans = client.get("/api/factory-dashboard/deliveries").json()["items"]
-    assert next(row for row in plans if row["serial_no"] == "ORDER-A")["shipped"] == 30
-    assert next(row for row in plans if row["serial_no"] == "ORDER-B")["shipped"] == 0
-    yields = client.get("/api/factory-dashboard/yields").json()["items"]
-    assert {row["serial_no"] for row in yields} == {"ORDER-A", "ORDER-B"}
-    a_yield = next(row for row in yields if row["serial_no"] == "ORDER-A")
-    assert a_yield["input_weight"] == a_yield["shared_allocated_weight"] == 60.5
-    assert a_yield["reallocated_in_weight"] == 0
-    assert a_yield["status"] == "complete" and a_yield["rate"] == 100
+    assert trace(client, "ORDER-B")["totals"]["dispatched"]["quantity"] == 0
+    allocated = [
+        row
+        for row in final["items"]
+        if row["entry_kind"] == "processing_output" and not row["context_only"]
+    ]
+    assert sum(row["weight"] for row in allocated) == 60.5
+    assert final["reallocations"] == []
 
 
 def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, warehouse):

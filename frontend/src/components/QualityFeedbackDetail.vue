@@ -40,16 +40,11 @@ import {
   inspectionProblemLabel,
   type InspectionRecord,
 } from '@/services/inspectionApi'
-import { materialRequestKey } from '@/utils/materialStock'
-import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
-const props = defineProps<{ issueId: number; noticeKey?: string }>()
+const props = defineProps<{ issueId: number }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 const visible = ref(true)
-const dialogOpened = ref(false)
-const noticeHeading = ref<HTMLElement>()
-let openedNotice = ''
-let stopNoticeFocus: (() => void) | undefined
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const detail = ref<QualityFeedbackDetail>(),
@@ -88,9 +83,8 @@ const canReply = computed(
       ? !!detail.value?.involved_teams.length
       : detail.value?.involved_teams.some((t) => t.team_id === Number(auth.currentUser?.team_id))),
 )
-let generation = 0,
-  fingerprint = '',
-  requestKey = ''
+let generation = 0
+const submission = createMaterialSubmissionKey()
 function assign(row: QualityFeedbackDetail) {
   detail.value = row
   if (!row.involved_teams.some((t) => t.team_id === replyTeamId.value))
@@ -111,7 +105,6 @@ async function load() {
   } catch (e) {
     if (token === generation) {
       error.value = e instanceof Error ? e.message : '质量反馈读取失败'
-      if (props.noticeKey) noticeFailed(props.noticeKey, e)
     }
   } finally {
     if (token === generation) loading.value = false
@@ -138,11 +131,7 @@ async function save(decision: boolean) {
     involved_team_ids: involved.value,
     release_legacy_hold: release.value,
   }
-  const next = JSON.stringify([props.issueId, decision, decision ? decisionBody : body])
-  if (next !== fingerprint) {
-    fingerprint = next
-    requestKey = materialRequestKey()
-  }
+  const requestKey = submission.get([props.issueId, decision, decision ? decisionBody : body])
   busy.value = true
   error.value = ''
   try {
@@ -172,24 +161,6 @@ watch(reworkOpen, (open) => {
   if (!open) reworkContext.value = undefined
 })
 watch(
-  [dialogOpened, noticeHeading, detail, () => props.noticeKey],
-  () => {
-    if (
-      !dialogOpened.value ||
-      !noticeHeading.value ||
-      detail.value?.id !== props.issueId ||
-      !props.noticeKey ||
-      props.noticeKey === openedNotice
-    )
-      return
-    stopNoticeFocus?.()
-    stopNoticeFocus = focusNoticeTarget(noticeHeading.value)
-    openedNotice = props.noticeKey
-    noticeOpened(props.noticeKey)
-  },
-  { flush: 'post' },
-)
-watch(
   () => props.issueId,
   () => {
     detail.value = undefined
@@ -203,7 +174,6 @@ watch(
 )
 onBeforeUnmount(() => {
   ++generation
-  stopNoticeFocus?.()
 })
 </script>
 <template>
@@ -218,7 +188,6 @@ onBeforeUnmount(() => {
     :close-on-press-escape="!busy"
     :show-close="!busy"
     @closed="emit('close')"
-    @opened="dialogOpened = true"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <FormWorkspace v-if="detail">
@@ -239,7 +208,7 @@ onBeforeUnmount(() => {
           ]"
         />
       </template>
-      <div ref="noticeHeading" class="quality-detail-heading">
+      <div class="quality-detail-heading">
         <strong>{{ detail.serial_no }} · {{ detail.material_name }}</strong
         ><ElTag>{{ feedbackStates[detail.feedback_status] }}</ElTag
         ><span>{{ detail.batch_no }}</span

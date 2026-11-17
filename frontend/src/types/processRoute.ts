@@ -73,10 +73,6 @@ export interface ProcessRoute {
   published_at: string | null
 }
 export type ReworkProgress = Contract['ReworkProgressResponse']
-export type ReworkRound = Omit<Contract['ReworkRoundResponse'], 'request' | 'steps'> & {
-  request: ReworkRouteRequest
-  steps: ProcessRouteStep[]
-}
 export const reworkProgressLabels: Record<ReworkProgress['state'], string> = {
   awaiting_route: '待制定',
   processing: '待加工完成',

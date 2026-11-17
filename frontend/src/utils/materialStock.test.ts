@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { amountError, stockAvailable, stockSelectable, outboundRemainder } from './materialStock'
+import {
+  amountError,
+  stockAvailable,
+  stockSelectable,
+  outboundRemainder,
+  createMaterialSubmissionKey,
+} from './materialStock'
 import type { StockBatch } from '@/types/teamMaterials'
 
 const stock = {
@@ -68,4 +74,19 @@ it('prevents held lots from outbound selection while retaining physical balance'
   expect(stockSelectable(held)).toBe(false)
   expect(stockAvailable(held)).toBe(true)
   expect(stockSelectable({ ...held, inspection_hold_id: null })).toBe(true)
+})
+
+it('reuses submission identity for retries, but separates edits, forms and reopened drafts', () => {
+  const submission = createMaterialSubmissionKey()
+  const payload = { teamId: 2, lines: [{ source: 10, quantity: 8 }] }
+  const original = submission.get(payload)
+  expect(original).toBeTruthy()
+  expect(submission.get(JSON.parse(JSON.stringify(payload)))).toBe(original)
+  expect(createMaterialSubmissionKey().get(payload)).not.toBe(original)
+  const edited = submission.get({ ...payload, lines: [{ source: 10, quantity: 9 }] })
+  expect(edited).not.toBe(original)
+  expect(submission.get(payload)).not.toBe(original)
+  const beforeReset = submission.get(payload)
+  submission.reset()
+  expect(submission.get(payload)).not.toBe(beforeReset)
 })

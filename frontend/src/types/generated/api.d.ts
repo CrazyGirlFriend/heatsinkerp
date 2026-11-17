@@ -157,211 +157,6 @@ export interface paths {
     patch: operations['update_profile_api_auth_me_patch']
     trace?: never
   }
-  '/api/business-notices': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Inbox */
-    get: operations['inbox_api_business_notices_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/business-notices/{source}/{notice_id}/read': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Mark Read */
-    post: operations['mark_read_api_business_notices__source___notice_id__read_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/business-notices/{source}/{notice_id}/target': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Target */
-    get: operations['target_api_business_notices__source___notice_id__target_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/business-notices/read-all': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Read All */
-    post: operations['read_all_api_business_notices_read_all_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Dashboard */
-    get: operations['get_dashboard_api_factory_dashboard_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/deliveries': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Deliveries */
-    get: operations['get_deliveries_api_factory_dashboard_deliveries_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/delivery-plan': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Plan */
-    get: operations['get_plan_api_factory_dashboard_delivery_plan_get']
-    /** Save Plan */
-    put: operations['save_plan_api_factory_dashboard_delivery_plan_put']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/serials': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Serials */
-    get: operations['get_serials_api_factory_dashboard_serials_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/shipments': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Shipments */
-    get: operations['get_shipments_api_factory_dashboard_shipments_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/stock-detail': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Stock Detail */
-    get: operations['get_stock_detail_api_factory_dashboard_stock_detail_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/team-yields': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Team Yields */
-    get: operations['get_team_yields_api_factory_dashboard_team_yields_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/factory-dashboard/yields': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Yields */
-    get: operations['get_yields_api_factory_dashboard_yields_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/factory-overview': {
     parameters: {
       query?: never
@@ -967,23 +762,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/process-routes/{route_id}/rework-rounds': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Rework Rounds */
-    get: operations['rework_rounds_api_process_routes__route_id__rework_rounds_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/process-routes/{route_id}/source': {
     parameters: {
       query?: never
@@ -1045,23 +823,6 @@ export interface paths {
     }
     /** Lot Route */
     get: operations['lot_route_api_process_routes_lots__lot_id__get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/process-routes/options/{team_id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Execution Options */
-    get: operations['execution_options_api_process_routes_options__team_id__get']
     put?: never
     post?: never
     delete?: never
@@ -1700,125 +1461,6 @@ export interface paths {
     get: operations['download_document_api_receipt_documents__document_id__file_get']
     put?: never
     post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/rework-notices': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Notices */
-    get: operations['list_notices_api_rework_notices_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/rework-notices/{notice_id}/read': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Mark Read */
-    post: operations['mark_read_api_rework_notices__notice_id__read_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/rework-notices/{notice_id}/route': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Notice Route */
-    get: operations['notice_route_api_rework_notices__notice_id__route_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/schedule-notices': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Inbox */
-    get: operations['inbox_api_schedule_notices_get']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/schedule-notices/{notice_id}/read': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Mark Read */
-    post: operations['mark_read_api_schedule_notices__notice_id__read_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/schedule-notices/read-all': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Read All */
-    post: operations['read_all_api_schedule_notices_read_all_post']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/schedule-notices/refresh': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Refresh */
-    post: operations['refresh_api_schedule_notices_refresh_post']
     delete?: never
     options?: never
     head?: never
@@ -2823,23 +2465,6 @@ export interface components {
       /** Weight */
       weight: number
     }
-    /** AttentionSerialResponse */
-    AttentionSerialResponse: {
-      /** Age Days */
-      age_days: number
-      /** Materials */
-      materials: string[]
-      /** Overdue Days */
-      overdue_days: number
-      /** Reasons */
-      reasons: string[]
-      /** Remaining */
-      remaining: number | null
-      /** Serial No */
-      serial_no: string
-      /** Teams */
-      teams: string[]
-    }
     /** BatchPlanWrite */
     BatchPlanWrite: {
       /** Batches */
@@ -2989,83 +2614,6 @@ export interface components {
       /** Route Id */
       route_id: number
     }
-    /** BusinessNoticePageResponse */
-    BusinessNoticePageResponse: {
-      /** Items */
-      items: components['schemas']['BusinessNoticeResponse'][]
-      latest: components['schemas']['NoticeCursorsResponse']
-      /** Total */
-      total: number
-      /** Unread */
-      unread: number
-    }
-    /** BusinessNoticeReadAll */
-    BusinessNoticeReadAll: {
-      /**
-       * Quality
-       * @default 0
-       */
-      quality: number
-      /** Rework */
-      rework: number
-      /** Schedule */
-      schedule: number
-      /**
-       * Transfer
-       * @default 0
-       */
-      transfer: number
-    }
-    /** BusinessNoticeResponse */
-    BusinessNoticeResponse: {
-      /** Action Required */
-      action_required?: boolean | null
-      /** Amendment Id */
-      amendment_id?: number | null
-      /** Amendment Status */
-      amendment_status?: ('pending' | 'approved' | 'rejected' | 'cancelled') | null
-      /** Batch No */
-      batch_no: string | null
-      /** Created At */
-      created_at: string
-      /** Id */
-      id: number
-      /** Kind */
-      kind:
-        | (
-            | 'new'
-            | 'changed'
-            | 'cancelled'
-            | 'upstream'
-            | 'final_due'
-            | 'due_soon'
-            | 'overdue'
-            | 'returned'
-            | 'locked'
-            | 'unlocked'
-          )
-        | ('requested' | 'ready')
-        | (
-            | 'amendment_requested'
-            | 'amendment_approved'
-            | 'amendment_rejected'
-            | 'amendment_cancelled'
-          )
-        | 'quality_reported'
-      /** Message */
-      message: string
-      /** Read At */
-      read_at: string | null
-      /** Serial No */
-      serial_no: string
-      /**
-       * Source
-       * @enum {string}
-       */
-      source: 'schedule' | 'rework' | 'transfer' | 'quality'
-      /** Team Name */
-      team_name: string
-    }
     /** BusinessPersonResponse */
     BusinessPersonResponse: {
       /** Active */
@@ -3172,49 +2720,6 @@ export interface components {
       /** Target Quantity */
       target_quantity: number
     }
-    /** DashboardDeliveryResponse */
-    DashboardDeliveryResponse: {
-      /** Due Count */
-      due_count: number
-      /** Items */
-      items: components['schemas']['DeliveryResponse'][]
-      /** On Time Rate */
-      on_time_rate: number | null
-      /** Overdue Count */
-      overdue_count: number
-      /** Total */
-      total: number
-      /** Upcoming Count */
-      upcoming_count: number
-    }
-    /** DashboardSerialResponse */
-    DashboardSerialResponse: {
-      /** Created At */
-      created_at: string
-      /** Serial No */
-      serial_no: string
-    }
-    /** DashboardStockDetailResponse */
-    DashboardStockDetailResponse: {
-      /** Material */
-      material: string
-      /** Material Type */
-      material_type: string | null
-      /** Processing Role */
-      processing_role: ('remaining' | 'produced' | 'scrap') | null
-      /** Quantity */
-      quantity: number
-      /** Serial No */
-      serial_no: string
-      /** Team Id */
-      team_id: number
-      /** Team Name */
-      team_name: string
-      /** Transfer Specification */
-      transfer_specification: string | null
-      /** Weight */
-      weight: number
-    }
     /** Decision */
     Decision: {
       /**
@@ -3245,36 +2750,6 @@ export interface components {
       status: 'pending' | 'processing' | 'closed'
       /** Team Id */
       team_id?: number | null
-    }
-    /** DeliveryResponse */
-    DeliveryResponse: {
-      /** Completed On */
-      completed_on: string | null
-      /** Due Date */
-      due_date: string
-      /** Index */
-      index: number
-      /** Label */
-      label: string
-      /** Legacy */
-      legacy: boolean
-      /** Overdue Days */
-      overdue_days: number
-      /** Quantity */
-      quantity: number
-      /** Remaining */
-      remaining: number
-      /** Serial No */
-      serial_no: string
-      /** Shipped */
-      shipped: number
-      /** Source Batch No */
-      source_batch_no: string | null
-      /**
-       * Status
-       * @enum {string}
-       */
-      status: 'on_time' | 'late_complete' | 'overdue' | 'pending'
     }
     /** DirectoryItemInput */
     DirectoryItemInput: {
@@ -3368,24 +2843,6 @@ export interface components {
       idempotency_key: string
       /** Received Employee Id */
       received_employee_id: number
-    }
-    /** FactoryDashboardResponse */
-    FactoryDashboardResponse: {
-      /** As Of */
-      as_of: string
-      /** Attention */
-      attention: components['schemas']['AttentionSerialResponse'][]
-      delivery: components['schemas']['DashboardDeliveryResponse']
-      /** Legacy Count */
-      legacy_count: number
-      /** Serial Count */
-      serial_count: number
-      shipping: components['schemas']['ShipmentsResponse']
-      stock: components['schemas']['FactoryStockMatrixResponse']
-      /** Today */
-      today: string
-      /** Yields */
-      yields: components['schemas']['MaterialYieldResponse'][]
     }
     /** FactoryFlowsResponse */
     FactoryFlowsResponse: {
@@ -4095,15 +3552,6 @@ export interface components {
       /** Team Id */
       team_id: number
     }
-    /** InstallmentResponse */
-    InstallmentResponse: {
-      /** Due Date */
-      due_date: string
-      /** Label */
-      label: string
-      /** Quantity */
-      quantity: number
-    }
     /** InventoryGroupResponse */
     InventoryGroupResponse: {
       /** Adjusted Quantity */
@@ -4408,15 +3856,6 @@ export interface components {
       material_type?: string | null
       /** Serial No */
       serial_no?: string | null
-    }
-    /** LegacyDeliveryPlanResponse */
-    LegacyDeliveryPlanResponse: {
-      /** Installments */
-      installments: components['schemas']['InstallmentResponse'][]
-      /** Serial No */
-      serial_no: string
-      /** Version */
-      version: number
     }
     /** LocationWrite */
     LocationWrite: {
@@ -5441,21 +4880,6 @@ export interface components {
       /** Shortage Weight */
       shortage_weight: number
     }
-    /** MaterialYieldResponse */
-    MaterialYieldResponse: {
-      /** Active Count */
-      active_count: number
-      /** Completed Count */
-      completed_count: number
-      /** Input Weight */
-      input_weight: number
-      /** Material */
-      material: string
-      /** Output Weight */
-      output_weight: number
-      /** Rate */
-      rate: number | null
-    }
     /** NamedAmountResponse */
     NamedAmountResponse: {
       /** Name */
@@ -5464,40 +4888,6 @@ export interface components {
       quantity: number
       /** Weight */
       weight: number
-    }
-    /** NoticeCursorsResponse */
-    NoticeCursorsResponse: {
-      /** Quality */
-      quality: number
-      /** Rework */
-      rework: number
-      /** Schedule */
-      schedule: number
-      /** Transfer */
-      transfer: number
-    }
-    /** NoticeReadResponse */
-    NoticeReadResponse: {
-      /** Read At */
-      read_at: string
-    }
-    /** NoticeTargetResponse */
-    NoticeTargetResponse: {
-      /** Amendment Id */
-      amendment_id?: number | null
-      /** Batch Id */
-      batch_id?: number | null
-      /** Event Id */
-      event_id?: number | null
-      /** Href */
-      href: string
-      route?: components['schemas']['ProcessRouteDetailResponse'] | null
-      /** Schedule Id */
-      schedule_id?: number | null
-      /** Section */
-      section: ('problem' | 'steps' | 'amendment' | 'quality') | null
-      /** Step Index */
-      step_index?: number | null
     }
     /** NotificationStatusResponse */
     NotificationStatusResponse: {
@@ -5621,39 +5011,6 @@ export interface components {
     PageResponse_BusinessPersonResponse_: {
       /** Items */
       items: components['schemas']['BusinessPersonResponse'][]
-      /** Page */
-      page: number
-      /** Page Size */
-      page_size: number
-      /** Total */
-      total: number
-    }
-    /** PageResponse[DashboardSerialResponse] */
-    PageResponse_DashboardSerialResponse_: {
-      /** Items */
-      items: components['schemas']['DashboardSerialResponse'][]
-      /** Page */
-      page: number
-      /** Page Size */
-      page_size: number
-      /** Total */
-      total: number
-    }
-    /** PageResponse[DashboardStockDetailResponse] */
-    PageResponse_DashboardStockDetailResponse_: {
-      /** Items */
-      items: components['schemas']['DashboardStockDetailResponse'][]
-      /** Page */
-      page: number
-      /** Page Size */
-      page_size: number
-      /** Total */
-      total: number
-    }
-    /** PageResponse[DeliveryResponse] */
-    PageResponse_DeliveryResponse_: {
-      /** Items */
-      items: components['schemas']['DeliveryResponse'][]
       /** Page */
       page: number
       /** Page Size */
@@ -5786,17 +5143,6 @@ export interface components {
     PageResponse_SerialSummaryResponse_: {
       /** Items */
       items: components['schemas']['SerialSummaryResponse'][]
-      /** Page */
-      page: number
-      /** Page Size */
-      page_size: number
-      /** Total */
-      total: number
-    }
-    /** PageResponse[SerialYieldResponse] */
-    PageResponse_SerialYieldResponse_: {
-      /** Items */
-      items: components['schemas']['SerialYieldResponse'][]
       /** Page */
       page: number
       /** Page Size */
@@ -7247,52 +6593,6 @@ export interface components {
       /** Schedule Id */
       schedule_id: number
     }
-    /** ReworkNoticePageResponse */
-    ReworkNoticePageResponse: {
-      /** Items */
-      items: components['schemas']['ReworkNoticeResponse'][]
-      /** Page */
-      page: number
-      /** Page Size */
-      page_size: number
-      /** Total */
-      total: number
-      /** Unread */
-      unread: number
-    }
-    /** ReworkNoticeResponse */
-    ReworkNoticeResponse: {
-      /** Batch No */
-      batch_no: string
-      /** Created At */
-      created_at: string
-      /** Engineering Employee Name */
-      engineering_employee_name: string | null
-      /** Id */
-      id: number
-      /**
-       * Kind
-       * @enum {string}
-       */
-      kind: 'requested' | 'ready'
-      /** Problem */
-      problem: string | null
-      /** Read At */
-      read_at: string | null
-      /** Route Id */
-      route_id: number
-      /** Serial No */
-      serial_no: string
-      /**
-       * State
-       * @enum {string}
-       */
-      state: 'draft' | 'published'
-      /** Submitted By */
-      submitted_by: string | null
-      /** Submitting Team */
-      submitting_team: string
-    }
     /** ReworkProblemTeamResponse */
     ReworkProblemTeamResponse: {
       /** Id */
@@ -7401,22 +6701,6 @@ export interface components {
     /** ReworkResumeResponse */
     ReworkResumeResponse: {
       current: components['schemas']['RouteExecutionContextResponse'] | null
-    }
-    /** ReworkRoundResponse */
-    ReworkRoundResponse: {
-      /** Engineering Employee Name */
-      engineering_employee_name: string | null
-      progress: components['schemas']['ReworkProgressResponse']
-      request: components['schemas']['ReworkRequestResponse']
-      /** Route Id */
-      route_id: number
-      /**
-       * State
-       * @enum {string}
-       */
-      state: 'draft' | 'published'
-      /** Steps */
-      steps: components['schemas']['RouteStepResponse'][]
     }
     /** ReworkScheduleOptionResponse */
     ReworkScheduleOptionResponse: {
@@ -7572,13 +6856,6 @@ export interface components {
       tasks: {
         [key: string]: string
       }
-    }
-    /** RouteExecutionOptionsResponse */
-    RouteExecutionOptionsResponse: {
-      /** Purposes */
-      purposes: components['schemas']['TeamDirectoryItemResponse'][]
-      /** Tasks */
-      tasks: components['schemas']['TeamProcessingTaskResponse'][]
     }
     /** RouteIntakeWrite */
     RouteIntakeWrite: {
@@ -8138,54 +7415,6 @@ export interface components {
       team_name: string
       /** Weight */
       weight: number
-    }
-    /** ScheduleNoticePageResponse */
-    ScheduleNoticePageResponse: {
-      /** Items */
-      items: components['schemas']['ScheduleNoticeResponse'][]
-      /** Latest Id */
-      latest_id: number
-      /** Total */
-      total: number
-      /** Unread */
-      unread: number
-    }
-    /** ScheduleNoticeReadAll */
-    ScheduleNoticeReadAll: {
-      /** Through Id */
-      through_id: number
-    }
-    /** ScheduleNoticeResponse */
-    ScheduleNoticeResponse: {
-      /** Created At */
-      created_at: string
-      /** Href */
-      href: string
-      /** Id */
-      id: number
-      /**
-       * Kind
-       * @enum {string}
-       */
-      kind:
-        | 'new'
-        | 'changed'
-        | 'cancelled'
-        | 'upstream'
-        | 'final_due'
-        | 'due_soon'
-        | 'overdue'
-        | 'returned'
-        | 'locked'
-        | 'unlocked'
-      /** Message */
-      message: string
-      /** Read At */
-      read_at: string | null
-      /** Serial No */
-      serial_no: string
-      /** Team Name */
-      team_name: string
     }
     /** ScheduleOverviewResponse */
     ScheduleOverviewResponse: {
@@ -9109,40 +8338,6 @@ export interface components {
       transfer_specification_count: number
       urgency: components['schemas']['UrgencyResponse']
     }
-    /** SerialYieldResponse */
-    SerialYieldResponse: {
-      /** Current Weight */
-      current_weight: number
-      /** Input Weight */
-      input_weight: number
-      /** Lost Weight */
-      lost_weight: number
-      /** Material */
-      material: string
-      /** Max Weight Difference */
-      max_weight_difference: number
-      /** Output Weight */
-      output_weight: number
-      /** Processing Delta Weight */
-      processing_delta_weight: number
-      /** Rate */
-      rate: number | null
-      /** Reallocated In Weight */
-      reallocated_in_weight: number
-      /** Reallocated Out Weight */
-      reallocated_out_weight: number
-      /** Serial No */
-      serial_no: string
-      /** Shared Allocated Weight */
-      shared_allocated_weight: number
-      /**
-       * Status
-       * @enum {string}
-       */
-      status: 'complete' | 'in_progress' | 'needs_review'
-      /** Weight Difference */
-      weight_difference: number
-    }
     /** SharedMaterialSerial */
     'SharedMaterialSerial-Input': {
       /** Customer Code */
@@ -9211,22 +8406,6 @@ export interface components {
       process_route_version?: number | null
       /** Serial No */
       serial_no: string
-    }
-    /** ShipmentSeriesResponse */
-    ShipmentSeriesResponse: {
-      /** Created At */
-      created_at: string
-      /** Serial No */
-      serial_no: string
-      /** Values */
-      values: (number | null)[]
-    }
-    /** ShipmentsResponse */
-    ShipmentsResponse: {
-      /** Dates */
-      dates: string[]
-      /** Series */
-      series: components['schemas']['ShipmentSeriesResponse'][]
     }
     /** ShipmentStockItemResponse */
     ShipmentStockItemResponse: {
@@ -9834,41 +9013,6 @@ export interface components {
       key: 'today' | 'week' | 'month'
       /** Processed Count */
       processed_count: number
-    }
-    /** TeamYieldResponse */
-    TeamYieldResponse: {
-      /** Current Weight */
-      current_weight: number
-      /** Input Weight */
-      input_weight: number
-      /** Lost Weight */
-      lost_weight: number
-      /** Max Weight Difference */
-      max_weight_difference: number
-      /** Output Weight */
-      output_weight: number
-      /** Processing Delta Weight */
-      processing_delta_weight: number
-      /** Rate */
-      rate: number | null
-      /** Reallocated Out Weight */
-      reallocated_out_weight: number
-      /**
-       * Status
-       * @enum {string}
-       */
-      status: 'complete' | 'in_progress' | 'needs_review'
-      /** Team Id */
-      team_id: number
-      /** Team Name */
-      team_name: string
-      /** Weight Difference */
-      weight_difference: number
-    }
-    /** TeamYieldsResponse */
-    TeamYieldsResponse: {
-      /** Items */
-      items: components['schemas']['TeamYieldResponse'][]
     }
     /** TraceBatchResponse */
     TraceBatchResponse: {
@@ -10929,401 +10073,6 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['UserResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  inbox_api_business_notices_get: {
-    parameters: {
-      query?: {
-        category?: 'all' | 'schedule' | 'rework' | 'transfer' | 'quality' | 'pending'
-        page?: number
-        unread_only?: boolean
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['BusinessNoticePageResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  mark_read_api_business_notices__source___notice_id__read_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        notice_id: number
-        source: 'schedule' | 'rework' | 'transfer' | 'quality'
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  target_api_business_notices__source___notice_id__target_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        notice_id: number
-        source: 'schedule' | 'rework' | 'transfer' | 'quality'
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['NoticeTargetResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  read_all_api_business_notices_read_all_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['BusinessNoticeReadAll']
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_dashboard_api_factory_dashboard_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['FactoryDashboardResponse']
-        }
-      }
-    }
-  }
-  get_deliveries_api_factory_dashboard_deliveries_get: {
-    parameters: {
-      query?: {
-        page?: number
-        page_size?: number
-        query?: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PageResponse_DeliveryResponse_']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_plan_api_factory_dashboard_delivery_plan_get: {
-    parameters: {
-      query: {
-        serial_no: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['LegacyDeliveryPlanResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  save_plan_api_factory_dashboard_delivery_plan_put: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': unknown
-        }
-      }
-    }
-  }
-  get_serials_api_factory_dashboard_serials_get: {
-    parameters: {
-      query?: {
-        page?: number
-        page_size?: number
-        query?: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PageResponse_DashboardSerialResponse_']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_shipments_api_factory_dashboard_shipments_get: {
-    parameters: {
-      query: {
-        date_from: string
-        date_to: string
-        serial_no?: string[]
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ShipmentsResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_stock_detail_api_factory_dashboard_stock_detail_get: {
-    parameters: {
-      query?: {
-        material?: string
-        page?: number
-        page_size?: number
-        team_id?: number | null
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PageResponse_DashboardStockDetailResponse_']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_team_yields_api_factory_dashboard_team_yields_get: {
-    parameters: {
-      query: {
-        material?: string
-        serial_no: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['TeamYieldsResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  get_yields_api_factory_dashboard_yields_get: {
-    parameters: {
-      query?: {
-        material?: string
-        page?: number
-        page_size?: number
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PageResponse_SerialYieldResponse_']
         }
       }
       /** @description Validation Error */
@@ -12805,37 +11554,6 @@ export interface operations {
       }
     }
   }
-  rework_rounds_api_process_routes__route_id__rework_rounds_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        route_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ReworkRoundResponse'][]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
   source_api_process_routes__route_id__source_get: {
     parameters: {
       query?: never
@@ -12982,37 +11700,6 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['LotRouteResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  execution_options_api_process_routes_options__team_id__get: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        team_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RouteExecutionOptionsResponse']
         }
       }
       /** @description Validation Error */
@@ -14521,210 +13208,6 @@ export interface operations {
         content: {
           'application/json': components['schemas']['HTTPValidationError']
         }
-      }
-    }
-  }
-  list_notices_api_rework_notices_get: {
-    parameters: {
-      query: {
-        page?: number
-        team_id: number
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ReworkNoticePageResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  mark_read_api_rework_notices__notice_id__read_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        notice_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['NoticeReadResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  notice_route_api_rework_notices__notice_id__route_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        notice_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ProcessRouteDetailResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  inbox_api_schedule_notices_get: {
-    parameters: {
-      query?: {
-        page?: number
-        unread_only?: boolean
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ScheduleNoticePageResponse']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  mark_read_api_schedule_notices__notice_id__read_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        notice_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  read_all_api_schedule_notices_read_all_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ScheduleNoticeReadAll']
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
-        }
-      }
-    }
-  }
-  refresh_api_schedule_notices_refresh_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
       }
     }
   }

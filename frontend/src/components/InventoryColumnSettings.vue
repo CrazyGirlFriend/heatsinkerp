@@ -4,7 +4,8 @@ import { showToast } from '@/stores/toast'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { IconColumns3 } from '@tabler/icons-vue'
-import { ElCheckbox, ElOption, ElSelect } from 'element-plus'
+import { ElCheckbox, ElOption } from 'element-plus'
+import ElSelect from '@/components/AppSelect.vue'
 import ElButton from '@/components/AppButton.vue'
 import {
   inventoryColumns,

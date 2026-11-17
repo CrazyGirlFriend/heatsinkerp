@@ -10,7 +10,7 @@ import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { processRouteApi } from '@/services/processRouteApi'
-import { materialRequestKey } from '@/utils/materialStock'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 const props = defineProps<{
   context?: QuantityAdjustmentContext
   loading?: boolean
@@ -52,8 +52,7 @@ const quantity = ref<number>(),
 const busy = ref(false),
   error = ref(''),
   submitted = ref(false)
-let key = '',
-  fingerprint = ''
+const submission = createMaterialSubmissionKey()
 watch(
   () => props.context,
   (context) => {
@@ -62,8 +61,7 @@ watch(
     weight.value = undefined
     error.value = ''
     submitted.value = false
-    key = ''
-    fingerprint = ''
+    submission.reset()
   },
 )
 async function save() {
@@ -96,12 +94,7 @@ async function save() {
       weight: weight.value,
       reason: reason.value.trim(),
     }
-    const next = JSON.stringify(body)
-    if (next !== fingerprint) {
-      fingerprint = next
-      key = materialRequestKey()
-    }
-    await processRouteApi.requestRework({ ...body, idempotency_key: key })
+    await processRouteApi.requestRework({ ...body, idempotency_key: submission.get(body) })
     emit('changed')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '问题提交失败'

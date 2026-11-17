@@ -5,8 +5,7 @@ from pathlib import Path
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from app.database import SessionLocal
-from app.legacy_models import Operation, OperationReport, WorkOrder
-from app.models import MaterialTransfer
+from app.models import LegacyRecord, MaterialTransfer
 from app.seed_material_transfer_showcase import seed_material_transfer_showcase
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
@@ -112,9 +111,7 @@ def test_material_transfer_is_a_single_team_handoff_without_process_dependencies
     with SessionLocal() as db:
         transfer = db.scalar(select(MaterialTransfer))
         assert transfer is not None
-        assert db.scalar(select(WorkOrder.id)) is None
-        assert db.scalar(select(Operation.id)) is None
-        assert db.scalar(select(OperationReport.id)) is None
+        assert db.scalar(select(LegacyRecord.source_id)) is None
 
 
 def test_permissions_receipt_requires_counterparty_amendment_instead_of_direct_edit(client):

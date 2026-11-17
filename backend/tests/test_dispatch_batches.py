@@ -46,7 +46,8 @@ def confirm(client, group, headers, *, external=True, **overrides):
     )
 
 
-def test_whole_internal_batch_receipt_and_old_barcode_compatibility(client, stock_setup):
+@pytest.mark.parametrize("as_admin", [False, True])
+def test_whole_internal_batch_receipt_and_old_barcode_compatibility(client, stock_setup, as_admin):
     setup = stock_setup
     lots = [receive_lot(client, setup, key=f"group-{i}") for i in range(2)]
     result = internal_dispatch(
@@ -60,19 +61,24 @@ def test_whole_internal_batch_receipt_and_old_barcode_compatibility(client, stoc
     assert group["source_team"]["id"] == setup["stock_team_id"]
     assert group["line_count"] == group["pending_line_count"] == 2
     assert group["allowed_actions"] == [] and not group["locked"]
-    for headers in ({}, setup["stock_headers"], setup["source_headers"]):
+    for headers in (setup["stock_headers"], setup["source_headers"]):
         assert confirm(client, group, headers, external=False).status_code == 403
+    assert (
+        confirm(client, group, {"Authorization": "Bearer invalid"}, external=False).status_code
+        == 401
+    )
     assert confirm(client, group, setup["third_headers"]).status_code == 403
     reviewed = client.get(detail_url(group), headers=setup["third_headers"]).json()
     assert reviewed["allowed_actions"] == ["confirm"] and len(reviewed["revision"]) == 64
     assert all(len(row["history"]) == 1 for row in reviewed["items"])
-    response = confirm(client, reviewed, setup["third_headers"], external=False)
+    actor_headers = {} if as_admin else setup["third_headers"]
+    response = confirm(client, reviewed, actor_headers, external=False)
     assert response.status_code == 200, response.text
     done = response.json()
     assert done["status"] == "received" and done["locked"] and done["pending_line_count"] == 0
     assert done["allowed_actions"] == [] and done["confirmed_at"] and done["confirmed_by"]
     assert done["revision"] != reviewed["revision"]
-    assert confirm(client, reviewed, setup["third_headers"], external=False).json() == done
+    assert confirm(client, reviewed, actor_headers, external=False).json() == done
     assert client.get(detail_url(group), headers=setup["third_headers"]).json() == done
     for row, lot in zip(done["items"], lots, strict=True):
         assert row["stock_tracked"] and row["source_transfer_id"] == lot["id"]
@@ -97,13 +103,15 @@ def test_whole_internal_batch_receipt_and_old_barcode_compatibility(client, stoc
     assert receiver["pending_incoming"]["count"] == 0
 
 
-def test_external_whole_batch_self_confirmation_and_idempotency(client, outbound):
+@pytest.mark.parametrize("as_admin", [False, True])
+def test_external_whole_batch_self_confirmation_and_idempotency(client, outbound, as_admin):
     group = external_dispatch(client, outbound).json()
     assert group["allowed_actions"] == ["confirm_outbound"]
-    for headers in ({}, outbound["other_headers"]):
-        assert confirm(client, group, headers).status_code == 403
+    assert confirm(client, group, outbound["other_headers"]).status_code == 403
+    assert confirm(client, group, {"Authorization": "Bearer invalid"}).status_code == 401
     assert confirm(client, group, outbound["headers"], external=False).status_code == 403
-    response = confirm(client, group, outbound["headers"])
+    actor_headers = {} if as_admin else outbound["headers"]
+    response = confirm(client, group, actor_headers)
     assert response.status_code == 200, response.text
     done = response.json()
     assert (
@@ -112,10 +120,10 @@ def test_external_whole_batch_self_confirmation_and_idempotency(client, outbound
         and done["total_weight"] == 6
     )
     assert done["locked"] and done["next_team"] is None
-    assert confirm(client, group, outbound["headers"]).json() == done
+    assert confirm(client, group, actor_headers).json() == done
     assert client.get(detail_url(group), headers=outbound["headers"]).json() == done
-    assert confirm(client, group, outbound["headers"], idempotency_key="new-key").status_code == 409
-    assert confirm(client, done, outbound["headers"]).status_code == 409
+    assert confirm(client, group, actor_headers, idempotency_key="new-key").status_code == 409
+    assert confirm(client, done, actor_headers).status_code == 409
     for row in done["items"]:
         assert row["locked"] and not row["stock_tracked"] and row["received_at"] is None
         assert row["dispatched_at"] == done["confirmed_at"]

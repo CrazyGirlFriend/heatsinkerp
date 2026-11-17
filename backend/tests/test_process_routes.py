@@ -475,7 +475,9 @@ def test_route_schedule_reuses_steps_and_auto_matches_partial_delivery(client, w
     assert out.status_code == 201, out.text
     detail = client.get(f"/api/production-schedules/tasks/{task['id']}").json()
     assert detail["nodes"][1]["dispatched_quantity"] == 60
-    assert detail["nodes"][0]["assessment_enabled"] is False
+    assert detail["nodes"][0]["assessment_enabled"] is True
+    assert detail["nodes"][0]["dispatched_quantity"] == 100
+    assert detail["nodes"][0]["status"] == "completed"
     assert detail["nodes"][1]["process_route_id"] == route["id"]
     assert detail["locations"]
 

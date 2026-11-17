@@ -23,7 +23,11 @@ import {
   materialTypeLabel,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
-import { amountError, dispatchableAmounts, materialRequestKey } from '@/utils/materialStock'
+import {
+  amountError,
+  dispatchableAmounts,
+  createMaterialSubmissionKey,
+} from '@/utils/materialStock'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { inventoryAmount } from '@/types/teamInventory'
 
@@ -86,16 +90,15 @@ const validation = useDialogValidation(() => {
   return issues
 })
 const { formRef, fieldErrors } = validation
-let generation = 0,
-  requestKey = '',
-  fingerprint = ''
+let generation = 0
+const submission = createMaterialSubmissionKey()
 watch(
   [() => props.modelValue, () => props.source?.transfer.id, () => props.teamId],
   ([open]) => {
     ++generation
     saving.value = false
     error.value = ''
-    requestKey = fingerprint = ''
+    submission.reset()
     if (!open) return
     validation.reset()
     const amounts = dispatchableAmounts(props.source)
@@ -152,11 +155,7 @@ async function submit() {
       : {}),
     ...(measured.value ? sludgePayload('sludge', form.gross, form.percent) : {}),
   }
-  const next = JSON.stringify({ team: props.teamId, body })
-  if (!requestKey || fingerprint !== next) {
-    requestKey = materialRequestKey()
-    fingerprint = next
-  }
+  const requestKey = submission.get({ team: props.teamId, body })
   const current = generation
   saving.value = true
   try {

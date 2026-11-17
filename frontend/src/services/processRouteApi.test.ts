@@ -97,19 +97,6 @@ it.each(['<html><h1>413 Request Entity Too Large</h1></html>', { detail: 'Reques
   },
 )
 
-it('reads execution-team tasks and purposes through the read-only route endpoint', async () => {
-  const data = {
-    tasks: [{ id: 4, team_id: 2, name: '精磨', active: true, version: 1 }],
-    purposes: [{ id: 3, team_id: 2, name: '产品加工', active: true, version: 1 }],
-  }
-  const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(data)
-  await expect(processRouteApi.options(2)).resolves.toEqual(data)
-  expect(request).toHaveBeenCalledWith('/process-routes/options/2', {
-    method: 'GET',
-    body: undefined,
-  })
-  expect(request).toHaveBeenCalledOnce()
-})
 it('requires documents for creation and applies version checks to existing file writes', async () => {
   const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(routeFixture)
   await expect(processRouteApi.save({ ...routeFixture, id: 0, filename: '' })).rejects.toThrow(

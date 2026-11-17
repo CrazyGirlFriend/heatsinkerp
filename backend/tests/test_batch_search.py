@@ -127,7 +127,7 @@ def test_history_batch_resolves_its_serial_within_the_current_team(client, stock
     assert not history(client, other, first["batch_no"])["found"]
 
 
-def test_factory_serials_deliveries_and_suggestions_accept_batch_numbers(client, warehouse):
+def test_current_serials_deliveries_and_suggestions_accept_batch_numbers(client, warehouse):
     first = intake(
         client,
         warehouse,
@@ -136,10 +136,10 @@ def test_factory_serials_deliveries_and_suggestions_accept_batch_numbers(client,
         delivery_quantity=100,
     ).json()
     intake(client, warehouse, serial_no="UNRELATED", idempotency_key="other-search")
-    for resource in ("serials", "deliveries"):
-        found = page(client, "/api/factory-dashboard/" + resource, first["batch_no"], page_size=1)
-        assert found["total"] == 1
-        assert found["items"][0]["serial_no"] == first["serial_no"]
+    path = f"/api/team-materials/{warehouse['team']['id']}/serials"
+    found = page(client, path, first["batch_no"], page_size=1)
+    assert found["total"] == 1
+    assert found["items"][0]["serial_no"] == first["serial_no"]
     options = page(client, "/api/material-input-suggestions", first["batch_no"], field="serial_no")
     assert [item["value"] for item in options["items"]] == [first["serial_no"]]
 

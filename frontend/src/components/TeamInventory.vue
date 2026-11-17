@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
+import { useInventorySchedules } from '@/composables/useInventorySchedules'
 import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
@@ -68,11 +69,7 @@ import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 import { stockSelectable } from '@/utils/materialStock'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-import {
-  inventoryScheduleBaseline,
-  inventoryScheduleTone,
-  loadInventorySchedules,
-} from '@/utils/inventorySchedule'
+import { inventoryScheduleBaseline, inventoryScheduleTone } from '@/utils/inventorySchedule'
 
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
 const props = defineProps<{
@@ -108,12 +105,24 @@ const rows = ref<TeamInventoryRow[]>([]),
   error = ref(''),
   refreshError = ref('')
 const asOf = ref('')
-const scheduleLoading = ref(false),
-  scheduleError = ref(''),
-  expandedScheduleGroups = ref<number[]>([])
+const expandedScheduleGroups = ref<number[]>([])
+const {
+  loading: scheduleLoading,
+  error: scheduleError,
+  load: loadSchedules,
+  reset: resetSchedules,
+  withSchedules,
+} = useInventorySchedules(
+  rows,
+  () => props.teamId,
+  'groups',
+  (row) => ({
+    id: row.group_id,
+    materialType: row.material_type,
+  }),
+)
 const inventoryDetail = ref<InstanceType<typeof TeamInventoryDetail> | null>(null)
 let scheduleClock: ReturnType<typeof setInterval> | undefined
-let scheduleVersion = 0
 function refreshVisibleSchedules() {
   if (document.hidden || loading.value) return
   if (detail.value) {
@@ -132,28 +141,6 @@ function syncScheduleClock(refresh = false) {
 }
 function resumeScheduleClock() {
   syncScheduleClock(true)
-}
-async function withSchedules(items: TeamInventoryRow[], teamId = props.teamId) {
-  const summaries = await loadInventorySchedules(
-    teamId,
-    items.map((row) => ({ id: row.group_id, materialType: row.material_type })),
-    'groups',
-  )
-  return items.map((row) => ({ ...row, delivery_schedule: summaries[row.group_id] }))
-}
-async function loadSchedules(current = version) {
-  const request = ++scheduleVersion
-  scheduleLoading.value = true
-  scheduleError.value = ''
-  try {
-    const items = await withSchedules(rows.value)
-    if (current === version && request === scheduleVersion) rows.value = items
-  } catch {
-    if (current === version && request === scheduleVersion)
-      scheduleError.value = '交货排期加载失败，库存仍可查看。'
-  } finally {
-    if (current === version && request === scheduleVersion) scheduleLoading.value = false
-  }
 }
 function toggleSchedule(row: TeamInventoryRow) {
   if (!row.delivery_schedule?.count) return
@@ -674,9 +661,7 @@ function paginate(value: number, size = pageSize.value) {
 let version = 0
 async function load(background = false) {
   const current = ++version
-  ++scheduleVersion
-  scheduleLoading.value = false
-  scheduleError.value = ''
+  resetSchedules()
   if (!background) {
     loading.value = true
     error.value = ''
@@ -700,7 +685,7 @@ async function load(background = false) {
     expandedScheduleGroups.value = expandedScheduleGroups.value.filter((id) =>
       result.items.some((row) => row.group_id === id),
     )
-    void loadSchedules(current)
+    void loadSchedules()
     total.value = result.total
     asOf.value = result.as_of || ''
     error.value = ''

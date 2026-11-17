@@ -30,6 +30,11 @@ def test_upgrade_accepts_current_metadata_without_duplicate_constraints(filename
     try:
         with engine.begin() as connection:
             Base.metadata.create_all(connection)
+            # Retired tables are absent from current metadata; historical
+            # upgrades still need to recreate their own schema independently.
+            if any(not inspect(connection).has_table(table) for table in tables):
+                with Operations.context(MigrationContext.configure(connection)):
+                    migration.upgrade()
 
             def schema():
                 inspector = inspect(connection)

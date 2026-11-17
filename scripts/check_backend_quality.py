@@ -9,6 +9,7 @@ PATHS = (
     "backend/app",
     "backend/tests",
     "backend/alembic",
+    "backend/migration_support",
     "scripts/check_backend_quality.py",
     "scripts/export_openapi.py",
 )

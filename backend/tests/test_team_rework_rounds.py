@@ -15,7 +15,7 @@ from sqlalchemy import select
 from test_engineered_rework import save_plan
 from test_inspections import historical_check
 from test_processing_daily import setup_lot, work
-from test_team_rework_notices import prepare
+from test_team_rework_workflow import prepare
 from test_warehouse_classification import base, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -102,10 +102,10 @@ def inspect(client, s, lot, *, quantity=2, failed=0, scope="full"):
     return response.json()
 
 
-def rounds(client, route):
-    result = client.get(URL + f"/{route['id']}/rework-rounds")
+def progress_document(client, route):
+    result = client.get(f"/api/quality-feedback/team-problems/{route['id']}")
     assert result.status_code == 200, result.text
-    return result.json()
+    return result.json()["rework_progress"]
 
 
 def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instructions(
@@ -114,7 +114,7 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
     s = warehouse
     lot, body, engineering_id, engineering_headers = prepare(client, s)
     body.pop("inspection_id")
-    for actor in (s["headers"], s["rework_qc_headers"], client.headers):
+    for actor in (s["headers"], s["rework_qc_headers"]):
         denied = client.post(URL + "/rework-requests", json=body, headers=actor)
         assert denied.status_code == 403, denied.text
     route = direct(client, s, lot, body["rework_of_id"])
@@ -123,12 +123,13 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
     assert scope["requesting_team_id"] == scope["team_id"] == s["other"]["id"]
     assert scope["round"] == 1
     assert route["steps"] == [] and route["filename"] == ""
-    assert (
-        client.get(
-            f"/api/rework-notices?team_id={engineering_id}", headers=engineering_headers
-        ).json()["unread"]
-        == 1
-    )
+    drafts = client.get(
+        "/api/process-routes",
+        headers=engineering_headers,
+        params={"kind": "rework", "state": "draft"},
+    ).json()
+    assert drafts["pending_rework_count"] == 1
+    assert drafts["items"][0]["id"] == route["id"]
     child = {"id": scope["source_transfer_id"]}
     employee = client.get(base(s, True) + "/employees").json()[0]
     for kind in ("initial", "rework"):
@@ -147,10 +148,8 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
         == 403
     )
     save_plan(client, s, route)
-    notice = client.get(
-        f"/api/rework-notices?team_id={s['other']['id']}", headers=s["other_headers"]
-    ).json()
-    assert notice["total"] == 1 and notice["items"][0]["kind"] == "ready"
+    ready = client.get(URL + f"/{route['id']}", headers=s["other_headers"])
+    assert ready.status_code == 200 and ready.json()["state"] == "published"
     with SessionLocal() as db:
         assert db.get(MaterialTransfer, child["id"]).next_team_id == s["other"]["id"]
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
@@ -166,15 +165,14 @@ def test_qc_leader_submits_own_stock_directly_without_inspection_record(client, 
         engineering = Team(code="FACTORY-PROCESS", name="工艺", kind="engineering", active=True)
         db.add(engineering)
         db.flush()
-        engineering_id = engineering.id
     route = direct(client, s, output, processed.json()["id"])
     assert route["state"] == "draft"
     assert route["rework_request"]["inspection_id"] is None
     assert route["rework_request"]["requesting_team_id"] == s["other"]["id"]
     assert client.get("/api/inspections").json()["total"] == 0
-    notices = client.get(f"/api/rework-notices?team_id={engineering_id}").json()
-    assert notices["total"] == 1
-    assert notices["items"][0]["kind"] == "requested"
+    drafts = client.get(URL, params={"kind": "rework", "state": "draft"}).json()
+    assert drafts["pending_rework_count"] == 1
+    assert drafts["items"][0]["id"] == route["id"]
 
 
 def test_rounds_follow_selected_material_not_other_portions_of_same_serial(client, warehouse):
@@ -182,18 +180,24 @@ def test_rounds_follow_selected_material_not_other_portions_of_same_serial(clien
     lot, body, _, _ = prepare(client, s)
     first = direct(client, s, lot, body["rework_of_id"])
     done, work_id = complete(client, s, first)
-    assert rounds(client, first)[0]["progress"]["state"] == "awaiting_inspection"
+    assert progress_document(client, first)["state"] == "awaiting_inspection"
     inspect(client, s, done, failed=1)
     second = direct(client, s, done, work_id, quantity=1, weight=10)
     sibling = direct(client, s, lot, body["rework_of_id"])
-    rows = rounds(client, second)
-    assert [r["request"]["round"] for r in rows] == [1, 2]
-    assert [r["request"]["quantity"] for r in rows] == [2, 1]
-    assert rows[0]["progress"]["state"] == "failed"
-    assert rows[1]["progress"]["state"] == "awaiting_route"
-    assert rows[0]["steps"][0]["instructions"] == "返工精磨至2.50±0.01mm"
-    assert [r["route_id"] for r in rounds(client, sibling)] == [sibling["id"]]
+    assert first["rework_request"]["round"] == 1
+    assert second["rework_request"]["round"] == 2
+    assert first["rework_request"]["quantity"] == 2
+    assert second["rework_request"]["quantity"] == 1
+    assert progress_document(client, first)["state"] == "failed"
+    assert progress_document(client, second)["state"] == "awaiting_route"
+    detail = client.get(URL + f"/{first['id']}").json()
+    assert detail["steps"][0]["instructions"] == "返工精磨至2.50±0.01mm"
     assert sibling["rework_request"]["round"] == 1
+    assert progress_document(client, sibling)["quantity"] == 2
+    assert (
+        sibling["rework_request"]["source_transfer_id"]
+        != second["rework_request"]["source_transfer_id"]
+    )
     # A third request on the reserved portion is refused; unrelated stock stays usable.
     denied = client.get(
         URL + "/rework-sources",
@@ -209,16 +213,16 @@ def test_processing_sample_pass_and_full_reinspection_are_distinct_and_filterabl
     s = warehouse
     lot, body, _, _ = prepare(client, s)
     route = direct(client, s, lot, body["rework_of_id"])
-    assert rounds(client, route)[0]["progress"]["completed_quantity"] == 0
+    assert progress_document(client, route)["completed_quantity"] == 0
     done, _ = complete(client, s, route)
     inspect(client, s, done, quantity=1, scope="sample")
-    progress = rounds(client, route)[0]["progress"]
+    progress = progress_document(client, route)
     assert progress["completed_quantity"] == 2 and progress["state"] == "awaiting_inspection"
     assert progress["passed_quantity"] == 0
     assert progress["inspections"][0]["scope"] == "sample"
     assert client.get(URL, params={"kind": "rework", "rework_scope": "open"}).json()["total"] == 1
     inspect(client, s, done)
-    progress = rounds(client, route)[0]["progress"]
+    progress = progress_document(client, route)
     assert progress["state"] == "passed" and progress["passed_quantity"] == 2
     assert len(progress["inspections"]) == 2
     assert client.get(URL, params={"kind": "rework", "rework_scope": "open"}).json()["total"] == 0
@@ -251,9 +255,10 @@ def test_revision_is_not_a_new_round_and_partial_work_remains_open(client, wareh
     route = save_plan(client, s, direct(client, s, lot, body["rework_of_id"]))
     revision = client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).json()
     revised = save_plan(client, s, revision, instructions="精磨至2.40mm")
-    rows = rounds(client, revised)
-    assert len(rows) == 1 and rows[0]["request"]["round"] == 1
-    assert rows[0]["steps"][0]["instructions"] == "精磨至2.40mm"
+    rows = client.get(URL, params={"kind": "rework"}).json()["items"]
+    assert [row["id"] for row in rows] == [revised["id"]]
+    assert revised["rework_request"]["round"] == 1
+    assert revised["steps"][0]["instructions"] == "精磨至2.40mm"
     employee = client.get(base(s, True) + "/employees").json()[0]
     processed = work(
         client,
@@ -267,7 +272,7 @@ def test_revision_is_not_a_new_round_and_partial_work_remains_open(client, wareh
     )
     assert processed.status_code == 201, processed.text
     inspect(client, s, processed.json()["outputs"][0], quantity=1)
-    progress = rounds(client, revised)[0]["progress"]
+    progress = progress_document(client, revised)
     assert progress["state"] == "processing"
     assert (progress["completed_quantity"], progress["passed_quantity"], progress["quantity"]) == (
         1,
@@ -303,9 +308,9 @@ def test_full_check_of_remaining_stock_does_not_cover_already_transferred_portio
     )
     assert received.status_code == 200, received.text
     inspect(client, s, done, quantity=1)
-    progress = rounds(client, route)[0]["progress"]
+    progress = progress_document(client, route)
     assert progress["state"] == "awaiting_inspection" and progress["passed_quantity"] == 1
     inspect(client, s, transfer, quantity=1)
-    progress = rounds(client, route)[0]["progress"]
+    progress = progress_document(client, route)
     assert progress["state"] == "passed" and progress["passed_quantity"] == 2
     assert len(progress["inspections"]) == 2

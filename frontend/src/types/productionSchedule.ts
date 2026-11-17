@@ -35,7 +35,6 @@ export const scheduleExecutionLabels = {
   completed: '已完成',
   cancelled: '已取消',
 } as const
-export type ScheduleExecutionState = Contract['ScheduleResponse']['execution_state']
 export function scheduleStatusTone(status: ScheduleStatus) {
   if (status === 'overdue' || status === 'completed_late') return 'danger'
   if (status === 'today') return 'warning'

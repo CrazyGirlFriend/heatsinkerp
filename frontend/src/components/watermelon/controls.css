@@ -38,6 +38,8 @@ html.wm-app .wm-control-button.el-button:not(.is-disabled):not(.is-loading):acti
   transform: none;
 }
 .wm-control-button.el-button > span {
+  gap: 7px;
+  line-height: 1.25;
   transition:
     opacity 140ms,
     translate 140ms;

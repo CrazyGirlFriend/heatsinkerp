@@ -430,6 +430,61 @@ def test_business_people_are_independent_and_filter_tasks_with_exact_multiple_se
     )
 
 
+def test_contact_reassignment_keeps_batch_filters_and_history_consistent(client, warehouse):
+    from app.models import ProductionScheduleEvent, ProductionScheduleTaskPerson
+
+    people = [
+        client.post(URL + "/business-people", json={"name": name}).json()["id"]
+        for name in ("业务甲", "业务乙", "业务丙")
+    ]
+    first = create(client, route(warehouse, business_person_ids=people[:2]))
+    second = create(client, route(warehouse, business_person_ids=people[2:]))
+    assert first["serial_no"] == second["serial_no"]
+    updated = dispatch_patch(
+        client,
+        f"{TASKS}/{first['id']}",
+        json={
+            "title": first["title"],
+            "expected_version": first["version"],
+            "business_person_ids": people[1:],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert [p["id"] for p in updated.json()["business_people"]] == people[1:]
+    for person, expected in (
+        (people[0], set()),
+        (people[1], {first["id"]}),
+        (people[2], {first["id"], second["id"]}),
+    ):
+        result = client.get(TASKS, params={"business_person_ids": person}).json()
+        assert {t["id"] for t in result["items"]} == expected
+    with SessionLocal() as db:
+        event = db.scalar(
+            select(ProductionScheduleEvent).where(
+                ProductionScheduleEvent.schedule_id == first["nodes"][0]["id"],
+                ProductionScheduleEvent.action == "task_updated",
+            )
+        )
+        assert sorted(event.before["business_person_ids"]) == people[:2]
+        assert sorted(event.after["business_person_ids"]) == people[1:]
+        assert set(
+            db.execute(
+                select(ProductionScheduleTaskPerson.task_id, ProductionScheduleTaskPerson.person_id)
+            ).all()
+        ) == {(first["id"], people[1]), (first["id"], people[2]), (second["id"], people[2])}
+    rejected = dispatch_patch(
+        client,
+        f"{TASKS}/{first['id']}",
+        json={
+            "title": first["title"],
+            "expected_version": updated.json()["version"],
+            "business_person_ids": [999999],
+        },
+    )
+    assert rejected.status_code == 422
+    assert [p["id"] for p in task_detail(client, first)["business_people"]] == people[1:]
+
+
 def test_repeated_team_visits_do_not_double_task_physical_inventory(client, warehouse):
     s = warehouse
     lot = intake(client, s).json()

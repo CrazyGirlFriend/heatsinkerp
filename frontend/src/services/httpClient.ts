@@ -35,6 +35,11 @@ function objectValue(value: unknown): UnknownRecord {
   return value && typeof value === 'object' ? (value as UnknownRecord) : {}
 }
 
+export function httpErrorMessage(error: unknown): string | undefined {
+  const detail = error instanceof HttpRequestError ? objectValue(error.body).detail : undefined
+  return typeof detail === 'string' ? detail : undefined
+}
+
 function safeStorage(): Storage | null {
   try {
     return typeof window === 'undefined' ? null : window.localStorage

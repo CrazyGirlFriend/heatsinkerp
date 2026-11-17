@@ -3,6 +3,7 @@
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
+from inventory_assertions import owned_total
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from test_material_transfers import _leader
@@ -123,14 +124,9 @@ def test_partial_reallocation_is_atomic_stock_with_original_batch_and_separate_m
         assert history["untracked_count"] == 0
         assert history["groups"][0]["on_hand_quantity"] == (70 if serial == "000A" else 30)
         assert history["lots"][0]["closing_quantity"] == (70 if serial == "000A" else 30)
-    dashboard = client.get("/api/factory-dashboard").json()
-    assert dashboard["stock"]["total"] == {"quantity": 100, "weight": 20}
-    rates = {
-        row["serial_no"]: row for row in client.get("/api/factory-dashboard/yields").json()["items"]
-    }
-    assert rates["000A"]["input_weight"] == 14 and rates["000B"]["input_weight"] == 6
-    assert rates["000A"]["reallocated_out_weight"] == rates["000B"]["reallocated_in_weight"] == 6
-    assert all(row["output_weight"] == 0 for row in rates.values())
+        assert trace["totals"]["on_hand"]["weight"] == (14 if serial == "000A" else 6)
+        assert trace["reallocations"][0]["weight"] == 6
+    assert owned_total(client) == {"quantity": 100, "weight": 20}
     assert client.get(f"/api/material-transfers/{target['batch_no']}").json() == target
     assert (
         client.get(f"/api/team-materials/{warehouse['team']['id']}/dispatches").json()["total"] == 0
@@ -195,8 +191,6 @@ def test_all_own_teams_can_reallocate_and_new_submissions_accumulate(client, cod
     overview = client.get(f"/api/team-materials/{team['id']}/overview").json()
     assert overview["totals"]["owned_quantity"] == 100 and overview["totals"]["owned_weight"] == 20
     assert overview["pending_incoming"]["count"] == 0
-    rates = client.get("/api/factory-dashboard/yields").json()["items"]
-    assert all(row["status"] == "needs_review" for row in rates)
     with SessionLocal() as db:
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 40
     records = client.get(f"/api/team-materials/{team['id']}/serial-reallocations").json()
@@ -278,18 +272,12 @@ def test_reallocated_finished_shipments_use_target_serial_input_without_inflatin
         },
     )
     assert sent.status_code == 201, sent.text
-    rates = {
-        row["serial_no"]: row for row in client.get("/api/factory-dashboard/yields").json()["items"]
-    }
-    assert rates["000B"]["rate"] == 100 and rates["000B"]["output_weight"] == 6
-    detail = client.get("/api/factory-dashboard/team-yields", params={"serial_no": "000B"}).json()[
-        "items"
-    ][0]
-    assert detail["input_weight"] == detail["output_weight"] == 6 and detail["rate"] == 100
-    detail_a = client.get("/api/factory-dashboard/team-yields", params={"serial_no": "A"}).json()[
-        "items"
-    ][0]
-    assert detail_a["input_weight"] == 14 and detail_a["output_weight"] == 0
+    target_trace = client.get("/api/material-trace", params={"serial_no": "000B"}).json()
+    assert target_trace["totals"]["dispatched"] == {"quantity": 30, "weight": 6}
+    assert target_trace["totals"]["on_hand"] == {"quantity": 0, "weight": 0}
+    source_trace = client.get("/api/material-trace", params={"serial_no": "A"}).json()
+    assert source_trace["totals"]["on_hand"]["weight"] == 14
+    assert source_trace["totals"]["dispatched"]["weight"] == 0
 
 
 def test_sludge_retains_ratio_and_failed_location_does_not_deduct_stock(client, warehouse):
@@ -332,9 +320,8 @@ def test_sludge_retains_ratio_and_failed_location_does_not_deduct_stock(client, 
         assert float(db.get(MaterialStockBalance, lot["id"]).on_hand_weight) == 1
 
 
-def test_warehouse_reallocation_uses_target_identity_and_preserves_both_slot_balances(
-    client, warehouse
-):
+@pytest.mark.parametrize("same_slot", [False, True])
+def test_warehouse_reallocation_preserves_separate_batch_placements(client, warehouse, same_slot):
     selected_a = location(client, warehouse, "A-01")
     original = intake(client, warehouse, serial_no="000A", weight=20, **selected_a).json()
     selected_b = location(client, warehouse, "B-01")
@@ -360,7 +347,12 @@ def test_warehouse_reallocation_uses_target_identity_and_preserves_both_slot_bal
             "material_type": original["material_type"],
         },
     )
-    failed = reallocate(client, warehouse, original, **source_lease)
+    failed = reallocate(
+        client,
+        warehouse,
+        original,
+        **{**source_lease, "warehouse_location_reservation_key": "expired-source-lease"},
+    )
     assert failed.status_code == 409, failed.text
     assert state(client, a_slot)["batches"][0]["quantity"] == 100
     target_lease = reserve(
@@ -373,19 +365,23 @@ def test_warehouse_reallocation_uses_target_identity_and_preserves_both_slot_bal
             "material_type": original["material_type"],
         },
     )
-    result = reallocate(client, warehouse, original, **target_lease)
+    result = reallocate(
+        client, warehouse, original, **(source_lease if same_slot else target_lease)
+    )
     assert result.status_code == 201, result.text
-    assert result.json()["warehouse_location"] == "B-01"
-    assert state(client, a_slot)["batches"][0]["quantity"] == 70
-    assert state(client, a_slot)["batches"][0]["weight"] == 14
-    assert {row["batch_no"] for row in state(client, b_slot)["batches"]} == {
-        existing_b["batch_no"],
-        result.json()["batch_no"],
-    }
-    assert sum(row["weight"] for row in state(client, b_slot)["batches"]) == 8
+    assert result.json()["warehouse_location"] == ("A-01" if same_slot else "B-01")
+    a_batches = {row["batch_no"]: row for row in state(client, a_slot)["batches"]}
+    b_batches = {row["batch_no"]: row for row in state(client, b_slot)["batches"]}
+    assert a_batches[original["batch_no"]]["quantity"] == 70
+    assert a_batches[original["batch_no"]]["weight"] == 14
+    target_batches = a_batches if same_slot else b_batches
+    assert target_batches[result.json()["batch_no"]]["quantity"] == 30
+    assert target_batches[result.json()["batch_no"]]["weight"] == 6
+    assert b_batches[existing_b["batch_no"]]["quantity"] == 10
+    assert sum(row["weight"] for row in [*a_batches.values(), *b_batches.values()]) == 22
 
 
-def test_reallocation_chains_remain_traceable_and_do_not_make_a_shortage_origin_measurable(
+def test_reallocation_chains_remain_traceable_and_keep_the_shortage_at_its_origin(
     client, warehouse
 ):
     original = intake(client, warehouse, serial_no="000A", quantity=100, weight=20).json()
@@ -396,9 +392,13 @@ def test_reallocation_chains_remain_traceable_and_do_not_make_a_shortage_origin_
     assert c["source_serial_no"] == "000B" and c["source_transfer_batch_no"] == b["batch_no"]
     trace_b = client.get("/api/material-trace", params={"serial_no": "000B"}).json()
     assert {row["batch_no"] for row in trace_b["reallocations"]} == {b["batch_no"], c["batch_no"]}
-    rates = client.get("/api/factory-dashboard/yields").json()["items"]
-    assert {row["serial_no"] for row in rates} == {"000A", "000B", "000C"}
-    assert all(row["status"] == "needs_review" and row["rate"] is None for row in rates)
+    assert trace_b["totals"]["on_hand"]["weight"] == 16
+    trace_a = client.get("/api/material-trace", params={"serial_no": "000A"}).json()
+    assert trace_a["shortage"] == {"quantity": 10, "weight": 2}
+    trace_c = client.get("/api/material-trace", params={"serial_no": "000C"}).json()
+    assert trace_c["totals"]["on_hand"]["weight"] == 6
+    origin = next(row for row in trace_c["items"] if row["id"] == original["id"])
+    assert origin["context_only"] and origin["on_hand_weight"] == -2
 
 
 def test_records_list_preserves_provenance_filters_order_and_team_scope(client, warehouse):

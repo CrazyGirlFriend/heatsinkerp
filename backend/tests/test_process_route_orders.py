@@ -3,7 +3,7 @@ from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
-from app import process_route_api
+from app import order_document_response
 from app.database import SessionLocal
 from app.models import ProcessRouteOrderFile
 from app.process_route_orders import merge_materials, parse_order
@@ -291,7 +291,7 @@ def test_original_order_preview_keeps_draft_reader_permissions_and_download(
         calls.append((original, filename))
         return pdf()
 
-    monkeypatch.setattr(process_route_api, "order_document_preview", render)
+    monkeypatch.setattr(order_document_response, "order_document_preview", render)
     assert client.get(endpoint).content == content
     assert client.get(endpoint + "?preview=true", headers={"Authorization": ""}).status_code == 401
     assert client.get(endpoint + "?preview=true", headers=warehouse["headers"]).status_code == 403
@@ -312,7 +312,7 @@ def test_original_order_preview_keeps_draft_reader_permissions_and_download(
     def unavailable(original, filename):
         raise HTTPException(503, "订单原件预览暂时不可用")
 
-    monkeypatch.setattr(process_route_api, "order_document_preview", unavailable)
+    monkeypatch.setattr(order_document_response, "order_document_preview", unavailable)
     assert client.get(endpoint + "?preview=true").status_code == 503
     assert client.get(endpoint).content == content
     assert client.get(f"{URL}/999999/order?preview=true").status_code == 404

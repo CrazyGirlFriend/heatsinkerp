@@ -136,9 +136,6 @@ def publish(db, route_id, payload: RevisionWrite, user):
                 },
             }
         publish_route(db, row)
-        from .rework_notices import notify_ready
-
-        notify_ready(db, row)
         db.flush()
         return document(row, db=db)
 

@@ -27,17 +27,14 @@ def ship(client, setup, source, weight, *, quantity=1, key="ship"):
     assert response.json()["items"][0]["status"] == "dispatched"
 
 
-def statuses(client, setup, serial):
-    rows = client.get("/api/factory-dashboard/yields").json()["items"]
-    serial_row = next(row for row in rows if row["serial_no"] == serial)
-    teams = client.get("/api/factory-dashboard/team-yields", params={"serial_no": serial}).json()[
-        "items"
-    ]
-    return serial_row, next(row for row in teams if row["team_id"] == setup["team"]["id"])
+def trace(client, serial):
+    response = client.get("/api/material-trace", params={"serial_no": serial})
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 @pytest.mark.parametrize("difference", [".000001", ".6", "1", "1.000001"])
-def test_per_batch_allowance_boundary_preserves_actual_yield_and_does_not_create_loss(
+def test_per_batch_allowance_boundary_preserves_actual_weights_and_does_not_create_loss(
     client, warehouse, difference
 ):
     source = intake(
@@ -45,10 +42,10 @@ def test_per_batch_allowance_boundary_preserves_actual_yield_and_does_not_create
     ).json()
     delta = Decimal(difference)
     ship(client, warehouse, source, Decimal(10) + delta)
-    for row in statuses(client, warehouse, source["serial_no"]):
-        assert row["status"] == ("complete" if delta <= 1 else "needs_review")
-        assert row["rate"] == (round(float((Decimal(10) + delta) * 10), 2) if delta <= 1 else None)
-        assert row["output_weight"] == float(Decimal(10) + delta)
+    row = trace(client, source["serial_no"])
+    assert row["max_weight_difference"] == float(delta)
+    assert row["totals"]["dispatched"]["weight"] == float(Decimal(10) + delta)
+    assert row["totals"]["lost"]["weight"] == 0
     with SessionLocal() as db:
         balance = db.get(MaterialStockBalance, source["id"])
         assert balance.on_hand_weight == -delta and balance.lost_weight == 0
@@ -66,9 +63,10 @@ def test_separate_batches_do_not_share_one_factory_allowance(client, warehouse):
             idempotency_key=f"receipt-{index}",
         ).json()
         ship(client, warehouse, source, "10.6", key=f"ship-{index}")
-    for row in statuses(client, warehouse, "TOL-MULTI"):
-        assert row["status"] == "complete" and row["rate"] == 106
-        assert row["input_weight"] == 20 and row["output_weight"] == 21.2
+    row = trace(client, "TOL-MULTI")
+    assert row["weight_difference"] == 1.2 and row["max_weight_difference"] == 0.6
+    assert row["totals"]["dispatched"]["weight"] == 21.2
+    assert row["totals"]["lost"]["weight"] == 0
 
 
 def test_repeated_outbounds_accumulate_against_the_same_source_batch(client, warehouse):
@@ -77,8 +75,8 @@ def test_repeated_outbounds_accumulate_against_the_same_source_batch(client, war
     ).json()
     ship(client, warehouse, source, "5.6", quantity=0, key="first")
     ship(client, warehouse, source, "5.6", key="second")
-    for row in statuses(client, warehouse, source["serial_no"]):
-        assert row["status"] == "needs_review" and row["rate"] is None
+    row = trace(client, source["serial_no"])
+    assert row["weight_difference"] == row["max_weight_difference"] == 1.2
     with SessionLocal() as db:
         assert db.scalar(
             select(MaterialStockBalance.on_hand_weight).where(
@@ -101,5 +99,8 @@ def test_allowed_negative_balance_cannot_hide_another_batch_still_in_stock(clien
         idempotency_key="leftover",
     )
     ship(client, warehouse, source, "10.6")
-    for row in statuses(client, warehouse, source["serial_no"]):
-        assert row["status"] == "in_progress" and row["rate"] is None
+    row = trace(client, source["serial_no"])
+    assert row["totals"]["on_hand"]["weight"] == 0
+    assert row["max_weight_difference"] == 0.6
+    remaining = [item for item in row["items"] if (item["on_hand_weight"] or 0) > 0]
+    assert len(remaining) == 1 and remaining[0]["on_hand_weight"] == 0.6

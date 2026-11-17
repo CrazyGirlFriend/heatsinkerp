@@ -15,6 +15,7 @@ import {
 } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import type { ScheduleSummary } from '@/types/productionSchedule'
 import {
   canConfirmMaterialTransfer,
   materialTransferStatusLabel,
@@ -169,13 +170,13 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function stockDialog() {
+async function stockDialog(sources = [source(), source(4)]) {
   wrapper = mount(MaterialStockActionDialog, {
     props: {
       modelValue: true,
       teamId: state.auth.currentUser.team_id,
       mode: 'dispatch',
-      sources: [source(), source(4)],
+      sources,
     },
     global: { stubs: { ElDialog: dialogStub } },
   })
@@ -233,6 +234,57 @@ async function confirm(label = '确认出库') {
 }
 
 describe('external dispatch creation', () => {
+  it.each([
+    ['warehouse_outbound', 1],
+    ['inspection_shipment', 8],
+  ] as const)('ships same-serial schedule batches together via %s', async (kind, teamId) => {
+    state.auth.currentUser.team_id = teamId
+    const lots = [source(), source(4)]
+    lots.forEach((lot) => {
+      lot.transfer.material_type = 'finished'
+    })
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: lots.map((lot, index) => ({
+        source_transfer_id: Number(lot.transfer.id),
+        schedules: [
+          {
+            id: 71 + index,
+            serial_no: 'QA-EXTERNAL',
+            task_batch_number: index + 1,
+            due_at: '2026-12-01T08:00:00Z',
+            remaining_quantity: 20,
+            remaining_weight: null,
+          } as ScheduleSummary,
+        ],
+      })),
+    })
+    await stockDialog(lots)
+    await mode(kind)
+    await destination('对外转料')
+    expect(wrapper.text()).toContain('QA-EXTERNAL · 第1批')
+    expect(wrapper.text()).toContain('QA-EXTERNAL · 第2批')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      teamId,
+      expect.objectContaining({
+        entry_kind: kind,
+        external_destination: '对外转料',
+        lines: [
+          expect.objectContaining({
+            source_transfer_id: 3,
+            quantity: 20,
+            production_schedule_id: 71,
+          }),
+          expect.objectContaining({
+            source_transfer_id: 4,
+            quantity: 20,
+            production_schedule_id: 72,
+          }),
+        ],
+      }),
+    )
+  })
   it.each([
     ['warehouse_outbound', 1, '出库'],
     ['inspection_shipment', 8, '发货'],

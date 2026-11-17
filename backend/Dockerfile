@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir --index-url "${PYPI_INDEX_URL}" -r requirements.t
 COPY app ./app
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
+COPY migration_support ./migration_support
 
 EXPOSE 8000
 

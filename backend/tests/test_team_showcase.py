@@ -1,8 +1,8 @@
 import pytest
 from app.database import SessionLocal, engine
-from app.legacy_models import Operation, Product, ProductRouteOperation, WorkOrder
 from app.material_stock import list_dispatches, list_losses, list_stock, overview
 from app.models import (
+    LegacyRecord,
     MaterialTransfer,
     Team,
     TransferBatchNumberSequence,
@@ -33,24 +33,8 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
     with SessionLocal() as db:
         admin = db.scalar(select(User).where(User.username == "admin"))
         original_password = admin.password_hash
-        product = Product(code="LEGACY-TEST", name="旧演示产品")
-        db.add(product)
-        db.flush()
-        order = WorkOrder(
-            order_no="LEGACY-WO",
-            product_id=product.id,
-            product_name=product.name,
-            planned_quantity=10,
-            created_by="旧演示",
-        )
-        db.add(order)
-        db.flush()
-        db.add_all(
-            [
-                Operation(work_order_id=order.id, sequence=1, code="OLD", name="旧工序"),
-                ProductRouteOperation(product_id=product.id, sequence=1, code="OLD", name="旧工艺"),
-            ]
-        )
+        original_history = {"id": 1, "order_no": "LEGACY-WO", "planned_quantity": "10.000"}
+        db.add(LegacyRecord(source_table="work_orders", source_id=1, data=original_history))
         db.commit()
         result = seed_team_material_showcase(db, "LocalDemoOnly123!")
         assert result["material_transfers"] == 433
@@ -126,8 +110,7 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         db.commit()
         deleted = reset_business_data(db)
         assert "work_orders" not in deleted
-        for model in (Product, WorkOrder, Operation, ProductRouteOperation):
-            assert len(db.scalars(select(model)).all()) == 1
+        assert db.get(LegacyRecord, ("work_orders", 1)).data == original_history
         assert deleted["material_transfers"] == before["material_transfers"]
         assert deleted["warehouse_placements"] == placement_count
         assert all(count == 0 for count in business_counts(db).values())

@@ -25,10 +25,10 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
-import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { useInspectionProblems } from '@/composables/useInspectionProblems'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
-import { materialRequestKey } from '@/utils/materialStock'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import {
   inspectionApi,
   type InspectionSource,
@@ -36,7 +36,7 @@ import {
   inspectionMethodLabels,
   inspectionItemLabels,
 } from '@/services/inspectionApi'
-import type { TeamDirectoryItem, TeamEmployee } from '@/types/teamBusiness'
+import type { TeamEmployee } from '@/types/teamBusiness'
 const props = defineProps<{
   inspectionTeamId: number
   initialTeamId?: number
@@ -59,10 +59,13 @@ const scope = ref<InspectionRecord['scope']>('sample')
 const methods = ref<InspectionRecord['methods']>([])
 const items = ref<InspectionRecord['items']>([])
 const involved = ref<number[]>([])
-const problems = ref<TeamDirectoryItem[]>([])
+const {
+  problems,
+  loading: problemsLoading,
+  error: problemsError,
+  load: fetchProblems,
+} = useInspectionProblems(() => props.inspectionTeamId, '检验问题选项读取失败')
 const problemIds = ref<number[]>([])
-const problemsLoading = ref(false)
-const problemsError = ref('')
 const validProblems = computed(
   () =>
     problemIds.value.length > 0 &&
@@ -94,24 +97,11 @@ const writable = computed(
     !auth.currentUserError &&
     auth.currentUser?.active !== false,
 )
-let generation = 0,
-  problemGeneration = 0,
-  requestKey = '',
-  fingerprint = ''
-async function loadProblems() {
-  const token = ++problemGeneration
-  problemsLoading.value = true
-  problemsError.value = ''
+let generation = 0
+const submission = createMaterialSubmissionKey()
+function loadProblems() {
   problems.value = []
-  try {
-    const result = await teamMaterialApi.inspectionProblems(props.inspectionTeamId)
-    if (token === problemGeneration) problems.value = result.filter((item) => item.active)
-  } catch (e) {
-    if (token === problemGeneration)
-      problemsError.value = e instanceof Error ? e.message : '检验问题选项读取失败'
-  } finally {
-    if (token === problemGeneration) problemsLoading.value = false
-  }
+  return fetchProblems()
 }
 async function load() {
   const token = ++generation
@@ -196,11 +186,7 @@ async function submit() {
     notes: notes.value.trim(),
     ...(props.recheck ? { parent_id: props.recheck.id } : {}),
   }
-  const next = JSON.stringify(body)
-  if (!requestKey || fingerprint !== next) {
-    requestKey = materialRequestKey()
-    fingerprint = next
-  }
+  const requestKey = submission.get(body)
   saving.value = true
   error.value = ''
   try {
@@ -237,7 +223,6 @@ watch(
 )
 onBeforeUnmount(() => {
   ++generation
-  ++problemGeneration
 })
 </script>
 <template>

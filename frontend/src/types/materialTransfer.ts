@@ -126,6 +126,33 @@ export const materialDocumentTextFields = [
   },
 ] as const
 export type MaterialTransferTextField = (typeof materialDocumentTextFields)[number]['key']
+export const materialSpecificationKeys: readonly MaterialTransferTextField[] = [
+  'finished_specification',
+  'transfer_specification',
+]
+export const materialDocumentFormSections = [
+  {
+    name: 'document',
+    label: '物料资料',
+    fields: materialDocumentTextFields.filter(
+      (field) => !field.multiline && !materialSpecificationKeys.includes(field.key),
+    ),
+  },
+  {
+    name: 'specification',
+    label: '规格工艺',
+    fields: materialDocumentTextFields.filter(
+      (field) =>
+        materialSpecificationKeys.includes(field.key) ||
+        ['technical_requirements', 'special_process'].includes(field.key),
+    ),
+  },
+  {
+    name: 'notes',
+    label: '补充说明',
+    fields: materialDocumentTextFields.filter((field) => field.key === 'material_description'),
+  },
+]
 export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, string | null> & {
   material_type: MaterialType | null
   finished_quantity: number | null

@@ -8,7 +8,6 @@ import {
   type AuthSession,
   type LoginPayload,
   type PasswordChangePayload,
-  type UserRole,
 } from '@/services/adminApi'
 import { appPinia } from '@/stores/pinia'
 
@@ -86,15 +85,6 @@ export const useAuthStore = defineStore('auth', () => {
       currentUser.value.active &&
       !currentUserError.value,
   )
-
-  function hasRole(required: UserRole | UserRole[]): boolean {
-    const roles = Array.isArray(required) ? required : [required]
-    return Boolean(currentUser.value && roles.includes(currentUser.value.role))
-  }
-
-  function canAccess(required?: UserRole | UserRole[]): boolean {
-    return isAuthenticated.value && (!required || hasRole(required))
-  }
 
   function restoreSession(): AuthSession | null {
     ++profileRequestVersion
@@ -226,8 +216,6 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isTeamAccount,
     isDispatch,
-    hasRole,
-    canAccess,
     login,
     logout,
     clearSession,
@@ -248,14 +236,6 @@ export const currentUser = authRefs.currentUser
 export const isAuthenticated = authRefs.isAuthenticated
 export const isAdmin = authRefs.isAdmin
 export const isTeamAccount = authRefs.isTeamAccount
-
-export function hasRole(required: UserRole | UserRole[]): boolean {
-  return defaultAuthStore.hasRole(required)
-}
-
-export function canAccess(required?: UserRole | UserRole[]): boolean {
-  return defaultAuthStore.canAccess(required)
-}
 
 export function restoreSession(): AuthSession | null {
   return defaultAuthStore.restoreSession()

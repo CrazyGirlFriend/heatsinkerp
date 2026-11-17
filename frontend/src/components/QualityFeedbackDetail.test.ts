@@ -4,8 +4,6 @@ import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElInput, ElSelect } from 'element-plus'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
-import AppDialog from './AppDialog.vue'
-import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import QualityReworkRequest from './QualityReworkRequest.vue'
 import {
@@ -13,11 +11,6 @@ import {
   type QualityFeedbackDetail as Detail,
 } from '@/services/qualityFeedbackApi'
 const state = vi.hoisted(() => ({ auth: {} as Record<string, unknown> }))
-vi.mock('@/utils/noticeFocus', () => ({
-  focusNoticeTarget: vi.fn(() => vi.fn()),
-  noticeOpened: vi.fn(),
-  noticeFailed: vi.fn(),
-}))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
@@ -86,9 +79,9 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(noticeKey?: string) {
+async function render() {
   wrapper = mount(QualityFeedbackDetail, {
-    props: { issueId: 1, noticeKey },
+    props: { issueId: 1 },
     global: {
       stubs: {
         SerialRouteAttachments: true,
@@ -102,25 +95,10 @@ async function render(noticeKey?: string) {
   await flushPromises()
 }
 const button = (text: string) => wrapper.findAll('button').find((b) => b.text() === text)
-it('highlights the loaded quality issue after the dialog opens and acknowledges the message', async () => {
-  await render('quality-open')
-  expect(noticeOpened).not.toHaveBeenCalled()
-  wrapper.getComponent(AppDialog).vm.$emit('opened')
-  await flushPromises()
-  expect(focusNoticeTarget).toHaveBeenCalledWith(wrapper.get('.quality-detail-heading').element)
-  expect(noticeOpened).toHaveBeenCalledWith('quality-open')
-  await wrapper.setProps({ noticeKey: 'quality-reopen' })
-  await flushPromises()
-  expect(noticeOpened).toHaveBeenLastCalledWith('quality-reopen')
-})
-it('keeps a failed quality message unread and reports the destination error', async () => {
+it('shows a quality detail loading error on the business page', async () => {
   vi.mocked(qualityFeedbackApi.detail).mockRejectedValueOnce(new Error('当前班组无权查看'))
-  await render('quality-failed')
-  wrapper.getComponent(AppDialog).vm.$emit('opened')
-  await flushPromises()
-  expect(noticeFailed).toHaveBeenCalledWith('quality-failed', expect.any(Error))
-  expect(noticeOpened).not.toHaveBeenCalled()
-  expect(focusNoticeTarget).not.toHaveBeenCalled()
+  await render()
+  expect(wrapper.text()).toContain('当前班组无权查看')
 })
 it('lets an involved team reply but does not expose QC decisions', async () => {
   await render()
@@ -157,6 +135,33 @@ it('QC saves a manual decision and retains the inspection facts', async () => {
   expect(wrapper.text()).toContain('不合格 2 件')
   expect(qualityFeedbackApi.reply).not.toHaveBeenCalled()
 })
+it.each([
+  { teamId: 2, action: 'reply' as const, label: '提交反馈' },
+  { teamId: 8, action: 'decide' as const, label: '保存处理意见' },
+])(
+  'keeps $action retries stable and separates edited feedback',
+  async ({ teamId, action, label }) => {
+    state.auth.currentUser = { team_id: teamId, active: true }
+    const request = vi.mocked(qualityFeedbackApi[action]).mockRejectedValue(new Error('网络中断'))
+    await render()
+    const notes = wrapper.getComponent(ElInput)
+    notes.vm.$emit('update:modelValue', '已核查尺寸')
+    await button(label)!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('网络中断')
+    await button(label)!.trigger('click')
+    await flushPromises()
+    expect(request.mock.calls).toHaveLength(2)
+    expect(request.mock.calls[1]).toEqual(request.mock.calls[0])
+    notes.vm.$emit('update:modelValue', '已核查尺寸，需要重新加工')
+    await button(label)!.trigger('click')
+    await flushPromises()
+    expect(request.mock.calls).toHaveLength(3)
+    expect(request.mock.calls[2]![1].idempotency_key).not.toBe(
+      request.mock.calls[0]![1].idempotency_key,
+    )
+  },
+)
 it('losing team permissions removes write actions', async () => {
   await render()
   state.auth.currentUserError = '登录状态失效'

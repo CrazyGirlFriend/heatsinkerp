@@ -1,5 +1,7 @@
 # 库房来源与物料性质
 
+> 2026-11-17 当前规则：库房按实物批次分别展示；加工班组仍按现有分类归组，并区分排期和工序。两者都使用 `/api/team-materials/{team_id}/inventory`，下文的早期界面记录以此更新为准。
+
 状态：来源分组明细、废屑出入库查询及独立批次已随 `6fdf069` / `20260918T045500Z` 部署。原来源分类于 2026-09-16 上线，详见 [服务器部署记录](server-deployment.md)。后续 [八班组分类库存明细](team-classified-inventory.md) 已随 `20260918T064256Z` 发布。
 
 ## 使用方式
@@ -33,8 +35,8 @@
 
 ### 只读查询接口
 
-- `GET /api/team-materials/{team_id}/warehouse-inventory`：仅正式库房；分页在分组求和之后执行。参数包括 `query`、`search_field`、`search_operator`、`receipt_source=external|return|internal`、`source_team_id`、`material_type`、`availability=current|available|scrap|all`、日期及分页。
-- `GET /api/team-materials/{team_id}/warehouse-inventory/{group_id}/sources`：按所选分组查询原始已接收批次；`current_only=true` 仅保留出库可选来源。`group_id` 是该组最早入库记录的 ID，不是新增单号。
+- `GET /api/team-materials/{team_id}/inventory`：所有班组共用；库房按实物批次区分，分页在分组求和之后执行。参数包括 `query`、`search_field`、`search_operator`、`receipt_source=external|return|internal`、`source_team_id`、`material_type`、`availability=current|available|scrap|all`、日期及分页。
+- `GET /api/team-materials/{team_id}/inventory/{group_id}/sources`：按所选分组查询原始已接收批次；`current_only=true` 仅保留出库可选来源。`group_id` 是该组最早入库记录的 ID，不是新增单号。
 - 新查询不落重复库存表、不新增数据库迁移；直接复用收发与丢失余额查询。仍需应用原来源分类迁移 `20260916_0013`。
 
 历史外部来源未填写的，显示“外部来源未登记”；不会根据备注猜测来源。为兼容历史调用和待联调主系统，普通外部入库 API 仍允许来源单位为空；新手工表单要求填写，外部退回 API 也要求填写。

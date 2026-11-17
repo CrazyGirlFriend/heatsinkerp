@@ -12,6 +12,7 @@ import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
+import { useInventorySchedules } from '@/composables/useInventorySchedules'
 import { ElDescriptions, ElDescriptionsItem, ElTableColumn, ElTag } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
@@ -48,7 +49,6 @@ import {
   inventoryScheduleDue,
   inventoryScheduleLabel,
   inventoryScheduleTone,
-  loadInventorySchedules,
 } from '@/utils/inventorySchedule'
 
 const props = defineProps<{
@@ -85,32 +85,22 @@ const movements = ref<MaterialTransfer[]>([]),
   movementPageSize = ref(10)
 const loading = ref(false),
   error = ref('')
-const scheduleLoading = ref(false),
-  scheduleError = ref(''),
-  expandedScheduleSources = ref<number[]>([])
-let scheduleVersion = 0
-async function withSchedules(items: StockBatch[], teamId = props.teamId) {
-  const summaries = await loadInventorySchedules(
-    teamId,
-    items.map((row) => ({ id: Number(row.transfer.id), materialType: row.transfer.material_type })),
-    'sources',
-  )
-  return items.map((row) => ({ ...row, delivery_schedule: summaries[Number(row.transfer.id)] }))
-}
-async function loadSchedules(current = version) {
-  const request = ++scheduleVersion
-  scheduleLoading.value = true
-  scheduleError.value = ''
-  try {
-    const items = await withSchedules(rows.value)
-    if (current === version && request === scheduleVersion) rows.value = items
-  } catch {
-    if (current === version && request === scheduleVersion)
-      scheduleError.value = '交货排期加载失败，库存仍可查看。'
-  } finally {
-    if (current === version && request === scheduleVersion) scheduleLoading.value = false
-  }
-}
+const expandedScheduleSources = ref<number[]>([])
+const {
+  loading: scheduleLoading,
+  error: scheduleError,
+  load: loadSchedules,
+  reset: resetSchedules,
+  withSchedules,
+} = useInventorySchedules(
+  rows,
+  () => props.teamId,
+  'sources',
+  (row) => ({
+    id: Number(row.transfer.id),
+    materialType: row.transfer.material_type,
+  }),
+)
 function toggleSchedule(row: StockBatch) {
   const id = Number(row.transfer.id)
   expandedScheduleSources.value = expandedScheduleSources.value.includes(id) ? [] : [id]
@@ -183,9 +173,7 @@ const live = useLiveRefresh(() => load(true), {
 })
 async function load(background = false) {
   const current = ++version
-  ++scheduleVersion
-  scheduleLoading.value = false
-  scheduleError.value = ''
+  resetSchedules()
   if (!props.group) {
     loading.value = false
     return
@@ -223,7 +211,7 @@ async function load(background = false) {
     expandedScheduleSources.value = expandedScheduleSources.value.filter((id) =>
       result.items.some((row) => Number(row.transfer.id) === id),
     )
-    void loadSchedules(current)
+    void loadSchedules()
     total.value = result.total
     movements.value = records.items
     movementTotal.value = records.total

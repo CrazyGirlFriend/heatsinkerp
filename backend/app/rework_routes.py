@@ -519,10 +519,8 @@ def request_rework(db, payload, user):
             db.add(route)
             db.flush()
             from .process_route_drawings import copy_drawings
-            from .rework_notices import notify_engineering
 
             copy_drawings(db, lot.process_route_id or work.process_route_id, route.id)
-            notify_engineering(db, route)
             child.rework_route_id = route.id
             db.add(
                 MaterialTransferEvent(

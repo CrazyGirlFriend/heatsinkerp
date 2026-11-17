@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePagedRecords } from '@/composables/usePagedRecords'
 import { useTableQuery } from '@/composables/useTableQuery'
 import { inspectionQueryColumns } from '@/utils/tableQueryColumns'
 import ElSelect from '@/components/AppSelect.vue'
@@ -7,7 +8,7 @@ import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElDescriptions, ElDescriptionsItem, ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
@@ -59,12 +60,10 @@ const canWrite = computed(
     auth.currentUser?.active !== false &&
     !auth.currentUserError,
 )
-const rows = ref<InspectionRecord[]>([]),
-  total = ref(0),
-  page = ref(1),
-  size = ref(10),
-  loading = ref(false),
-  error = ref('')
+const { rows, total, page, size, loading, error, load, invalidate } = usePagedRecords(
+  (pagination) => inspectionApi.records({ ...params(), ...pagination }),
+  { errorMessage: '检查记录读取失败', clearOnError: true },
+)
 const query = ref(''),
   filtersOpen = ref(false),
   draftTeam = ref<number>(),
@@ -76,7 +75,6 @@ const applied = ref<InspectionFilters>({}),
 const registration = ref(false),
   recheck = ref<InspectionRecord | null>(null),
   detail = ref<InspectionRecord | null>(null)
-let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
   busy: () => loading.value || registration.value || !!detail.value,
@@ -103,43 +101,6 @@ function params(): InspectionFilters {
     kind: props.kind ?? (props.sourceId ? undefined : 'inspection'),
     team_id: props.sourceId ? undefined : props.showAll ? applied.value.team_id : props.teamId,
     source_transfer_id: props.sourceId ?? sourceFilter.value,
-  }
-}
-watch(
-  [page, size],
-  () => {
-    ++generation
-    rows.value = []
-  },
-  { flush: 'sync' },
-)
-async function load(background = false) {
-  const token = ++generation
-  if (!background) loading.value = true
-  error.value = ''
-  try {
-    const result = await inspectionApi.records({
-      ...params(),
-      page: page.value,
-      page_size: size.value,
-    })
-    if (token !== generation) return
-    const last = Math.max(1, Math.ceil(result.total / size.value))
-    if (page.value > last) {
-      page.value = last
-      await load(background)
-      return
-    }
-    rows.value = result.items
-    total.value = result.total
-  } catch (e) {
-    if (token === generation) {
-      if (background) throw e
-      rows.value = []
-      error.value = e instanceof Error ? e.message : '检查记录读取失败'
-    }
-  } finally {
-    if (token === generation) loading.value = false
   }
 }
 function search() {
@@ -253,8 +214,7 @@ function exportSource() {
 watch(
   () => [props.teamId, props.sourceId, props.showAll, props.kind],
   () => {
-    ++generation
-    rows.value = []
+    invalidate()
     sourceFilter.value = undefined
     applied.value = {}
     query.value = ''
@@ -267,9 +227,6 @@ watch(
 )
 watch(canWrite, (value) => {
   if (!value) registration.value = false
-})
-onBeforeUnmount(() => {
-  ++generation
 })
 </script>
 <template>

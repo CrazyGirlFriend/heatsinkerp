@@ -288,55 +288,12 @@ def test_migration_adds_owner_to_existing_drafts_without_claiming_them(tmp_path)
         engine.dispose()
 
 
-def test_route_options_exposes_only_active_execution_vocabulary(client, warehouse, engineering):
-    from app.models import Team, TeamProcessingTask
-
-    team_id = warehouse["other"]["id"]
-    base = f"/api/team-materials/{team_id}"
-    task = client.post(base + "/processing-tasks", json={"name": "精轧"}).json()
-    purpose = client.post(base + "/purposes", json={"name": "轧制加工"}).json()
-    assert (
-        client.post(
-            base + "/processing-tasks", json={"name": "停用任务", "active": False}
-        ).status_code
-        == 201
-    )
-    assert (
-        client.post(base + "/purposes", json={"name": "停用业务", "active": False}).status_code
-        == 201
-    )
-    response = client.get(URL + f"/options/{team_id}", headers=engineering["headers"])
-    assert response.status_code == 200, response.text
-    options = response.json()
-    # Either directory entry creates the same selectable task for both workflows.
-    assert {item["name"] for item in options["tasks"]} == {"精轧", "轧制加工"}
-    assert {item["name"] for item in options["purposes"]} == {"精轧", "轧制加工"}
-    assert all(item["active"] for item in options["tasks"] + options["purposes"])
-    assert {item["purpose_id"] for item in options["tasks"]} == {task["purpose_id"], purpose["id"]}
-    assert {item["id"] for item in options["purposes"]} == {task["purpose_id"], purpose["id"]}
-    assert next(item for item in options["tasks"] if item["id"] == task["id"]) == task
-    assert client.get(URL + f"/options/{team_id}").json() == response.json()
-    assert (
-        client.get(URL + f"/options/{team_id}", headers=warehouse["other_headers"]).status_code
-        == 403
-    )
+def test_engineering_cannot_manage_another_teams_processing_tasks(client, warehouse, engineering):
+    base = f"/api/team-materials/{warehouse['other']['id']}"
     assert client.get(base + "/processing-tasks", headers=engineering["headers"]).status_code == 403
     assert (
         client.post(
             base + "/processing-tasks", headers=engineering["headers"], json={"name": "越权任务"}
         ).status_code
         == 403
-    )
-    warehouse_id = warehouse["team"]["id"]
-    with SessionLocal() as db:
-        # Historical/misconfigured warehouse task rows must not become executable options.
-        db.add(TeamProcessingTask(team_id=warehouse_id, name="旧仓库任务"))
-        db.commit()
-    own = client.get(URL + f"/options/{warehouse_id}", headers=engineering["headers"])
-    assert own.status_code == 200 and own.json()["tasks"] == []
-    with SessionLocal() as db:
-        db.get(Team, team_id).active = False
-        db.commit()
-    assert (
-        client.get(URL + f"/options/{team_id}", headers=engineering["headers"]).status_code == 404
     )

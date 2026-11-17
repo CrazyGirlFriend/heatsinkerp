@@ -196,39 +196,6 @@ def publish_route(db, row):
     )
 
 
-def route_options(db, team_id):
-    """Read only the active execution vocabulary required to review an imported route."""
-    from .team_business import directory_item_dict
-
-    team = db.get(Team, team_id)
-    if not team or not team.active:
-        raise HTTPException(404, "执行班组不存在或已停用")
-    warehouse = team.code == WAREHOUSE_TEAM_CODE and team.kind == "warehouse"
-    production = team.code in PROCESSING_TEAM_CODES and team.kind == "production"
-    if not warehouse and not production:
-        raise HTTPException(422, "执行班组须为正式生产班组或库房")
-    return {
-        "tasks": [
-            directory_item_dict(row)
-            for row in db.scalars(
-                select(TeamProcessingTask)
-                .where(TeamProcessingTask.team_id == team.id, TeamProcessingTask.active.is_(True))
-                .order_by(TeamProcessingTask.id)
-            )
-        ]
-        if production
-        else [],
-        "purposes": [
-            directory_item_dict(row)
-            for row in db.scalars(
-                select(TeamPurpose)
-                .where(TeamPurpose.team_id == team.id, TeamPurpose.active.is_(True))
-                .order_by(TeamPurpose.id)
-            )
-        ],
-    }
-
-
 def route_document(lot):
     from .shared_material import execution_step, is_split_step
 

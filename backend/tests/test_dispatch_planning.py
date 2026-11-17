@@ -248,9 +248,7 @@ def test_dispatch_plans_take_effect_on_save_and_ignore_legacy_order_locks(
         assert detail.json()["batches"] == saved["batches"]
     # The retired approval operation is no longer exposed, even to dispatch.
     assert client.post(endpoint + "/review", headers=dispatcher, json={}).status_code == 404
-    notices = client.get("/api/business-notices", headers=dispatcher).json()["items"]
-    assert any(n["kind"] == "changed" for n in notices)
-    assert not any(n["kind"] == "review" for n in notices)
+    assert any(event["action"] == "batches_updated" for event in saved["history"])
     changed = dict(
         expected_version=saved["version"],
         batches=[
@@ -347,12 +345,7 @@ def test_customer_batches_people_admin_and_soft_delete(client, warehouse, dispat
     )
     response = client.patch(f"{URL}/tasks/{task['id']}", headers=dispatcher, json=update)
     assert response.status_code == 200, response.text
-    assert any(
-        n["kind"] == "final_due"
-        for n in client.get("/api/business-notices", headers=warehouse["other_headers"]).json()[
-            "items"
-        ]
-    )
+    assert response.json()["final_due_at"] == "2026-12-31T08:00:00+00:00"
     task = response.json()
     response = client.request(
         "DELETE",
@@ -368,7 +361,7 @@ def test_customer_batches_people_admin_and_soft_delete(client, warehouse, dispat
 
 @pytest.mark.parametrize("state", ["submitted", "revision_pending"])
 def test_legacy_proposals_are_preserved_until_saved_directly(client, warehouse, dispatcher, state):
-    from app.models import ProductionSchedule, ScheduleNotice
+    from app.models import ProductionSchedule
 
     task, _ = create(client, warehouse, dispatcher)
     plan = task["nodes"][1]
@@ -384,26 +377,11 @@ def test_legacy_proposals_are_preserved_until_saved_directly(client, warehouse, 
         model = db.get(ProductionSchedule, plan["id"])
         model.planning_state = state
         model.pending_batches = [draft]
-        notice = ScheduleNotice(
-            schedule_id=plan["id"],
-            team_id=plan["team_id"],
-            kind="review",
-            message="请确认",
-            event_key=f"legacy:{state}",
-        )
-        db.add(notice)
-        db.flush()
-        notice_id = notice.id
     endpoint = f"{URL}/{plan['id']}"
     current = client.get(endpoint).json()
     assert current["pending_batches"][0]["target_quantity"] == 100
-    assert not any(
-        n["kind"] == "review" for n in client.get("/api/business-notices").json()["items"]
-    )
-    assert not any(
-        n["kind"] == "review" for n in client.get("/api/schedule-notices").json()["items"]
-    )
-    assert client.get(f"/api/business-notices/schedule/{notice_id}/target").status_code == 404
+    assert client.get("/api/business-notices").status_code == 404
+    assert client.get("/api/schedule-notices").status_code == 404
     result = client.put(
         endpoint + "/batches",
         headers=dispatcher,

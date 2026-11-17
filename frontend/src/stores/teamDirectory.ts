@@ -73,10 +73,6 @@ const defaultTeamDirectoryStore = useTeamDirectoryStore(appPinia)
 
 export const teamDirectory = readonly(defaultTeamDirectoryStore)
 
-export function clearTeamDirectory(): void {
-  defaultTeamDirectoryStore.clearTeamDirectory()
-}
-
 export function refreshTeamDirectory(): Promise<void> {
   return defaultTeamDirectoryStore.refreshTeamDirectory()
 }

@@ -966,7 +966,6 @@ onMounted(async () => {
                     <template v-for="(step, index) in draft.steps" :key="index">
                       <tr
                         class="route-edit-step"
-                        :data-notice-route-step="index"
                         tabindex="-1"
                         @focusin="focusOriginal(step.source_row)"
                       >
@@ -1444,7 +1443,6 @@ onMounted(async () => {
   flex-direction: column;
   gap: 10px;
 }
-.route-source-status,
 .route-source-error {
   font-size: 12px;
   color: var(--muted);

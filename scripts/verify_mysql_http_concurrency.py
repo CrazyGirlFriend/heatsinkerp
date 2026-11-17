@@ -166,22 +166,22 @@ class Harness:
                 values = owned.setdefault(team, [0, Decimal(0)])
                 values[0] += quantity
                 values[1] += weight
+        observed_owned = [0, Decimal(0)]
         for team in self.teams:
             actor = next(a for a in self.actors if a["team"] == team)
             totals = self.request(actor, f"/api/team-materials/{team}/overview")[1]["totals"]
             assert [totals["on_hand_quantity"], Decimal(str(totals["on_hand_weight"]))] == teams[team]
             assert [totals["owned_quantity"], Decimal(str(totals["owned_weight"]))] == owned.get(team, [0, Decimal(0)])
+            observed_owned[0] += totals["owned_quantity"]
+            observed_owned[1] += Decimal(str(totals["owned_weight"]))
         report = self.request(self.actors[0], "/api/factory-overview")[1]
         matrix = report["stock_matrix"]
         scope = [teams[row["team_id"]] for row in matrix["rows"] if row["team_id"] is not None]
         assert matrix["total"]["quantity"] == sum(v[0] for v in scope)
         assert Decimal(str(matrix["total"]["weight"])) == sum(v[1] for v in scope)
-        # The management matrix includes pending outbound still owned upstream;
-        # the older physical-stock analysis deliberately excludes it.
-        matrix = self.request(self.actors[0], "/api/factory-dashboard")[1]["stock"]
-        assert matrix["total"]["quantity"] == sum(v[0] for v in owned.values())
-        assert Decimal(str(matrix["total"]["weight"])) == sum(v[1] for v in owned.values())
-        return matrix["total"]
+        # Ownership includes pending outbound; physical stock excludes it.
+        assert observed_owned == [sum(v[0] for v in owned.values()), sum(v[1] for v in owned.values())]
+        return {"quantity": observed_owned[0], "weight": float(observed_owned[1])}
 
     def close(self):
         failures = 0

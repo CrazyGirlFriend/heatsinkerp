@@ -47,6 +47,15 @@ def directory_item_dict(row):
     }
 
 
+def _directory_items(db, model, team_id):
+    return [
+        directory_item_dict(row)
+        for row in db.scalars(
+            select(model).where(model.team_id == team_id).order_by(model.id.desc())
+        )
+    ]
+
+
 def purpose_snapshot(db, team_id, purpose_id, *, required=True):
     """Call with target Team locked; configuration writes take that same lock."""
     if team_id is None:
@@ -83,14 +92,7 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
 
 def list_purposes(*, team_id: int, _: User, db: Session):
     require_team(db, team_id)
-    return [
-        directory_item_dict(row)
-        for row in db.scalars(
-            select(TeamPurpose)
-            .where(TeamPurpose.team_id == team_id)
-            .order_by(TeamPurpose.id.desc())
-        )
-    ]
+    return _directory_items(db, TeamPurpose, team_id)
 
 
 def save_directory_item(
@@ -228,14 +230,7 @@ def list_employees(*, team_id: int, user: User, db: Session):
     if user.role != "ADMIN":
         require_actor(user, team_id)
     require_team(db, team_id)
-    return [
-        directory_item_dict(row)
-        for row in db.scalars(
-            select(TeamEmployee)
-            .where(TeamEmployee.team_id == team_id)
-            .order_by(TeamEmployee.id.desc())
-        )
-    ]
+    return _directory_items(db, TeamEmployee, team_id)
 
 
 class OpeningAuthorization(BaseModel):
@@ -247,28 +242,14 @@ def list_processing_tasks(*, team_id: int, user: User, db: Session):
     if user.role != "ADMIN":
         require_actor(user, team_id)
     require_team(db, team_id)
-    return [
-        directory_item_dict(row)
-        for row in db.scalars(
-            select(TeamProcessingTask)
-            .where(TeamProcessingTask.team_id == team_id)
-            .order_by(TeamProcessingTask.id.desc())
-        )
-    ]
+    return _directory_items(db, TeamProcessingTask, team_id)
 
 
 def list_inspection_problems(*, team_id: int, _: User, db: Session):
     team = require_team(db, team_id)
     if team.code != INSPECTION_TEAM_CODE:
         raise HTTPException(422, "检验问题由检验班组统一维护")
-    return [
-        directory_item_dict(row)
-        for row in db.scalars(
-            select(InspectionProblemType)
-            .where(InspectionProblemType.team_id == team_id)
-            .order_by(InspectionProblemType.id.desc())
-        )
-    ]
+    return _directory_items(db, InspectionProblemType, team_id)
 
 
 def authorize_opening(*, payload: OpeningAuthorization, team_id: int, user: User, db: Session):
@@ -307,11 +288,4 @@ def list_equipment(*, team_id: int, user: User, db: Session):
     team = require_team(db, team_id)
     if team.code not in EQUIPMENT_FIELDS:
         raise HTTPException(422, "本班组不配置加工设备")
-    return [
-        directory_item_dict(row)
-        for row in db.scalars(
-            select(TeamEquipment)
-            .where(TeamEquipment.team_id == team_id)
-            .order_by(TeamEquipment.id.desc())
-        )
-    ]
+    return _directory_items(db, TeamEquipment, team_id)

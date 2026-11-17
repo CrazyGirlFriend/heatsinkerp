@@ -69,3 +69,22 @@ export function materialRequestKey(): string {
     `stock-${Date.now()}-${Math.random().toString(16).slice(2)}`
   )
 }
+
+/** Keep uncertain retries on the same request; reset when starting a new draft. */
+export function createMaterialSubmissionKey() {
+  let key = '',
+    fingerprint = ''
+  return {
+    get(payload: unknown) {
+      const next = JSON.stringify(payload)
+      if (!key || fingerprint !== next) {
+        key = materialRequestKey()
+        fingerprint = next
+      }
+      return key
+    },
+    reset() {
+      key = fingerprint = ''
+    },
+  }
+}

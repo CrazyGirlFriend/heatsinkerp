@@ -45,7 +45,7 @@ import type {
   TeamPurpose,
   TeamProcessingTask,
 } from '@/types/teamBusiness'
-import { materialRequestKey } from '@/utils/materialStock'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import { showToast } from '@/stores/toast'
 
 const props = withDefaults(
@@ -168,9 +168,8 @@ const { formRef, fieldErrors } = validation
 function lineError(index: number, field: string) {
   return fieldErrors.value[`${index}.${field}`]
 }
-let epoch = 0,
-  requestKey = '',
-  lastBody = ''
+let epoch = 0
+const submission = createMaterialSubmissionKey()
 const key = () => `heatsink.opening-draft.v1:${auth.currentUser?.id}:${props.teamId}`
 function enteredQuantity(line: OpeningLine) {
   return isWeightOnlyType(line.material_type) ? 0 : line.quantity
@@ -241,8 +240,7 @@ watch(
     if (props.employeesOnly || (tab.value === 'equipment' && !hasEquipment.value))
       tab.value = 'employees'
     newName.value = ''
-    requestKey = ''
-    lastBody = ''
+    submission.reset()
     opening.value = null
     invalidSpecifications.clear()
     lines.value = [blank()]
@@ -349,11 +347,7 @@ async function submitOpening() {
     return
   }
   if (current !== epoch || !props.modelValue || saving.value) return
-  const fingerprint = JSON.stringify(body)
-  if (!requestKey || fingerprint !== lastBody) {
-    requestKey = materialRequestKey()
-    lastBody = fingerprint
-  }
+  const requestKey = submission.get(body)
   saving.value = true
   try {
     const rows = await teamMaterialApi.createOpening(props.teamId, body, requestKey)
@@ -363,8 +357,7 @@ async function submitOpening() {
     } catch {
       /* The committed receipt remains authoritative. */
     }
-    requestKey = ''
-    lastBody = ''
+    submission.reset()
     lines.value = [blank()]
     emit('update:modelValue', false)
     emit('stocked', rows)

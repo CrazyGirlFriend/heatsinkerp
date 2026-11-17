@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useTableQuery } from '@/composables/useTableQuery'
 import { transferQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
-import AppPopover from '@/components/AppPopover.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
+import TeamTransferRecordsTable from '@/components/TeamTransferRecordsTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -46,8 +45,6 @@ import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
-import BarcodeCard from '@/components/BarcodeCard.vue'
-import MaterialTransferStatus from '@/components/MaterialTransferStatus.vue'
 import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -71,10 +68,6 @@ import { materialTransferApi } from '@/services/materialTransferApi'
 import {
   isExternalEntryKind,
   materialEntryLabel,
-  materialSourceLabel,
-  materialSenderName,
-  materialPurposeLabel,
-  receiptSourceLabel,
   materialTypeOptions,
   materialTypeLabel,
   type MaterialTransfer,
@@ -1452,343 +1445,20 @@ onBeforeUnmount(() => {
                 @retry="loadView"
               />
               <div v-show="!loading && !loadError" class="team-table-scroll">
-                <WorkspaceTable
-                  columns-key="TeamWorkspacePage-1"
+                <TeamTransferRecordsTable
+                  v-if="tab === 'pending' || tab === 'receipts' || tab === 'outgoing'"
+                  :key="tab"
+                  :kind="tab"
+                  :rows="tab === 'pending' ? pending : tab === 'receipts' ? receipts : outgoing"
+                  :warehouse="isWarehouse"
+                  :can-write="canWrite"
+                  :receiver-selected="!!receiptReceiver"
+                  :empty-title="emptyListTitle"
                   :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
-                  v-if="tab === 'pending'"
-                  :data="pending"
-                  class="team-table single-line-table"
-                  row-key="id"
-                >
-                  <template #empty>{{ emptyListTitle }}</template>
-                  <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><ElButton
-                        link
-                        class="batch-link"
-                        :title="row.batch_no"
-                        @click="openIncoming(asTransfer(row))"
-                      >
-                        {{ row.batch_no }}
-                      </ElButton></template
-                    ></ElTableColumn
-                  >
-                  <ElTableColumn
-                    class-name="table-identity"
-                    label="流水号"
-                    min-width="220"
-                    show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
-                      ></template
-                    ></ElTableColumn
-                  >
-                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.material_name || '—'
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialTypeLabel(row.material_type)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    prop="purpose_name"
-                    label="接收任务"
-                    min-width="120"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialPurposeLabel(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.quantity)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    label="重量 (kg)"
-                    min-width="125"
-                    align="center"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.weight)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="上序" min-width="100" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.source_team.name
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="转出人" min-width="100" show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><PersonName :name="materialSenderName(asTransfer(row))" /></template
-                  ></ElTableColumn>
-                  <ElTableColumn label="转出时间" min-width="170" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      formatDateTime(row.transferred_at)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="操作" width="110" fixed="right"
-                    ><template #default="{ row }"
-                      ><ElButton
-                        link
-                        type="primary"
-                        :disabled="canWrite && !receiptReceiver"
-                        :title="canWrite && !receiptReceiver ? '请先选择接收人' : undefined"
-                        @click="openIncoming(asTransfer(row))"
-                        >{{ canWrite ? '核对接收' : '查看详情' }}</ElButton
-                      ></template
-                    ></ElTableColumn
-                  >
-                </WorkspaceTable>
-                <WorkspaceTable
-                  columns-key="TeamWorkspacePage-2"
-                  :column-settings-target="columnSettingsTarget"
-                  :column-query="tableQuery.controller.value"
-                  v-else-if="tab === 'receipts'"
-                  :data="receipts"
-                  class="team-table single-line-table"
-                  row-key="id"
-                >
-                  <template #empty>{{ emptyListTitle }}</template>
-                  <ElTableColumn
-                    v-if="isWarehouse"
-                    prop="warehouse_location"
-                    label="仓位"
-                    min-width="120"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.warehouse_location || '未填写'
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><ElButton
-                        link
-                        class="batch-link"
-                        :title="row.batch_no"
-                        @click="openDetail(asTransfer(row))"
-                      >
-                        {{ row.batch_no }}
-                      </ElButton></template
-                    ></ElTableColumn
-                  >
-                  <ElTableColumn
-                    class-name="table-identity"
-                    label="流水号"
-                    min-width="220"
-                    show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
-                      ></template
-                    ></ElTableColumn
-                  >
-                  <ElTableColumn label="入库时间" min-width="170" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      formatDateTime(row.received_at)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    v-if="isWarehouse"
-                    label="来源类别"
-                    min-width="110"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      receiptSourceLabel(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="来源" min-width="140" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialSourceLabel(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.material_name || '—'
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialTypeLabel(row.material_type)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    prop="purpose_name"
-                    label="接收任务"
-                    min-width="120"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialPurposeLabel(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.quantity)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    label="重量 (kg)"
-                    min-width="125"
-                    align="center"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.weight)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="状态" width="120"
-                    ><template #default="{ row }"
-                      ><MaterialTransferStatus
-                        :status="row.status"
-                        :entry-kind="row.entry_kind" /></template
-                  ></ElTableColumn>
-                  <ElTableColumn
-                    label="接收 / 登记人"
-                    min-width="120"
-                    align="center"
-                    show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><PersonName
-                        :name="
-                          row.entry_kind === 'transfer'
-                            ? row.received_employee_name || '未登记'
-                            : row.received_by || '—'
-                        " /></template
-                  ></ElTableColumn>
-                  <ElTableColumn label="操作" width="100" fixed="right"
-                    ><template #default="{ row }"
-                      ><ElButton link type="primary" @click="openDetail(asTransfer(row))"
-                        >查看入库单</ElButton
-                      ></template
-                    ></ElTableColumn
-                  >
-                </WorkspaceTable>
-                <WorkspaceTable
-                  columns-key="TeamWorkspacePage-3"
-                  :column-settings-target="columnSettingsTarget"
-                  :column-query="tableQuery.controller.value"
-                  v-else-if="tab === 'outgoing'"
-                  :data="outgoing"
-                  class="team-table dispatch-table single-line-table"
-                  row-key="batch_no"
+                  @detail="tab === 'pending' ? openIncoming($event) : openDetail($event)"
                   @selection-change="selectedPrintRows = $event"
-                >
-                  <template #empty>{{ emptyListTitle }}</template>
-                  <ElTableColumn type="selection" width="48" />
-                  <ElTableColumn label="批次号" min-width="190"
-                    ><template #default="{ row }"
-                      ><AppPopover
-                        :trigger="['hover', 'focus']"
-                        placement="top"
-                        :width="320"
-                        :show-after="180"
-                        ><template #reference
-                          ><ElButton
-                            link
-                            class="batch-link"
-                            :title="row.batch_no"
-                            :aria-label="`${row.batch_no}，悬停查看条码，点击查看详情`"
-                            @click="openDetail(asTransfer(row))"
-                          >
-                            {{ row.batch_no }}
-                          </ElButton></template
-                        ><BarcodeCard
-                          :value="row.batch_no"
-                          entity-label="批次号"
-                          compact /></AppPopover></template
-                  ></ElTableColumn>
-                  <ElTableColumn
-                    class-name="table-identity"
-                    label="流水号"
-                    min-width="220"
-                    show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><span class="record-serial"
-                        ><span :title="row.serial_no">{{ row.serial_no }}</span></span
-                      ></template
-                    ></ElTableColumn
-                  >
-                  <ElTableColumn
-                    prop="task_batch_number"
-                    label="排期批次"
-                    min-width="120"
-                    align="center"
-                  >
-                    <template #default="{ row }">{{ formatScheduleBatch(row) }}</template>
-                  </ElTableColumn>
-                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.material_name || '—'
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialTypeLabel(row.material_type)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialEntryLabel(row.entry_kind)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="下序 / 去向" min-width="140" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      isExternalEntryKind(row.entry_kind)
-                        ? row.external_destination || row.next_team.name
-                        : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    prop="purpose_name"
-                    label="接收任务"
-                    min-width="120"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialPurposeLabel(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.quantity)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn
-                    label="重量 (kg)"
-                    min-width="125"
-                    align="center"
-                    show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      inventoryAmount(row.weight)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="状态" width="120"
-                    ><template #default="{ row }"
-                      ><MaterialTransferStatus
-                        :status="row.status"
-                        :entry-kind="row.entry_kind"
-                        outgoing /></template
-                  ></ElTableColumn>
-                  <ElTableColumn label="转料 / 登记人" min-width="120" show-overflow-tooltip
-                    ><template #default="{ row }"
-                      ><PersonName :name="materialSenderName(asTransfer(row))" /></template
-                  ></ElTableColumn>
-                  <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      formatDateTime(row.transferred_at)
-                    }}</template></ElTableColumn
-                  >
-                  <ElTableColumn label="操作" width="110" fixed="right"
-                    ><template #default="{ row }"
-                      ><ElButton link type="primary" @click="openDetail(asTransfer(row))"
-                        >查看详情</ElButton
-                      ></template
-                    ></ElTableColumn
-                  >
-                </WorkspaceTable>
+                />
                 <WorkspaceTable
                   columns-key="TeamWorkspacePage-4"
                   :column-settings-target="columnSettingsTarget"
@@ -2088,52 +1758,6 @@ onBeforeUnmount(() => {
 }
 .team-table :deep(.el-checkbox) {
   height: 24px;
-}
-.record-serial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  white-space: nowrap;
-}
-.record-serial > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.batch-link {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--workspace-ink, #303133);
-  font: inherit;
-  font-size: var(--workspace-body-size, 16px);
-  font-weight: 400;
-  line-height: 24px;
-  text-align: left;
-  cursor: pointer;
-}
-.batch-link:hover {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.row-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.row-actions .el-button + .el-button {
-  margin-left: 0;
-}
-
-@container (max-width: 680px) {
-}
-@container (max-width: 560px) {
 }
 @media (max-width: 760px) {
   .team-table :deep(.el-table-fixed-column--right) {

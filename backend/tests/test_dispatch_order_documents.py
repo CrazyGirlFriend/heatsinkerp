@@ -4,7 +4,7 @@ import json
 from uuid import uuid4
 
 import pytest
-from app import production_schedule_api
+from app import order_document_response, production_schedule_api
 from app.database import SessionLocal
 from app.models import (
     ProcessRoute,
@@ -70,6 +70,14 @@ def test_order_upload_is_required_validated_atomic_and_idempotent(client, wareho
         assert db.scalar(select(func.count()).select_from(ProductionScheduleOrderFile)) == 0
     assert (
         client.post(URL + "/parse-order", files={"file": ("订单.xlsx", original)}).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            URL + "/parse-order",
+            headers=warehouse["headers"],
+            files={"file": ("订单.xlsx", original)},
+        ).status_code
         == 403
     )
     preview = client.post(
@@ -102,7 +110,7 @@ def test_order_upload_is_required_validated_atomic_and_idempotent(client, wareho
     )
 
 
-def test_original_upload_preview_validates_before_rendering_and_requires_dispatch(
+def test_original_upload_preview_validates_before_rendering_and_requires_dispatch_or_admin(
     client, warehouse, dispatcher, monkeypatch
 ):
     calls = []
@@ -111,11 +119,10 @@ def test_original_upload_preview_validates_before_rendering_and_requires_dispatc
         calls.append((content, filename))
         return pdf()
 
-    monkeypatch.setattr(production_schedule_api, "order_document_preview", render)
+    monkeypatch.setattr(order_document_response, "order_document_preview", render)
     content = order_file("PREVIEW-001")
     endpoint = URL + "/order-preview"
     for headers, expected in (
-        (None, 403),
         (warehouse["headers"], 403),
         ({"Authorization": ""}, 401),
     ):
@@ -134,12 +141,13 @@ def test_original_upload_preview_validates_before_rendering_and_requires_dispatc
         response = client.post(endpoint, headers=dispatcher, files={"file": (filename, original)})
         assert response.status_code == expected, response.text
     assert calls == []
-    response = client.post(endpoint, headers=dispatcher, files={"file": ("../订单.xlsx", content)})
-    assert response.status_code == 200 and response.content == pdf()
-    assert response.headers["content-type"] == "application/pdf"
-    assert response.headers["content-disposition"].startswith("inline;")
-    assert response.headers["cache-control"] == "private, no-store"
-    assert calls == [(content, "订单.xlsx")]
+    for headers in (dispatcher, None):
+        response = client.post(endpoint, headers=headers, files={"file": ("../订单.xlsx", content)})
+        assert response.status_code == 200 and response.content == pdf()
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"].startswith("inline;")
+        assert response.headers["cache-control"] == "private, no-store"
+    assert calls == [(content, "订单.xlsx"), (content, "订单.xlsx")]
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(ProductionScheduleTask)) == 0
 
@@ -158,7 +166,7 @@ def test_saved_order_preview_uses_original_and_preserves_download_on_converter_f
         calls.append((original, filename))
         return pdf()
 
-    monkeypatch.setattr(production_schedule_api, "order_document_preview", render)
+    monkeypatch.setattr(order_document_response, "order_document_preview", render)
     downloaded = client.get(endpoint, headers=warehouse["headers"])
     assert downloaded.status_code == 200 and downloaded.content == content
     assert downloaded.headers["content-disposition"].startswith("attachment;")
@@ -175,7 +183,7 @@ def test_saved_order_preview_uses_original_and_preserves_download_on_converter_f
     def unavailable(original, filename):
         raise HTTPException(failure, "订单原件预览暂时不可用")
 
-    monkeypatch.setattr(production_schedule_api, "order_document_preview", unavailable)
+    monkeypatch.setattr(order_document_response, "order_document_preview", unavailable)
     assert client.get(endpoint + "?preview=true").status_code == failure
     assert client.get(endpoint).content == content
     assert (

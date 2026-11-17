@@ -7,7 +7,6 @@ Read steps intentionally do not reuse write validators: an imported sequence of
 from typing import Literal
 
 from .read_schemas import PageResponse, ReadResponse
-from .team_business_schemas import TeamDirectoryItemResponse, TeamProcessingTaskResponse
 
 
 class RouteStepResponse(ReadResponse):
@@ -217,20 +216,6 @@ class RouteExecutionContextResponse(ReadResponse):
 class LotRouteResponse(ReadResponse):
     current: RouteExecutionContextResponse | None
     route: ProcessRouteDetailResponse | None
-
-
-class ReworkRoundResponse(ReadResponse):
-    route_id: int
-    state: Literal["draft", "published"]
-    engineering_employee_name: str | None
-    request: ReworkRequestResponse
-    progress: ReworkProgressResponse
-    steps: list[RouteStepResponse]
-
-
-class RouteExecutionOptionsResponse(ReadResponse):
-    tasks: list[TeamProcessingTaskResponse]
-    purposes: list[TeamDirectoryItemResponse]
 
 
 class BoundRouteResponse(ReadResponse):

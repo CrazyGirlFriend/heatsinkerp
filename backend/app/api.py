@@ -4,8 +4,6 @@ from fastapi import APIRouter
 
 from .admin_api import router as admin_router
 from .auth_api import router as public_router
-from .business_notices_api import router as business_notices_router
-from .factory_dashboard_api import router as dashboard_router
 from .factory_overview_api import router as factory_router
 from .factory_performance_api import router as performance_router
 from .factory_stream import router as stream_router
@@ -21,8 +19,6 @@ from .opening_stock_api import router as opening_stock_router
 from .process_route_api import router as process_route_router
 from .production_schedule_api import router as production_schedule_router
 from .quality_feedback_api import router as quality_feedback_router
-from .rework_notices_api import router as rework_notices_router
-from .schedule_notices_api import router as schedule_notices_router
 from .team_business_api import router as team_business_router
 from .team_serial_history import router as serial_history_router
 from .transfer_amendments_api import router as transfer_amendments_router
@@ -37,8 +33,6 @@ router.include_router(transfer_amendments_router)
 router.include_router(stock_router)
 router.include_router(inspection_router)
 router.include_router(quality_feedback_router)
-router.include_router(rework_notices_router)
-router.include_router(business_notices_router)
 router.include_router(production_schedule_router)
 router.include_router(process_route_router)
 router.include_router(dispatch_router)
@@ -53,8 +47,6 @@ router.include_router(team_business_router)
 router.include_router(opening_stock_router)
 router.include_router(serial_history_router)
 router.include_router(notification_router)
-router.include_router(schedule_notices_router)
-router.include_router(dashboard_router)
 router.include_router(warehouse_locations_router)
 router.include_router(warehouse_receipt_documents_router)
 

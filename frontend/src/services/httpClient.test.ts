@@ -9,6 +9,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AUTH_SESSION_STORAGE_KEY } from './adminApi'
 import { httpClient, httpRequest } from './httpClient'
+import { processRouteApi } from './processRouteApi'
+import { warehouseReceiptDocumentApi } from './warehouseReceiptDocumentApi'
 import { SITE_ACCESS_REQUIRED_EVENT } from '@/stores/access'
 
 let responseBody: unknown
@@ -137,4 +139,27 @@ it('retains the server request ID without exposing response content in diagnosti
   } finally {
     warning.mockRestore()
   }
+})
+
+describe.each([
+  ['工艺', () => processRouteApi.detail(1)],
+  [
+    '入库附件',
+    () => warehouseReceiptDocumentApi.upload(1, 'drawing', new File(['pdf'], '图纸.pdf')),
+  ],
+] as const)('%s shared error handling', (_name, request) => {
+  it('shows a readable server message while retaining the original HTTP error', async () => {
+    responseStatus = 400
+    responseBody = { detail: '附件内容不符合要求' }
+    await expect(request()).rejects.toMatchObject({
+      message: '附件内容不符合要求',
+      cause: { status: 400, body: responseBody },
+    })
+  })
+
+  it('preserves structured validation errors instead of converting them to text', async () => {
+    responseStatus = 422
+    responseBody = { detail: [{ loc: ['body', 'file'], msg: 'Invalid file' }] }
+    await expect(request()).rejects.toMatchObject({ status: 422, body: responseBody })
+  })
 })

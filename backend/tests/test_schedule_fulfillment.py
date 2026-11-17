@@ -10,11 +10,13 @@ from app.models import (
     ProductionSchedule,
     ProductionScheduleDelivery,
     ProductionScheduleOrderFile,
+    ProductionScheduleSource,
     ProductionScheduleTask,
 )
 from app.process_route_orders import parse_order
 from app.schedule_fulfillment import fulfillment_values
 from test_external_outbound import confirm, legacy_dispatch
+from test_external_outbound import dispatch as current_dispatch
 from test_external_outbound import outbound as outbound  # noqa: F401
 from test_process_route_orders import VALUES, xlsx
 from test_table_queries import query
@@ -23,7 +25,7 @@ pytestmark = pytest.mark.usefixtures("legacy_stock")
 URL = "/api/production-schedules"
 
 
-def order(s, *, due=datetime(2000, 1, 3), batches=None):
+def order(s, *, due=datetime(2000, 1, 3), batches=None, quantity=100):
     with SessionLocal.begin() as db:
         task = ProductionScheduleTask(
             title="客户订单",
@@ -43,7 +45,7 @@ def order(s, *, due=datetime(2000, 1, 3), batches=None):
             external_destination="对外转料",
             due_at=due,
             initial_due_at=due,
-            target_quantity=100,
+            target_quantity=quantity,
             idempotency_key=uuid4().hex,
             request_hash=uuid4().hex,
         )
@@ -161,7 +163,7 @@ def test_missed_customer_batch_remains_overdue_after_final_shipment_on_time(
     assert item["status"] == ("completed_late" if late else "completed")
 
 
-def test_same_serial_orders_never_share_a_shipment_without_a_matching_link(client, outbound):
+def test_unassigned_shipment_is_not_double_counted_across_same_serial_orders(client, outbound):
     first, first_node = order(outbound)
     second, _ = order(outbound)
     transfer = ship(client, outbound, 100, datetime(2000, 1, 2))
@@ -174,6 +176,50 @@ def test_same_serial_orders_never_share_a_shipment_without_a_matching_link(clien
         values = fulfillment_values(db, [first, second])
         assert values[first]["order_completed"]
         assert values[second]["shipped_quantity"] == 0
+
+
+def test_same_serial_batches_ship_together_with_independent_records_and_progress(client, outbound):
+    first, first_node = order(outbound, quantity=40)
+    second, second_node = order(outbound, quantity=60)
+    unrelated, _ = order(outbound)
+    source_id = outbound["lots"][0]["id"]
+    with SessionLocal.begin() as db:
+        for node, quantity in ((first_node, 40), (second_node, 60)):
+            db.add(
+                ProductionScheduleSource(
+                    schedule_id=node, source_transfer_id=source_id, quantity=quantity
+                )
+            )
+    lines = [
+        {
+            "source_transfer_id": source_id,
+            "production_schedule_id": node,
+            "quantity": quantity,
+            "weight": quantity / 10,
+        }
+        for node, quantity in ((first_node, 40), (second_node, 60))
+    ]
+    response = current_dispatch(client, outbound, lines=lines)
+    assert response.status_code == 201, response.text
+    items = response.json()["items"]
+    assert len(items) == 2
+    assert {row["serial_no"] for row in items} == {outbound["lots"][0]["serial_no"]}
+    assert {row["task_batch_number"] for row in items} == {1, 2}
+    assert {row["schedule_task_id"]: row["quantity"] for row in items} == {first: 40, second: 60}
+    assert all(row["status"] == "dispatched" for row in items)
+    assert current_dispatch(client, outbound, lines=lines).json() == response.json()
+    with SessionLocal() as db:
+        assert len({db.get(MaterialTransfer, row["id"]).dispatch_id for row in items}) == 1
+    for task, quantity in ((first, 40), (second, 60), (unrelated, 0)):
+        result = client.get(f"{URL}/tasks/{task}").json()
+        assert result["shipped_quantity"] == quantity
+        assert result["order_completed"] == (quantity > 0)
+    records = client.get(outbound["url"] + "/outbound-batches").json()["items"]
+    assert {row["schedule_task_id"]: row["quantity"] for row in records} == {first: 40, second: 60}
+    with SessionLocal.begin() as db:
+        db.get(MaterialTransfer, items[0]["id"]).status = "voided"
+    assert client.get(f"{URL}/tasks/{first}").json()["shipped_quantity"] == 0
+    assert client.get(f"{URL}/tasks/{second}").json()["shipped_quantity"] == 60
 
 
 def test_internal_warehouse_delivery_never_completes_customer_order(client, outbound):

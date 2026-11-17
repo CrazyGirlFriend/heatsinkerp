@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { FullScreen, Plus, Refresh } from '@element-plus/icons-vue'
 import ElButton from '@/components/AppButton.vue'
-import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { IconPlus, IconQrcode, IconRefresh } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import { computed } from 'vue'
@@ -55,92 +54,61 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
     role="group"
     aria-label="班组操作"
   >
-    <template v-if="watermelon">
-      <WatermelonButton
-        v-if="receiptVisible"
-        :primary="warehouse"
-        :loading="openingReceipt"
-        @click="emit('receipt')"
-      >
-        <IconPlus :size="17" />{{ warehouse ? '新建入库' : '手工入库' }}
-      </WatermelonButton>
-      <WatermelonButton
-        v-if="dispatchVisible"
-        :primary="!receiptVisible"
-        :loading="openingDispatch"
-        @click="emit('dispatch')"
-      >
-        <IconPlus :size="17" />新建出库
-      </WatermelonButton>
-      <WatermelonButton v-if="scanVisible" @click="emit('scan')"
-        ><IconQrcode :size="17" />扫码入库</WatermelonButton
-      >
-      <WatermelonButton v-if="lossVisible" primary :loading="openingDispatch" @click="emit('loss')">
-        <IconPlus :size="17" />登记丢失
-      </WatermelonButton>
-      <WatermelonButton
-        v-if="reallocationVisible"
-        primary
-        :loading="openingDispatch"
-        @click="emit('reallocate')"
-      >
-        <IconPlus :size="17" />新建转投
-      </WatermelonButton>
-      <WatermelonButton
-        v-if="showRefresh"
-        :loading="loading"
-        aria-label="刷新工作台"
-        @click="emit('refresh')"
-        ><IconRefresh :size="17"
-      /></WatermelonButton>
-    </template>
-    <template v-else>
-      <ElButton
-        v-if="receiptVisible"
-        :type="warehouse ? 'primary' : 'default'"
-        :icon="warehouse ? Plus : undefined"
-        :loading="openingReceipt"
-        @click="emit('receipt')"
-        >{{ warehouse ? '新建入库' : '手工入库' }}</ElButton
-      >
-      <ElButton
-        v-if="dispatchVisible"
-        :type="receiptVisible ? 'default' : 'primary'"
-        :icon="Plus"
-        :loading="openingDispatch"
-        @click="emit('dispatch')"
-        >新建出库</ElButton
-      >
-      <ElButton v-if="scanVisible" class="action-cool" :icon="FullScreen" @click="emit('scan')"
-        >扫码入库</ElButton
-      >
-      <ElButton
-        v-if="lossVisible"
-        type="primary"
-        :icon="Plus"
-        :loading="openingDispatch"
-        @click="emit('loss')"
-        >登记丢失</ElButton
-      >
-      <ElButton
-        v-if="reallocationVisible"
-        type="primary"
-        :icon="Plus"
-        :loading="openingDispatch"
-        @click="emit('reallocate')"
-        >新建转投</ElButton
-      >
-      <ElButton
-        v-if="showRefresh"
-        class="workspace-refresh"
-        :icon="Refresh"
-        :loading="loading"
-        aria-label="刷新工作台"
-        title="刷新"
-        @click="emit('refresh')"
-        >刷新</ElButton
-      >
-    </template>
+    <ElButton
+      v-if="receiptVisible"
+      :type="warehouse ? 'primary' : 'default'"
+      :icon="!watermelon && warehouse ? Plus : undefined"
+      :loading="openingReceipt"
+      @click="emit('receipt')"
+    >
+      <IconPlus v-if="watermelon" :size="17" />{{ warehouse ? '新建入库' : '手工入库' }}
+    </ElButton>
+    <ElButton
+      v-if="dispatchVisible"
+      :type="receiptVisible ? 'default' : 'primary'"
+      :icon="watermelon ? undefined : Plus"
+      :loading="openingDispatch"
+      @click="emit('dispatch')"
+    >
+      <IconPlus v-if="watermelon" :size="17" />新建出库
+    </ElButton>
+    <ElButton
+      v-if="scanVisible"
+      class="action-cool"
+      :icon="watermelon ? undefined : FullScreen"
+      @click="emit('scan')"
+    >
+      <IconQrcode v-if="watermelon" :size="17" />扫码入库
+    </ElButton>
+    <ElButton
+      v-if="lossVisible"
+      type="primary"
+      :icon="watermelon ? undefined : Plus"
+      :loading="openingDispatch"
+      @click="emit('loss')"
+    >
+      <IconPlus v-if="watermelon" :size="17" />登记丢失
+    </ElButton>
+    <ElButton
+      v-if="reallocationVisible"
+      type="primary"
+      :icon="watermelon ? undefined : Plus"
+      :loading="openingDispatch"
+      @click="emit('reallocate')"
+    >
+      <IconPlus v-if="watermelon" :size="17" />新建转投
+    </ElButton>
+    <ElButton
+      v-if="showRefresh"
+      class="workspace-refresh"
+      :icon="watermelon ? undefined : Refresh"
+      :loading="loading"
+      aria-label="刷新工作台"
+      title="刷新"
+      @click="emit('refresh')"
+    >
+      <IconRefresh v-if="watermelon" :size="17" /><template v-else>刷新</template>
+    </ElButton>
   </div>
 </template>
 

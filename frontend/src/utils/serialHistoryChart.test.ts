@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  serialHistoryChart,
-  historyTimeline,
-  historyEventAt,
-  purposeColors,
-} from './serialHistoryChart'
+import { serialHistoryChart, historyTimeline, purposeColors } from './serialHistoryChart'
 import type { SerialHistoryGroup } from '@/types/teamBusiness'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
 
@@ -81,7 +76,7 @@ describe('purpose receipt/dispatch charts', () => {
     const result = serialHistoryChart([group], 'quantity')
     expect(values(lines(result)[0]!)).toEqual([100, 100, 100])
   })
-  it('draws all purposes on one timeline and only real event nodes open details', () => {
+  it('draws all purposes on one timeline and highlights the selected purpose', () => {
     const a = historyGroup(),
       b = historyGroup('去毛刺')
     b.events = [
@@ -91,8 +86,6 @@ describe('purpose receipt/dispatch charts', () => {
     expect(lines(option)).toHaveLength(2)
     expect(values(lines(option)[0]!)).toEqual([100, 60, 60, 59])
     expect(values(lines(option)[1]!)).toEqual([100, 100, 80, 80])
-    expect(historyEventAt([a, b], 0, 2)).toBeUndefined()
-    expect(historyEventAt([a, b], 1, 2)?.id).toBe('event-3')
     expect(lines(option)[0]!.lineStyle?.color).not.toBe(lines(option)[1]!.lineStyle?.color)
     expect(lines(serialHistoryChart([a, b], 'quantity', b.key))[0]!.lineStyle?.opacity).toBe(0.12)
   })

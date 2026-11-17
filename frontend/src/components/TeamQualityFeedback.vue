@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePagedRecords } from '@/composables/usePagedRecords'
 import { useTableQuery } from '@/composables/useTableQuery'
 import { inspectionQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
 import TableFilterFields from './TableFilterFields.vue'
@@ -8,11 +9,10 @@ import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute } from 'vue-router'
-import { parseNotice } from '@/services/businessNoticeApi'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -38,21 +38,12 @@ const props = defineProps<{ teamId?: number; showAll?: boolean }>()
 const emit = defineEmits<{ count: [value: number] }>()
 const route = useRoute(),
   directory = useTeamDirectoryStore()
-const noticeKey = computed(() =>
-  parseNotice(route.query.business_notice)?.source === 'quality' &&
-  typeof route.query.notice === 'string' &&
-  selected.value === Number(route.query.issue)
-    ? route.query.notice
-    : undefined,
+const { rows, result, total, page, size, loading, error, load } = usePagedRecords(
+  (pagination) => qualityFeedbackApi.records({ ...params(), ...pagination }),
+  { errorMessage: '质量反馈读取失败', clearOnError: false },
 )
-const rows = ref<QualityRow[]>([]),
-  total = ref(0),
-  pending = ref(0),
-  page = ref(1),
-  size = ref(10),
-  query = ref(''),
-  error = ref(''),
-  loading = ref(false),
+const pending = computed(() => result.value?.pending_count ?? 0)
+const query = ref(''),
   selected = ref<number>()
 const selectedProblem = ref<number>()
 const filtersOpen = ref(false),
@@ -88,7 +79,6 @@ const count = computed(
     Number(!!applied.value.date_from || !!applied.value.date_to) +
     tableQuery.state.value.filters.length,
 )
-let generation = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
   busy: () => loading.value || !!selected.value || !!selectedProblem.value,
@@ -118,43 +108,6 @@ function params(): QualityFilters {
     ...tableQuery.params.value,
     ...applied.value,
     team_id: props.showAll ? applied.value.team_id : props.teamId,
-  }
-}
-watch(
-  [page, size],
-  () => {
-    ++generation
-    rows.value = []
-  },
-  { flush: 'sync' },
-)
-async function load(background = false) {
-  const token = ++generation
-  if (!background) loading.value = true
-  error.value = ''
-  try {
-    const result = await qualityFeedbackApi.records({
-      ...params(),
-      page: page.value,
-      page_size: size.value,
-    })
-    if (token !== generation) return
-    const last = Math.max(1, Math.ceil(result.total / size.value))
-    if (page.value > last) {
-      page.value = last
-      await load(background)
-      return
-    }
-    rows.value = result.items
-    total.value = result.total
-    pending.value = result.pending_count
-  } catch (e) {
-    if (token === generation) {
-      if (background) throw e
-      error.value = e instanceof Error ? e.message : '质量反馈读取失败'
-    }
-  } finally {
-    if (token === generation) loading.value = false
   }
 }
 function search() {
@@ -295,16 +248,13 @@ watch(
   { immediate: true },
 )
 watch(
-  () => [route.query.issue, route.query.notice],
-  ([value]) => {
+  () => route.query.issue,
+  (value) => {
     const id = Number(value)
     if (Number.isInteger(id) && id > 0) selected.value = id
   },
   { immediate: true },
 )
-onBeforeUnmount(() => {
-  ++generation
-})
 </script>
 <template>
   <WorkspaceDataPanel class="quality-feedback-records workspace-data-panel">
@@ -489,7 +439,6 @@ onBeforeUnmount(() => {
     <QualityFeedbackDetail
       v-if="selected"
       :issue-id="selected"
-      :notice-key="noticeKey"
       @close="selected = undefined"
       @changed="changed"
     />

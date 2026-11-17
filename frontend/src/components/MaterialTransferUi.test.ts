@@ -16,8 +16,6 @@ describe('pure material transfer interface', () => {
     expect(formSource).toContain('备注')
     expect(formSource).toContain('物料类型')
     expect(formSource).not.toMatch(/工单号|工艺路线|报工/)
-    expect(formSource).toContain('createRequestFingerprint.value !== requestFingerprint')
-    expect(formSource).toContain('idempotency_key: createRequestKey.value')
   })
 
   it('confirms the whole batch without reentry and requires counterparty approval for later changes', () => {

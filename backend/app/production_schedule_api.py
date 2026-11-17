@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from pathlib import PurePath
 from typing import Annotated, Literal
-from urllib.parse import quote
 
 from fastapi import Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
@@ -24,7 +23,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user, require_admin
 from .database import get_db
 from .models import ProductionScheduleOrderFile, User
-from .order_document_preview import order_document_preview
+from .order_document_response import order_document_response
 from .process_route_import import MAX_FILE_BYTES
 from .process_route_orders import parse_order
 from .process_route_read_schemas import RouteOrderDocumentResponse
@@ -335,22 +334,7 @@ async def download_order(task_id: int, preview: bool = False, db: AsyncSession =
         return order.filename, order.content
 
     filename, content = await db.run_sync(original)
-    if preview:
-        content = await run_in_threadpool(order_document_preview, content, filename)
-        filename = str(PurePath(filename).with_suffix(".pdf"))
-    return Response(
-        content,
-        media_type="application/pdf"
-        if preview
-        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": ("inline" if preview else "attachment")
-            + "; filename*=UTF-8''"
-            + quote(filename),
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, no-store",
-        },
-    )
+    return await order_document_response(content, filename, preview=preview)
 
 
 @router.post("/order-preview", response_class=Response)
@@ -359,17 +343,7 @@ async def preview_order_original(
 ):
     try:
         filename, content, _ = await read_order(file)
-        pdf = await run_in_threadpool(order_document_preview, content, filename)
-        return Response(
-            pdf,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": "inline; filename*=UTF-8''"
-                + quote(str(PurePath(filename).with_suffix(".pdf"))),
-                "X-Content-Type-Options": "nosniff",
-                "Cache-Control": "private, no-store",
-            },
-        )
+        return await order_document_response(content, filename, preview=True)
     finally:
         await file.close()
 

@@ -72,33 +72,44 @@ async function render(value: TeamProblem) {
 afterEach(() => {
   wrapper?.unmount()
   auth.currentUser.role = 'ADMIN'
+  auth.currentUser.team.code = 'FACTORY-PROCESS'
+  auth.currentUser.team.kind = 'engineering'
   vi.restoreAllMocks()
 })
-it('shows the reporting team and unfilled route without exposing an authoring action to administrators', async () => {
+it('shows the reporting team and lets administrators author the unfilled route', async () => {
   await render(report)
   expect(wrapper.text()).toContain('轧制')
   expect(wrapper.text()).toContain('返工工艺未填写')
   expect(wrapper.text()).toContain('精轧后厚度偏大')
-  expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['关闭'])
+  expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['关闭', '填写返工工艺'])
   expect(processRouteApi.detail).not.toHaveBeenCalled()
 })
-it('shows published progress and opens the exact linked route read-only on demand', async () => {
-  await render({
-    ...report,
-    route_state: 'published',
-    feedback_status: 'processing',
-    rework_progress: { ...report.rework_progress, state: 'processing', completed_quantity: 8 },
-  })
-  expect(wrapper.text()).toContain('返工工艺已制定')
-  expect(wrapper.text()).toContain('8 / 20 件')
-  await wrapper
-    .findAll('button')
-    .find((b) => b.text() === '查看返工工艺')!
-    .trigger('click')
-  await flushPromises()
-  expect(processRouteApi.detail).toHaveBeenCalledWith(12)
-  expect(wrapper.get('.route-editor').attributes('data-readonly')).toBe('true')
-})
+it.each([
+  ['ADMIN', false],
+  ['TEAM', true],
+] as const)(
+  'opens the exact linked route with the correct permissions for %s',
+  async (role, readOnly) => {
+    auth.currentUser.role = role
+    auth.currentUser.team.code = 'FACTORY-ROLL'
+    auth.currentUser.team.kind = 'production'
+    await render({
+      ...report,
+      route_state: 'published',
+      feedback_status: 'processing',
+      rework_progress: { ...report.rework_progress, state: 'processing', completed_quantity: 8 },
+    })
+    expect(wrapper.text()).toContain('返工工艺已制定')
+    expect(wrapper.text()).toContain('8 / 20 件')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '查看返工工艺')!
+      .trigger('click')
+    await flushPromises()
+    expect(processRouteApi.detail).toHaveBeenCalledWith(12)
+    expect(wrapper.get('.route-editor').attributes('data-readonly')).toBe(String(readOnly))
+  },
+)
 it('distinguishes the reporting team from the suspected upstream team', async () => {
   await render({ ...report, involved_teams: [{ team_id: 3, name: '线切割', replied: true }] })
   expect(wrapper.text()).toContain('轧制')

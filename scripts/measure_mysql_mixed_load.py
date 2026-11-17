@@ -149,7 +149,7 @@ def run(qa, duration, write_interval=8):
                 changes[index].clear()
                 team = actor["team"]
                 if team is None:
-                    metrics.timed("query_factory_dashboard", lambda: qa.request(actor, "/api/factory-dashboard"))
+                    metrics.timed("query_factory_overview", lambda: qa.request(actor, "/api/factory-overview"))
                 for view in (() if team is None else ("overview", "inventory")):
                     query = f"?page={1 + iteration % 2}&page_size=10" if view == "inventory" else ""
                     metrics.timed("query_" + view, lambda view=view, query=query: qa.request(

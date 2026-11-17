@@ -68,13 +68,7 @@ def task_values(db, ids):
         return {}
     from .schedule_task_identity import task_batch_number_column
 
-    tasks = list(
-        db.execute(
-            select(Task, BusinessPerson.name, task_batch_number_column())
-            .outerjoin(BusinessPerson, BusinessPerson.id == Task.business_person_id)
-            .where(Task.id.in_(ids))
-        )
-    )
+    tasks = list(db.execute(select(Task, task_batch_number_column()).where(Task.id.in_(ids))))
     people = {}
     for task_id, person in db.execute(
         select(ProductionScheduleTaskPerson.task_id, BusinessPerson)
@@ -141,7 +135,9 @@ def task_values(db, ids):
         grouped.setdefault(row.task_id, []).append(values[row.id])
     result = {}
     fulfillment = fulfillment_values(db, ids)
-    for task, person_name, batch_number in tasks:
+    for task, batch_number in tasks:
+        task_people = people.get(task.id, [])
+        first_person = task_people[0] if task_people else {}
         route = grouped.get(task.id, [])
         active = [node for node in route if node["status"] != "cancelled"]
         delivery = fulfillment[task.id]
@@ -153,16 +149,9 @@ def task_values(db, ids):
             "task_batch_number": batch_number,
             "title": task.title,
             "serial_no": task.serial_no,
-            "business_person_id": task.business_person_id,
-            "business_person_name": person_name,
-            "business_people": people.get(
-                task.id,
-                (
-                    [{"id": task.business_person_id, "name": person_name}]
-                    if task.business_person_id
-                    else []
-                ),
-            ),
+            "business_person_id": first_person.get("id"),
+            "business_person_name": first_person.get("name"),
+            "business_people": task_people,
             "notes": task.notes,
             "delivery_batches": task.delivery_batches or [],
             "cancelled_at": schedules.iso(task.cancelled_at),
@@ -212,15 +201,8 @@ def list_tasks(
     if business_person_ids:
         nodes = nodes.where(
             Plan.task_id.in_(
-                select(Task.id).where(
-                    or_(
-                        Task.business_person_id.in_(business_person_ids),
-                        Task.id.in_(
-                            select(ProductionScheduleTaskPerson.task_id).where(
-                                ProductionScheduleTaskPerson.person_id.in_(business_person_ids)
-                            )
-                        ),
-                    )
+                select(ProductionScheduleTaskPerson.task_id).where(
+                    ProductionScheduleTaskPerson.person_id.in_(business_person_ids)
                 )
             )
         )
@@ -308,12 +290,7 @@ def list_tasks(
             ),
             else_="filled",
         ),
-        "business_people": func.coalesce(
-            people,
-            select(BusinessPerson.name)
-            .where(BusinessPerson.id == Task.business_person_id)
-            .scalar_subquery(),
-        ),
+        "business_people": people,
     }
     statement = query_statement(
         select(matched.c.task_id)
@@ -416,7 +393,6 @@ def create_task(db, payload, user, *, order=None):
                     title=payload.title,
                     serial_no=payload.serial_no,
                     notes=payload.notes,
-                    business_person_id=payload.business_person_id,
                     idempotency_key=key,
                     request_hash=digest,
                 )
@@ -578,7 +554,6 @@ def update_task(db, task_id, payload, user):
                     "task_title": task.title,
                     "task_notes": task.notes,
                     "task_version": task.version,
-                    "business_person_id": task.business_person_id,
                     "business_person_ids": list(
                         db.scalars(
                             select(ProductionScheduleTaskPerson.person_id).where(
@@ -589,12 +564,6 @@ def update_task(db, task_id, payload, user):
                 },
             )
         )
-        from .schedule_notices import notify_final_due
-
-        if before["final_due_at"] != schedules.iso(task.final_due_at) or (
-            "delivery_batches" in before and before["delivery_batches"] != task.delivery_batches
-        ):
-            notify_final_due(db, task)
         # Reuse existing team-scoped refresh, without changing node revisions or actual dates.
         for node in db.scalars(select(Plan).where(Plan.task_id == task_id)):
             node.updated_at = task.updated_at

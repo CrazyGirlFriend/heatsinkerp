@@ -6,6 +6,7 @@ import pytest
 from app import material_transfer_workflow as workflow
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialTransfer
+from inventory_assertions import owned_total
 from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_external_outbound import dispatch
@@ -78,15 +79,11 @@ def test_external_submit_completes_each_line_and_retry_does_not_deduct_again(cli
             item["external_pending_quantity"] == item["external_pending_weight"] == 0
             for item in amounts
         )
-    dashboard = client.get("/api/factory-dashboard").json()
-    assert dashboard["stock"]["total"] == {"quantity": 140, "weight": 14}
+    assert owned_total(client) == {"quantity": 140, "weight": 14}
     for row in rows:
-        series = next(
-            item
-            for item in dashboard["shipping"]["series"]
-            if item["serial_no"] == row["serial_no"]
-        )
-        assert sum(value or 0 for value in series["values"]) == 30
+        trace = client.get("/api/material-trace", params={"serial_no": row["serial_no"]})
+        assert trace.status_code == 200, trace.text
+        assert trace.json()["totals"]["dispatched"] == {"quantity": 30, "weight": 3}
 
 
 def test_external_submit_and_audit_are_atomic(client, outbound):

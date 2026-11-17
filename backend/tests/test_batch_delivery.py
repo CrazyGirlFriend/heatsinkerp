@@ -3,13 +3,13 @@
 from datetime import datetime
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from inventory_assertions import owned_total
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from sqlalchemy import create_engine
@@ -80,7 +80,7 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
     assert response.status_code == 201, response.text
     grandchild = response.json()["items"][0]
     assert grandchild["delivery_origin_batch_no"] == origin["batch_no"]
-    before = client.get("/api/factory-dashboard").json()["stock"]
+    before = owned_total(client)
     payload = {
         "delivery_date": "2026-10-03",
         "delivery_quantity": 90,
@@ -101,13 +101,12 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
         details(client, grandchild["batch_no"], warehouse["headers"])["delivery_date"]
         == "2026-10-03"
     )
-    rows = client.get("/api/factory-dashboard/deliveries").json()["items"]
-    assert (
-        len(rows) == 1
-        and rows[0]["quantity"] == 90
-        and rows[0]["source_batch_no"] == origin["batch_no"]
-    )
-    assert client.get("/api/factory-dashboard").json()["stock"] == before
+    rows = client.get("/api/material-trace", params={"serial_no": origin["batch_no"]}).json()[
+        "items"
+    ]
+    assert all(row["delivery_quantity"] == 90 for row in rows)
+    assert {row["delivery_origin_batch_no"] for row in rows} == {origin["batch_no"]}
+    assert owned_total(client) == before
     assert (
         client.patch(
             f"/api/material-transfers/{children[1]['batch_no']}",
@@ -173,17 +172,17 @@ def test_new_origin_date_and_voiding_remove_only_that_requirement(client, wareho
     assert response.status_code == 201, response.text
     row = response.json()
     assert row["delivery_quantity"] == 80 and row["quantity"] == 20
-    assert client.get("/api/factory-dashboard/deliveries").json()["total"] == 1
+    assert details(client, row["batch_no"], warehouse["headers"])["delivery_quantity"] == 80
     assert (
         client.delete(
             f"/api/material-transfers/{row['batch_no']}", headers=warehouse["headers"]
         ).status_code
         == 204
     )
-    assert client.get("/api/factory-dashboard/deliveries").json()["total"] == 0
+    assert details(client, row["batch_no"], warehouse["headers"])["status"] == "voided"
 
 
-def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, warehouse):
+def test_two_origin_batches_keep_independent_shipment_and_return_provenance(client, warehouse):
     first = intake(
         client,
         warehouse,
@@ -212,26 +211,17 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
     )
     assert response.status_code == 201, response.text
     sent = response.json()["items"][0]
-    assert (
-        sum(r["shipped"] for r in client.get("/api/factory-dashboard/deliveries").json()["items"])
-        == 30
-    )
     assert sent["status"] == "dispatched"
     with SessionLocal() as db:
         db.get(MaterialTransfer, sent["id"]).dispatched_at = datetime(2026, 9, 25, 2)
         db.commit()
-    with patch("app.factory_dashboard.utcnow", return_value=datetime(2026, 9, 26)):
-        rows = {
-            r["source_batch_no"]: r
-            for r in client.get("/api/factory-dashboard/deliveries").json()["items"]
-        }
-    assert (rows[first["batch_no"]]["shipped"], rows[first["batch_no"]]["status"]) == (
-        20,
-        "late_complete",
-    )
-    assert (rows[second["batch_no"]]["remaining"], rows[second["batch_no"]]["status"]) == (
-        10,
-        "overdue",
+    for origin, shipped in ((first, 0), (second, 30)):
+        trace = client.get("/api/material-trace", params={"serial_no": origin["batch_no"]}).json()
+        assert trace["totals"]["dispatched"]["quantity"] == shipped
+    shipment = details(client, sent["batch_no"], warehouse["headers"])
+    assert shipment["delivery_origin_batch_no"] == second["batch_no"]
+    assert datetime.fromisoformat(shipment["dispatched_at"]).replace(tzinfo=None) == datetime(
+        2026, 9, 25, 2
     )
     returned = intake(
         client,
@@ -247,7 +237,8 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
     assert returned.json()["delivery_origin_batch_no"] == second["batch_no"]
     assert returned.json()["delivery_date"] == "2026-09-25"
     assert not returned.json()["can_edit_delivery"]
-    assert client.get("/api/factory-dashboard/deliveries").json()["total"] == 2
+    assert details(client, first["batch_no"], warehouse["headers"])["delivery_quantity"] == 20
+    assert details(client, second["batch_no"], warehouse["headers"])["delivery_quantity"] == 20
 
 
 def test_unlinked_return_cannot_create_an_extra_delivery_requirement(client, warehouse):

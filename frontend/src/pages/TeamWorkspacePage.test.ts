@@ -16,7 +16,6 @@ import type { ProductionSchedule } from '@/types/productionSchedule'
 import type { ProcessingRecord } from '@/types/materialProcessing'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
-import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -1269,7 +1268,7 @@ describe('team workspace material ledger', () => {
         `/team-workspaces/914?tab=material-types&material_type=${type}&page=2`,
       )
       expect(wrapper.get('h1').text()).toBe('库存明细')
-      expect(wrapper.findComponent(TeamMaterialOverviewPanel).exists()).toBe(false)
+      expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
       expect(router.currentRoute.value.query).toMatchObject({
         tab: 'stock',
         material_type: type,
@@ -1284,7 +1283,6 @@ describe('team workspace material ledger', () => {
   it('redirects the retired material summary to inventory and retains its filters', async () => {
     const router = await render('/team-workspaces/914?tab=materials&material_name=铜钼&page=2')
     expect(wrapper.get('h1').text()).toBe('库存明细')
-    expect(wrapper.findComponent(TeamMaterialOverviewPanel).exists()).toBe(false)
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
     expect(router.currentRoute.value.query.material_name).toBe('铜钼')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(

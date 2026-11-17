@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { ElFormItem, ElOption } from 'element-plus'
 import AppInput from './AppInput.vue'
 import AppNumberInput from './AppNumberInput.vue'
@@ -9,10 +9,9 @@ import AppAlert from './AppAlert.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
-import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { useInspectionProblems } from '@/composables/useInspectionProblems'
 import { inspectionItemLabels, inspectionMethodLabels } from '@/services/inspectionApi'
 import type { CreateQuantityAdjustment } from '@/types/teamMaterials'
-import type { TeamDirectoryItem } from '@/types/teamBusiness'
 
 const props = defineProps<{
   teamId: number
@@ -35,23 +34,12 @@ const involved = ref<number[]>([])
 const notes = ref('')
 const dimension = ref(''),
   weight = ref('')
-const problems = ref<TeamDirectoryItem[]>([])
-const loading = ref(false),
-  error = ref('')
-let generation = 0
-async function loadProblems() {
-  const token = ++generation
-  loading.value = true
-  error.value = ''
-  try {
-    const result = await teamMaterialApi.inspectionProblems(props.teamId)
-    if (token === generation) problems.value = result.filter((problem) => problem.active)
-  } catch (e) {
-    if (token === generation) error.value = e instanceof Error ? e.message : '检验问题读取失败'
-  } finally {
-    if (token === generation) loading.value = false
-  }
-}
+const {
+  problems,
+  loading,
+  error,
+  load: loadProblems,
+} = useInspectionProblems(() => props.teamId, '检验问题读取失败')
 watch(
   () => props.teamId,
   () => {
@@ -120,9 +108,6 @@ watchEffect(() => {
         }
       : null,
   )
-})
-onBeforeUnmount(() => {
-  ++generation
 })
 </script>
 

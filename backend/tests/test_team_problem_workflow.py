@@ -7,7 +7,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, ProcessRoute, ProcessRouteDrawing, Team
 from test_processing_daily import work
-from test_team_rework_notices import prepare
+from test_team_rework_workflow import prepare
 from test_warehouse_classification import base
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -97,12 +97,13 @@ def test_rolling_report_is_visible_to_quality_and_engineering_then_selectable_fo
         URL, headers=engineering_headers, params={"kind": "rework", "state": "draft"}
     ).json()
     assert drafts["items"][0]["id"] == route_id
-    assert (
-        client.get(
-            f"/api/rework-notices?team_id={engineering_id}", headers=engineering_headers
-        ).json()["unread"]
-        == 1
-    )
+    drafts = client.get(
+        "/api/process-routes",
+        headers=engineering_headers,
+        params={"kind": "rework", "state": "draft"},
+    ).json()
+    assert drafts["pending_rework_count"] == 1
+    assert drafts["items"][0]["id"] == route["id"]
 
     source_id = route["rework_request"]["source_transfer_id"]
     context_path = base(warehouse, True) + f"/stock/{source_id}/quantity-adjustments"
@@ -213,7 +214,7 @@ def test_reporting_team_sees_its_pending_rework_without_access_to_unpublished_in
     assert result["step_summary"] == result["drawings"] == []
     assert result["rework_request"]["execution_team_names"] == []
     assert result["rework_request"]["reason"] == route["rework_request"]["reason"]
-    for suffix in ("", "/source", "/rework-rounds", f"/drawings/{drawing_id}"):
+    for suffix in ("", "/source", f"/drawings/{drawing_id}"):
         assert client.get(f"{URL}/{route_id}{suffix}", headers=team_headers).status_code == 403
     for method, suffix, body in (
         ("PUT", "", {key: route[key] for key in ("title", "serial_nos", "steps", "version")}),

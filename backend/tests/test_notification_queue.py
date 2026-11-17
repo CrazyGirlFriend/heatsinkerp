@@ -15,8 +15,16 @@ from sqlalchemy import func, select
 from test_inventory_stream import LiveRequest
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
+
+
+@pytest.fixture()
+def prepared_location(client, warehouse):  # noqa: F811
+    # Prepare the required warehouse slot before fault injection/count snapshots;
+    # creating a location is its own committed refresh event, separate from intake.
+    warehouse["intake_locations"] = {"warehouse-intake-1": select_location(client, warehouse)}
 
 
 def pending_rows():
@@ -42,6 +50,7 @@ def test_notification_stages_are_correlated_without_business_data(client, wareho
     assert "PRIVATE-SERIAL" not in str(records)
 
 
+@pytest.mark.usefixtures("prepared_location")
 @pytest.mark.parametrize("microsecond", [1, 499999, 500000, 999999])
 def test_immediate_notification_cannot_round_into_a_future_mysql_second(
     client,
@@ -112,6 +121,7 @@ def test_nested_flushes_merge_only_committed_scopes(client, monkeypatch):
     assert set(rows[0].payload["team_ids"]) == set(ids[:2])
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_commit_failure_after_outbox_insert_rolls_back_stock_and_notification(client, warehouse):  # noqa: F811
     from app.inventory_events import PENDING
     from sqlalchemy import event
@@ -134,6 +144,7 @@ def test_commit_failure_after_outbox_insert_rolls_back_stock_and_notification(cl
         assert db.scalar(select(func.count()).select_from(MaterialStockBalance)) == 0
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_broker_outage_keeps_committed_inventory_readable_and_notification_durable(
     client,
     warehouse,  # noqa: F811
@@ -165,6 +176,7 @@ def test_broker_outage_keeps_committed_inventory_readable_and_notification_durab
     assert not pending_rows()
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_publisher_failure_retries_without_exposing_secrets_or_repeating_stock(
     client,
     warehouse,  # noqa: F811
@@ -195,6 +207,7 @@ def test_publisher_failure_retries_without_exposing_secrets_or_repeating_stock(
         assert done.attempts == 2 and done.published_at and done.last_error is None
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_expired_lease_can_be_reclaimed_but_stale_owner_cannot_ack(client, warehouse, monkeypatch):  # noqa: F811
     monkeypatch.setattr(app.state.notifications.transport, "ready", False)
     intake(client, warehouse)
@@ -212,6 +225,7 @@ def test_expired_lease_can_be_reclaimed_but_stale_owner_cannot_ack(client, wareh
     assert not pending_rows()
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_cancelled_publication_stays_pending_for_crash_recovery(client, warehouse, monkeypatch):  # noqa: F811
     monkeypatch.setattr(app.state.notifications.transport, "ready", False)
     intake(client, warehouse)
@@ -269,6 +283,7 @@ def test_retention_never_deletes_pending_or_recent_messages(client):
         assert db.get(NotificationOutbox, "pending") is not None
 
 
+@pytest.mark.usefixtures("prepared_location")
 def test_outbox_rows_roll_back_with_business_writes(client, warehouse, monkeypatch):  # noqa: F811
     monkeypatch.setattr(app.state.notifications.transport, "ready", False)
     with SessionLocal() as db:

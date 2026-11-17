@@ -11,7 +11,7 @@ from sqlalchemy import select
 from test_engineered_rework import save_plan
 from test_material_transfers import _leader
 from test_quantity_adjustments import processing_lot
-from test_team_rework_notices import prepare
+from test_team_rework_workflow import prepare
 from test_warehouse_classification import dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 

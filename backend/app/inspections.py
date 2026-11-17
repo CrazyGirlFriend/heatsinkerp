@@ -324,10 +324,6 @@ def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
             ]
         )
     db.flush()
-    if payload.failed_quantity and not parent:
-        from .quality_notices import notify_involved_teams
-
-        notify_involved_teams(db, row)
     db.add(
         MaterialTransferEvent(
             transfer_id=lot.id,

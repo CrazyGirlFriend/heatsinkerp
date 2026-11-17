@@ -128,26 +128,3 @@ export interface InventoryColumnChoice<K extends string = InventoryColumnKey> {
   key: K
   visible: boolean
 }
-export const defaultInventoryColumns = (): InventoryColumnChoice[] =>
-  inventoryColumns.map((column, index) => ({ key: column.key, visible: index < 4 }))
-
-export function normalizeInventoryColumns(value: unknown): InventoryColumnChoice[] {
-  if (!Array.isArray(value)) return defaultInventoryColumns()
-  const result: InventoryColumnChoice[] = []
-  for (const item of value) {
-    if (
-      item &&
-      inventoryColumns.some((column) => column.key === item.key) &&
-      typeof item.visible === 'boolean' &&
-      !result.some((column) => column.key === item.key)
-    ) {
-      result.push({ key: item.key, visible: item.visible })
-    }
-  }
-  return [
-    ...result,
-    ...defaultInventoryColumns().filter(
-      (column) => !result.some((item) => item.key === column.key),
-    ),
-  ]
-}

@@ -25,7 +25,7 @@ def test_receipt_requires_location_but_not_serial_and_lists_each_batch(client, w
     first = intake(client, setup, serial_no="").json()
     second = intake(client, setup, serial_no="", idempotency_key="second").json()
     assert first["batch_no"] != second["batch_no"]
-    url = base(setup) + "/warehouse-inventory"
+    url = base(setup) + "/inventory"
     result = client.get(url).json()
     assert result["total"] == 2
     assert {row["batch_no"] for row in result["items"]} == {first["batch_no"], second["batch_no"]}

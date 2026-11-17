@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from app.models import SerialDeliveryPlan
 from sqlalchemy import create_engine, text
 
 
@@ -22,7 +21,11 @@ def test_delivery_plan_upgrade_preserves_existing_rows_and_is_repeatable(existin
             )
             connection.exec_driver_sql("INSERT INTO preserved VALUES (1, 'keep')")
             if existing:
-                SerialDeliveryPlan.__table__.create(connection)
+                connection.exec_driver_sql(
+                    "CREATE TABLE serial_delivery_plans (serial_no VARCHAR(80) PRIMARY KEY, "
+                    "installments JSON NOT NULL, version INTEGER NOT NULL, "
+                    "updated_by VARCHAR(80) NOT NULL, updated_at DATETIME NOT NULL)"
+                )
             with Operations.context(MigrationContext.configure(connection)):
                 migration.upgrade()
                 connection.execute(

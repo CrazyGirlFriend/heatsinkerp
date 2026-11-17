@@ -13,13 +13,13 @@ pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def inventory(client, setup, **params):
-    response = client.get(base(setup) + "/warehouse-inventory", params=params)
+    response = client.get(base(setup) + "/inventory", params=params)
     assert response.status_code == 200, response.text
     return response.json()
 
 
 def sources(client, setup, group_id, **params):
-    response = client.get(base(setup) + f"/warehouse-inventory/{group_id}/sources", params=params)
+    response = client.get(base(setup) + f"/inventory/{group_id}/sources", params=params)
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -229,17 +229,14 @@ def test_each_batch_retains_its_own_searchable_customer_metadata(client, warehou
     ],
 )
 def test_invalid_filters_rejected(client, warehouse, params):
-    assert client.get(base(warehouse) + "/warehouse-inventory", params=params).status_code == 422
+    assert client.get(base(warehouse) + "/inventory", params=params).status_code == 422
 
 
-def test_warehouse_only_and_unauthenticated_access(client, warehouse):
+def test_team_scope_and_unauthenticated_access(client, warehouse):
     s = warehouse
     origin = intake(client, s).json()
-    assert client.get(base(s, True) + "/warehouse-inventory").status_code == 403
-    assert (
-        client.get(base(s, True) + f"/warehouse-inventory/{origin['id']}/sources").status_code
-        == 403
-    )
-    assert client.get(base(s) + "/warehouse-inventory/99999/sources").status_code == 404
+    assert client.get(base(s, True) + "/inventory").json()["total"] == 0
+    assert client.get(base(s, True) + f"/inventory/{origin['id']}/sources").status_code == 404
+    assert client.get(base(s) + "/inventory/99999/sources").status_code == 404
     client.headers.pop("Authorization")
-    assert client.get(base(s) + "/warehouse-inventory").status_code == 401
+    assert client.get(base(s) + "/inventory").status_code == 401

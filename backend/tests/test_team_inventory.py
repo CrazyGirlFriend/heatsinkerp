@@ -82,14 +82,18 @@ def test_inventory_orders_latest_activity_before_pagination_with_stable_ties(
             row.received_at = row.created_at = row.updated_at = datetime(2026, 9, day, 3)
         db.commit()
 
-    expected = [lots[index]["id"] for index in (0, 3, 2, 1)]
+    indices = (0, 3, 2, 1) if workshop else (4, 3, 2, 1, 0)
+    expected = [lots[index]["id"] for index in indices]
     rows = get_inventory(client, target)["items"]
     assert [row["group_id"] for row in rows] == expected
-    assert rows[0]["batch_count"] == 2
+    assert rows[0]["batch_count"] == (2 if workshop else 1)
     assert rows[0]["last_activity_at"].startswith("2026-09-04")
-    pages = [get_inventory(client, target, page=page, page_size=2) for page in (1, 2)]
+    pages = [
+        get_inventory(client, target, page=page, page_size=2)
+        for page in range(1, (len(expected) + 1) // 2 + 1)
+    ]
     assert [row["group_id"] for page in pages for row in page["items"]] == expected
-    assert [page["total"] for page in pages] == [4, 4]
+    assert all(page["total"] == len(expected) for page in pages)
     filtered = get_inventory(client, target, material_name="铜钼", page_size=100)["items"]
     assert [row["group_id"] for row in filtered] == expected
 
@@ -278,21 +282,43 @@ def test_group_outbound_loss_dates_confirmation_and_void_keep_balances(client, w
     )
 
 
-def test_warehouse_alias_and_authentication_remain_compatible(client, warehouse, monkeypatch):
-    from app import warehouse_inventory
-
+def test_current_inventory_and_sources_require_authentication(client, warehouse):
     s = warehouse
     intake(client, s)
-    now = warehouse_inventory.utcnow()
-    monkeypatch.setattr(warehouse_inventory, "utcnow", lambda: now)
-    current = get_inventory(client, s["team"]["id"])
-    legacy = client.get(f"/api/team-materials/{s['team']['id']}/warehouse-inventory").json()
-    assert current == legacy
+    assert get_inventory(client, s["team"]["id"])["total"] == 1
     client.headers.pop("Authorization")
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory").status_code == 401
     assert (
         client.get(f"/api/team-materials/{s['other']['id']}/inventory/1/sources").status_code == 401
     )
+
+
+@pytest.mark.parametrize("view", ["sources", "pending-outbound", "movements"])
+def test_inventory_group_views_reject_other_teams_and_nonstock_anchors(client, warehouse, view):
+    s = warehouse
+    lot = incoming(client, s["headers"], s["other_headers"], s["other"]["id"], "group-anchor")
+    prefix = f"/api/team-materials/{s['other']['id']}/inventory/{lot['id']}"
+    assert client.get(f"{prefix}/{view}").status_code == 200
+    assert (
+        client.get(
+            f"/api/team-materials/{s['team']['id']}/inventory/{lot['id']}/{view}"
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(f"/api/team-materials/{s['other']['id']}/inventory/999999/{view}").status_code
+        == 404
+    )
+    for status, tracked in (("pending", True), ("voided", True), ("received", False)):
+        with SessionLocal() as db:
+            transfer = db.get(MaterialTransfer, lot["id"])
+            transfer.status = status
+            transfer.stock_tracked = tracked
+            db.commit()
+        response = client.get(f"{prefix}/{view}")
+        assert response.status_code == 404, response.text
+    client.headers.pop("Authorization")
+    assert client.get(f"{prefix}/{view}").status_code == 401
 
 
 def test_purposes_partition_balances_search_and_source_selection(client, warehouse):
@@ -421,30 +447,47 @@ def test_business_filter_is_exact_paginated_and_keeps_historical_receipts(client
         )
 
 
-def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(client, warehouse):
+@pytest.mark.parametrize("workshop", [False, True])
+def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(
+    client, warehouse, workshop
+):
     s = warehouse
-    old = intake(client, s, idempotency_key="old", weight=10).json()
-    recent = intake(client, s, idempotency_key="recent", weight=10).json()
-    intake(client, s, idempotency_key="different", material_type="finished")
+    target = s["other"]["id"] if workshop else s["team"]["id"]
+
+    def receive(key, **values):
+        if workshop:
+            return incoming(client, s["headers"], s["other_headers"], target, key, **values)
+        result = intake(client, s, idempotency_key=key, **values)
+        assert result.status_code == 201, result.text
+        return result.json()
+
+    old = receive("old", quantity=100, weight=10)
+    recent = receive("recent", quantity=100, weight=10)
+    receive("different", material_type="finished")
     # MySQL DATETIME stores receipt times to the second.
     now = utcnow().replace(microsecond=0)
     with SessionLocal() as db:
         db.get(MaterialTransfer, old["id"]).received_at = now - timedelta(days=10)
         db.get(MaterialTransfer, recent["id"]).received_at = now - timedelta(hours=2)
         db.commit()
-    aged = get_inventory(client, s["team"]["id"], stock_age="ge7")
+    aged = get_inventory(client, target, stock_age="ge7")
     assert aged["total"] == 1  # Not the newer finished stock of the same serial.
     row = aged["items"][0]
-    assert row["current_batch_count"] == 2
+    assert row["current_batch_count"] == (2 if workshop else 1)
     assert datetime.fromisoformat(row["oldest_received_at"]).replace(
         tzinfo=None
     ) == now - timedelta(days=10)
-    dispatch(client, s, [{"source_transfer_id": old["id"], "quantity": 100, "weight": 10}])
-    assert get_inventory(client, s["team"]["id"], stock_age="ge7")["total"] == 0
+    dispatch(
+        client,
+        s,
+        [{"source_transfer_id": old["id"], "quantity": 100, "weight": 10}],
+        workshop=workshop,
+    )
+    assert get_inventory(client, target, stock_age="ge7")["total"] == 0
     row = next(
         row
-        for row in get_inventory(client, s["team"]["id"])["items"]
-        if row["group_id"] == old["id"]
+        for row in get_inventory(client, target)["items"]
+        if row["group_id"] == (old["id"] if workshop else recent["id"])
     )
     assert row["current_batch_count"] == 1
     assert datetime.fromisoformat(row["oldest_received_at"]).replace(
@@ -455,10 +498,11 @@ def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(client
         s,
         [{"source_transfer_id": recent["id"], "quantity": 100, "weight": 10}],
         idempotency_key="last-age",
+        workshop=workshop,
     )
     row = next(
         row
-        for row in get_inventory(client, s["team"]["id"], availability="all")["items"]
+        for row in get_inventory(client, target, availability="all")["items"]
         if row["group_id"] == old["id"]
     )
     assert row["oldest_received_at"] is None and row["current_batch_count"] == 0

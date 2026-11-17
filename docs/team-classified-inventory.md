@@ -1,5 +1,7 @@
 # 八班组分类库存明细
 
+> 2026-11-17 当前规则：库房按实物批次分别展示；加工班组仍按现有分类归组，并区分排期和工序。两者都使用 `/api/team-materials/{team_id}/inventory`，下文的早期界面记录以此更新为准。
+
 2026-09-18：程序提交 `a9954f3` 已推送，前后端已发布 `20260918T064256Z`。本次不修改数据库结构，不清理或重建业务数据。发布及回退记录见 [服务器部署](server-deployment.md)。
 
 2026-09-26：按“逐页修改”先调整班组库存明细及其来源批次详情，尚未部署此改版。下方列表与接口说明已更新；文末验收、发布记录仍指 9 月 18 日版本。本轮不改全厂总览、大屏、其他业务页，也不修改数据库结构或线上业务数据。
@@ -34,7 +36,7 @@
 - `GET /api/team-materials/{team_id}/inventory/{group_id}/movements`：限定同一分类来源的实际收料和直接转出记录，按收发时间及 ID 倒序分页，每页最多 100 笔；不混入同流水号其他分类或下游继续转出的记录。
 - `group_id` 是该分组最早接收记录的 ID，不是对外批次号。查询校验该记录属于目标班组，不能拿另一班组的 ID 读取本组来源。
 - 新增返回 `purpose_id`、`purpose_name`、`current_batch_count`、`oldest_received_at`。现有 `group_id` 锚定的来源查询同步纳入用途，选料不会混入不同用途的批次；件数为 0、重量非 0 仍计入在库批次数。
-- 旧 `warehouse-inventory` 两个只读路径继续兼容且仍仅限库房；新前端统一使用 `inventory`。
+- 所有班组统一使用 `inventory` 和 `inventory/{group_id}/sources`。旧 `warehouse-inventory` 两个别名已于 2026-11-17 退役，接口调用与回归测试均迁到现用路径。
 
 新旧库存组件合并为 `TeamInventory.vue` / `TeamInventoryDetail.vue`，移除不再使用的 `TeamSerialOverview.vue`；后端仍复用原分组和余额查询，无需数据迁移。
 

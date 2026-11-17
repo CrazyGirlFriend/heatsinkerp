@@ -291,6 +291,7 @@ describe('application navigation shell', () => {
   it('keeps the account menu and logout accessible in the sidebar', async () => {
     const { wrapper } = await renderApp(false)
     const user = wrapper.get('#factory-sidebar .sidebar__user')
+    expect(wrapper.text()).not.toContain('消息通知')
     expect(user.get('.sidebar__user-label').text()).toBe('测试')
     expect(user.attributes('aria-label')).toContain('系统管理员')
     await user.trigger('click')

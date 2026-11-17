@@ -1,6 +1,6 @@
 import { formatAmount as historyNumber } from '@/utils/format'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
-import type { SerialHistoryEvent, SerialHistoryGroup } from '@/types/teamBusiness'
+import type { SerialHistoryGroup } from '@/types/teamBusiness'
 import { formatDateTime } from './format'
 
 export const historyKindNames = {
@@ -55,15 +55,6 @@ export function historyTimeline(groups: SerialHistoryGroup[]) {
         Number(a.event.id.split('-').at(-1)) - Number(b.event.id.split('-').at(-1)) ||
         a.groupKey.localeCompare(b.groupKey),
     )
-}
-
-export function historyEventAt(
-  groups: SerialHistoryGroup[],
-  seriesIndex: number,
-  dataIndex: number,
-): SerialHistoryEvent | undefined {
-  const point = historyTimeline(groups)[dataIndex - 1]
-  return point?.groupKey === groups[seriesIndex]?.key ? point.event : undefined
 }
 
 export function serialHistoryChart(

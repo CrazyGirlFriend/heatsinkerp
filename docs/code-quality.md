@@ -31,7 +31,7 @@ CI 使用 Python 3.12 和 Node 24；`.github/workflows/quality.yml` 在推送和
 
 `test_successful_json_responses_have_explicit_contracts` 检查所有正常 JSON 成功响应均有具体结构。文件下载与 SSE 按真实响应类型声明，不冒充 JSON；仅两个始终拒绝写入的历史兼容入口保留例外。
 
-ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 `frontend/src`，以及 ESLint 和格式检查脚本；`npm run format` 使用同一范围。Ruff 对整个 `backend/app`、`backend/tests` 和 `backend/alembic` 执行 `E4/E7/E9/F/I/B` 规则及格式检查，新文件自动纳入，不再维护文件白名单。测试跨模块导入的 pytest fixture 使用显式同名导出，避免被误删为未使用导入；ORM 关系的预加载访问保留为显式赋值。
+ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 `frontend/src`，以及 ESLint 和格式检查脚本；`npm run format` 使用同一范围。Ruff 对整个 `backend/app`、`backend/tests`、`backend/alembic` 和 `backend/migration_support` 执行 `E/W/F/I/B` 规则及格式检查，新文件自动纳入。PEP 8 风格检查保留项目既有的 100 列格式约定，`E501` 单独排除，避免仅为行宽拆改 SQL、URL 和用户文案；不表述为严格遵守 79 列。测试跨模块导入的 pytest fixture 使用显式同名导出，避免被误删为未使用导入；ORM 关系的预加载访问保留为显式赋值。
 
 加工班组代码统一放在前端 `config/materialRules.ts` 与后端 `team_constants.py`；重量提醒前端统一使用 `materialWeightToleranceKg`，后端使用 `MATERIAL_WEIGHT_TOLERANCE`。前后端一致性测试核对这两项，调整规则时须同时更新；1 kg 仍是同一来源在本班组累计的提醒线，不是提交限制。数值显示复用 `utils/format.ts`，检索比较复用 `record_filters.numeric_search_predicate`，各查询保留自己的库存范围。
 
@@ -53,11 +53,11 @@ ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 
 
 审计保留操作者 ID/姓名、目标类型/ID、动作、请求编号、时间以及白名单字段前后值。操作者和目标使用历史快照，不设删除级联，因此删除账号、班组不会删除历史。没有新增公开查询接口，运维可通过受控数据库访问检索；本次不补造上线前的历史事件。
 
-发布时需要升级前后端，并执行 `alembic upgrade head`（现有容器启动命令已执行）。迁移只增加审计表，不清空物料或改变库存。降级保留审计，不提供删表式自动降级。
+发布时需要升级前后端，并执行 `alembic upgrade head`。结构精简迁移须沿用停写、完整备份、备份核验和单实例升级流程；旧记录归档与停用表移除见[数据库结构精简](database-recovery.md#2026-11-17-结构精简)。不提供把空表重建当成数据恢复的自动降级。
 
 ## 物料维护清理
 
-`python -m app.reset_business_data` 默认只预览。范围由 `RESET_TABLES` 显式列出，包括物料台账及其排期、余额、仓位占用、入库附件、修改申请与相关通知等依赖。旧工单、产品、账号、班组、用途、管理审计、工艺原件及编号计数器保持保护；工艺引用待清理数据时拒绝执行。
+`python -m app.reset_business_data` 默认只预览。范围由 `RESET_TABLES` 显式列出，包括物料台账及其排期、余额、仓位占用、入库附件、修改申请等依赖。旧业务归档、账号、班组、用途、管理审计、工艺原件及编号计数器保持保护；工艺引用待清理数据时拒绝执行。
 
 实际执行必须同时提供 `--apply`、与目标完全一致的 `--confirm-database`、`--backup-file`、匹配文件的 `--backup-sha256` 和 `--maintenance-confirmed`。必须先停止业务写入并制作新备份；参数只确认操作者已完成维护准备，不能自动证明备份来自该库或足够新。
 

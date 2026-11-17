@@ -46,6 +46,25 @@ export default [
     },
   },
   {
+    files: ['src/pages/**/*.vue', 'src/components/*.vue'],
+    ignores: [
+      'src/components/App*.vue',
+      'src/components/ColumnManagedTable.vue',
+      'src/components/WorkspacePagination.vue',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "ImportDeclaration[source.value='element-plus'] > ImportSpecifier[imported.name=/^(ElButton|ElInput|ElSelect|ElDatePicker|ElInputNumber|ElDialog|ElDrawer|ElTable|ElPagination)$/]",
+          message:
+            '业务页面复用 App 控件、WorkspaceTable 和 WorkspacePagination；底层实现留在适配组件。',
+        },
+      ],
+    },
+  },
+  {
     files: ['src/services/**/*.ts', 'src/utils/**/*.ts', 'src/types/**/*.ts'],
     ignores: ['src/**/*.test.ts'],
     rules: {

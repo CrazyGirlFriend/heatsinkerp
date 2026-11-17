@@ -62,7 +62,7 @@ import type {
   QuantityAdjustment,
   QuantityAdjustmentContext,
 } from '@/types/teamMaterials'
-import { materialRequestKey } from '@/utils/materialStock'
+import { materialRequestKey, createMaterialSubmissionKey } from '@/utils/materialStock'
 import { factoryToday, formatDateTime } from '@/utils/format'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import {
@@ -308,9 +308,8 @@ const hasStock = computed(
       !!snapshot.value.allowed_task_ids?.length) &&
     (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
 )
-let generation = 0,
-  requestKey = '',
-  fingerprint = ''
+let generation = 0
+const submission = createMaterialSubmissionKey()
 
 async function load(refreshSnapshot = false) {
   if (!props.modelValue || props.sourceId == null || saving.value) return
@@ -491,11 +490,7 @@ async function save() {
         }
       : {}),
   }
-  const nextFingerprint = JSON.stringify(body)
-  if (fingerprint !== nextFingerprint || !requestKey) {
-    requestKey = materialRequestKey()
-    fingerprint = nextFingerprint
-  }
+  const requestKey = submission.get(body)
   const current = generation
   saving.value = true
   try {
@@ -535,7 +530,8 @@ watch(
     processingDate.value = factoryToday()
     editingProcessingDate.value = false
     inputQuantity.value = completedWeight.value = undefined
-    reason.value = error.value = requestKey = fingerprint = ''
+    reason.value = error.value = ''
+    submission.reset()
     progress.value = 'partial'
     specification.value = ''
     specificationValid.value = true

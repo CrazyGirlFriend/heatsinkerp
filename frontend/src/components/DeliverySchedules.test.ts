@@ -9,17 +9,6 @@ import DeliverySchedules from './DeliverySchedules.vue'
 import AppDialog from './AppDialog.vue'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
-import { businessNoticeApi } from '@/services/businessNoticeApi'
-import { focusNoticeTarget, noticeOpened } from '@/utils/noticeFocus'
-vi.mock('@/services/businessNoticeApi', async (original) => ({
-  ...(await original<object>()),
-  businessNoticeApi: { target: vi.fn() },
-}))
-vi.mock('@/utils/noticeFocus', () => ({
-  focusNoticeTarget: vi.fn(() => vi.fn()),
-  noticeOpened: vi.fn(),
-  noticeFailed: vi.fn(),
-}))
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -590,51 +579,12 @@ describe('delivery schedule workbench', () => {
     await flushPromises()
     expect(wrapper.find('.live-refresh-notice').exists()).toBe(false)
   })
-  it('expands the exact historical change after the destination opens', async () => {
-    vi.mocked(businessNoticeApi.target).mockResolvedValue({
-      href: '',
-      section: null,
-      schedule_id: 5,
-      event_id: 9,
-    })
-    vi.mocked(productionScheduleApi.detail).mockResolvedValue({
-      ...record(),
-      history: [
-        {
-          id: 10,
-          action: 'updated',
-          actor: '管理员',
-          occurred_at: '2026-10-29T01:00:00Z',
-          before: { target_quantity: 120 },
-          after: { target_quantity: 130 },
-        },
-        {
-          id: 9,
-          action: 'updated',
-          actor: '管理员',
-          occurred_at: '2026-10-28T01:00:00Z',
-          before: { target_quantity: 100 },
-          after: { target_quantity: 120 },
-        },
-      ],
-    })
+  it('opens a schedule directly from its business link', async () => {
     const router = await render()
-    await router.push(
-      '/team-workspaces/2?tab=delivery-schedule&schedule_id=5&business_notice=schedule:8&notice=click-1',
-    )
+    await router.push('/team-workspaces/2?tab=delivery-schedule&schedule_id=5')
     await flushPromises()
-    expect(noticeOpened).not.toHaveBeenCalled()
-    wrapper
-      .findAllComponents(AppDialog)
-      .find((dialog) => dialog.classes().includes('schedule-detail'))!
-      .vm.$emit('opened')
-    await flushPromises()
-    const element = vi.mocked(focusNoticeTarget).mock.calls.at(-1)?.[0]
-    expect(element?.getAttribute('data-notice-event')).toBe('9')
-    expect(element?.textContent).toContain('100')
-    expect(element?.textContent).toContain('120')
-    expect(element?.textContent).not.toContain('130')
-    expect(noticeOpened).toHaveBeenCalledWith('click-1')
+    expect(productionScheduleApi.detail).toHaveBeenCalledWith(5)
+    expect(wrapper.find('.schedule-detail').exists()).toBe(true)
   })
   it('shows submitted batch changes in the audit without claiming the approved date changed', async () => {
     const proposed = {
@@ -661,7 +611,7 @@ describe('delivery schedule workbench', () => {
     await render()
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
-    const event = wrapper.find('[data-notice-event="11"]')
+    const event = wrapper.find('[data-schedule-event="11"]')
     expect(event.text()).toContain('第 1 批 · 开始')
     expect(event.text()).toContain('2026-11-03 16:00')
     expect(event.text()).not.toContain('本次操作未改变计划字段')

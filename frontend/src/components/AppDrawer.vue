@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, useSlots } from 'vue'
+import { ref, useSlots } from 'vue'
 import { ElDrawer } from 'element-plus'
-import { useGlassSurface } from '@/composables/useGlassSurface'
-import { useGlassOverlayDepth } from '@/composables/useGlassOverlayDepth'
-import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
-const watermelon = useWatermelonAppearance()
+import { useAppOverlay } from '@/composables/useAppOverlay'
 
 defineOptions({ inheritAttrs: false })
 const props = withDefaults(
@@ -12,51 +9,18 @@ const props = withDefaults(
   { modal: true },
 )
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  open: []
-  opened: []
-  closed: []
-  close: []
+  (event: 'update:modelValue', value: boolean): void
+  (event: 'open' | 'opened' | 'close' | 'closed'): void
 }>()
 const anchor = ref<HTMLElement>()
-const overlay = useGlassOverlayDepth(
+const { watermelon, overlayClass, events } = useAppOverlay(
   () => anchor.value?.closest<HTMLElement>('.el-drawer'),
-  () => props.modal,
-)
-const overlayClass = computed(() =>
-  [
-    props.modal ? (watermelon.value ? 'wm-dialog-overlay' : 'app-glass-overlay') : '',
-    overlay.nested.value ? 'app-glass-overlay--nested' : '',
-    props.modalClass,
-  ]
-    .filter(Boolean)
-    .join(' '),
+  props,
+  emit,
 )
 const slots = useSlots()
 function namedSlots() {
   return Object.keys(slots).filter((name) => name !== 'default')
-}
-const glass = useGlassSurface(
-  () => anchor.value?.closest<HTMLElement>('.el-drawer'),
-  () => Boolean(props.modelValue) && !watermelon.value,
-)
-function open() {
-  void overlay.opening()
-  emit('open')
-}
-function opened() {
-  overlay.sync()
-  if (!watermelon.value) void glass.start()
-  emit('opened')
-}
-function closed() {
-  glass.stop()
-  overlay.reset()
-  emit('closed')
-}
-function close() {
-  glass.cancelPending()
-  emit('close')
 }
 </script>
 
@@ -68,10 +32,7 @@ function close() {
     :modal-class="overlayClass"
     :class="watermelon ? 'wm-scope wm-app-drawer' : 'app-glass-surface app-glass-drawer'"
     @update:model-value="emit('update:modelValue', $event)"
-    @open="open"
-    @opened="opened"
-    @closed="closed"
-    @close="close"
+    v-on="events"
   >
     <span ref="anchor" hidden aria-hidden="true" />
     <slot />

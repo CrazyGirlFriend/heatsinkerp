@@ -5,7 +5,7 @@ from pathlib import PurePath
 from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import Depends, File, Form, HTTPException, Path, Query, Response, UploadFile
+from fastapi import Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ from .models import (
     ProcessRouteOrderFile,
     User,
 )
-from .order_document_preview import order_document_preview
+from .order_document_response import order_document_response
 from .process_route_documents import document
 from .process_route_drawings import MAX_DRAWINGS, drawing_preview, validate_drawing
 from .process_route_import import MAX_FILE_BYTES, parse_docx
@@ -37,9 +37,7 @@ from .process_route_read_schemas import (
     ProcessRouteDetailResponse,
     ProcessRoutePageResponse,
     ProcessRouteParseResponse,
-    ReworkRoundResponse,
     RouteDispatchOrderResponse,
-    RouteExecutionOptionsResponse,
     RouteOrderDocumentResponse,
 )
 from .process_route_schemas import BindWrite, ResumeWrite, RevisionWrite, RouteDraftWrite
@@ -48,7 +46,6 @@ from .process_routes import (
     require_route,
     require_route_reader,
     route_document,
-    route_options,
 )
 from .processing_read_schemas import QuantityAdjustmentContextResponse
 from .read_schemas import PageResponse
@@ -192,19 +189,6 @@ def resume_rework_route(
     return service.resume_rework_route(db, lot_id, user, payload.expected_revision)
 
 
-@router.get(
-    "/options/{team_id}",
-    response_model=RouteExecutionOptionsResponse,
-    response_model_exclude_unset=True,
-)
-def execution_options(
-    team_id: int = Path(ge=1),
-    _: User = Depends(require_route_importer),
-    db: Session = Depends(get_db),
-):
-    return route_options(db, team_id)
-
-
 @router.get("/lots/{lot_id}", response_model=LotRouteResponse, response_model_exclude_unset=True)
 def lot_route(lot_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     lot = db.get(MaterialTransfer, lot_id)
@@ -337,22 +321,7 @@ async def download_order(
         return order.filename, order.content
 
     filename, content = await db.run_sync(original)
-    if preview:
-        content = await run_in_threadpool(order_document_preview, content, filename)
-        filename = str(PurePath(filename).with_suffix(".pdf"))
-    return Response(
-        content,
-        media_type="application/pdf"
-        if preview
-        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": ("inline" if preview else "attachment")
-            + "; filename*=UTF-8''"
-            + quote(filename),
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, no-store",
-        },
-    )
+    return await order_document_response(content, filename, preview=preview)
 
 
 @router.get(
@@ -471,22 +440,6 @@ def remove_drawing(
     db: Session = Depends(get_db),
 ):
     return service.remove_drawing(db, route_id, drawing_id, version, user)
-
-
-@router.get(
-    "/{route_id}/rework-rounds",
-    response_model=list[ReworkRoundResponse],
-    response_model_exclude_unset=True,
-)
-def rework_rounds(
-    route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    from .rework_rounds import round_documents
-
-    row = require_route_reader(require_route(db, route_id), user)
-    if row.route_kind != "rework":
-        raise HTTPException(422, "请选择返工工艺")
-    return round_documents(db, row, user)
 
 
 @router.get(

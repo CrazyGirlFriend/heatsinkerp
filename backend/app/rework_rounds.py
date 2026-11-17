@@ -3,13 +3,11 @@
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
-from .material_lineage import relatives
 from .models import MaterialInspection as Inspection
 from .models import MaterialQuantityAdjustment as Work
 from .models import MaterialStockBalance as Balance
 from .models import MaterialTransfer as Lot
 from .models import ProcessRoute as Route
-from .process_routes import is_engineering_user
 
 
 def current_routes():
@@ -141,40 +139,3 @@ def progress_documents(db, routes):
             ],
         }
     return result
-
-
-def round_documents(db, route, user):
-    ancestors = relatives(
-        [route.rework_source_transfer_id], ancestors=True, name="rework_round_ancestors"
-    )
-    descendants = relatives([route.rework_source_transfer_id], name="rework_round_descendants")
-    rows = list(
-        db.scalars(
-            select(Route)
-            .where(
-                *current_routes(),
-                Route.rework_source_transfer_id.in_(
-                    select(ancestors.c.id).union(select(descendants.c.id))
-                ),
-            )
-            .order_by(Route.rework_round, Route.id)
-        )
-    )
-    from .rework_routes import request_documents
-
-    requests = request_documents(db, rows)
-    progress = progress_documents(db, rows)
-    return [
-        {
-            "route_id": row.id,
-            "state": row.state,
-            "engineering_employee_name": row.engineering_employee_name,
-            "request": requests[row.id],
-            "progress": progress[row.id],
-            # Execution teams can see a pending request, never unpublished instructions.
-            "steps": row.steps
-            if row.state == "published" or user.role == "ADMIN" or is_engineering_user(user)
-            else [],
-        }
-        for row in rows
-    ]

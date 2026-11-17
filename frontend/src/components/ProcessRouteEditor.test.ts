@@ -69,14 +69,9 @@ beforeEach(() => {
   authState.role = 'TEAM'
   authState.active = true
   authState.teamActive = true
-  vi.spyOn(processRouteApi, 'reworkRounds').mockResolvedValue([])
   openWord.mockReset()
   openDrawing.mockReset()
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(structuredClone(routeFixture))
-  vi.spyOn(processRouteApi, 'options').mockImplementation(async (teamId) => ({
-    tasks: teamId === 1 ? [] : [{ id: 4, team_id: teamId, name: '精磨', active: true, version: 1 }],
-    purposes: [{ id: 3, team_id: teamId, name: '产品加工', active: true, version: 1 }],
-  }))
   vi.spyOn(processRouteApi, 'save').mockImplementation(async (route) =>
     JSON.parse(JSON.stringify({ ...route, version: 2 })),
   )
@@ -150,7 +145,6 @@ it.each([
     expect(wrapper.findAll('button').map((button) => button.text())).toContain(
       kind === 'rework' ? '提交工艺' : '保存工艺',
     )
-    expect(processRouteApi.options).not.toHaveBeenCalled()
     expect(processRouteApi.save).not.toHaveBeenCalled()
     expect(processRouteApi.publish).not.toHaveBeenCalled()
     expect(processRouteApi.revise).not.toHaveBeenCalled()
@@ -161,7 +155,6 @@ it('keeps engineering read-only when its team is inactive', async () => {
   await render(false, routeFixture, false, true)
   expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
   expect(wrapper.findAll('button').map((button) => button.text())).not.toContain('保存工艺')
-  expect(processRouteApi.options).not.toHaveBeenCalled()
 })
 it('preserves original text and saves the version before publication', async () => {
   await render()
@@ -460,7 +453,6 @@ it('keeps a warehouse route preview read-only without save, publication or revis
   expect(wrapper.text()).not.toContain('保存工艺')
   expect(wrapper.text()).not.toContain('修改工艺')
   expect(wrapper.text()).toContain('工艺原件')
-  expect(processRouteApi.options).not.toHaveBeenCalled()
 })
 
 it('saves without execution presets or loading team task settings', async () => {
@@ -470,7 +462,6 @@ it('saves without execution presets or loading team task settings', async () => 
     step.purpose_id = null
   })
   await render(false, route)
-  expect(processRouteApi.options).not.toHaveBeenCalled()
   for (const label of ['执行设置', '具体任务', '对应业务', '参考天数', '适用流水号'])
     expect(wrapper.text()).not.toContain(label)
   await click('保存工艺')

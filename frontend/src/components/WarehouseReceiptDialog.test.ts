@@ -73,7 +73,6 @@ beforeEach(() => {
     page_size: 20,
     enforced_after: null,
   })
-  vi.spyOn(processRouteApi, 'options').mockResolvedValue({ tasks: [], purposes: [] })
 })
 afterEach(() => {
   wrapper?.unmount()

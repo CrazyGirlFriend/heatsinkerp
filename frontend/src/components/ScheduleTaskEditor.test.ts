@@ -319,7 +319,7 @@ it('loads the serial process but requires dispatch to set the customer deadline'
   ])
   await flushPromises()
   await button('创建排期')
-  expect(wrapper.text()).toContain('请上传对应流水号的订单表')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('请上传对应流水号的订单表'))
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
   await uploadOrder()
   await button('创建排期')

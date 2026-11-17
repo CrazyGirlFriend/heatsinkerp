@@ -10,11 +10,11 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import WeightInput from './WeightInput.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
-import SpecificationInput from './SpecificationInput.vue'
+import MaterialDocumentInput from './MaterialDocumentInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
-import { focusFirstInvalidField } from '@/composables/useDialogValidation'
+import { useDialogValidation } from '@/composables/useDialogValidation'
+import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
-import type { MaterialInputField } from '@/services/materialInputApi'
 
 import { ArrowRight } from '@element-plus/icons-vue'
 import { ElForm, ElFormItem, ElIcon, ElOption } from 'element-plus'
@@ -23,7 +23,7 @@ import ElButton from '@/components/AppButton.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { materialSenderName } from '@/types/materialTransfer'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
@@ -40,6 +40,8 @@ import {
   isScrapType,
   isExternalTransfer,
   materialDocumentTextFields,
+  materialSpecificationKeys as specificationKeys,
+  materialDocumentFormSections as documentSections,
   materialTransferVersion,
   materialTypeOptions,
   type MaterialTransfer,
@@ -67,38 +69,11 @@ const saving = ref(false),
   locationBusy = ref(false)
 const sender = ref<TeamEmployee | null>(null)
 const formError = ref('')
-const transferForm = ref<InstanceType<typeof ElForm>>()
-const validationAttempted = ref(false)
-const specificationKeys = ['finished_specification', 'transfer_specification']
-const documentSections = [
-  {
-    name: 'document',
-    label: '物料资料',
-    fields: materialDocumentTextFields.filter(
-      (field) => !field.multiline && !specificationKeys.includes(field.key),
-    ),
-  },
-  {
-    name: 'specification',
-    label: '规格工艺',
-    fields: materialDocumentTextFields.filter(
-      (field) =>
-        specificationKeys.includes(field.key) ||
-        ['technical_requirements', 'special_process'].includes(field.key),
-    ),
-  },
-  {
-    name: 'notes',
-    label: '补充说明',
-    fields: materialDocumentTextFields.filter((field) => field.key === 'material_description'),
-  },
-]
 
 const editingSnapshot = ref<MaterialTransfer | null>(null)
 const refreshFailed = ref(false)
 const refreshing = ref(false)
-const createRequestKey = ref('')
-const createRequestFingerprint = ref('')
+const submission = createMaterialSubmissionKey()
 const openedSourceTeamId = ref<string | number | null>(null)
 const form = reactive({
   serialNo: '',
@@ -124,13 +99,7 @@ const specificationValidity = reactive<Record<string, boolean>>({
   finished_specification: true,
   transfer_specification: true,
 })
-const suggestionFields = [
-  'material_name',
-  'customer_code',
-  'product_code',
-  'part_no',
-  'outsourced_unit',
-]
+
 let formGeneration = 0
 const external = computed(() =>
   Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)),
@@ -238,9 +207,11 @@ const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
 const notesLabel = computed(() =>
   external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注',
 )
-const validationIssues = computed(() => {
-  const issues: { field: string; message: string }[] = []
-  const add = (field: string, message: string) => issues.push({ field, message })
+const validation = useDialogValidation(() => {
+  const issues: Record<string, string> = {}
+  const add = (field: string, message: string) => {
+    issues[field] = message
+  }
   const serialNo = form.serialNo.trim(),
     quantity = Number(enteredQuantity.value),
     weight = Number(form.weight)
@@ -313,11 +284,7 @@ const validationIssues = computed(() => {
     add('transfer_specification', '转入下一班组前必须填写实际尺寸')
   return issues
 })
-const fieldErrors = computed<Record<string, string>>(() =>
-  validationAttempted.value
-    ? Object.fromEntries(validationIssues.value.map((issue) => [issue.field, issue.message]))
-    : {},
-)
+const { formRef: transferForm, fieldErrors } = validation
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   autofill.reset()
@@ -341,11 +308,10 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   materialDocumentTextFields.forEach((field) => {
     form.document[field.key] = transfer?.[field.key] ?? ''
   })
-  validationAttempted.value = false
+  validation.reset()
   refreshFailed.value = false
   formError.value = ''
-  createRequestKey.value = ''
-  createRequestFingerprint.value = ''
+  submission.reset()
 }
 
 function close(): void {
@@ -360,8 +326,7 @@ function validate(): boolean {
   else if (refreshFailed.value) formError.value = '请先重新读取最新单据'
   else formError.value = ''
   if (formError.value) return false
-  validationAttempted.value = true
-  return !validationIssues.value.length
+  return validation.validate()
 }
 
 async function refreshAfterConflict(): Promise<void> {
@@ -383,19 +348,8 @@ async function refreshAfterConflict(): Promise<void> {
   }
 }
 
-function idempotencyKey(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ||
-    `material-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  )
-}
-
 async function submit(): Promise<void> {
-  if (!validate()) {
-    await nextTick()
-    focusFirstInvalidField(transferForm.value?.$el)
-    return
-  }
+  if (!validate()) return
   if (saving.value || locationBusy.value) return
   const epoch = formGeneration
   saving.value = true
@@ -444,18 +398,13 @@ async function submit(): Promise<void> {
       ]),
     ),
   }
-  const requestFingerprint = JSON.stringify({
-    ...payload,
-    source_team_id: sourceTeam.value?.id,
-    sent_employee_id: sender.value?.id,
-  })
-  if (
-    !props.transfer &&
-    (!createRequestKey.value || createRequestFingerprint.value !== requestFingerprint)
-  ) {
-    createRequestKey.value = idempotencyKey()
-    createRequestFingerprint.value = requestFingerprint
-  }
+  const requestKey = props.transfer
+    ? undefined
+    : submission.get({
+        ...payload,
+        source_team_id: sourceTeam.value?.id,
+        sent_employee_id: sender.value?.id,
+      })
   try {
     if (external.value) {
       await authStore.refreshCurrentUser()
@@ -491,11 +440,10 @@ async function submit(): Promise<void> {
           ...(authStore.isAdmin ? { source_team_id: Number(sourceTeam.value!.id) } : {}),
           sent_employee_id: sender.value!.id,
           ...payload,
-          idempotency_key: createRequestKey.value,
+          idempotency_key: requestKey!,
         })
     if (epoch !== formGeneration || !props.modelValue) return
-    createRequestKey.value = ''
-    createRequestFingerprint.value = ''
+    submission.reset()
     emit('saved', saved)
     emit('update:modelValue', false)
     showToast(
@@ -825,31 +773,11 @@ onBeforeUnmount(() => {
             <template #label
               >{{ field.label }}<AutofillBadge :source="autofill.source(field.key)"
             /></template>
-            <SpecificationInput
-              v-if="specificationKeys.includes(field.key)"
+            <MaterialDocumentInput
               v-model="form.document[field.key]"
-              :label="field.label"
-              :disabled="!canSubmit || external"
-              @validity-change="specificationValidity[field.key] = $event"
-            />
-            <MaterialInput
-              v-else-if="suggestionFields.includes(field.key)"
-              v-model="form.document[field.key]"
-              :field="field.key as MaterialInputField"
-              :label="field.label"
-              :maxlength="field.maxLength"
+              :field="field"
               :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')"
-            />
-            <ElInput
-              v-else
-              v-model="form.document[field.key]"
-              :aria-label="field.label"
-              :type="field.multiline ? 'textarea' : 'text'"
-              :rows="2"
-              :maxlength="field.maxLength"
-              :show-word-limit="field.multiline"
-              :disabled="!canSubmit || external"
-              placeholder="选填"
+              @validity-change="specificationValidity[field.key] = $event"
             />
           </ElFormItem>
           <ElFormItem
