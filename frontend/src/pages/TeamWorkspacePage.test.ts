@@ -2088,6 +2088,27 @@ describe('team workspace material ledger', () => {
     expect(review().attributes('disabled')).toBeDefined()
   })
 
+  it('refreshes the incoming list in place when a successful receipt closes the form', async () => {
+    const router = await render('/team-workspaces/914?tab=pending')
+    await wrapper.get('.team-table .batch-link').trigger('click')
+    const drawer = wrapper.getComponent(MaterialTransferDrawer)
+    expect(drawer.props()).toMatchObject({ modelValue: true, receiptOnly: true })
+
+    vi.mocked(materialTransferApi.list).mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 10,
+    })
+    drawer.vm.$emit('changed', { ...drawer.props('transfer')!, status: 'received' })
+    drawer.vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=pending')
+    expect(drawer.props('modelValue')).toBe(false)
+    expect(wrapper.text()).toContain('暂无来料待签收')
+  })
+
   it.each(['account', 'team', 'permission'])(
     'clears the shared receiver on %s changes even when the scanner is unmounted',
     async (change) => {

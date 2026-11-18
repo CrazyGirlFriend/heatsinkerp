@@ -205,9 +205,12 @@ it.each(['normal', 'rework'] as const)(
     })
     vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
     await render({ kind })
-    const buttons = wrapper.findAll('button').map((button) => button.text())
-    expect(buttons).toContain('班组管理')
-    expect(buttons).toContain(kind === 'normal' ? '新建工艺' : '制定返工工艺')
+    const buttons = wrapper.findAll('button')
+    expect(buttons.map((button) => button.text())).toContain('班组管理')
+    const create = buttons.find(
+      (button) => button.text() === (kind === 'normal' ? '新建工艺' : '制定返工工艺'),
+    )!
+    expect(create.classes()).not.toContain('el-button--primary')
     await wrapper.get('button.route-serial').trigger('click')
     expect((await openedEditor()).props()).toMatchObject({
       viewOnly: false,

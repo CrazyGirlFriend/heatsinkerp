@@ -529,7 +529,6 @@ onBeforeUnmount(() => {
         <template #primary-actions>
           <ElButton
             v-if="canEdit"
-            type="primary"
             :icon="Plus"
             :loading="preparingEditor"
             :disabled="initialLoading"

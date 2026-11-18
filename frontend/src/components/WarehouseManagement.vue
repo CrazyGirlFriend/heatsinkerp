@@ -506,7 +506,7 @@ onBeforeUnmount(() => {
             >
           </template>
           <template #primary-actions>
-            <WatermelonButton class="warehouse-add" primary @click="edit()"
+            <WatermelonButton class="warehouse-add" @click="edit()"
               ><IconPlus :size="16" />新增仓位</WatermelonButton
             >
           </template>

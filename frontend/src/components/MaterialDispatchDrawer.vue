@@ -30,6 +30,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [boolean]
   changed: [MaterialDispatchDocument]
+  confirmed: [MaterialTransfer]
   busyChange: [boolean]
 }>()
 const auth = useAuthStore()
@@ -180,6 +181,7 @@ onBeforeUnmount(reset)
     :receipt-only="receiptOnly"
     :receipt-receiver="receiptReceiver"
     @changed="changed"
+    @confirmed="receiptOnly && emit('confirmed', $event)"
     @busy-change="setBusy"
   />
   <MaterialBatchPrintDialog v-if="allowPrint" v-model="printOpen" :items="current?.items || []" />

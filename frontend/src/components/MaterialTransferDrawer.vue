@@ -383,6 +383,12 @@ function updateCurrent(transfer: MaterialTransfer): void {
   emit('changed', transfer)
 }
 
+function finishReceipt(transfer: MaterialTransfer): void {
+  emit('changed', transfer)
+  emit('confirmed', transfer)
+  close()
+}
+
 async function confirmReceipt(): Promise<void> {
   const transfer = current.value
   if (!transfer || !canConfirm.value || confirming.value || locationBusy.value) return
@@ -414,8 +420,9 @@ async function confirmReceipt(): Promise<void> {
     confirming.value = false
     return
   }
+  let confirmed: MaterialTransfer
   try {
-    const confirmed = await materialTransferApi.confirm(transfer.batch_no, {
+    confirmed = await materialTransferApi.confirm(transfer.batch_no, {
       idempotency_key: confirmKey || newIdempotencyKey(),
       received_employee_id: person.id,
       ...materialTransferVersion(transfer),
@@ -429,13 +436,6 @@ async function confirmReceipt(): Promise<void> {
           }
         : {}),
     })
-    if (epoch !== actionVersion || !props.modelValue) return
-    current.value = confirmed
-    void loadAmendments()
-    emit('changed', confirmed)
-    emit('confirmed', confirmed)
-    reviewNotice.value = ''
-    showToast(`转料单 ${confirmed.batch_no} 已确认签收`, 'success')
   } catch (error) {
     if (epoch !== actionVersion || !props.modelValue) return
     const message =
@@ -449,9 +449,15 @@ async function confirmReceipt(): Promise<void> {
       reviewNotice.value = '单据已更新，请重新核对最新内容后接收。'
     }
     await load()
+    return
   } finally {
     if (epoch === actionVersion) confirming.value = false
   }
+  if (epoch !== actionVersion || !props.modelValue) return
+  current.value = confirmed
+  reviewNotice.value = ''
+  showToast(`转料单 ${confirmed.batch_no} 已确认签收`, 'success')
+  finishReceipt(confirmed)
 }
 
 async function confirmExternal() {
@@ -853,7 +859,7 @@ watch(
           </AppDetailTable>
         </div>
       </section>
-      <section class="document-records">
+      <section v-if="!receiptOnly" class="document-records">
         <h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3>
         <MaterialTransferHistory :transfer="current" />
       </section>
@@ -925,6 +931,7 @@ watch(
         >
         <a
           v-if="
+            !receiptOnly &&
             current.delivery_origin_batch_no &&
             current.delivery_origin_batch_no !== current.batch_no
           "
@@ -1013,6 +1020,7 @@ watch(
     :receipt-only="receiptOnly"
     :receipt-receiver="receiptReceiver"
     @changed="groupChanged"
+    @confirmed="finishReceipt"
     @busy-change="emit('busyChange', $event)"
   />
   <MaterialDeliveryDialog

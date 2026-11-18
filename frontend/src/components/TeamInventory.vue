@@ -1287,7 +1287,6 @@ onBeforeUnmount(() => {
         >
         <ElButton
           v-if="fullscreen && canWrite && dispatchSelection.selected.size"
-          type="primary"
           :loading="preparingDispatch"
           @click="dispatchSelected"
           >新建出库</ElButton
@@ -1295,7 +1294,6 @@ onBeforeUnmount(() => {
         <ElButton
           v-if="processing && canWrite"
           class="inventory-process"
-          type="primary"
           :icon="Operation"
           :disabled="processingLoadingGroupId != null"
           @click="emit('process')"

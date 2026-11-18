@@ -105,13 +105,17 @@ it('keeps nested batches in receipt-only mode without printing when opened from 
   expect(wrapper.findComponent(MaterialBatchPrintDialog).exists()).toBe(false)
   await wrapper.get('button[aria-label="查看批次 TL-GROUP-2"]').trigger('click')
   await flushPromises()
-  expect(wrapper.getComponent({ name: 'MaterialTransferDrawer' }).props()).toMatchObject({
+  const batch = wrapper.getComponent({ name: 'MaterialTransferDrawer' })
+  expect(batch.props()).toMatchObject({
     modelValue: true,
     batchNo: 'TL-GROUP-2',
     allowPrint: false,
     receiptOnly: true,
     receiptReceiver: person,
   })
+  const signed = { ...dispatchFixture().items[1]!, status: 'received' }
+  batch.vm.$emit('confirmed', signed)
+  expect(wrapper.emitted('confirmed')).toEqual([[signed]])
 })
 it('ignores an old lookup after changing the historical identifier', async () => {
   let finish!: (value: MaterialDispatchDocument) => void

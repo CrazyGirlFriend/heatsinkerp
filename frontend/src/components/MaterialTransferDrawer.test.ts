@@ -143,28 +143,55 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
-  it('uses the page receiver without a second picker and shows the saved receipt afterwards', async () => {
+  it('hides the audit and delivery origin in receipt review and shows them in details', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValue(
+      fixture({
+        delivery_origin_batch_no: 'TL-ORIGIN',
+        history: [
+          {
+            id: 11,
+            action: 'created',
+            actor: '登记员',
+            occurred_at: '2026-09-07T00:00:00Z',
+            changes: {},
+          },
+        ],
+      }),
+    )
+    await render({ receiptOnly: true, receiptReceiver: person }, false)
+    expect(wrapper.text()).toContain('确认签收')
+    expect(wrapper.text()).not.toContain('流转记录')
+    expect(wrapper.text()).not.toContain('查看交期源单')
+    expect(wrapper.find('table.document-history').exists()).toBe(false)
+
+    await wrapper.setProps({ receiptOnly: false })
+    await flushPromises()
+    expect(wrapper.get('table.document-history').text()).toContain('登记员')
+    expect(wrapper.get('a[href="/transfer-batches?batch_no=TL-ORIGIN"]').text()).toBe(
+      '查看交期源单',
+    )
+  })
+
+  it('uses the page receiver and refreshes the list and closes the form after signing', async () => {
     await render({ receiptOnly: true, receiptReceiver: person }, false)
     expect(wrapper.findComponent(ReceiptPersonInput).exists()).toBe(false)
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain(person.name)
-    vi.mocked(materialTransferApi.confirm).mockResolvedValueOnce(
-      fixture({
-        status: 'received',
-        locked: true,
-        allowed_actions: [],
-        received_employee_id: person.id,
-        received_employee_name: person.name,
-        received_at: '2026-10-13T04:30:00Z',
-      }),
-    )
+    const signed = fixture({
+      status: 'received',
+      locked: true,
+      allowed_actions: [],
+      received_employee_id: person.id,
+      received_employee_name: person.name,
+      received_at: '2026-10-13T04:30:00Z',
+    })
+    vi.mocked(materialTransferApi.confirm).mockResolvedValueOnce(signed)
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith(
       'TL20260906000001',
       expect.objectContaining({ received_employee_id: person.id }),
     )
-    await wrapper.setProps({ receiptReceiver: { ...person, id: 32, name: '王师傅' } })
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain(person.name)
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).not.toContain('王师傅')
+    expect(wrapper.emitted('changed')).toEqual([[signed]])
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
   })
 
   it.each([null, { ...person, team_id: 99 }, { ...person, active: false }])(
@@ -258,6 +285,7 @@ describe('material transfer receipt review', () => {
     const table = wrapper.get('table[aria-label="转料单据资料"]')
     expect(table.get('button[aria-label="接收人"]').text()).toContain(person.name)
     expect(wrapper.emitted('confirmed')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
   it('requires an employee and marks just the picker before any receipt confirmation', async () => {
@@ -435,14 +463,16 @@ describe('material transfer receipt review', () => {
       .findAll('button')
       .find((button) => button.text().includes('历史合并记录'))!
       .trigger('click')
-    expect(wrapper.getComponent({ name: 'MaterialDispatchDrawer' }).props()).toMatchObject({
+    const group = wrapper.getComponent({ name: 'MaterialDispatchDrawer' })
+    expect(group.props()).toMatchObject({
       modelValue: true,
       allowPrint: false,
       receiptOnly: true,
     })
-    await confirm()
-    expect(materialTransferApi.confirm).toHaveBeenCalledOnce()
-    expect(wrapper.findAll('button').some((button) => button.text().includes('打印'))).toBe(false)
+    const signed = fixture({ status: 'received', locked: true, allowed_actions: [] })
+    group.vm.$emit('confirmed', signed)
+    expect(wrapper.emitted('changed')).toEqual([[signed]])
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
   })
 
   it('does not offer a transfer printout for an internal rework allocation', async () => {
@@ -776,6 +806,7 @@ describe('material transfer receipt review', () => {
     expect(wrapper.text()).toContain('更新后的材质')
     expect(wrapper.text()).toContain('请重新核对最新内容后接收')
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待签收')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenLastCalledWith('TL20260906000001', {
       idempotency_key: expect.any(String),

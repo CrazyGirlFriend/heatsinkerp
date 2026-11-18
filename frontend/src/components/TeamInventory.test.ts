@@ -944,6 +944,7 @@ describe('warehouse grouped stock', () => {
       await wrapper.setProps({ processing: true, fullscreen, inspection })
       const entry = wrapper.get('.workspace-toolbar .inventory-process')
       expect(entry.isVisible()).toBe(true)
+      expect(entry.classes()).not.toContain('el-button--primary')
       expect(wrapper.findAll('button').some((button) => button.text() === '检验登记')).toBe(false)
       const rowButtons = wrapper.findAll('.inventory-row-actions button')
       expect(rowButtons.some((button) => button.text() === '检验')).toBe(false)

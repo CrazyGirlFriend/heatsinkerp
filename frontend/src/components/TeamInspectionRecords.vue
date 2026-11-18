@@ -298,10 +298,7 @@ watch(canWrite, (value) => {
           :context="JSON.stringify(params())"
       /></template>
       <template #primary-actions
-        ><ElButton
-          v-if="canWrite && !sourceId && kind !== 'patrol'"
-          type="primary"
-          @click="register()"
+        ><ElButton v-if="canWrite && !sourceId && kind !== 'patrol'" @click="register()"
           >{{ title }}登记</ElButton
         ></template
       >

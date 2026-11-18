@@ -892,6 +892,8 @@ describe('task scheduling board', () => {
       .vm.$emit('sort', 'desc')
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
     await flushPromises()
+    const create = wrapper.findAll('button').find((item) => item.text() === '新建任务排期')!
+    expect(create.classes()).not.toContain('el-button--primary')
     await button('新建任务排期')
     expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toBeNull()
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)

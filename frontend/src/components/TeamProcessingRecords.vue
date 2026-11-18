@@ -602,7 +602,7 @@ onBeforeUnmount(() => {
           :context="route.fullPath"
       /></template>
       <template #primary-actions
-        ><ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
+        ><ElButton v-if="canWrite && !fullscreen" @click="emit('register')"
           >加工登记</ElButton
         ></template
       >

@@ -410,7 +410,6 @@ onMounted(() => void loadTeams())
           :disabled="!isAdmin || loading || !!errorMessage"
         /><ElButton
           class="filter-primary-action"
-          type="primary"
           :icon="Plus"
           :disabled="!isAdmin"
           @click="openCreate"
@@ -427,9 +426,7 @@ onMounted(() => void loadTeams())
         >
       </ElResult>
       <ElEmpty v-else-if="!filteredTeams.length" description="暂无班组">
-        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate"
-          >新增班组</ElButton
-        >
+        <ElButton v-if="isAdmin" :icon="Plus" @click="openCreate">新增班组</ElButton>
       </ElEmpty>
 
       <div v-else class="table-region">

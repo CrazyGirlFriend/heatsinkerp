@@ -124,9 +124,7 @@ onMounted(load)
         @search="search"
         @refresh="load()"
       >
-        <template v-if="canManage" #actions
-          ><ElButton v-if="canManage" type="primary" @click="edit()">添加人员</ElButton></template
-        >
+        <template v-if="canManage" #actions><ElButton @click="edit()">添加人员</ElButton></template>
       </WorkspaceDataToolbar>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <WorkspaceTable

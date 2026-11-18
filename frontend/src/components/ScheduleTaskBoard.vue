@@ -723,7 +723,7 @@ onBeforeUnmount(() => {
           />
         </template>
         <template #primary-actions
-          ><ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
+          ><ElButton v-if="canManage" :icon="Plus" @click="createTask"
             >新建任务排期</ElButton
           ></template
         >

@@ -526,6 +526,7 @@ describe('warehouse management', () => {
   })
   it('creates a named slot and refreshes its catalog', async () => {
     await render()
+    expect(wrapper.get('.warehouse-add').classes()).not.toContain('el-button--primary')
     await click('新增仓位')
     await click('保存')
     expect(warehouseLocationApi.save).not.toHaveBeenCalled()

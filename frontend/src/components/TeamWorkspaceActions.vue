@@ -56,7 +56,6 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
   >
     <ElButton
       v-if="receiptVisible"
-      :type="warehouse ? 'primary' : 'default'"
       :icon="!watermelon && warehouse ? Plus : undefined"
       :loading="openingReceipt"
       @click="emit('receipt')"
@@ -65,7 +64,6 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
     </ElButton>
     <ElButton
       v-if="dispatchVisible"
-      :type="receiptVisible ? 'default' : 'primary'"
       :icon="watermelon ? undefined : Plus"
       :loading="openingDispatch"
       @click="emit('dispatch')"
@@ -82,7 +80,6 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
     </ElButton>
     <ElButton
       v-if="lossVisible"
-      type="primary"
       :icon="watermelon ? undefined : Plus"
       :loading="openingDispatch"
       @click="emit('loss')"
@@ -91,7 +88,6 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
     </ElButton>
     <ElButton
       v-if="reallocationVisible"
-      type="primary"
       :icon="watermelon ? undefined : Plus"
       :loading="openingDispatch"
       @click="emit('reallocate')"

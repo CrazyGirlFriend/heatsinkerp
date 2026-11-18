@@ -425,7 +425,6 @@ onMounted(() => void loadData())
           :disabled="!isAdmin || loading || !!errorMessage"
         /><ElButton
           class="filter-primary-action"
-          type="primary"
           :icon="Plus"
           :disabled="!isAdmin"
           @click="openCreate"
@@ -440,9 +439,7 @@ onMounted(() => void loadData())
         <template #extra><ElButton v-if="isAdmin" @click="loadData()">重新加载</ElButton></template>
       </ElResult>
       <ElEmpty v-else-if="!filteredLeaders.length" description="暂无班组长">
-        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate"
-          >新增班组长</ElButton
-        >
+        <ElButton v-if="isAdmin" :icon="Plus" @click="openCreate">新增班组长</ElButton>
       </ElEmpty>
 
       <div v-else class="table-region">

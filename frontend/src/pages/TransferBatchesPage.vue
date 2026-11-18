@@ -974,9 +974,7 @@ onBeforeUnmount(() => {
               :source="exportSource"
               :disabled="loading || !!errorMessage"
               :context="route.fullPath"
-            /><ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate"
-              >新建转料</ElButton
-            >
+            /><ElButton v-if="canCreate" :icon="Plus" @click="openCreate">新建转料</ElButton>
           </div>
         </form>
         <WorkspaceDataPanel class="table-pane" :aria-busy="loading">
@@ -998,7 +996,7 @@ onBeforeUnmount(() => {
             state="empty"
             :title="`暂无${pageTitle}`"
             description="请调整筛选条件。"
-            ><ElButton v-if="canCreate" type="primary" plain :icon="Plus" @click="openCreate"
+            ><ElButton v-if="canCreate" :icon="Plus" @click="openCreate"
               >新建转料</ElButton
             ></StatePanel
           >
