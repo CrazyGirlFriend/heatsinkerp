@@ -158,7 +158,7 @@
       .stock-source-picker
     )
     .el-table.business-table
-    :is(.batch-link, .serial-number-link, .material-amount strong, .ledger-number .cell) {
+    :is(.batch-link, .material-amount strong, .ledger-number .cell) {
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
     font-weight: 400;

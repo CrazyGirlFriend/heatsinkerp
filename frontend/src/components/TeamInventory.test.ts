@@ -16,8 +16,6 @@ import FilterDialog from './FilterDialog.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
 import TeamInventory from './TeamInventory.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
-import TeamInventoryDetail from './TeamInventoryDetail.vue'
-import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -90,8 +88,6 @@ async function render(
     global: {
       plugins: [router, createPinia()],
       stubs: {
-        TeamInventoryDetail: true,
-        SerialMaterialDrawer: true,
         StockSourcePicker: true,
         InventoryPendingDialog: true,
         WarehouseReceiptDialog: {
@@ -143,6 +139,38 @@ async function showColumns(...keys: string[]) {
 }
 
 describe('warehouse grouped stock', () => {
+  it.each([
+    { warehouse: true, processing: false, inspection: false },
+    { warehouse: false, processing: true, inspection: false },
+    { warehouse: false, processing: true, inspection: true },
+  ])('displays serials as text without row detail navigation in %o', async (mode) => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+      items: [
+        warehouseFixture({ serial_no: '000128' }),
+        warehouseFixture({
+          group_id: 12,
+          shared_unallocated: true,
+          shared_serials: [{ serial_no: 'A' }, { serial_no: 'B' }],
+        }),
+        warehouseFixture({ group_id: 13, serial_no: '' }),
+      ],
+      total: 3,
+      page: 1,
+      page_size: 10,
+    })
+    await render(undefined, true, mode.warehouse, false)
+    await wrapper.setProps(mode)
+    const cells = wrapper.findAll('td.table-identity')
+    expect(cells.map((cell) => cell.text())).toEqual(['000128', '共投 · A / B', '—'])
+    for (const cell of cells) {
+      expect(cell.find('button, a, [role="button"], [tabindex="0"]').exists()).toBe(false)
+      await cell.trigger('click')
+    }
+    expect(
+      wrapper.findAll('.inventory-row-actions button').map((button) => button.text()),
+    ).not.toContain('明细')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  })
   it.each([true, false])(
     'combines toolbar and batch column filtering (warehouse=%s)',
     async (warehouse) => {
@@ -369,12 +397,8 @@ describe('warehouse grouped stock', () => {
       '待加工',
       '待加工',
     ])
-    await bodyRows[1]!.get('.inventory-row-actions button').trigger('click')
-    expect(
-      wrapper.getComponent(TeamInventoryDetail).props('group')?.process_route?.sequence_no,
-    ).toBe(5)
   })
-  it('keeps warehouse process steps in details instead of the list and column settings', async () => {
+  it('omits process steps from the warehouse stock list and its column settings', async () => {
     await render(undefined, true, true, false)
     const settings = columnSettings()
     expect(
@@ -406,9 +430,6 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(headers()).toEqual(initialHeaders)
     expect(wrapper.text()).not.toContain('备料')
-    await wrapper.get('.inventory-row-actions button').trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.process_route).toEqual(route)
-    wrapper.getComponent(TeamInventoryDetail).vm.$emit('close')
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
       items: [],
       total: 0,
@@ -462,23 +483,15 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
 
-    await wrapper
-      .findAll('.inventory-row-actions button')
-      .find((button) => button.text() === '明细')!
-      .trigger('click')
-    const detailRefresh = vi.fn().mockResolvedValue(undefined)
-    Object.assign(wrapper.getComponent(TeamInventoryDetail).vm, { refreshSchedules: detailRefresh })
     await vi.advanceTimersByTimeAsync(60_000)
-    expect(detailRefresh).toHaveBeenCalledOnce()
-    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(3)
     expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(inventoryReads)
 
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(120_000)
     document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
-    expect(detailRefresh).toHaveBeenCalledOnce()
-    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(3)
   })
   it('does not overlap minute refreshes while the previous schedule summary is pending', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
@@ -1494,7 +1507,7 @@ describe('warehouse grouped stock', () => {
         .get('.inventory-row-actions')
         .findAll('button')
         .map((button) => button.text()),
-    ).toEqual(['明细', '出库', '在途转出'])
+    ).toEqual(['出库', '在途转出'])
     columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
@@ -1535,8 +1548,8 @@ describe('warehouse grouped stock', () => {
       user: { id: 42, role: 'ADMIN', active: true },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    const serial = wrapper.get('.inventory-serial')
-    expect(serial.get('.serial-number-link').text()).toBe('000000092700001')
+    const serial = wrapper.get('td.table-identity')
+    expect(serial.text()).toBe('000000092700001')
     expect(serial.find('.serial-urgency-badge').exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'SerialUrgencyDialog' }).exists()).toBe(false)
     expect(wrapper.text()).not.toContain('加急')
@@ -1588,7 +1601,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.find('.inventory-cell-stack').exists()).toBe(false)
   })
 
-  it('shows remaining stock in the list and opens pending batches from inventory detail', async () => {
+  it('shows remaining stock and opens pending batches directly from the stock row', async () => {
     const row = warehouseFixture({
       owned_quantity: 100,
       owned_weight: 100,
@@ -1639,11 +1652,9 @@ describe('warehouse grouped stock', () => {
     expect(hints()).toContain('可转出量 70 件 / 70 kg')
     expect(wrapper.find('.inventory-movement').exists()).toBe(false)
     await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '明细')!
+      .findAll('.inventory-row-actions button')
+      .find((button) => button.text() === '在途转出')!
       .trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')).toMatchObject(row)
-    wrapper.getComponent(TeamInventoryDetail).vm.$emit('pending')
     await flushPromises()
     expect(wrapper.getComponent(InventoryPendingDialog).props()).toMatchObject({
       teamId: 901,
@@ -1686,11 +1697,6 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['0', '0'])
     expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
     expect(hints()).toContain('当前剩余 0 件 / 0 kg')
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '明细')!
-      .trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.in_transit_quantity).toBe(100)
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交草稿')
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
       items: [
@@ -1700,6 +1706,8 @@ describe('warehouse grouped stock', () => {
           owned_weight: 0,
           in_transit_quantity: 0,
           in_transit_weight: 0,
+          reserved_quantity: 0,
+          reserved_weight: 0,
         },
       ],
       total: 1,
@@ -1709,10 +1717,16 @@ describe('warehouse grouped stock', () => {
     await wrapper.setProps({ overview: overview() })
     await flushPromises()
     expect(hints()).toContain('当前剩余 0 件 / 0 kg')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.in_transit_quantity).toBe(0)
+    expect(
+      wrapper
+        .findAll('.inventory-row-actions button')
+        .some((button) => button.text() === '在途转出'),
+    ).toBe(false)
     expect(
       (wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value,
     ).toBe('未提交草稿')
+    await wrapper.setProps({ canWrite: false })
+    expect(headers()).not.toContain('操作')
   })
   it('preserves custom columns without restoring duplicate or ownership totals from old preferences', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
@@ -1858,14 +1872,6 @@ describe('warehouse grouped stock', () => {
       teamId: 901,
       groupId: 12,
       groupLabel: '000128 · 成品 · 退火',
-    })
-    await wrapper
-      .findAll('button')
-      .filter((button) => button.text() === '明细')[1]!
-      .trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props()).toMatchObject({
-      warehouse: false,
-      group: workshopRows[1],
     })
     select('库存上序班组筛选').vm.$emit('update:modelValue', 1)
     select('库存物料类型筛选').vm.$emit('update:modelValue', 'semi_finished')
@@ -2031,7 +2037,7 @@ describe('warehouse grouped stock', () => {
     ).toEqual(data().map((row) => [row.serial_no, row.material_name]))
     expect(
       wrapper
-        .findAll('.inventory-serial')
+        .findAll('td.table-identity')
         .some((cell) => cell.find('.inventory-material').exists()),
     ).toBe(false)
     await wrapper.setProps({ fullscreen: true })
@@ -2065,7 +2071,7 @@ describe('warehouse grouped stock', () => {
     )
   })
   it.each([true, false])(
-    'defaults to quantity in stock cells and retains batches in detail (warehouse=%s)',
+    'shows each stock quantity in its own row (warehouse=%s)',
     async (warehouse) => {
       const items = [
         warehouseFixture({
@@ -2110,14 +2116,6 @@ describe('warehouse grouped stock', () => {
           .findAll('tbody tr')
           .map((row) => row.findAll('.inventory-balance').map((cell) => cell.text())),
       ).toEqual([['20'], ['50'], ['0']])
-      await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '明细')!
-        .trigger('click')
-      expect(wrapper.getComponent(TeamInventoryDetail).props('group')).toMatchObject({
-        group_id: 11,
-        current_batch_count: 1,
-      })
     },
   )
   it('combines source/type/date and preserves them on pagination', async () => {
@@ -2269,13 +2267,8 @@ describe('warehouse grouped stock', () => {
     )
     expect(headers()[0]).toBe('数量（件）')
   })
-  it('scopes row details and outbound picker to the selected group, while the serial opens full history', async () => {
+  it('opens the outbound picker for the selected inventory group', async () => {
     await render(undefined, true, true, false)
-    await wrapper
-      .findAll('button')
-      .find((item) => item.text() === '明细')!
-      .trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.group_id).toBe(11)
     await wrapper
       .findAll('button')
       .find((item) => item.text() === '出库')!
@@ -2286,27 +2279,13 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(wrapper.emitted('action')).toEqual([['dispatch', sources]])
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    await wrapper
-      .findAll('button')
-      .find((item) => item.text() === '000128')!
-      .trigger('click')
-    expect(wrapper.getComponent(SerialMaterialDrawer).props()).toMatchObject({
-      modelValue: true,
-      serialNo: '000128',
-    })
     await wrapper.setProps({ canWrite: false })
     await flushPromises()
     expect(wrapper.findAll('button').some((item) => item.text() === '出库')).toBe(false)
-    wrapper.getComponent(TeamInventoryDetail).vm.$emit('action', 'loss', sources)
-    expect(wrapper.emitted('action')).toHaveLength(1)
   })
-  it('refreshes on pushed overview without destroying drafts/table or opened details', async () => {
+  it('refreshes the inventory table on pushed overview while preserving drafts', async () => {
     await render(undefined, true, true, false)
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交')
-    await wrapper
-      .findAll('button')
-      .find((item) => item.text() === '明细')!
-      .trigger('click')
     const table = wrapper.get('.el-table').element
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
       items: [warehouseFixture({ on_hand_quantity: 99 })],
@@ -2317,7 +2296,6 @@ describe('warehouse grouped stock', () => {
     await wrapper.setProps({ overview: overview() })
     await flushPromises()
     expect(wrapper.get('.el-table').element).toBe(table)
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.group_id).toBe(11)
     expect(
       (wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value,
     ).toBe('未提交')

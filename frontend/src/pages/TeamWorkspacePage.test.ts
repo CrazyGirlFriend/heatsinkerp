@@ -1808,7 +1808,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.find('.workspace-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
     expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
-    wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()])
+    wrapper.getComponent(TeamInventory).vm.$emit('action', 'dispatch', [source()])
     await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })

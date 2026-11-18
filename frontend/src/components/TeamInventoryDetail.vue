@@ -115,21 +115,6 @@ function scheduleDestination(row: StockBatch) {
   ]
   return peers.length > 1 ? `${peers.length}个去向` : peers[0] || '—'
 }
-async function refreshSchedules() {
-  if (
-    !props.group ||
-    loading.value ||
-    scheduleLoading.value ||
-    document.hidden ||
-    batchOpen.value ||
-    quantityOpen.value ||
-    serialOpen.value ||
-    inspectionSource.value
-  )
-    return
-  await loadSchedules()
-}
-defineExpose({ refreshSchedules })
 const batchOpen = ref(false),
   selected = ref<MaterialTransfer | null>(null)
 const inspectionSource = ref<number | null>(null)

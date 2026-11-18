@@ -63,7 +63,7 @@ import type {
   QuantityAdjustmentContext,
 } from '@/types/teamMaterials'
 import { materialRequestKey, createMaterialSubmissionKey } from '@/utils/materialStock'
-import { factoryToday, formatDateTime } from '@/utils/format'
+import { factoryToday, formatAmount, formatDateTime } from '@/utils/format'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import {
   isScrapType,
@@ -222,16 +222,14 @@ const progressInvalid = computed(
       progress.value === 'complete' &&
       activeOutputs.value.some((line) => line.role === 'remaining')),
 )
-function addOutput(role: ProcessingRole = 'produced') {
+function addOutput(role: 'remaining' | 'produced' = 'produced') {
   outputs.value.push({
     key: materialRequestKey(),
     role,
     material_type:
-      role === 'scrap'
-        ? 'waste'
-        : snapshot.value?.material_type && !isScrapType(snapshot.value.material_type)
-          ? snapshot.value.material_type
-          : 'semi_finished',
+      snapshot.value?.material_type && !isScrapType(snapshot.value.material_type)
+        ? snapshot.value.material_type
+        : 'semi_finished',
     specification: role === 'remaining' ? snapshot.value?.transfer_specification || '' : '',
     specificationValid: true,
   })
@@ -288,7 +286,6 @@ watch(detailed, (value) => {
   if (value && !outputs.value.length) {
     addOutput('remaining')
     addOutput('produced')
-    addOutput('scrap')
   }
 })
 const editable = computed(
@@ -899,8 +896,8 @@ onBeforeUnmount(() => {
                 active-text="按明细登记"
               /><span>{{
                 detailed
-                  ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。'
-                  : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。'
+                  ? '按实际尺寸分别填写加工产出。有未加工余料时填写余料行。'
+                  : '一批产出有多种尺寸时，可按明细登记。'
               }}</span>
             </div>
             <section
@@ -1125,163 +1122,6 @@ onBeforeUnmount(() => {
             </header>
             <p>{{ snapshot.process_route.instructions || '未填写工艺要求' }}</p>
           </section>
-
-          <h3 v-if="historyRecords.length || !editable" class="quantity-history-title">
-            本批操作记录
-          </h3>
-          <ElTable
-            columns-key="QuantityAdjustmentDialog-2"
-            v-if="historyRecords.length || !editable"
-            :data="historyRecords"
-            class="business-table"
-            empty-text="暂无件数变更"
-            aria-label="件数变更记录"
-          >
-            <ElTableColumn v-if="processing" type="expand" width="44">
-              <template #default="{ row }">
-                <div class="processing-history-requirements">
-                  <header>
-                    <strong>{{ row.process_step_name || '历史工序未登记' }}</strong>
-                    <span>具体任务 · {{ row.processing_task_name || '历史未登记' }}</span>
-                    <span v-if="row.rework_of_id">原加工记录 #{{ row.rework_of_id }}</span>
-                  </header>
-                  <h4>本道工艺要求</h4>
-                  <p>{{ row.process_step_instructions || '历史未登记本道工艺要求' }}</p>
-                </div>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="操作" min-width="135" align="center"
-              ><template #default="{ row }">{{
-                row.id === snapshot.origin_processing_record?.id
-                  ? '创建本批的加工登记'
-                  : row.operation_kind === 'outbound_clearance'
-                    ? '出库余件清零'
-                    : row.processing_status
-                      ? processingProgressLabels[row.processing_status as 'partial' | 'complete']
-                      : '件数变更'
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn label="时间" min-width="170" align="center">
-              <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-            </ElTableColumn>
-            <ElTableColumn label="加工人" min-width="110" align="center">
-              <template #default="{ row }"
-                ><ProcessingPeople
-                  :people="row.operation_kind === 'outbound_clearance' ? [] : row.processors"
-                  :fallback="
-                    row.operation_kind === 'outbound_clearance'
-                      ? '—'
-                      : row.processor_name || '未登记'
-                  "
-              /></template>
-            </ElTableColumn>
-            <ElTableColumn label="对应业务" min-width="120" align="center">
-              <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
-            </ElTableColumn>
-            <ElTableColumn v-if="processing" label="工艺工序" min-width="160" show-overflow-tooltip>
-              <template #default="{ row }">
-                <ElButton
-                  v-if="row.work_kind === 'rework' && row.process_route_id"
-                  link
-                  type="primary"
-                  :disabled="routeLoading"
-                  @click="viewRoute(row.process_route_id)"
-                  >{{ row.process_step_name || '返工工艺' }}</ElButton
-                ><span v-else>{{ row.process_step_name || '历史未登记' }}</span>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="具体任务" min-width="120" align="center">
-              <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
-            </ElTableColumn>
-            <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"
-              ><template #default="{ row }"
-                >{{ row.before_quantity }} → {{ row.after_quantity }} 件</template
-              ></ElTableColumn
-            >
-            <ElTableColumn prop="labor_minutes" label="加工工时" min-width="140">
-              <template #default="{ row }">{{
-                formatProcessingMinutes(row.labor_minutes)
-              }}</template>
-            </ElTableColumn>
-            <ElTableColumn
-              v-for="field in parameterFields"
-              :key="field.key"
-              :prop="field.key"
-              :label="field.label"
-              min-width="140"
-              show-overflow-tooltip
-            >
-              <template #default="{ row }">{{
-                formatProcessingParameter(field.key, row)
-              }}</template>
-            </ElTableColumn>
-            <ElTableColumn prop="reason" label="备注" min-width="220" align="center" />
-            <ElTableColumn v-if="processing" label="加工性质" min-width="130"
-              ><template #default="{ row }">{{
-                row.work_kind === 'rework' ? `返工第 ${row.rework_round} 次` : '首次加工'
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn v-if="processing" label="原加工记录" min-width="120"
-              ><template #default="{ row }">{{
-                row.rework_of_id ? `#${row.rework_of_id}` : '—'
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              v-if="processing"
-              label="登记后尺寸"
-              min-width="180"
-              show-overflow-tooltip
-              ><template #default="{ row }">{{
-                row.after_specification || '—'
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn v-if="processing" label="实物明细 / 登记后重量" min-width="300"
-              ><template #default="{ row }"
-                ><div
-                  v-for="output in row.outputs || []"
-                  :key="output.id"
-                  class="processing-history-output"
-                >
-                  <strong
-                    >{{ output.batch_no
-                    }}{{
-                      output.serial_no
-                        ? ' · ' + (output.shared_unallocated ? '共投未分配' : output.serial_no)
-                        : ''
-                    }}
-                    · {{ processingRoleLabels[output.role as ProcessingRole] }}</strong
-                  ><span
-                    >{{ materialTypeLabel(output.material_type) }} · {{ output.quantity }} 件 /
-                    {{ output.weight }} kg · {{ output.transfer_specification || '未填尺寸' }}</span
-                  ><span v-if="output.on_hand_weight != null"
-                    >当前未转出 {{ output.on_hand_quantity }} 件 /
-                    {{ output.on_hand_weight }} kg；待签收 {{ output.in_transit_quantity ?? 0 }} 件
-                    / {{ output.in_transit_weight ?? 0 }} kg</span
-                  ><span v-if="output.material_type === 'sludge'"
-                    >实重 {{ output.sludge_gross_weight }} kg · 有效材料
-                    {{ output.sludge_content_percent }}%</span
-                  >
-                </div>
-                <span v-if="!row.outputs?.length"
-                  >{{ row.after_weight ?? row.weight }} kg</span
-                ></template
-              ></ElTableColumn
-            >
-          </ElTable>
-          <WorkspacePagination
-            v-if="total > 10"
-            :current-page="page"
-            :page-size="10"
-            :total="total"
-            :disabled="loading || saving"
-            layout="prev, pager, next"
-            @current-change="
-              ($event) => {
-                page = $event
-                load()
-              }
-            "
-          />
         </section>
         <ProcessExecutionPanel
           v-if="processing"
@@ -1292,6 +1132,176 @@ onBeforeUnmount(() => {
         />
       </div>
     </FormWorkspace>
+    <section v-if="snapshot && (historyRecords.length || !editable)" class="quantity-history">
+      <h3 class="quantity-history-title">本批操作记录</h3>
+      <ElTable
+        columns-key="QuantityAdjustmentDialog-2"
+        :data="historyRecords"
+        row-key="id"
+        :default-expand-all="processing && !editable"
+        class="business-table"
+        empty-text="暂无件数变更"
+        aria-label="件数变更记录"
+      >
+        <ElTableColumn v-if="processing" type="expand" width="44">
+          <template #default="{ row }">
+            <div class="processing-history-requirements">
+              <header>
+                <strong>{{ row.process_step_name || '历史工序未登记' }}</strong>
+                <span>具体任务 · {{ row.processing_task_name || '历史未登记' }}</span>
+                <span v-if="row.rework_of_id">原加工记录 #{{ row.rework_of_id }}</span>
+              </header>
+              <dl class="history-facts">
+                <div>
+                  <dt>加工性质</dt>
+                  <dd>
+                    {{ row.work_kind === 'rework' ? `返工第 ${row.rework_round} 次` : '首次加工' }}
+                  </dd>
+                </div>
+                <div v-for="field in parameterFields" :key="field.key">
+                  <dt>{{ field.label }}</dt>
+                  <dd>{{ formatProcessingParameter(field.key, row) }}</dd>
+                </div>
+                <div>
+                  <dt>登记后尺寸</dt>
+                  <dd>{{ row.after_specification || '—' }}</dd>
+                </div>
+                <div>
+                  <dt>登记后重量</dt>
+                  <dd>{{ row.after_weight ?? row.weight }} kg</dd>
+                </div>
+                <div v-if="row.reason">
+                  <dt>备注</dt>
+                  <dd>{{ row.reason }}</dd>
+                </div>
+              </dl>
+              <h4>本道工艺要求</h4>
+              <p>{{ row.process_step_instructions || '历史未登记本道工艺要求' }}</p>
+              <template v-if="row.outputs?.length">
+                <h4>实物明细</h4>
+                <div class="history-outputs">
+                  <div
+                    v-for="output in row.outputs || []"
+                    :key="output.id"
+                    class="processing-history-output"
+                  >
+                    <strong
+                      >{{ output.batch_no
+                      }}{{
+                        output.serial_no
+                          ? ' · ' + (output.shared_unallocated ? '共投未分配' : output.serial_no)
+                          : ''
+                      }}
+                      · {{ processingRoleLabels[output.role as ProcessingRole] }}</strong
+                    ><span
+                      >{{ materialTypeLabel(output.material_type) }} · {{ output.quantity }} 件 /
+                      {{ output.weight }} kg ·
+                      {{ output.transfer_specification || '未填尺寸' }}</span
+                    ><span v-if="output.on_hand_weight != null"
+                      >当前未转出 {{ output.on_hand_quantity }} 件 /
+                      {{ output.on_hand_weight }} kg；待签收
+                      {{ output.in_transit_quantity ?? 0 }} 件 /
+                      {{ output.in_transit_weight ?? 0 }} kg</span
+                    ><span v-if="output.material_type === 'sludge'"
+                      >实重 {{ output.sludge_gross_weight }} kg · 有效材料
+                      {{ output.sludge_content_percent }}%</span
+                    >
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" min-width="135" align="center"
+          ><template #default="{ row }">{{
+            row.id === snapshot.origin_processing_record?.id
+              ? '创建本批的加工登记'
+              : row.operation_kind === 'outbound_clearance'
+                ? '出库余件清零'
+                : row.processing_status
+                  ? processingProgressLabels[row.processing_status as 'partial' | 'complete']
+                  : '件数变更'
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="时间" min-width="170" align="center">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="加工人" min-width="110" align="center">
+          <template #default="{ row }"
+            ><ProcessingPeople
+              :people="row.operation_kind === 'outbound_clearance' ? [] : row.processors"
+              :fallback="
+                row.operation_kind === 'outbound_clearance' ? '—' : row.processor_name || '未登记'
+              "
+          /></template>
+        </ElTableColumn>
+        <ElTableColumn label="对应业务" min-width="120" align="center">
+          <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
+        </ElTableColumn>
+        <ElTableColumn v-if="processing" label="工艺工序" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <ElButton
+              v-if="row.work_kind === 'rework' && row.process_route_id"
+              link
+              type="primary"
+              :disabled="routeLoading"
+              @click="viewRoute(row.process_route_id)"
+              >{{ row.process_step_name || '返工工艺' }}</ElButton
+            ><span v-else>{{ row.process_step_name || '历史未登记' }}</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="具体任务" min-width="120" align="center">
+          <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
+        </ElTableColumn>
+        <ElTableColumn
+          label="变更前 → 变更后"
+          min-width="220"
+          align="center"
+          :show-overflow-tooltip="false"
+        >
+          <template #default="{ row }">
+            <span class="history-quantity"
+              >{{ formatAmount(row.before_quantity) }} →
+              {{ formatAmount(row.after_quantity) }} 件</span
+            >
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="labor_minutes" label="加工工时" min-width="140">
+          <template #default="{ row }">{{ formatProcessingMinutes(row.labor_minutes) }}</template>
+        </ElTableColumn>
+        <ElTableColumn
+          v-for="field in processing ? [] : parameterFields"
+          :key="field.key"
+          :prop="field.key"
+          :label="field.label"
+          min-width="140"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">{{ formatProcessingParameter(field.key, row) }}</template>
+        </ElTableColumn>
+        <ElTableColumn
+          v-if="!processing"
+          prop="reason"
+          label="备注"
+          min-width="220"
+          align="center"
+        />
+      </ElTable>
+      <WorkspacePagination
+        v-if="total > 10"
+        :current-page="page"
+        :page-size="10"
+        :total="total"
+        :disabled="loading || saving"
+        layout="prev, pager, next"
+        @current-change="
+          ($event) => {
+            page = $event
+            load()
+          }
+        "
+      />
+    </section>
     <template #footer>
       <ElButton :disabled="saving" @click="close">关闭</ElButton>
       <ElButton
@@ -1413,7 +1423,48 @@ onBeforeUnmount(() => {
   margin: 12px 0;
 }
 .processing-history-requirements {
+  box-sizing: border-box;
+  max-width: 100cqi;
   padding: 14px 20px;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.quantity-history {
+  container-type: inline-size;
+}
+@container (max-width: 600px) {
+  .quantity-history :deep(.el-table .el-table-fixed-column--left) {
+    position: static !important;
+  }
+  .quantity-history :deep(.el-table .el-table-fixed-column--left::before) {
+    display: none;
+  }
+  .processing-history-requirements {
+    position: sticky;
+    left: 0;
+  }
+}
+.history-quantity {
+  white-space: normal;
+}
+.history-facts,
+.history-outputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.history-facts {
+  margin: 12px 0;
+}
+.history-facts > div {
+  display: flex;
+  gap: 6px;
+}
+.history-facts dt {
+  color: var(--muted);
+}
+.history-facts dd {
+  margin: 0;
 }
 .processing-history-requirements header {
   display: flex;

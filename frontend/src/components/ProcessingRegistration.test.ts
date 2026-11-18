@@ -280,6 +280,12 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   const summary = wrapper.get('.quantity-summary').element
   const requirements = wrapper.get('.processing-current-step').element
   const outputs = wrapper.get('[aria-label="加工后完整实物明细"]').element
+  expect(
+    wrapper
+      .findAllComponents(ElSelect)
+      .filter((select) => /^明细\d+类别$/.test(select.props('ariaLabel') || ''))
+      .map((select) => select.props('modelValue')),
+  ).toEqual(['remaining', 'produced'])
   expect(wrapper.find('.dialog-readonly').exists()).toBe(false)
   expect(wrapper.text()).not.toContain('加工后本批未转出总件数')
   expect(wrapper.find('input[aria-label="加工任务"]').exists()).toBe(false)
@@ -301,7 +307,7 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   wrapper
     .findAllComponents(WeightInput)
     .find((i) => i.props('ariaLabel') === '明细2重量')!
-    .vm.$emit('update:modelValue', 100)
+    .vm.$emit('update:modelValue', 98)
   wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '20 × 10 × 2 mm')
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
@@ -312,7 +318,7 @@ it('opens splitting outputs directly and includes worker identity and actual wor
       processing_mode: 'split',
       processing_date: factoryToday(),
       processor_employee_id: 71,
-      outputs: [expect.objectContaining({ role: 'produced', quantity: 100, weight: 100 })],
+      outputs: [expect.objectContaining({ role: 'produced', quantity: 100, weight: 98 })],
     }),
   )
 })

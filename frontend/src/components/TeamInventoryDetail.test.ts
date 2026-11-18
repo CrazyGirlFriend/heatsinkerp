@@ -154,23 +154,6 @@ describe('warehouse source detail', () => {
       viewOnly: true,
     })
   })
-  it('refreshes only its current page of schedule summaries when the parent clock requests it', async () => {
-    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
-    await render()
-    vi.mocked(productionScheduleApi.inventory).mockClear()
-    const sourceReads = vi.mocked(teamMaterialApi.inventorySources).mock.calls.length
-    const movementReads = vi.mocked(teamMaterialApi.inventoryMovements).mock.calls.length
-    await (wrapper.vm as unknown as { refreshSchedules: () => Promise<void> }).refreshSchedules()
-    expect(productionScheduleApi.inventory).toHaveBeenCalledWith({
-      team_id: 1,
-      source_transfer_ids: [11, 12],
-    })
-    expect(teamMaterialApi.inventorySources).toHaveBeenCalledTimes(sourceReads)
-    expect(teamMaterialApi.inventoryMovements).toHaveBeenCalledTimes(movementReads)
-    await wrapper.setProps({ group: null })
-    await (wrapper.vm as unknown as { refreshSchedules: () => Promise<void> }).refreshSchedules()
-    expect(productionScheduleApi.inventory).toHaveBeenCalledOnce()
-  })
   it('loads schedule details in one batch and shows the source-specific deadline and receiver', async () => {
     const schedule = scheduleSummaryFixture()
     vi.mocked(productionScheduleApi.inventory).mockResolvedValue({

@@ -100,16 +100,6 @@
   font-size: var(--workspace-number-size);
   font-weight: 400;
 }
-.team-workspace .serial-table .el-button.serial-number-link {
-  color: var(--workspace-ink);
-  font-size: var(--workspace-body-size);
-  font-weight: 400;
-}
-.team-workspace .serial-table .el-button.serial-number-link:hover {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .page.team-workspace.team-workspace--reading {
   overflow: hidden;
   scrollbar-gutter: auto;
@@ -295,10 +285,6 @@
 }
 .team-workspace .workspace-data-toolbar .list-refresh {
   margin-left: 0;
-}
-.team-workspace.team-workspace--reading .warehouse-table .serial-number-link {
-  color: var(--text);
-  font-weight: var(--font-weight-medium);
 }
 .team-workspace .workspace-data-panel .processing-stock-status {
   gap: 0;

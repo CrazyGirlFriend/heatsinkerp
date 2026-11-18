@@ -68,9 +68,9 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(canWrite = true, person = '王师傅') {
+async function render(canWrite = true, person = '王师傅', processing = false) {
   wrapper = mount(QuantityAdjustmentDialog, {
-    props: { modelValue: true, teamId: 2, sourceId: 10, canWrite },
+    props: { modelValue: true, teamId: 2, sourceId: 10, canWrite, processing },
     global: {
       stubs: {
         SerialRouteAttachments: true,
@@ -188,6 +188,7 @@ describe('processing piece adjustment', () => {
     weight(1, 40)
     pieces(2, 30)
     weight(2, 55)
+    await addScrapRow()
     pieces(3, 0)
     weight(3, 5)
     await click('保存加工登记')
@@ -207,6 +208,15 @@ describe('processing piece adjustment', () => {
     await render()
     await wrapper.setProps({ processing: true })
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
+    await flushPromises()
+  }
+  async function addScrapRow() {
+    await click('增加明细')
+    const role = wrapper
+      .findAllComponents(ElSelect)
+      .find((input) => input.props('ariaLabel') === '明细3类别')!
+    role.vm.$emit('update:modelValue', 'scrap')
+    role.vm.$emit('change', 'scrap')
     await flushPromises()
   }
   function pieces(row: number, value: number) {
@@ -234,6 +244,7 @@ describe('processing piece adjustment', () => {
     weight(1, 40)
     pieces(2, 8)
     weight(2, 55)
+    await addScrapRow()
     pieces(3, 0)
     weight(3, 5)
     expect(wrapper.findAllComponents(SpecificationInput)).toHaveLength(1)
@@ -350,8 +361,7 @@ describe('processing piece adjustment', () => {
         ],
       },
     })
-    await render(false)
-    await wrapper.setProps({ processing: true })
+    await render(false, undefined, true)
     await flushPromises()
     expect(wrapper.text()).toContain('创建本批的加工登记')
     expect(wrapper.text()).toContain('父批加工分解')
@@ -360,6 +370,7 @@ describe('processing piece adjustment', () => {
   })
   it('requires real sludge measurements and sends only the derived material weight with zero pieces', async () => {
     await detailMode()
+    await addScrapRow()
     const type = wrapper
       .findAllComponents(ElSelect)
       .find((select) => select.props('ariaLabel') === '明细3物料类型')!
@@ -421,8 +432,7 @@ describe('processing piece adjustment', () => {
         },
       ],
     })
-    await render(false)
-    await wrapper.setProps({ processing: true })
+    await render(false, undefined, true)
     await flushPromises()
     expect(wrapper.text()).toContain('JG-022 · 加工产出')
     expect(wrapper.text()).toContain('99.5 kg · 10 × 5 × 2 mm')
@@ -440,6 +450,7 @@ describe('processing piece adjustment', () => {
     expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('仍有未加工余料，请选择部分加工')
     progress.vm.$emit('update:modelValue', 'partial')
+    await addScrapRow()
     const type = wrapper
       .findAllComponents(ElSelect)
       .find((select) => select.props('ariaLabel') === '明细3物料类型')!
@@ -757,16 +768,15 @@ it('expands historical step requirements without using the batch current-route r
     items: [record],
     total: 1,
   })
-  await render(false)
-  await wrapper.setProps({ processing: true })
+  await render(false, undefined, true)
   expect(wrapper.text()).toContain('2 · 粗磨')
-  expect(wrapper.find('.processing-history-requirements').exists()).toBe(false)
-  await wrapper.get('.el-table__expand-icon').trigger('click')
-  await flushPromises()
+  expect(wrapper.find('.form-workspace .quantity-history').exists()).toBe(false)
   const detail = wrapper.get('.processing-history-requirements')
   expect(detail.text()).toContain('具体任务 · 磨削')
   expect(detail.text()).toContain('原加工记录 #40')
   expect(detail.get('p').text()).toBe('原记录厚度 2.50 ±0.05 mm\n不得叠放')
+  await wrapper.get('.el-table__expand-icon').trigger('click')
+  expect(wrapper.find('.processing-history-requirements').exists()).toBe(false)
 })
 
 it('shows the active rework plan and keeps historical links bound to their original plan', async () => {

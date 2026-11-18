@@ -10,7 +10,6 @@ import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
-import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -22,10 +21,8 @@ import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryScheduleDetails from './InventoryScheduleDetails.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
-import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
-import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import {
   inventoryProcessingStateOptions,
@@ -91,7 +88,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   changed: []
   refresh: []
-  action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
+  action: [mode: 'dispatch', sources: StockBatch[]]
   reallocate: [source: StockBatch]
   process: [groupId: number]
 }>()
@@ -136,15 +133,10 @@ const {
     materialType: row.material_type,
   }),
 )
-const inventoryDetail = ref<InstanceType<typeof TeamInventoryDetail> | null>(null)
 let scheduleClock: ReturnType<typeof setInterval> | undefined
 function refreshVisibleSchedules() {
-  if (document.hidden || loading.value) return
-  if (detail.value) {
-    void inventoryDetail.value?.refreshSchedules?.()
+  if (document.hidden || loading.value || scheduleLoading.value || picker.value || pending.value)
     return
-  }
-  if (scheduleLoading.value || picker.value || pending.value || serialOpen.value) return
   void loadSchedules()
 }
 function syncScheduleClock(refresh = false) {
@@ -164,7 +156,6 @@ function toggleSchedule(row: TeamInventoryRow) {
     : [row.group_id]
 }
 function viewSchedule(id?: number, serialNo?: string) {
-  detail.value = null
   void router.push({
     path: route.path,
     query: {
@@ -384,17 +375,12 @@ const visibleColumns = computed(() => {
 const separateSpecification = computed(() =>
   visibleColumns.value.some((column) => column.key === 'transfer_specification'),
 )
+const hasPending = computed(() => rows.value.some(inventoryHasPending))
 const actionWidth = computed(
   () =>
-    (rows.value.some(
-      (row) => inventoryHasPending(row) && props.canWrite && inventoryCanDispatch(row),
-    )
-      ? 185
-      : rows.value.some(inventoryHasPending)
-        ? 150
-        : props.canWrite
-          ? 112
-          : 88) +
+    32 +
+    (props.canWrite ? 42 : 0) +
+    (hasPending.value ? 72 : 0) +
     (props.processing && props.canWrite ? 64 : 0) +
     (props.inspection && props.canWrite ? 80 : 0) +
     (props.canWrite && props.canReallocate ? 48 : 0) +
@@ -715,9 +701,6 @@ async function load(background = false) {
     total.value = result.total
     asOf.value = result.as_of || ''
     error.value = ''
-    if (detail.value)
-      detail.value =
-        rows.value.find((row) => row.group_id === detail.value?.group_id) || detail.value
   } catch (e) {
     if (current === version) {
       if (background) refreshError.value = '库存更新失败，当前保留上次结果，请刷新重试。'
@@ -731,8 +714,7 @@ async function load(background = false) {
     if (current === version) loading.value = false
   }
 }
-const detail = ref<TeamInventoryRow | null>(null),
-  picker = ref<TeamInventoryRow | null>(null),
+const picker = ref<TeamInventoryRow | null>(null),
   pending = ref<TeamInventoryRow | null>(null)
 const shipment = ref<TeamInventoryRow | null>(null)
 const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
@@ -803,7 +785,7 @@ async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate'
       (mode !== 'reallocate' || !source.transfer.shared_unallocated)
     ) {
       if (mode === 'reallocate') reallocate(source)
-      else action('dispatch', [source])
+      else dispatch([source])
     } else picker.value = row
   } catch (e) {
     if (current === sourceVersion)
@@ -863,7 +845,7 @@ async function dispatchSelected() {
       void load(true)
       return
     }
-    action('dispatch', sources)
+    dispatch(sources)
   } catch (failure) {
     if (current === sourceVersion)
       showToast(failure instanceof Error ? failure.message : '来源批次加载失败，请重试', 'error')
@@ -874,27 +856,20 @@ async function dispatchSelected() {
 function selectedSources(sources: StockBatch[]) {
   if (pickerMode.value === 'reallocate') {
     if (sources.length === 1) reallocate(sources[0]!)
-  } else action('dispatch', sources)
+  } else dispatch(sources)
 }
-const serialOpen = ref(false),
-  serialNo = ref('')
 function asRow(row: unknown) {
   return row as TeamInventoryRow
 }
-function openSerial(value: unknown) {
-  serialNo.value = asRow(value).serial_no
-  serialOpen.value = true
-}
-function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
+function dispatch(sources: StockBatch[]) {
   if (props.canWrite) {
-    picker.value = detail.value = null
-    serialOpen.value = false
-    emit('action', mode, sources)
+    picker.value = null
+    emit('action', 'dispatch', sources)
   }
 }
 function reallocate(source: StockBatch) {
   if (props.canWrite && props.canReallocate) {
-    detail.value = picker.value = null
+    picker.value = null
     emit('reallocate', source)
   }
 }
@@ -904,8 +879,7 @@ function resetDetails() {
   preparingDispatch.value = false
   clearBatchSelection()
   editingReceipt.value = null
-  detail.value = picker.value = pending.value = null
-  serialOpen.value = false
+  picker.value = pending.value = null
   expandedScheduleGroups.value = []
 }
 const searchBeforeFilters = ref({
@@ -1408,16 +1382,6 @@ onBeforeUnmount(() => {
             />
             <span>{{ column.format(asRow(row)) }}</span>
           </div>
-          <div v-else-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
-            <ElButton
-              class="serial-number-link"
-              :title="sharedSerialLabel(row)"
-              link
-              type="primary"
-              @click="openSerial(row)"
-              ><strong>{{ sharedSerialLabel(row) }}</strong></ElButton
-            >
-          </div>
           <ElTooltip
             v-else-if="column.key === 'material_name'"
             :content="`规格：${row.transfer_specification}`"
@@ -1573,11 +1537,15 @@ onBeforeUnmount(() => {
             @view-all="viewSchedule(undefined, row.serial_no)"
           /> </template
       ></ElTableColumn>
-      <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"
+      <ElTableColumn
+        v-if="canWrite || hasPending"
+        label="操作"
+        :width="actionWidth"
+        align="center"
+        fixed="right"
         ><template #default="{ row }"
           ><div class="inventory-row-actions">
-            <ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton
-            ><ElButton
+            <ElButton
               v-if="warehouse && canWrite && row.receipt_editable"
               link
               type="primary"
@@ -1668,21 +1636,6 @@ onBeforeUnmount(() => {
         >系统记录 · {{ formatDateTime(asOf) }}</small
       ></WorkspacePagination
     >
-    <TeamInventoryDetail
-      ref="inventoryDetail"
-      :team-id="teamId"
-      :group="detail"
-      :warehouse="warehouse"
-      :can-write="canWrite"
-      :can-reallocate="canReallocate"
-      :processing="processing"
-      @reallocate="reallocate"
-      @close="detail = null"
-      @changed="emit('changed')"
-      @action="action"
-      @pending="pending = detail"
-      @schedule="viewSchedule"
-    />
     <WarehouseReceiptDialog
       v-if="editingReceipt"
       :model-value="true"
@@ -1734,14 +1687,6 @@ onBeforeUnmount(() => {
           emit('changed')
         }
       "
-    />
-    <SerialMaterialDrawer
-      v-model="serialOpen"
-      :team-id="teamId"
-      :serial-no="serialNo"
-      :can-write="canWrite"
-      @changed="emit('changed')"
-      @action="action"
     />
   </WorkspaceDataPanel>
 </template>
@@ -1815,24 +1760,6 @@ onBeforeUnmount(() => {
 }
 .warehouse-table :deep(.searched-column) {
   color: var(--primary);
-}
-
-.warehouse-table :deep(.serial-number-link) {
-  min-width: 0;
-  max-width: 100%;
-  flex-shrink: 1;
-}
-.warehouse-table :deep(.serial-number-link > span) {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.warehouse-table :deep(.serial-number-link strong) {
-  font-weight: var(--font-weight-medium);
-}
-.inventory-serial .serial-number-link {
-  flex: 0 1 auto;
 }
 
 @media (max-width: 760px) {
