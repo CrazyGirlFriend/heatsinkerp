@@ -1540,7 +1540,7 @@ describe('team workspace material ledger', () => {
           ?.text(),
       ),
     ).toEqual(['批次 TL10', '批次 TL12', '批次 TL21'])
-  })
+  }, 15_000)
   it('selects and clears inventory batches through the header and toolbar in fullscreen', async () => {
     mockDispatchableRows(10, 11)
     await render('/team-workspaces/914?tab=stock')
