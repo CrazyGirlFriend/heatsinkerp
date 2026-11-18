@@ -20,7 +20,6 @@ import { dispatchableAmounts, stockSelectable } from '@/utils/materialStock'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useBatchSelection } from '@/composables/useBatchSelection'
-import BatchSelectionBar from './BatchSelectionBar.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -63,8 +62,8 @@ function applyFilters() {
 }
 const filtered = computed(() => !!(appliedQuery.value || dates.value.from || dates.value.to))
 const emptyTitle = computed(() => (filtered.value ? '没有符合筛选条件的来源批次' : '暂无来源批次'))
-const { selected, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } =
-  useBatchSelection(rows, (row) => String(row.transfer.id), dispatchableAmounts, stockSelectable)
+const { selected, availableRows, checkedCount, allChecked, toggle, toggleAll, reconcile } =
+  useBatchSelection(rows, (row) => String(row.transfer.id), stockSelectable)
 let version = 0
 function asStock(row: unknown) {
   return row as StockBatch
@@ -173,18 +172,10 @@ onBeforeUnmount(() => {
             label="接收日期" /></label
       ></FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
+      <ElButton v-if="mode === 'dispatch' && selected.size" text @click="selected.clear()"
+        >清空勾选</ElButton
+      >
     </div>
-    <BatchSelectionBar
-      v-if="mode === 'dispatch'"
-      :count="selected.size"
-      :quantity="totals.quantity"
-      :weight="totals.weight"
-      :all-checked="allChecked"
-      :partial="checkedCount > 0 && !allChecked"
-      :disabled="loading || !availableRows.length || (selected.size >= 100 && !checkedCount)"
-      @all="toggleAll"
-      @clear="selected.clear()"
-    />
     <div class="picker-table">
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取可用库存" />

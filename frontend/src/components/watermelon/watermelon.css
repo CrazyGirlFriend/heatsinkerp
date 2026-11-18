@@ -195,13 +195,6 @@ html.wm-app,
 .wm-scope .el-checkbox__input.is-checked .el-checkbox__inner::after {
   border-color: var(--wm-primary-text);
 }
-.wm-dialog .batch-selection-bar,
-.wm-scope .batch-selection-bar {
-  background: var(--wm-muted-surface);
-  border-color: var(--wm-border);
-  border-radius: 8px;
-  font-size: 12px;
-}
 .wm-dialog .wm-field-error {
   color: var(--wm-danger-text);
   font-size: 12px;

@@ -183,7 +183,7 @@ it('supports source-batch dispatch and loss only for writable available inventor
       914,
       expect.objectContaining({ serial_no: 'SERIAL-DETAIL', availability: 'all' }),
     )
-    expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
+    expect(wrapper.find('.serial-detail-actions').exists()).toBe(false)
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
     const headings = wrapper.findAll('.serial-record-table thead th').map((cell) => cell.text())
     const cells = wrapper.get('.serial-record-table tbody tr').findAll('td')
@@ -209,9 +209,12 @@ it('supports source-batch dispatch and loss only for writable available inventor
     await live.refresh()
     await flushPromises()
     expect(button('批量出库').attributes('disabled')).toBeUndefined()
-    expect(wrapper.get('.serial-stock-actions').text()).toContain('已选 3')
-    await wrapper.setProps({ canWrite: false })
     expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
+    expect(wrapper.get('.serial-detail-footer').text()).toContain('清空勾选')
+    await button('清空勾选').trigger('click')
+    expect(button('批量出库').attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ canWrite: false })
+    expect(wrapper.find('.serial-detail-actions').exists()).toBe(false)
   } finally {
     wrapper.unmount()
   }

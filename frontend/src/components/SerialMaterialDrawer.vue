@@ -293,15 +293,6 @@ onBeforeUnmount(() => {
           name="losses"
           label="丢失记录"
       /></ElTabs>
-      <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions">
-        <span>已选 {{ selectedRows.length }} 个来源批次</span
-        ><ElButton
-          type="primary"
-          :disabled="!selectedRows.length || loading || !!error"
-          @click="action('dispatch', selectedRows)"
-          >批量出库</ElButton
-        >
-      </div>
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取明细" />
       <div v-else class="serial-record-table">
@@ -552,6 +543,15 @@ onBeforeUnmount(() => {
             tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细'
           }}</WorkspacePagination
         >
+        <div v-if="tab === 'stock' && canWrite" class="serial-detail-actions">
+          <ElButton v-if="checked.length" text @click="checked = []">清空勾选</ElButton>
+          <ElButton
+            type="primary"
+            :disabled="!selectedRows.length || loading || !!error"
+            @click="action('dispatch', selectedRows)"
+            >批量出库</ElButton
+          >
+        </div>
       </div></template
     >
   </AppDialog>
@@ -564,14 +564,6 @@ onBeforeUnmount(() => {
   />
 </template>
 <style scoped>
-.serial-stock-actions {
-  display: flex;
-  flex-shrink: 0;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  color: var(--muted);
-}
 .serial-title {
   display: flex;
   flex-wrap: wrap;
@@ -610,10 +602,16 @@ onBeforeUnmount(() => {
 }
 .serial-detail-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   overflow-x: auto;
+}
+.serial-detail-actions {
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto;
 }
 .serial-detail-footer > span {
   font-size: 12px;

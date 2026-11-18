@@ -4,7 +4,6 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseManagement from './WarehouseManagement.vue'
 import * as catalog from '@/services/warehouseCatalog'
-import BatchSelectionBar from './BatchSelectionBar.vue'
 import WatermelonFilter from './watermelon/WatermelonFilter.vue'
 import WatermelonPagination from './watermelon/WatermelonPagination.vue'
 import TableExportButton from './TableExportButton.vue'
@@ -121,6 +120,12 @@ async function nextPage() {
   wrapper.getComponent(WatermelonPagination).vm.$emit('current-change', 2)
   await flushPromises()
 }
+const detailSelectAll = 'label[aria-label="选择当前仓位可转出批次"] input'
+const detailTransferButton = () =>
+  wrapper
+    .get('.warehouse-detail-actions')
+    .findAll('button')
+    .find((button) => button.text() === '批量转出')!
 
 describe('warehouse management', () => {
   it('places column settings above both warehouse and batch tables', async () => {
@@ -378,7 +383,7 @@ describe('warehouse management', () => {
       '待签收 1',
     )
     expect(wrapper.get('.warehouse-detail-totals').text()).toBe('库存件数0库存重量（kg）0')
-    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.find(detailSelectAll).exists()).toBe(false)
     expect(wrapper.text()).toContain('提交时间')
     expect(wrapper.text()).toContain('2026-10-08 08:00')
     await click('关闭')
@@ -403,14 +408,12 @@ describe('warehouse management', () => {
     expect(
       wrapper.get('label[aria-label="选择批次 TL13"] input').attributes('disabled'),
     ).toBeDefined()
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
-    await flushPromises()
-    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({
-      count: 2,
-      quantity: 8,
-      weight: 2.514,
-      allChecked: true,
-    })
+    await wrapper.get(detailSelectAll).setValue(true)
+    expect(wrapper.get<HTMLInputElement>(detailSelectAll).element.checked).toBe(true)
+    expect(
+      wrapper.get<HTMLInputElement>('label[aria-label="选择批次 TL12"] input').element.checked,
+    ).toBe(true)
+    expect(wrapper.find('.batch-selection-bar').exists()).toBe(false)
     await click('关闭')
     vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValueOnce(
       catalogPage({
@@ -423,20 +426,14 @@ describe('warehouse management', () => {
     )
     await nextPage()
     await open('A-21')
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
-    await flushPromises()
-    expect(wrapper.getComponent(BatchSelectionBar).props('count')).toBe(3)
-    await wrapper
-      .get('.warehouse-detail-selection')
-      .findAll('button')
-      .find((button) => button.text() === '批量转出')!
-      .trigger('click')
+    await wrapper.get(detailSelectAll).setValue(true)
+    await detailTransferButton().trigger('click')
     await flushPromises()
     expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[11, 12, 21]])
     await open('A-21')
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('clear')
-    await flushPromises()
-    expect(wrapper.getComponent(BatchSelectionBar).props('count')).toBe(0)
+    await click('清空勾选')
+    expect(wrapper.get<HTMLInputElement>(detailSelectAll).element.checked).toBe(false)
+    expect(detailTransferButton().attributes('disabled')).toBeDefined()
   })
   it('removes stock that left a refreshed slot and revokes controls when permissions change', async () => {
     vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValueOnce(
@@ -450,11 +447,10 @@ describe('warehouse management', () => {
     )
     await render()
     await open('A-1')
-    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.find(detailSelectAll).exists()).toBe(false)
     await wrapper.setProps({ canDispatch: true })
     await open('A-1')
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
-    await flushPromises()
+    await wrapper.get(detailSelectAll).setValue(true)
     vi.mocked(catalog.loadWarehouseCatalog).mockResolvedValueOnce(
       catalogPage({
         page: 1,
@@ -615,13 +611,9 @@ describe('warehouse management', () => {
     await click('批量转出（1 批）')
     expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[8]])
     await open('A-1')
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
-    await flushPromises()
-    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({
-      count: 1,
-      quantity: 80,
-      weight: 8,
-    })
+    await wrapper.get(detailSelectAll).setValue(true)
+    expect(wrapper.get('.wm-warehouse-toolbar').text()).toContain('批量转出（1 批）')
+    expect(detailTransferButton().attributes('disabled')).toBeUndefined()
     await click('关闭')
     await click('安排仓位')
     expect(wrapper.getComponent(WarehousePlacementDialog).props('modelValue')).toEqual(stock)

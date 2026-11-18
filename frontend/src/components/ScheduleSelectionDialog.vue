@@ -180,10 +180,6 @@ onBeforeUnmount(() => {
           ></ElForm
         >
       </FormWorkspace>
-      <div v-if="!manage && !single" class="selection-summary">
-        <span>已选 {{ chosen.length }} 项，跨页保留</span
-        ><ElButton link type="primary" @click="chosen = []">清空选择</ElButton>
-      </div>
       <div class="selection-options" :class="{ 'is-loading': loading }">
         <div v-for="option in rows" :key="option.value" class="selection-row">
           <AppButton
@@ -229,18 +225,21 @@ onBeforeUnmount(() => {
         @current-change="changePage"
       />
     </section>
-    <template #footer
-      ><ElButton :disabled="saving" @click="visible = false">{{
+    <template #footer>
+      <ElButton v-if="!manage && !single && chosen.length" text @click="chosen = []"
+        >清空选择</ElButton
+      >
+      <ElButton :disabled="saving" @click="visible = false">{{
         manage ? '关闭' : '取消'
-      }}</ElButton
-      ><ElButton
+      }}</ElButton>
+      <ElButton
         v-if="!manage"
         type="primary"
         :disabled="loading || saving"
         @click="emit('apply', single ? [] : chosen)"
         >{{ single ? '清除业务人员' : '应用选择' }}</ElButton
-      ></template
-    >
+      >
+    </template>
   </AppDialog>
 </template>
 
@@ -249,8 +248,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 14px;
 }
-.selection-search,
-.selection-summary {
+.selection-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -260,11 +258,6 @@ onBeforeUnmount(() => {
   align-self: end;
   flex-wrap: wrap;
   gap: 8px;
-}
-.selection-summary {
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 12px;
 }
 .selection-options {
   max-height: min(420px, 55vh);

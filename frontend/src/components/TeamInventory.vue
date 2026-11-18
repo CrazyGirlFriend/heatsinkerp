@@ -113,7 +113,6 @@ const asOf = ref('')
 const dispatchSelection = useBatchSelection(
   rows,
   (row) => String(row.group_id),
-  inventoryDispatchable,
   (row) => row.batch_count === 1 && !row.inspection_hold_count && inventoryCanDispatch(row),
 )
 const preparingDispatch = ref(false)

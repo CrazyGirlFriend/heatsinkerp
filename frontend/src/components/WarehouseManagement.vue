@@ -38,7 +38,6 @@ import {
 } from '@/services/warehouseCatalog'
 import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts } from '@/utils/materialStock'
-import BatchSelectionBar from './BatchSelectionBar.vue'
 import { useBatchSelection } from '@/composables/useBatchSelection'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
@@ -213,17 +212,17 @@ const {
   availableRows,
   checkedCount,
   allChecked,
-  totals,
   toggle,
   toggleAll,
   reconcile,
 } = useBatchSelection(
   detailBatches,
   (row) => String(row.id),
-  (row) => ({
-    quantity: row.status === 'received' ? (row.available_quantity ?? null) : null,
-    weight: row.status === 'received' ? (row.available_weight ?? null) : null,
-  }),
+  (row) =>
+    row.status === 'received' &&
+    row.available_quantity != null &&
+    row.available_weight != null &&
+    (row.available_quantity > 0 || row.available_weight > 0),
 )
 function stockBatch(stock: StockBatch): Batch {
   const available = dispatchableAmounts(stock)
@@ -743,30 +742,6 @@ onBeforeUnmount(() => {
                 >
               </div>
             </div>
-            <BatchSelectionBar
-              v-if="canDispatch && detailTab === 'received'"
-              class="warehouse-detail-selection"
-              :count="selected.size"
-              :quantity="totals.quantity"
-              :weight="totals.weight"
-              :all-checked="allChecked"
-              :partial="checkedCount > 0 && !allChecked"
-              :disabled="
-                loading ||
-                !!error ||
-                !availableRows.length ||
-                (selected.size >= 100 && !checkedCount)
-              "
-              @all="toggleAll"
-              @clear="selected.clear()"
-            >
-              <WatermelonButton
-                primary
-                :disabled="!selected.size || loading || !!error"
-                @click="batchDispatch"
-                >批量转出</WatermelonButton
-              >
-            </BatchSelectionBar>
             <WatermelonDataTable
               columns-key="WarehouseManagement-2"
               :column-settings-target="detailColumnSettingsTarget"
@@ -777,7 +752,21 @@ onBeforeUnmount(() => {
               max-height="360"
             >
               <ElTableColumn v-if="canDispatch && detailTab === 'received'" width="46" fixed="left"
-                ><template #default="{ row: batch }"
+                ><template #header>
+                  <ElCheckbox
+                    aria-label="选择当前仓位可转出批次"
+                    :model-value="allChecked"
+                    :indeterminate="checkedCount > 0 && !allChecked"
+                    :disabled="
+                      loading ||
+                      !!error ||
+                      !availableRows.length ||
+                      (selected.size >= 100 && !checkedCount)
+                    "
+                    @change="toggleAll"
+                  />
+                </template>
+                <template #default="{ row: batch }"
                   ><ElCheckbox
                     :aria-label="'选择批次 ' + batch.batch_no"
                     :model-value="selected.has(String(batch.id))"
@@ -841,13 +830,27 @@ onBeforeUnmount(() => {
             :image-size="64"
           />
         </template>
-        <template #footer
-          ><WatermelonButton
-            :disabled="!detail || detail.draft_locked"
-            @click="detail && edit(detail)"
-            >编辑仓位</WatermelonButton
-          ><WatermelonButton primary @click="detailOpen = false">关闭</WatermelonButton></template
-        >
+        <template #footer>
+          <div class="warehouse-detail-actions">
+            <template v-if="canDispatch && detailTab === 'received' && detail?.batches.length">
+              <WatermelonButton v-if="selected.size" @click="selected.clear()"
+                >清空勾选</WatermelonButton
+              >
+              <WatermelonButton
+                primary
+                :disabled="!selected.size || loading || !!error"
+                @click="batchDispatch"
+                >批量转出</WatermelonButton
+              >
+            </template>
+            <WatermelonButton
+              :disabled="!detail || detail.draft_locked"
+              @click="detail && edit(detail)"
+              >编辑仓位</WatermelonButton
+            >
+            <WatermelonButton primary @click="detailOpen = false">关闭</WatermelonButton>
+          </div>
+        </template>
       </WatermelonDialog>
       <WatermelonDialog
         v-model="editorOpen"
@@ -950,8 +953,11 @@ onBeforeUnmount(() => {
   margin-left: 8px;
   font-variant-numeric: tabular-nums;
 }
-.warehouse-detail-selection {
-  margin-bottom: 12px;
+.warehouse-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 .warehouse-enabled {
   display: flex;

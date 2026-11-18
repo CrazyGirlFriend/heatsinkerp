@@ -41,6 +41,17 @@ describe('schedule selections', () => {
       { value: 'B', label: 'B' },
       { value: 'C', label: 'C' },
     ])
+    expect(wrapper.find('.selection-summary').exists()).toBe(false)
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '清空选择')!
+      .trigger('click')
+    expect(wrapper.get('.selection-choice').attributes('aria-pressed')).toBe('false')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '应用选择')!
+      .trigger('click')
+    expect(wrapper.emitted('apply')?.[1]?.[0]).toEqual([])
   })
   it('retains a stopped historical person without allowing new assignment to that person', async () => {
     vi.spyOn(productionScheduleApi, 'people').mockResolvedValue({

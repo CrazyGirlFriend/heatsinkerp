@@ -3,7 +3,6 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import StockSourcePicker from './StockSourcePicker.vue'
-import BatchSelectionBar from './BatchSelectionBar.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch } from '@/types/teamMaterials'
@@ -76,7 +75,7 @@ describe('stock selection for new outbound', () => {
     })
     await render()
     await wrapper.setProps({ mode: 'loss' })
-    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.find('thead input[type="checkbox"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('填写出库')
     expect(wrapper.find('[aria-label="丢失库存搜索"]').exists()).toBe(true)
     expect(wrapper.get('button[aria-label="登记丢失 TL2"]').attributes('disabled')).toBeDefined()
@@ -94,7 +93,7 @@ describe('stock selection for new outbound', () => {
     })
     await render()
     await wrapper.setProps({ mode: 'reallocate' })
-    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.find('thead input[type="checkbox"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('下一步：填写出库')
     expect(wrapper.get('button[aria-label="转投 TL2"]').attributes('disabled')).toBeDefined()
     await wrapper.get('button[aria-label="转投 TL1"]').trigger('click')
@@ -239,11 +238,8 @@ describe('stock selection for new outbound', () => {
     expect(cells[headings.indexOf('账面重量 (kg)')]!.text()).toBe('1.234')
     expect(wrapper.find('.material-amount').exists()).toBe(false)
     await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
-    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({
-      count: 1,
-      quantity: 0,
-      weight: 1.234,
-    })
+    expect(wrapper.get('.picker-toolbar').text()).toContain('清空勾选')
+    expect(wrapper.find('.batch-selection-bar').exists()).toBe(false)
     await nextButton().trigger('click')
     expect(wrapper.emitted('selected')?.[0]?.[0]).toEqual([row])
   })
@@ -370,11 +366,12 @@ describe('stock selection for new outbound', () => {
     expect(
       wrapper.get('label[aria-label="选择出库 TL101"] input').attributes('disabled'),
     ).toBeDefined()
-    expect(wrapper.text()).toContain('已选 100 批')
-    expect(wrapper.text()).toContain('最多 100 批')
+    await nextButton().trigger('click')
+    expect(wrapper.emitted('selected')?.[0]?.[0]).toHaveLength(100)
     await wrapper
+      .get('.picker-toolbar')
       .findAll('button')
-      .find((button) => button.text() === '清空')!
+      .find((button) => button.text() === '清空勾选')!
       .trigger('click')
     expect(nextButton().attributes('disabled')).toBeDefined()
     expect(
