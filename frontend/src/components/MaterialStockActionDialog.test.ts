@@ -244,18 +244,41 @@ describe('source batch dispatch and loss drafts', () => {
     }) as ScheduleSummary
   it('automatically carries the only matching deadline without another selection', async () => {
     vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
-      items: [{ source_transfer_id: 10, schedules: [schedule(4)] }],
+      items: [
+        {
+          source_transfer_id: 10,
+          schedules: [
+            {
+              ...schedule(4),
+              batches: [
+                {
+                  id: 41,
+                  batch_number: 1,
+                  due_at: schedule(4).due_at,
+                  target_quantity: 100,
+                  dispatched_quantity: 0,
+                } as ScheduleBatch,
+              ],
+            },
+          ],
+        },
+      ],
     })
     await render('dispatch', [source()])
     await destination()
     expect(wrapper.text()).toContain('已自动关联')
     expect(wrapper.find('[aria-label="TL10交货排期"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="TL10交货批次"]').exists()).toBe(false)
     expect(wrapper.get('.source-schedule-estimate').text()).toContain('交期 2026-10-24 16:00')
     expect(wrapper.get('.source-schedule-estimate').text()).toContain('件数已满足')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ lines: [expect.objectContaining({ production_schedule_id: 4 })] }),
+      expect.objectContaining({
+        lines: [
+          expect.objectContaining({ production_schedule_id: 4, production_schedule_batch_id: 41 }),
+        ],
+      }),
     )
   })
   it('projects all entered quantities against their selected delivery batch only', async () => {

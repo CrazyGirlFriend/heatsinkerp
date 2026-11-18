@@ -16,6 +16,7 @@ import RecordDateFilter from './RecordDateFilter.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type {
   ProductionSchedule,
+  ScheduleBatch,
   ScheduleSourceOption,
   ScheduleTask,
 } from '@/types/productionSchedule'
@@ -202,7 +203,8 @@ describe('delivery schedule workbench', () => {
     await render(false, true)
     const headings = wrapper.findAll('h3').map((item) => item.text())
     expect(headings).toContain('来料明细')
-    expect(headings).toContain('分批排期')
+    expect(headings).not.toContain('历史分批记录')
+    expect(wrapper.text()).not.toContain('计划批数')
     expect(headings).not.toContain('关联物料')
     expect(headings).not.toContain('来料记录')
     const incoming = wrapper.get('[aria-label="来料明细"]')
@@ -446,6 +448,43 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.emitted('dispatch')).toBeUndefined()
     expect(wrapper.emitted('changed')).toBeUndefined()
   })
+  it('keeps existing split plans visible as history without opening a split editor', async () => {
+    state.auth.isDispatch = true
+    const item = {
+      ...record(),
+      batches: [40, 60].map<ScheduleBatch>((amount, index) => ({
+        id: index + 1,
+        batch_number: index + 1,
+        due_at: record().due_at,
+        target_quantity: amount,
+        target_weight: null,
+        upstream_batch_ids: [],
+        status: 'pending',
+        warnings: [],
+        dispatched_quantity: 0,
+        actual_dispatched_quantity: 0,
+        quality_pending_quantity: 0,
+        dispatched_weight: 0,
+        received_quantity: 0,
+        received_weight: 0,
+        completed_at: null,
+      })),
+    }
+    vi.mocked(productionScheduleApi.list).mockResolvedValue({
+      items: [item],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue(item)
+    await render()
+    expect(button('编辑')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('计划批数')
+    await button('明细').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[aria-label="历史分批记录"]').findAll('tbody tr')).toHaveLength(2)
+    expect(button('修改转出计划')).toBeUndefined()
+  })
   it('lets dispatch open the route before planning and edit the exact team occurrence', async () => {
     state.auth.isDispatch = true
     const task = mockTaskRoute()
@@ -495,7 +534,7 @@ describe('delivery schedule workbench', () => {
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     const target = wrapper.get('[data-schedule-id="6"] .schedule-task-route__plan')
-    expect(target.attributes('aria-label')).toContain('修改批次计划')
+    expect(target.attributes('aria-label')).toContain('修改转出计划')
     await target.trigger('click')
     await flushPromises()
     expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(6)
@@ -626,7 +665,7 @@ describe('delivery schedule workbench', () => {
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     expect(wrapper.text()).toContain('805881-5')
-    expect(button('修改批次计划')).toBeDefined()
+    expect(button('修改转出计划')).toBeDefined()
   })
   it('shows the full task route but never exposes another team’s outbound action', async () => {
     const current = {
@@ -751,7 +790,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
     expect(wrapper.text()).toContain('有效转出件数')
-    expect(button('修改批次计划')).toBeUndefined()
+    expect(button('修改转出计划')).toBeUndefined()
     expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
     expect(button('转出物料')).toBeDefined()
     expect(button('取消排期')).toBeUndefined()

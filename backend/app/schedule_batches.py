@@ -165,10 +165,14 @@ def apply_batches(db, plan, task, payload, user):
         b.id: b
         for b in db.scalars(select(Batch).where(Batch.schedule_id == plan_id).with_for_update())
     }
-    before = snapshot(db, plan)
     requested = {b.id for b in payload.batches if b.id}
     if requested - existing.keys():
         raise HTTPException(422, "批次不属于本班组排期")
+    if len(existing) > 1 and requested != existing.keys():
+        raise HTTPException(409, "历史分批记录不能增删")
+    if len(payload.batches) > 1 and len(payload.batches) != len(requested):
+        raise HTTPException(422, "每道工序只能设置一条转出计划")
+    before = snapshot(db, plan)
     allowed_upstream = set(
         db.scalars(select(Batch.id).where(Batch.schedule_id == plan.predecessor_id))
     )
@@ -178,7 +182,7 @@ def apply_batches(db, plan, task, payload, user):
         if (plan.completion_basis != "weight" and b.target_quantity is None) or (
             plan.completion_basis != "quantity" and b.target_weight is None
         ):
-            raise HTTPException(422, "请按本计划计量方式填写每批数量")
+            raise HTTPException(422, "请按本计划计量方式填写计划数量")
     removed = existing.keys() - requested
     downstream = db.scalars(
         select(Batch).join(Plan, Plan.id == Batch.schedule_id).where(Plan.predecessor_id == plan_id)

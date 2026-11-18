@@ -77,12 +77,7 @@ def create(
                 batches=[
                     dict(
                         batch_number=1,
-                        target_quantity=40,
-                        due_at=f"2026-12-{20 + i}T08:00:00+08:00",
-                    ),
-                    dict(
-                        batch_number=2,
-                        target_quantity=60,
+                        target_quantity=100,
                         due_at=f"2026-12-{20 + i}T16:00:00+08:00",
                     ),
                 ],
@@ -96,13 +91,14 @@ def create(
     return response.json(), people
 
 
-def test_dispatch_creates_all_team_batches_in_one_form(client, warehouse, dispatcher):
+def test_dispatch_creates_one_handover_per_team_in_one_form(client, warehouse, dispatcher):
     task, _ = create(client, warehouse, dispatcher, team_plans=True)
     assert len(task["nodes"]) == 3
+    assert [b["target_quantity"] for b in task["delivery_batches"]] == [40, 60]
     for index, node in enumerate(task["nodes"]):
         assert node["planning_state"] == "confirmed"
         assert node["target_quantity"] == 100
-        assert [b["target_quantity"] for b in node["batches"]] == [40, 60]
+        assert [b["target_quantity"] for b in node["batches"]] == [100]
         assert node["due_at"] == f"2026-12-{20 + index}T08:00:00+00:00"
         response = client.get(f"{URL}/{node['id']}", headers=warehouse["other_headers"])
         assert response.status_code == 200
@@ -213,6 +209,10 @@ def test_creation_requires_complete_and_matching_team_plans_when_supplied(
     ):
         result = submit(client, body | {"team_plans": invalid}, dispatcher)
         assert result.status_code == 422, result.text
+    extra_batch = plans[0]["batches"][0] | {"batch_number": 2}
+    split = plans[0] | {"batches": [*plans[0]["batches"], extra_batch]}
+    result = submit(client, body | {"team_plans": [split, *plans[1:]]}, dispatcher)
+    assert result.status_code == 422 and "一条转出计划" in result.text
     with SessionLocal() as db:
         assert db.scalar(select(func.count(ProductionScheduleTask.id))) == 1
 

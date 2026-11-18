@@ -123,6 +123,7 @@ const detail = ref<ProductionSchedule | null>(null),
 const taskContext = ref<ScheduleTask | null>(null),
   taskLoading = ref(false),
   taskError = ref('')
+const hasHistoricalPlanBatches = computed(() => (detail.value?.batches?.length ?? 0) > 1)
 const editing = ref(false),
   editingSchedule = ref<ProductionSchedule | null>(null)
 const batchNo = ref(''),
@@ -333,6 +334,7 @@ function canPlan(row: ProductionSchedule) {
   return (
     canEditCommitment.value &&
     (canManage.value || row.team_id === props.teamId) &&
+    (row.batches?.length ?? 0) <= 1 &&
     row.status !== 'cancelled'
   )
 }
@@ -539,7 +541,10 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
       b,
     ]),
   )
-  for (const number of new Set([...oldBatches.keys(), ...newBatches.keys()])) {
+  const historicalBatches = submission || oldBatches.size > 1 || newBatches.size > 1
+  for (const number of historicalBatches
+    ? new Set([...oldBatches.keys(), ...newBatches.keys()])
+    : []) {
     const before = oldBatches.get(number),
       after = newBatches.get(number)
     for (const [key, label] of [
@@ -599,7 +604,7 @@ function actionLabel(action: string) {
         created: '新建',
         update: '调整',
         updated: '调整',
-        batches_updated: '确认或调整分批排期',
+        batches_updated: '确认或调整转出计划',
         plan_submitted: '提交交期',
         plan_returned: '退回修改',
         order_locked: '锁定订单',
@@ -840,11 +845,6 @@ defineExpose({ exportSource, openDetail })
                 : '待关联'
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="计划批数" width="95" align="center"
-          ><template #default="{ row }">{{
-            row.batches?.length || '待安排'
-          }}</template></ElTableColumn
-        >
         <ElTableColumn label="操作" width="150" fixed="right" align="center"
           ><template #default="{ row }"
             ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton
@@ -936,7 +936,7 @@ defineExpose({ exportSource, openDetail })
                     v-if="canPlan(node)"
                     text
                     class="schedule-task-route__plan"
-                    :aria-label="`第${node.sequence_no}道 ${node.team_name}，${node.planning_state === 'pending' ? '填写交期' : '修改批次计划'}`"
+                    :aria-label="`第${node.sequence_no}道 ${node.team_name}，${node.planning_state === 'pending' ? '填写交期' : '修改转出计划'}`"
                     @click="editRouteNode(node)"
                   >
                     <ElIcon><EditPen /></ElIcon>
@@ -967,6 +967,13 @@ defineExpose({ exportSource, openDetail })
             <ElDescriptionsItem label="节点顺序">{{ detail.sequence_no }}</ElDescriptionsItem>
             <ElDescriptionsItem label="要求交货时间">{{
               plannedDueLabel(detail)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem v-if="detail.predecessor_id" label="上序计划转交">{{
+              formatDateTime(
+                detail.batches?.length === 1
+                  ? (detail.batches[0]?.planned_start_at ?? detail.planned_start_at)
+                  : detail.planned_start_at,
+              )
             }}</ElDescriptionsItem>
             <ElDescriptionsItem label="实际交完时间">{{
               formatDateTime(detail.completed_at)
@@ -1036,15 +1043,17 @@ defineExpose({ exportSource, openDetail })
               }}</template></ElTableColumn
             ></ElTable
           >
-          <div class="schedule-section-heading"><h3>分批排期</h3></div>
+          <div v-if="hasHistoricalPlanBatches" class="schedule-section-heading">
+            <h3>历史分批记录</h3>
+          </div>
           <ElTable
             columns-key="DeliverySchedules-3"
+            v-if="hasHistoricalPlanBatches"
             :data="detail.batches || []"
             row-key="id"
             border
             class="business-table"
-            empty-text="待调度安排批次"
-            aria-label="分批排期明细"
+            aria-label="历史分批记录"
           >
             <ElTableColumn label="批次" width="85"
               ><template #default="{ row }">第 {{ row.batch_number }} 批</template></ElTableColumn
@@ -1163,7 +1172,12 @@ defineExpose({ exportSource, openDetail })
             class="business-table"
             empty-text="暂无转出记录"
           >
-            <ElTableColumn label="计划批次" width="100" align="center">
+            <ElTableColumn
+              v-if="hasHistoricalPlanBatches"
+              label="计划批次"
+              width="100"
+              align="center"
+            >
               <template #default="{ row }">{{
                 row.schedule_batch_id
                   ? `第 ${detail.batches?.find((b) => b.id === row.schedule_batch_id)?.batch_number ?? '—'} 批`
@@ -1244,7 +1258,7 @@ defineExpose({ exportSource, openDetail })
       <template #footer
         ><div v-if="detail && !detail.task_id && canPlan(detail)" class="schedule-detail__manage">
           <ElButton type="primary" @click="editSchedule(detail)">{{
-            detail.planning_state === 'pending' ? '填写交期' : '修改批次计划'
+            detail.planning_state === 'pending' ? '填写交期' : '修改转出计划'
           }}</ElButton>
         </div>
         <ElButton type="primary" @click="closeDetail">确认</ElButton></template

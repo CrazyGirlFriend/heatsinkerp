@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import ElAlert from '@/components/AppAlert.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
-import ElSelect from '@/components/AppSelect.vue'
 import { computed, onMounted, ref } from 'vue'
-import { ElOption, ElTableColumn } from 'element-plus'
+import { ElForm, ElFormItem, ElTableColumn } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
@@ -11,13 +10,10 @@ import AppDialog from './AppDialog.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import CompactFormSection from './CompactFormSection.vue'
-import type {
-  ProductionSchedule,
-  ScheduleBatchWrite,
-  ScheduleTask,
-} from '@/types/productionSchedule'
+import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { formatAmount, formatDateTime } from '@/utils/format'
+import { plannedDueLabel, teamPlanValues } from '@/utils/schedulePlanning'
 
 const props = defineProps<{ schedule: ProductionSchedule }>()
 const emit = defineEmits<{ close: []; saved: [ProductionSchedule] }>()
@@ -30,56 +26,25 @@ const upstream = computed(() =>
   task.value?.nodes.find((n) => n.id === props.schedule.predecessor_id),
 )
 const basis = computed(() => props.schedule.completion_basis || 'quantity')
-type Draft = Omit<ScheduleBatchWrite, 'due_at'> & {
-  key: number
-  end: string
-}
-let key = 0
-const local = (value?: string) => (value ? formatDateTime(value).replace(' ', 'T') + ':00' : '')
-const utc = (value: string) => (value ? `${value}+08:00` : '')
-const rows = ref<Draft[]>(
-  (props.schedule.pending_batches || props.schedule.batches || []).map((b) => ({
-    ...b,
-    id: b.id ?? undefined,
-    target_weight: b.target_weight == null ? null : Number(b.target_weight),
-    key: ++key,
-    end: local(b.due_at),
-    upstream_batch_ids: [...b.upstream_batch_ids],
-  })),
-)
-function add() {
-  rows.value.push({
-    key: ++key,
-    batch_number: Math.max(0, ...rows.value.map((b) => b.batch_number)) + 1,
-    end: local(props.schedule.due_at),
-    target_quantity: rows.value.length ? null : props.schedule.target_quantity,
-    target_weight: rows.value.length ? null : props.schedule.target_weight,
-    upstream_batch_ids: [],
-  })
-}
-if (!rows.value.length) add()
-const total = computed(() => ({
-  quantity: rows.value.reduce((n, b) => n + (b.target_quantity || 0), 0),
-  weight: rows.value.reduce((n, b) => n + (b.target_weight || 0), 0),
-}))
-const unassigned = computed(() =>
-  props.schedule.deliveries?.some((d) => !d.schedule_batch_id && d.status !== 'voided'),
-)
-function warnings(row: Draft) {
+const { due_at, ...values } = teamPlanValues(props.schedule)
+const plan = ref(values)
+const due = ref(due_at ? `${formatDateTime(due_at).replace(' ', 'T')}:00` : '')
+const warning = computed(() => {
+  if (!due.value) return ''
   const items: string[] = []
-  if (
-    task.value?.final_due_at &&
-    row.end &&
-    Date.parse(utc(row.end)) > Date.parse(task.value.final_due_at)
-  )
+  const end = Date.parse(`${due.value}+08:00`)
+  if (task.value?.final_due_at && end > Date.parse(task.value.final_due_at))
     items.push('晚于最终交期')
-  for (const id of row.upstream_batch_ids) {
-    const batch = upstream.value?.batches?.find((b) => b.id === id)
-    if (batch && row.end && Date.parse(batch.due_at) > Date.parse(utc(row.end)))
-      items.push(`早于上游第 ${batch.batch_number} 批转出`)
-  }
-  return items
-}
+  const upstreamDue = plan.value.upstream_batch_ids.length
+    ? Math.max(
+        ...plan.value.upstream_batch_ids.map((id) =>
+          Date.parse(upstream.value?.batches?.find((batch) => batch.id === id)?.due_at || ''),
+        ),
+      )
+    : Date.parse(props.schedule.planned_start_at || '')
+  if (upstreamDue > end) items.push('早于上序计划转交')
+  return items.join(' · ')
+})
 async function load() {
   loading.value = true
   error.value = ''
@@ -95,39 +60,22 @@ async function load() {
 async function save() {
   if (saving.value || loading.value || !task.value) return
   error.value = ''
-  if (!rows.value.length) {
-    error.value = '请至少安排一批'
+  if (!due.value) {
+    error.value = '请填写转交时间'
     return
   }
-  if (new Set(rows.value.map((b) => b.batch_number)).size !== rows.value.length) {
-    error.value = '批次序号不能重复'
+  if (
+    (basis.value !== 'weight' && !(Number(plan.value.target_quantity) > 0)) ||
+    (basis.value !== 'quantity' && !(Number(plan.value.target_weight) > 0))
+  ) {
+    error.value = '请填写计划数量'
     return
-  }
-  for (const row of rows.value) {
-    if (!row.end) {
-      error.value = `第 ${row.batch_number} 批：请填写转交时间`
-      return
-    }
-    if (
-      (basis.value !== 'weight' && !(row.target_quantity! > 0)) ||
-      (basis.value !== 'quantity' && !(row.target_weight! > 0))
-    ) {
-      error.value = `第 ${row.batch_number} 批：请填写数量`
-      return
-    }
   }
   saving.value = true
   try {
     const result = await productionScheduleApi.saveBatches(props.schedule.id, {
       expected_version: props.schedule.version,
-      batches: rows.value.map((row) => ({
-        ...(row.id ? { id: row.id } : {}),
-        batch_number: row.batch_number,
-        due_at: utc(row.end),
-        target_quantity: row.target_quantity || null,
-        target_weight: row.target_weight || null,
-        upstream_batch_ids: row.upstream_batch_ids,
-      })),
+      batches: [{ ...plan.value, due_at: `${due.value}+08:00` }],
     })
     emit('saved', result)
   } catch (e) {
@@ -144,7 +92,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
 <template>
   <AppDialog
     v-model="visible"
-    title="班组分批排期"
+    title="班组转出计划"
     width="min(1480px, 96vw)"
     append-to-body
     :close-on-click-modal="!saving"
@@ -154,7 +102,11 @@ const defaultTime = new Date(2000, 0, 1, 8)
   >
     <ElAlert
       v-if="schedule.pending_batches?.length"
-      title="旧版排期草稿已保留，保存后生效"
+      :title="
+        schedule.pending_batches.length > 1
+          ? '旧版草稿已汇总为一条计划，请核对转交时间和数量'
+          : '旧版排期草稿已保留，保存后生效'
+      "
       type="info"
       :closable="false"
     />
@@ -189,115 +141,48 @@ const defaultTime = new Date(2000, 0, 1, 8)
           ></ElTable
         >
       </CompactFormSection>
-      <CompactFormSection title="本班组排期" class="batch-plan-main">
-        <div class="form-field--full">
-          <ElTable
-            columns-key="ScheduleBatchEditor-2"
-            :required-columns="['批次', '数量（件）', '重量（kg）', '转交时间']"
-            :data="rows"
-            border
-            class="business-table"
-            aria-label="班组分批计划"
-            row-key="key"
-          >
-            <ElTableColumn label="批次" width="102" align="center"
-              ><template #default="{ row }"
-                ><ElInputNumber
-                  v-model="row.batch_number"
-                  :min="1"
-                  :max="9999"
-                  :controls="false"
-                  :disabled="saving"
-                  aria-label="批次序号" /></template
-            ></ElTableColumn>
-            <ElTableColumn v-if="basis !== 'weight'" label="数量（件）" width="120" align="center"
-              ><template #default="{ row }"
-                ><ElInputNumber
-                  v-model="row.target_quantity"
-                  :min="1"
-                  :precision="0"
-                  :controls="false"
-                  :disabled="saving"
-                  :aria-label="`第${row.batch_number}批数量`" /></template
-            ></ElTableColumn>
-            <ElTableColumn v-if="basis !== 'quantity'" label="重量（kg）" width="130" align="center"
-              ><template #default="{ row }"
-                ><ElInputNumber
-                  v-model="row.target_weight"
-                  :min="0.000001"
-                  :precision="6"
-                  :controls="false"
-                  :disabled="saving"
-                  :aria-label="`第${row.batch_number}批重量`" /></template
-            ></ElTableColumn>
-            <ElTableColumn label="转交时间" min-width="195"
-              ><template #default="{ row }"
-                ><ElDatePicker
-                  v-model="row.end"
-                  type="datetime"
-                  format="YYYY-MM-DD HH:mm"
-                  value-format="YYYY-MM-DDTHH:mm:ss"
-                  :default-time="defaultTime"
-                  :disabled-minutes="nonZeroMinutes"
-                  :disabled-seconds="nonZeroMinutes"
-                  :disabled="saving"
-                  placeholder="选择转交时间"
-                  :aria-label="`第${row.batch_number}批转交时间`" /></template
-            ></ElTableColumn>
-            <ElTableColumn v-if="upstream?.batches?.length" label="上游供料批次" min-width="165"
-              ><template #default="{ row }"
-                ><ElSelect
-                  v-model="row.upstream_batch_ids"
-                  multiple
-                  collapse-tags
-                  :disabled="saving"
-                  placeholder="选择供料批次"
-                  :aria-label="`第${row.batch_number}批上游供料`"
-                  ><ElOption
-                    v-for="batch in upstream.batches"
-                    :key="batch.id"
-                    :value="batch.id"
-                    :label="`第 ${batch.batch_number} 批`" /></ElSelect></template
-            ></ElTableColumn>
-            <ElTableColumn label="操作" width="70" align="center"
-              ><template #default="{ row }"
-                ><ElButton
-                  link
-                  type="danger"
-                  :disabled="saving || rows.length === 1"
-                  @click="rows = rows.filter((b) => b.key !== row.key)"
-                  >删除</ElButton
-                ></template
-              ></ElTableColumn
-            >
-          </ElTable>
-          <div class="batch-plan-actions">
-            <ElButton :disabled="saving" @click="add">＋ 增加一批</ElButton
-            ><span
-              >合计
-              <b>{{
-                basis !== 'weight'
-                  ? `${formatAmount(total.quantity)} 件`
-                  : `${formatAmount(total.weight)} kg`
-              }}</b></span
-            >
-          </div>
-          <div
-            v-for="row in rows.filter((r) => warnings(r).length)"
-            :key="row.key"
-            class="batch-plan-warning"
-            role="status"
-          >
-            第 {{ row.batch_number }} 批：{{ warnings(row).join('；') }}
-          </div>
-          <ElAlert
-            v-if="unassigned"
-            title="已有转出记录尚未分配交货批次，保留在班组总进度中。"
-            type="warning"
-            :closable="false"
-          />
-        </div>
-      </CompactFormSection>
+      <ElForm label-position="top" @submit.prevent="save">
+        <CompactFormSection title="本班组排期" class="batch-plan-main">
+          <ElFormItem label="转交时间" required>
+            <ElDatePicker
+              v-model="due"
+              type="datetime"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              :default-time="defaultTime"
+              :disabled-minutes="nonZeroMinutes"
+              :disabled-seconds="nonZeroMinutes"
+              :disabled="saving"
+              placeholder="选择转交时间"
+              aria-label="转交时间"
+            />
+          </ElFormItem>
+          <ElFormItem v-if="basis !== 'weight'" label="计划件数" required>
+            <ElInputNumber
+              v-model="plan.target_quantity"
+              :min="1"
+              :max="2147483647"
+              :precision="0"
+              :controls="false"
+              :disabled="saving"
+              aria-label="计划件数"
+            />
+          </ElFormItem>
+          <ElFormItem v-if="basis !== 'quantity'" label="计划重量（kg）" required>
+            <ElInputNumber
+              v-model="plan.target_weight"
+              :min="0.000001"
+              :precision="6"
+              :controls="false"
+              :disabled="saving"
+              aria-label="计划重量"
+            />
+          </ElFormItem>
+          <p v-if="warning" class="form-field--full batch-plan-warning" role="status">
+            {{ warning }}
+          </p>
+        </CompactFormSection>
+      </ElForm>
       <CompactFormSection title="上游供料" class="batch-plan-reference">
         <template #actions
           ><span>{{ upstream?.team_name || '库房备料' }}</span></template
@@ -305,30 +190,8 @@ const defaultTime = new Date(2000, 0, 1, 8)
         <div class="form-field--long">
           <AsyncStatus v-if="loading" label="正在读取上游供料…" />
           <ElButton v-else-if="!task" @click="load">重新读取</ElButton>
-          <ElTable
-            columns-key="ScheduleBatchEditor-3"
-            v-else-if="upstream?.batches?.length"
-            :data="upstream.batches"
-            border
-            size="small"
-            aria-label="上游供料计划"
-            ><ElTableColumn label="批次" width="65"
-              ><template #default="{ row }">{{ row.batch_number }}</template></ElTableColumn
-            ><ElTableColumn label="计划数量" width="90"
-              ><template #default="{ row }">{{
-                row.target_quantity != null
-                  ? `${formatAmount(row.target_quantity)} 件`
-                  : `${formatAmount(row.target_weight)} kg`
-              }}</template></ElTableColumn
-            ><ElTableColumn label="转交时间" min-width="140"
-              ><template #default="{ row }">{{
-                formatDateTime(row.due_at)
-              }}</template></ElTableColumn
-            ></ElTable
-          >
-          <p v-else>
-            {{ upstream ? '上游尚未安排批次' : '暂无上游供料计划' }}
-          </p>
+          <p v-else-if="upstream">计划转交 {{ plannedDueLabel(upstream) }}</p>
+          <p v-else>暂无上序供料计划</p>
         </div>
         <dl class="form-field--long">
           <dt>本班组在库</dt>
@@ -369,15 +232,6 @@ const defaultTime = new Date(2000, 0, 1, 8)
 .batch-plan-main :deep(.el-input-number),
 .batch-plan-main :deep(.el-date-editor) {
   width: 100%;
-}
-.batch-plan-main :deep(.cell) {
-  padding: 6px 8px;
-}
-.batch-plan-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
 }
 .batch-plan-reference :deep(.compact-form-section-actions) {
   color: var(--el-color-primary);

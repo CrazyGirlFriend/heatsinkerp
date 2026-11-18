@@ -1672,16 +1672,12 @@ watch(
                 </ElSelect>
               </ElFormItem>
               <ElFormItem
-                v-if="!isLoss && lineScheduleBatches(line).length"
-                label="交货批次"
+                v-if="!isLoss && lineScheduleBatches(line).length > 1"
+                label="历史交货批次"
                 :error="lineError(line, 'scheduleBatchId')"
-                :required="lineScheduleBatches(line).length > 1"
+                required
               >
-                <span v-if="lineScheduleBatches(line).length === 1"
-                  >第 {{ lineScheduleBatches(line)[0]!.batch_number }} 批</span
-                >
                 <ElSelect
-                  v-else
                   v-model="line.scheduleBatchId"
                   placeholder="选择交货批次"
                   :aria-label="`${line.source.transfer.batch_no}交货批次`"

@@ -116,7 +116,7 @@ const taskColumns = [
   { key: 'serial_no', label: '流水号', width: 150 },
   { key: 'task_batch_number', label: '排期批次', width: 110 },
   { key: 'quantity', label: '本批数量（件）', width: 150 },
-  { key: 'delivery_batches', label: '交货批数', width: 110 },
+  { key: 'delivery_batches', label: '客户交货批数', width: 128 },
   { key: 'final_due_at', label: '最终交期', width: 180 },
   { key: 'shipped_quantity', label: '客户发货', width: 190 },
   { key: 'order_completed', label: '订单完成', width: 110 },

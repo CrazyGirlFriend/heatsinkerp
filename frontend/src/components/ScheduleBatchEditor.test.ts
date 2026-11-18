@@ -9,7 +9,7 @@ import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 import { routeFixture } from '@/testFixtures/processRoute'
 import { orderFixture } from '@/testFixtures/processRouteOrder'
-import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
+import type { ProductionSchedule, ScheduleBatch, ScheduleTask } from '@/types/productionSchedule'
 
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isDispatch: false }) }))
 let wrapper: VueWrapper
@@ -70,8 +70,8 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
-describe('team batch planner', () => {
-  it('sums decimal weights and saves even when the task carries a legacy lock timestamp', async () => {
+describe('team handover planner', () => {
+  it('prefills a single plan from a legacy split draft and ignores a legacy lock timestamp', async () => {
     const legacyTask = { id: 2, locked_at: '2026-10-30T00:00:00Z' }
     await render(legacyTask, {
       ...schedule,
@@ -79,23 +79,26 @@ describe('team batch planner', () => {
       pending_batches: ['10.500000', '20.250000'].map((weight, index) => ({
         id: null,
         batch_number: index + 1,
-        due_at: '2026-12-21T08:00:00Z',
+        due_at: `2026-12-${21 + index}T08:00:00Z`,
         target_quantity: null,
         target_weight: weight,
         upstream_batch_ids: [],
       })),
     })
-    expect(wrapper.text()).toContain('30.75 kg')
+    expect(wrapper.findAllComponents(ElInputNumber)).toHaveLength(1)
+    expect(wrapper.getComponent(ElInputNumber).props('modelValue')).toBe(30.75)
     await click('保存排期')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
       expected_version: 7,
-      batches: [10.5, 20.25].map((weight, index) => ({
-        batch_number: index + 1,
-        due_at: '2026-12-21T16:00:00+08:00',
-        target_quantity: null,
-        target_weight: weight,
-        upstream_batch_ids: [],
-      })),
+      batches: [
+        {
+          batch_number: 1,
+          due_at: '2026-12-22T16:00:00+08:00',
+          target_quantity: null,
+          target_weight: 30.75,
+          upstream_batch_ids: [],
+        },
+      ],
     })
   })
   it('previews and downloads the task original beside the team submission form', async () => {
@@ -137,32 +140,38 @@ describe('team batch planner', () => {
     expect(wrapper.text()).toContain('请填写转交时间')
     expect(wrapper.text()).toContain('2026-12-30 16:00')
   })
-  it('saves independent 40/60 batches and their hour-level handovers through the owning plan', async () => {
-    await render()
-    await click('＋ 增加一批')
-    const dates = wrapper.findAllComponents(ElDatePicker)
-    for (const [i, value] of ['2026-12-21T16:00:00', '2026-12-22T17:00:00'].entries())
-      dates[i]!.vm.$emit('update:modelValue', value)
-    const amounts = wrapper.findAllComponents(ElInputNumber)
-    amounts[1]!.vm.$emit('update:modelValue', 40)
-    amounts[3]!.vm.$emit('update:modelValue', 60)
+  it('edits the one handover plan while preserving its identity and supply link', async () => {
+    await render(
+      {},
+      {
+        ...schedule,
+        batches: [
+          {
+            id: 10,
+            batch_number: 1,
+            due_at: schedule.due_at,
+            target_quantity: 100,
+            target_weight: schedule.target_weight,
+            upstream_batch_ids: [9],
+          } as ScheduleBatch,
+        ],
+      },
+    )
+    expect(wrapper.text()).not.toContain('增加一批')
+    expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(1)
+    wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', '2026-12-22T17:00:00')
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 60)
     await click('保存排期')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
       expected_version: 7,
       batches: [
         {
+          id: 10,
           batch_number: 1,
-          due_at: '2026-12-21T16:00:00+08:00',
-          target_quantity: 40,
-          target_weight: schedule.target_weight,
-          upstream_batch_ids: [],
-        },
-        {
-          batch_number: 2,
           due_at: '2026-12-22T17:00:00+08:00',
           target_quantity: 60,
-          target_weight: null,
-          upstream_batch_ids: [],
+          target_weight: schedule.target_weight,
+          upstream_batch_ids: [9],
         },
       ],
     })

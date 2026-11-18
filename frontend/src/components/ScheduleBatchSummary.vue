@@ -132,7 +132,8 @@ const measurements = computed(() => [
             <dd>
               <template v-if="relations[key].length">
                 <span v-for="batch in relations[key]" :key="batch.id">
-                  {{ batch.team_name }} · 第{{ batch.batch_number }}批
+                  {{ batch.team_name
+                  }}<template v-if="batch.batch_number"> · 第{{ batch.batch_number }}批</template>
                 </span>
               </template>
               <span v-else>{{

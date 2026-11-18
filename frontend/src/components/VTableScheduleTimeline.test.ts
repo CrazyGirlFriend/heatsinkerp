@@ -415,7 +415,7 @@ it('shows batch quantities on the bars without expandable table rows', async () 
     expect(options.taskListTable.columns[0]).toMatchObject({ title: '流水号', tree: false })
     expect(wrapper.find('[aria-label="展开流水号"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="收起流水号"]').exists()).toBe(false)
-    const batch = serial.children[0].children[0]
+    const batch = serial.children[0]
     const draw = (record: any, width = 120) =>
       options.taskBar.customLayout({ width, height: 20, taskRecord: record }).rootContainer.children
     const text = draw(batch).map((graphic: any) => graphic.attribute.text)
@@ -477,14 +477,14 @@ it('fits a selected month, drills into dates and restores the overview while pre
   const expandedGradient = instance.options.taskBar.customLayout({
     width: 120,
     height: 28,
-    taskRecord: instance.options.records[0].children[0].children[0],
+    taskRecord: instance.options.records[0].children[0],
   }).rootContainer.attribute.fill
   await selectRange('2026-11-01', '2026-11-30')
   expect(instance.options.timelineHeader.zoomScale).toMatchObject({
     enabled: true,
     dataZoomAxis: { enabled: false },
   })
-  const batch = instance.options.records[0].children[0].children[0]
+  const batch = instance.options.records[0].children[0]
   const line = instance.options.taskBar.customLayout({
     width: 60,
     height: 20,
@@ -780,7 +780,7 @@ it('keeps batch lanes in the compact overview and exposes saved team totals in d
   ])
   await wrapper.setProps({ tasks: wrapper.props('tasks').map((task) => ({ ...task, version: 2 })) })
   await flushPromises()
-  expect(wrapper.find('[aria-label="取消选中批次"]').exists()).toBe(true)
+  expect(wrapper.find('[aria-label="取消选中计划"]').exists()).toBe(true)
   expect(wrapper.findComponent(ScheduleBatchSummary).props('node').team_name).toBe('线切割')
   expect(wrapper.findAll('.detail-batches tbody tr')).toHaveLength(2)
   wrapper.unmount()
@@ -821,7 +821,7 @@ it('pins batch details on click, opens the real schedule from details, and relea
     progressField: 'progress',
     progressAdjustable: false,
   })
-  const batch = instance.options.records[0].children[0].children[0]
+  const batch = instance.options.records[0].children[0]
   expect(batch.progress).toBe(75)
   const deadline = instance.options.records[0].children.at(-1)
   for (const record of [deadline, { ...batch, type: 'milestone' }]) {
@@ -836,12 +836,11 @@ it('pins batch details on click, opens the real schedule from details, and relea
   })
   await flushPromises()
   expect(wrapper.emitted('open-node')).toBeUndefined()
-  expect(wrapper.findComponent(ScheduleBatchSummary).props('node').batch_number).toBe(1)
-  expect(wrapper.find('[aria-label="取消选中批次"]').exists()).toBe(true)
+  expect(wrapper.findComponent(ScheduleBatchSummary).props('node').batch_number).toBeUndefined()
+  expect(wrapper.find('[aria-label="取消选中计划"]').exists()).toBe(true)
   wrapper.findComponent(ScheduleBatchSummary).vm.$emit('open')
   expect(wrapper.emitted('open-node')?.[0]?.[0]).toMatchObject({
     id: 11,
-    batch_number: 1,
     dispatched_quantity: 60,
     received_quantity: 40,
   })
@@ -859,7 +858,7 @@ it('pins batch details on click, opens the real schedule from details, and relea
     ],
   })
   await flushPromises()
-  expect(instance.options.records[0].children[0].children[0].progress).toBe(50)
+  expect(instance.options.records[0].children[0].progress).toBe(50)
   expect(instance.scrollLeft).toBe(120)
   expect(instance.scrollTop).toBe(56)
   expect(instance.taskListTableInstance.on).toHaveBeenCalledTimes(1)
@@ -933,7 +932,7 @@ it('opens details only on click, keeps them while hovering, and clears selection
   const instance = native.instances[0]!
   const teams = instance.options.records[0].children
   const upstream = teams[0].children
-  const batch = teams[1].children[0]
+  const batch = teams[1]
   const bars = [...upstream, batch, { ...batch, task: { ...task, id: 999 } }].map((record) => ({
     record,
     setAttribute: vi.fn(),
@@ -977,7 +976,7 @@ it('opens details only on click, keeps them while hovering, and clears selection
   instance.handlers.get('click_task_bar')(event)
   await wrapper.setProps({ tasks: [{ ...linkedTask }] })
   await flushPromises()
-  expect(wrapper.find('[aria-label="取消选中批次"]').exists()).toBe(true)
+  expect(wrapper.find('[aria-label="取消选中计划"]').exists()).toBe(true)
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   await flushPromises()
   expect(bars.every((bar) => bar.setAttribute.mock.lastCall?.[1] === 1)).toBe(true)

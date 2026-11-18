@@ -131,7 +131,7 @@ function trackFocus(element: Element) {
   Object.defineProperty(element, 'scrollIntoView', { configurable: true, value: scroll })
   return { focus, scroll }
 }
-it('requires each route team handover and submits split batches with the right process indices', async () => {
+it('requires each route team handover and submits one plan at each process index', async () => {
   await render()
   date('2026-12-30T16:00:00')
   batchDate(0, '2026-12-29T16:00:00')
@@ -147,22 +147,19 @@ it('requires each route team handover and submits split batches with the right p
   await button('创建排期')
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
   await vi.waitFor(() => expect(wrapper.text()).toContain('请选择转交时间'))
-  await wrapper.get('button[aria-label="班组1增加一批"]').trigger('click')
-  await flushPromises()
+  expect(wrapper.get('[aria-label="班组排期设置"]').text()).not.toContain('增加一批')
   const amount = (label: string) =>
     wrapper.findAllComponents(ElInputNumber).find((input) => input.props('ariaLabel') === label)!
-  amount('班组1第1批计划件数').vm.$emit('update:modelValue', 40)
-  amount('班组1第2批计划件数').vm.$emit('update:modelValue', 60)
+  amount('班组1计划件数').vm.$emit('update:modelValue', 75)
   await fillTeamDates()
   await button('创建排期')
   const plans = vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0].team_plans!
   expect(plans.map((plan) => plan.process_step_index)).toEqual([0, 2, 3])
-  expect(plans[0]!.batches.map((batch) => batch.target_quantity)).toEqual([40, 60])
-  expect(
-    plans.every((plan) =>
-      plan.batches.every((batch) => batch.due_at === '2026-12-25T16:00:00+08:00'),
-    ),
-  ).toBe(true)
+  expect(plans.map((plan) => plan.batches.length)).toEqual([1, 1, 1])
+  expect(plans[0]!.batches[0]!.target_quantity).toBe(75)
+  expect(plans.map((plan) => plan.batches[0]!.due_at)).toEqual(
+    Array(3).fill('2026-12-25T16:00:00+08:00'),
+  )
   await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
   expect(wrapper.find('[aria-label="班组排期设置"]').exists()).toBe(false)
 })
@@ -224,7 +221,7 @@ it('edits team plans in the task form while keeping existing batch identities an
   expect(wrapper.get('[aria-label="班组排期设置"]').text()).toContain('研磨：粗磨 → 精磨')
   const picker = wrapper
     .findAllComponents(ElDatePicker)
-    .find((input) => input.props('ariaLabel') === '班组2第1批转交时间')!
+    .find((input) => input.props('ariaLabel') === '班组2转交时间')!
   expect(picker.props('modelValue')).toBe('2026-12-25T16:00:00')
   picker.vm.$emit('update:modelValue', '2026-12-26T16:00:00')
   await button('保存排期')
@@ -694,7 +691,7 @@ it('lets dispatch correct the quantity without overwriting batch amounts, dates 
   expect(
     wrapper
       .findAllComponents(ElInputNumber)
-      .find((input) => input.props('ariaLabel') === '班组1第1批计划件数')!
+      .find((input) => input.props('ariaLabel') === '班组1计划件数')!
       .props('modelValue'),
   ).toBe(100)
 })

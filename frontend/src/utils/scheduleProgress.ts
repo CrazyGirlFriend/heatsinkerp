@@ -40,6 +40,7 @@ export function timelineNodes(nodes: ProductionSchedule[]): ProductionSchedule[]
       ? node.batches.map((batch) => ({
           ...node,
           ...batch,
+          batch_number: node.batches!.length > 1 ? batch.batch_number : undefined,
           id: -batch.id,
           parent_schedule_id: node.id,
           predecessor_id: batch.upstream_batch_ids.length

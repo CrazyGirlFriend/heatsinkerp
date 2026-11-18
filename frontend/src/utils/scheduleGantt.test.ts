@@ -41,7 +41,7 @@ const node = (id: number, overrides: Partial<ProductionSchedule> = {}) =>
     target_quantity: 80,
     completion_basis: 'quantity',
     due_at: '2026-11-02T08:00:00Z',
-    batches: [batch(id)],
+    batches: [batch(id, { target_quantity: overrides.target_quantity ?? 80 })],
     ...overrides,
   }) as ProductionSchedule
 const task = (nodes: ProductionSchedule[]) =>
@@ -69,12 +69,14 @@ describe('VTable schedule adapter', () => {
       ['03  退火', '80'],
       ['最终交期', ''],
     ])
-    expect(record?.children?.[1]?.children?.[0]?.node?.parent_schedule_id).toBe(2)
+    expect(record?.children?.[1]?.children).toBeUndefined()
+    expect(record?.children?.[1]?.node?.parent_schedule_id).toBe(2)
+    expect(record?.batchNumbers).toEqual([])
     expect(JSON.stringify(source)).toBe(before)
   })
   it('keeps exact factory hours and uses exclusive handover end time', () => {
     const [record] = scheduleGanttRecords([task([node(1)])])
-    const leaf = record!.children![0]!.children![0]!
+    const leaf = record!.children![0]!
     expect(leaf.start).toBe('2026-11-02T08:00:00.000')
     expect(leaf.end).toBe('2026-11-02T15:59:59.999')
     expect(leaf.endTime! - leaf.startTime!).toBe(8 * 3_600_000)
@@ -180,7 +182,7 @@ describe('VTable schedule adapter', () => {
       [Date.parse('2026-11-03T00:00:00Z'), Date.parse('2026-11-03T08:00:00Z')],
     ])
   })
-  it('keeps missing batch positions aligned across teams without creating empty numbered rows', () => {
+  it('keeps historical batch positions beside a single plan without creating another lane', () => {
     const [record] = scheduleGanttRecords([
       task([
         node(1, { batches: [batch(1), batch(3)] }),
@@ -189,8 +191,8 @@ describe('VTable schedule adapter', () => {
     ])
     expect(record!.batchNumbers).toEqual([1, 3])
     expect(record!.laneCount).toBe(2)
-    expect(record!.children![1]!.children![0]!.lanes[record!.id]).toBe(1)
-    expect(ganttBatchRelations(record!.children![1]!.children![0]!)).toEqual({
+    expect(record!.children![1]!.lanes[record!.id]).toBe(0)
+    expect(ganttBatchRelations(record!.children![1]!)).toEqual({
       upstream: [],
       downstream: [],
     })
@@ -236,7 +238,7 @@ describe('VTable schedule adapter', () => {
         node(2, { planning_state: 'pending', batches: [] }),
       ]),
     ])
-    expect(record!.children![0]!.children![0]!.type).toBe('milestone')
+    expect(record!.children![0]!.type).toBe('milestone')
     expect(record!.children![1]!.name).toContain('待填写')
     expect(record!.children![1]!.start).toBeUndefined()
     expect(record!.children![1]!.children).toBeUndefined()
@@ -306,7 +308,7 @@ describe('VTable schedule adapter', () => {
       ]),
     ])
     expect(record!.children![0]!.children!.map((child) => child.progress)).toEqual([60, 100])
-    expect(record!.children![1]!.children![0]!.progress).toBe(0)
+    expect(record!.children![1]!.progress).toBe(0)
     expect(record!.progress).toBeUndefined()
   })
   it('honors weight and dual targets and shows dispatch progress even without assessment', () => {
@@ -324,11 +326,6 @@ describe('VTable schedule adapter', () => {
         node(4, { assessment_enabled: false }),
       ]),
     ])
-    expect(record!.children!.slice(0, 4).map((team) => team.children![0]!.progress)).toEqual([
-      35,
-      60,
-      null,
-      0,
-    ])
+    expect(record!.children!.slice(0, 4).map((team) => team.progress)).toEqual([35, 60, null, 0])
   })
 })

@@ -33,7 +33,7 @@ import type {
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { createMaterialSubmissionKey } from '@/utils/materialStock'
 import { formatAmount, formatDateTime } from '@/utils/format'
-import { referenceOrderQuantity } from '@/utils/schedulePlanning'
+import { referenceOrderQuantity, teamPlanValues } from '@/utils/schedulePlanning'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 
 const props = defineProps<{
@@ -119,21 +119,24 @@ type TeamPlanDraft = Omit<TaskTeamPlanWrite, 'batches'> & {
   instructions: string
   basis: string
   confirmed: boolean
+  historical: boolean
   original: string
-  batches: TeamBatchDraft[]
+  draft: TeamBatchDraft
 }
 function teamPlanPayload(plan: TeamPlanDraft): TaskTeamPlanWrite {
+  const { due, ...batch } = plan.draft
   return {
     schedule_id: plan.schedule_id,
     process_step_index: plan.process_step_index,
     expected_version: plan.expected_version,
-    batches: plan.batches.map(({ due, ...batch }) => ({ ...batch, due_at: `${due}+08:00` })),
+    batches: [{ ...batch, due_at: `${due}+08:00` }],
   }
 }
 const teamPlans = ref<TeamPlanDraft[]>(
   (props.task?.nodes || [])
     .filter((node) => node.status !== 'cancelled')
     .map((node) => {
+      const { due_at, ...values } = teamPlanValues(node)
       const plan: TeamPlanDraft = {
         schedule_id: node.id,
         process_step_index: node.process_step_index,
@@ -142,38 +145,15 @@ const teamPlans = ref<TeamPlanDraft[]>(
         instructions: '',
         basis: node.completion_basis || 'quantity',
         confirmed: node.planning_state === 'confirmed',
+        historical: (node.batches?.length ?? 0) > 1,
         original: '',
-        batches: (node.pending_batches?.length
-          ? node.pending_batches
-          : node.batches?.length
-            ? node.batches
-            : [
-                {
-                  batch_number: 1,
-                  due_at: node.planning_state === 'pending' ? '' : node.due_at,
-                  target_quantity: node.target_quantity,
-                  target_weight: node.target_weight,
-                  upstream_batch_ids: [],
-                },
-              ]
-        ).map((batch) => ({
-          id: batch.id || undefined,
-          batch_number: batch.batch_number,
-          due: local(batch.due_at),
-          target_quantity: batch.target_quantity,
-          target_weight: batch.target_weight == null ? null : Number(batch.target_weight),
-          upstream_batch_ids: [...batch.upstream_batch_ids],
-        })),
+        draft: { ...values, due: local(due_at) },
       }
       plan.original = JSON.stringify(teamPlanPayload(plan))
       return plan
     }),
 )
-const teamPlanRows = computed(() =>
-  teamPlans.value.flatMap((plan, index) =>
-    plan.batches.map((batch, batchIndex) => ({ plan, batch, index, batchIndex })),
-  ),
-)
+const teamPlanRows = computed(() => teamPlans.value.map((plan, index) => ({ plan, index })))
 const hasWeightPlans = computed(() => teamPlans.value.some((plan) => plan.basis !== 'quantity'))
 function resetTeamPlans() {
   const selected = selectedRoute.value
@@ -203,24 +183,20 @@ function resetTeamPlans() {
     instructions: names.map((name, i) => `${name}：${requirements[i]}`).join('\n'),
     basis: 'quantity',
     confirmed: false,
+    historical: false,
     original: '',
-    batches: [
-      {
-        batch_number: 1,
-        due: '',
-        target_quantity: Number(step.planned_quantity) || null,
-        target_weight: null,
-        upstream_batch_ids: [],
-      },
-    ],
+    draft: {
+      batch_number: 1,
+      due: '',
+      target_quantity: Number(step.planned_quantity) || null,
+      target_weight: null,
+      upstream_batch_ids: [],
+    },
   }))
 }
-function teamBatchError(
-  plan: TeamPlanDraft,
-  batch: TeamBatchDraft,
-  field: 'due' | 'quantity' | 'weight',
-) {
-  if (!submitted.value) return ''
+function teamPlanError(plan: TeamPlanDraft, field: 'due' | 'quantity' | 'weight') {
+  if (!submitted.value || plan.historical) return ''
+  const batch = plan.draft
   if (field === 'due') return batch.due ? '' : '请选择转交时间'
   const amount = field === 'quantity' ? batch.target_quantity : batch.target_weight
   if (field === 'quantity' && plan.basis === 'weight') return ''
@@ -230,15 +206,6 @@ function teamBatchError(
     (field !== 'quantity' || (Number.isSafeInteger(amount) && amount <= 2147483647))
     ? ''
     : '请填写有效计划数量'
-}
-function addTeamBatch(plan: TeamPlanDraft) {
-  plan.batches.push({
-    batch_number: Math.max(...plan.batches.map((b) => b.batch_number)) + 1,
-    due: '',
-    target_quantity: null,
-    target_weight: null,
-    upstream_batch_ids: [],
-  })
 }
 const quantity = ref<number | undefined>(
   props.task?.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
@@ -410,13 +377,11 @@ async function save() {
     peopleError.value ||
     orderRequiredError.value ||
     quantityConfirmationError.value ||
-    teamPlans.value.some((plan) =>
-      plan.batches.some(
-        (batch) =>
-          teamBatchError(plan, batch, 'due') ||
-          teamBatchError(plan, batch, 'quantity') ||
-          teamBatchError(plan, batch, 'weight'),
-      ),
+    teamPlans.value.some(
+      (plan) =>
+        teamPlanError(plan, 'due') ||
+        teamPlanError(plan, 'quantity') ||
+        teamPlanError(plan, 'weight'),
     )
   ) {
     await nextTick()
@@ -438,9 +403,10 @@ async function save() {
       team_plans: teamPlans.value
         .filter(
           (plan) =>
-            !props.task ||
-            !plan.confirmed ||
-            JSON.stringify(teamPlanPayload(plan)) !== plan.original,
+            !plan.historical &&
+            (!props.task ||
+              !plan.confirmed ||
+              JSON.stringify(teamPlanPayload(plan)) !== plan.original),
         )
         .map(teamPlanPayload),
     }
@@ -638,7 +604,7 @@ onMounted(loadRoutes)
               <span>{{ formatAmount(orderQuantity) }} 件</span>
             </ElFormItem>
           </CompactFormSection>
-          <CompactFormSection title="分批交货">
+          <CompactFormSection title="客户交货要求">
             <template #actions>
               <div
                 v-if="!plannedQuantityError"
@@ -756,27 +722,28 @@ onMounted(loadRoutes)
                   ></template
                 >
               </ElTableColumn>
-              <ElTableColumn label="批次" width="100">
-                <template #default="{ row }">第 {{ row.batch.batch_number }} 批</template>
-              </ElTableColumn>
               <ElTableColumn label="转交时间" min-width="235">
                 <template #default="{ row }">
+                  <span v-if="row.plan.historical">
+                    {{ formatDateTime(row.plan.draft.due ? `${row.plan.draft.due}+08:00` : null) }}
+                  </span>
                   <ElFormItem
+                    v-else
                     class="dispatch-batch-field"
-                    :error="teamBatchError(row.plan, row.batch, 'due')"
+                    :error="teamPlanError(row.plan, 'due')"
                   >
                     <ElDatePicker
-                      v-model="row.batch.due"
+                      v-model="row.plan.draft.due"
                       type="datetime"
                       format="YYYY-MM-DD HH:mm"
                       value-format="YYYY-MM-DDTHH:mm:ss"
                       :disabled-minutes="nonZeroMinutes"
                       :disabled-seconds="nonZeroMinutes"
-                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批转交时间`"
+                      :aria-label="`班组${row.index + 1}转交时间`"
                       placeholder="选择转交时间"
                     />
                     <span
-                      v-if="row.batch.due && finalDue && row.batch.due > finalDue"
+                      v-if="row.plan.draft.due && finalDue && row.plan.draft.due > finalDue"
                       class="dispatch-plan-warning"
                       >晚于最终交期</span
                     >
@@ -785,57 +752,43 @@ onMounted(loadRoutes)
               </ElTableColumn>
               <ElTableColumn label="计划件数" width="160">
                 <template #default="{ row }">
+                  <span v-if="row.plan.historical">{{
+                    formatAmount(row.plan.draft.target_quantity)
+                  }}</span>
                   <ElFormItem
-                    v-if="row.plan.basis !== 'weight'"
+                    v-else-if="row.plan.basis !== 'weight'"
                     class="dispatch-batch-field"
-                    :error="teamBatchError(row.plan, row.batch, 'quantity')"
+                    :error="teamPlanError(row.plan, 'quantity')"
                   >
                     <ElInputNumber
-                      v-model="row.batch.target_quantity"
+                      v-model="row.plan.draft.target_quantity"
                       :min="1"
                       :max="2147483647"
                       :precision="0"
                       :controls="false"
-                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批计划件数`"
+                      :aria-label="`班组${row.index + 1}计划件数`"
                     /> </ElFormItem
                   ><span v-else>—</span>
                 </template>
               </ElTableColumn>
               <ElTableColumn v-if="hasWeightPlans" label="计划重量（kg）" width="170">
                 <template #default="{ row }">
+                  <span v-if="row.plan.historical">{{
+                    formatAmount(row.plan.draft.target_weight)
+                  }}</span>
                   <ElFormItem
-                    v-if="row.plan.basis !== 'quantity'"
+                    v-else-if="row.plan.basis !== 'quantity'"
                     class="dispatch-batch-field"
-                    :error="teamBatchError(row.plan, row.batch, 'weight')"
+                    :error="teamPlanError(row.plan, 'weight')"
                   >
                     <ElInputNumber
-                      v-model="row.batch.target_weight"
+                      v-model="row.plan.draft.target_weight"
                       :min="0"
                       :precision="6"
                       :controls="false"
-                      :aria-label="`班组${row.index + 1}第${row.batch.batch_number}批计划重量`"
+                      :aria-label="`班组${row.index + 1}计划重量`"
                     /> </ElFormItem
                   ><span v-else>—</span>
-                </template>
-              </ElTableColumn>
-              <ElTableColumn label="操作" width="150">
-                <template #default="{ row }">
-                  <ElButton
-                    v-if="row.batchIndex === 0"
-                    link
-                    :disabled="row.plan.batches.length >= 100"
-                    :aria-label="`班组${row.index + 1}增加一批`"
-                    @click="addTeamBatch(row.plan)"
-                    >增加一批</ElButton
-                  >
-                  <ElButton
-                    v-if="row.plan.batches.length > 1"
-                    link
-                    type="danger"
-                    :aria-label="`班组${row.index + 1}删除第${row.batch.batch_number}批`"
-                    @click="row.plan.batches.splice(row.batchIndex, 1)"
-                    >删除</ElButton
-                  >
                 </template>
               </ElTableColumn>
             </ElTable>

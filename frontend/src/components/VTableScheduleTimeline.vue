@@ -1471,7 +1471,7 @@ onBeforeUnmount(() => {
           @open="open(hovered)"
         >
           <template #actions>
-            <AppButton text circle size="small" aria-label="取消选中批次" @click="hidePopover"
+            <AppButton text circle size="small" aria-label="取消选中计划" @click="hidePopover"
               ><IconX :size="16"
             /></AppButton>
           </template>

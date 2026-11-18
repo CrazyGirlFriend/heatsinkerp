@@ -71,7 +71,6 @@ export const scheduleQueryColumns = queryColumns([
   ['计划件数', 'target_quantity', 'number'],
   ['已转出件数', 'dispatched_quantity', 'number'],
   ['待交件数', 'remaining_quantity', 'number'],
-  ['计划批数', 'batch_count', 'number'],
   ['关联批次', 'source_count', 'number'],
 ])
 export const taskQueryColumns = queryColumns([
@@ -80,7 +79,7 @@ export const taskQueryColumns = queryColumns([
   ['流水号', 'serial_no'],
   ['排期批次', 'task_batch_number', 'number'],
   ['本批数量（件）', 'quantity', 'number'],
-  ['交货批数', 'delivery_batches', 'number'],
+  ['客户交货批数', 'delivery_batches', 'number'],
   ['最终交期', 'final_due_at', 'date'],
   ['创建时间', 'created_at', 'date'],
   ['业务人员', 'business_people'],

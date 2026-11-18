@@ -130,13 +130,16 @@ def build_task(db, payload):
             raise HTTPException(422, "请按当前工艺填写每个班组的排期")
         for node in nodes:
             plan = plans[node["process_step_index"]]
-            if plan.schedule_id or any(b.id or b.upstream_batch_ids for b in plan.batches):
+            if len(plan.batches) != 1:
+                raise HTTPException(422, "每道工序只能设置一条转出计划")
+            batch = plan.batches[0]
+            if plan.schedule_id or batch.id or batch.upstream_batch_ids:
                 raise HTTPException(422, "新建排期不能引用已有班组或供料批次")
-            if any(b.target_quantity is None for b in plan.batches):
-                raise HTTPException(422, "请填写每个班组各批的计划件数")
-            node["target_quantity"] = sum(b.target_quantity for b in plan.batches)
-            node["target_weight"] = sum(b.target_weight or 0 for b in plan.batches) or None
-            node["due_at"] = max(b.due_at for b in plan.batches)
+            if batch.target_quantity is None:
+                raise HTTPException(422, "请填写每个班组的计划件数")
+            node["target_quantity"] = batch.target_quantity
+            node["target_weight"] = batch.target_weight
+            node["due_at"] = batch.due_at
     batches = payload.delivery_batches or [
         CustomerBatch.model_construct(
             batch_number=1,

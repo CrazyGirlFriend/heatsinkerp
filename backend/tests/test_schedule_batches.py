@@ -1,6 +1,12 @@
 import pytest
 from app.database import SessionLocal
-from app.models import MaterialStockBalance, ProductionScheduleTask
+from app.models import (
+    MaterialStockBalance,
+    ProductionSchedule,
+    ProductionScheduleBatch,
+    ProductionScheduleTask,
+)
+from app.production_schedule_schemas import BatchWrite
 from legacy_schedules import dispatch_patch, dispatcher
 from test_production_schedules import URL, get, plan
 from test_warehouse_classification import dispatch
@@ -29,6 +35,20 @@ def save(client, item, batches, headers=None):
     return response
 
 
+def import_historical_plan(client, item, batches):
+    with SessionLocal.begin() as db:
+        plan_row = db.get(ProductionSchedule, item["id"])
+        rows = [BatchWrite.model_validate(data) for data in batches]
+        for row in rows:
+            db.add(
+                ProductionScheduleBatch(schedule_id=plan_row.id, **row.model_dump(exclude={"id"}))
+            )
+        plan_row.target_quantity = sum(row.target_quantity or 0 for row in rows)
+        plan_row.due_at = max(row.due_at for row in rows)
+        plan_row.planning_state = "confirmed"
+    return get(client, item)
+
+
 def writes(item):
     fields = {
         "id",
@@ -47,17 +67,20 @@ def test_only_dispatch_plans_batches_and_owns_final_due(client, warehouse):
     item = plan(client, s, workshop=True)
     with SessionLocal() as db:
         final = db.get(ProductionScheduleTask, item["task_id"]).final_due_at
-    rows = [batch(), batch(2, 60, due_at="2026-12-22T17:00:00+08:00")]
+    rows = [batch(1, 100, due_at="2026-12-22T17:00:00+08:00")]
     assert save(client, item, rows, s["headers"]).status_code == 403
     assert save(client, item, rows, s["other_headers"]).status_code == 403
+    split = save(client, item, [batch(), batch(2, 60)])
+    assert split.status_code == 422 and "一条转出计划" in split.text
     response = save(client, item, rows)
     assert response.status_code == 200, response.text
     updated = response.json()
     assert updated["target_quantity"] == 100
     assert updated["due_at"] == "2026-12-22T09:00:00+00:00"
-    assert [b["target_quantity"] for b in updated["batches"]] == [40, 60]
+    assert [b["target_quantity"] for b in updated["batches"]] == [100]
     assert updated["history"][0]["action"] == "batches_updated"
-    assert len(updated["history"][0]["after"]["batches"]) == 2
+    assert len(updated["history"][0]["after"]["batches"]) == 1
+    assert save(client, updated, [*writes(updated), batch(2, 60)]).status_code == 422
     with SessionLocal() as db:
         assert db.get(ProductionScheduleTask, item["task_id"]).final_due_at == final
     assert save(client, item, rows).status_code == 409
@@ -137,16 +160,45 @@ def test_handover_start_follows_upstream_without_changing_downstream_commitment(
     assert save(client, current_first, [batch(2, 100)]).status_code == 409
 
 
+def test_dispatch_credits_actual_transfers_to_the_only_handover_plan(client, warehouse):
+    lot = intake(client, warehouse).json()
+    item = plan(client, warehouse, lot)
+    saved = save(client, item, [batch(1, 100)])
+    assert saved.status_code == 200, saved.text
+    schedule = saved.json()
+    for quantity in (40, 60):
+        response = dispatch(
+            client,
+            warehouse,
+            [
+                {
+                    "source_transfer_id": lot["id"],
+                    "production_schedule_id": schedule["id"],
+                    "quantity": quantity,
+                    "weight": quantity / 10,
+                }
+            ],
+            idempotency_key=f"handover-{quantity}",
+        )
+        assert response.status_code == 201, response.text
+    current = get(client, schedule)
+    assert current["remaining_quantity"] == 0
+    assert current["batches"][0]["dispatched_quantity"] == 100
+    assert {delivery["schedule_batch_id"] for delivery in current["deliveries"]} == {
+        schedule["batches"][0]["id"]
+    }
+
+
 def test_linked_batches_start_after_all_selected_supplies_and_ignore_legacy_start(
     client, warehouse
 ):
     first = plan(client, warehouse)
     second = plan(client, warehouse, workshop=True, predecessor_id=first["id"])
-    first = save(
+    first = import_historical_plan(
         client, first, [batch(1, 40), batch(2, 60, due_at="2026-12-22T16:00:00+08:00")]
-    ).json()
+    )
     ids = [b["id"] for b in first["batches"]]
-    response = save(
+    result = import_historical_plan(
         client,
         second,
         [
@@ -160,8 +212,6 @@ def test_linked_batches_start_after_all_selected_supplies_and_ignore_legacy_star
             ),
         ],
     )
-    assert response.status_code == 200, response.text
-    result = response.json()
     assert [b["planned_start_at"] for b in result["batches"]] == [
         b["due_at"] for b in first["batches"]
     ]
@@ -184,9 +234,7 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
         idempotency_key="old",
     )
     assert old.status_code == 201, old.text
-    response = save(client, item, [batch(), batch(2, 60)])
-    assert response.status_code == 200, response.text
-    item = response.json()
+    item = import_historical_plan(client, item, [batch(), batch(2, 60)])
     assert item["dispatched_quantity"] == 10
     assert sum(b["dispatched_quantity"] for b in item["batches"]) == 0
     first, second = item["batches"]
@@ -227,7 +275,7 @@ def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, w
 @pytest.mark.parametrize("workshop", [False, True])
 def test_early_batch_deadline_is_visible_in_filters(client, warehouse, workshop):
     item = plan(client, warehouse, workshop=workshop)
-    response = save(
+    result = import_historical_plan(
         client,
         item,
         [
@@ -235,8 +283,6 @@ def test_early_batch_deadline_is_visible_in_filters(client, warehouse, workshop)
             batch(2, 60, planned_start_at="2090-01-01T00:00:00Z", due_at="2090-01-02T00:00:00Z"),
         ],
     )
-    assert response.status_code == 200, response.text
-    result = response.json()
     assert result["status"] == result["batches"][0]["status"] == "overdue"
     assert result["batches"][1]["status"] == "pending"
     assert item["id"] in [
@@ -256,7 +302,7 @@ def test_each_batch_must_finish_and_date_filter_matches_early_batch(client, ware
         change(client, s, lot, 140, workshop=True, processing_status="complete").status_code == 201
     )
     item = plan(client, s, lot, workshop=True)
-    response = save(
+    item = import_historical_plan(
         client,
         item,
         [
@@ -264,8 +310,6 @@ def test_each_batch_must_finish_and_date_filter_matches_early_batch(client, ware
             batch(2, 60, planned_start_at="2090-01-01T00:00:00Z", due_at="2090-01-02T00:00:00Z"),
         ],
     )
-    assert response.status_code == 200, response.text
-    item = response.json()
     first, second = item["batches"]
     date_filter = {"due_from": "2020-01-02T00:00:00Z", "due_to": "2020-01-02T23:00:00Z"}
     assert item["id"] in [p["id"] for p in client.get(URL, params=date_filter).json()["items"]]

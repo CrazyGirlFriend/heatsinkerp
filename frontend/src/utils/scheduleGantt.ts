@@ -68,17 +68,19 @@ export function ganttBatchRelations(record: ScheduleGanttRecord) {
 
 function group(record: ScheduleGanttRecord) {
   const bars = ganttInlineBars(record)
-  // Batch numbers align display rows only; actual supply links still come from
-  // upstream_batch_ids. Dates never move a batch into another display row.
   record.batchNumbers = [
     ...new Set(
-      bars.filter((bar) => bar.kind === 'batch').map((bar) => bar.node?.batch_number || 1),
+      bars.flatMap((bar) =>
+        bar.kind === 'batch' && bar.node?.batch_number ? [bar.node.batch_number] : [],
+      ),
     ),
   ].sort((a, b) => a - b)
   const leaves = bars.filter((leaf) => leaf.startTime != null && leaf.endTime != null)
   for (const leaf of leaves) {
     leaf.lanes[record.id] =
-      leaf.kind === 'batch' ? record.batchNumbers.indexOf(leaf.node?.batch_number || 1) : 0
+      leaf.kind === 'batch' && leaf.node?.batch_number
+        ? record.batchNumbers.indexOf(leaf.node.batch_number)
+        : 0
   }
   record.laneCount = Math.max(1, record.batchNumbers.length)
   if (leaves.length) {
@@ -124,11 +126,15 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
               laneCount: 1,
             }
           })
-        const team = group({
+        const name = `${String(node.sequence_no).padStart(2, '0')}  ${node.team_name}`
+        const ready = batches[0]
+        if (batches.length === 1 && ready && !ready.node?.batch_number)
+          return { ...ready, id: `team:${node.id}`, name }
+        return group({
           id: `team:${node.id}`,
           type: 'project',
           kind: 'team',
-          name: `${String(node.sequence_no).padStart(2, '0')}  ${node.team_name}${batches.length ? '' : ` · ${planLabel(node)}`}`,
+          name: batches.length ? name : `${name} · ${planLabel(node)}`,
           quantity:
             node.completion_basis === 'weight'
               ? `${formatAmount(node.target_weight)} kg`
@@ -141,7 +147,6 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
           lanes: {},
           laneCount: 1,
         })
-        return team
       })
     const deadline = scheduleTimestamp(task.final_due_at)
     if (deadline != null)
