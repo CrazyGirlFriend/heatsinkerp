@@ -127,7 +127,7 @@ async function base(type: string | null = 'finished') {
   if (type !== null) selects[0]!.vm.$emit('update:modelValue', type)
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
-  await wrapper.get('input[aria-label="转料规格"]').setValue('100×80×5 mm')
+  await wrapper.get('input[aria-label="尺寸"]').setValue('100×80×5 mm')
   if (!['sludge', 'scrap_chips'].includes(type || '')) await number('转料件数', 0)
   if (type === 'sludge') {
     await number('废泥实重', 16.5)
@@ -184,12 +184,12 @@ describe('material transfer document form', () => {
   it('allows blank dimensions when creating or editing an internal handoff', async () => {
     await render()
     await base()
-    await wrapper.get('input[aria-label="转料规格"]').setValue('')
+    await wrapper.get('input[aria-label="尺寸"]').setValue('')
     await submit()
     expect(materialTransferApi.create).toHaveBeenCalled()
     wrapper.unmount()
     await render(fixture())
-    await wrapper.get('input[aria-label="转料规格"]').setValue('')
+    await wrapper.get('input[aria-label="尺寸"]').setValue('')
     await submit()
     expect(materialTransferApi.update).toHaveBeenCalled()
   })
@@ -226,13 +226,16 @@ describe('material transfer document form', () => {
     expect(wrapper.findAll('.transfer-section h3').map((item) => item.text())).toEqual([
       '转料信息',
       '物料资料',
-      '规格工艺',
+      '尺寸与工艺',
       '补充说明',
     ])
     expect(wrapper.find('.el-tabs').exists()).toBe(false)
     expect(wrapper.find('[aria-label="表单分页"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('研磨')
-    for (const field of materialDocumentTextFields)
+    expect(wrapper.find('[aria-label="成品尺寸"]').exists()).toBe(false)
+    for (const field of materialDocumentTextFields.filter(
+      (field) => field.key !== 'finished_specification',
+    ))
       expect(wrapper.find(`[aria-label="${field.label}"]`).isVisible(), field.label).toBe(true)
     expect(wrapper.get('textarea[aria-label="备注"]').isVisible()).toBe(true)
   })
@@ -530,7 +533,9 @@ describe('material transfer document form', () => {
     await render(fixture({ ...document, finished_quantity: 132 }))
     expect(wrapper.get('input[aria-label="成品件数"]').element).toHaveProperty('value', '132')
     expect(wrapper.get('input[aria-label="转料件数"]').element).toHaveProperty('value', '120')
-    for (const field of materialDocumentTextFields) {
+    for (const field of materialDocumentTextFields.filter(
+      (field) => field.key !== 'finished_specification',
+    )) {
       const input = wrapper.get(
         `${field.multiline ? 'textarea' : 'input'}[aria-label="${field.label}"]`,
       )
@@ -542,9 +547,12 @@ describe('material transfer document form', () => {
     const payload = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
     expect(payload).toMatchObject({ expected_version: 6, quantity: 120, finished_quantity: null })
     materialDocumentTextFields
-      .filter((field) => field.key !== 'transfer_specification')
+      .filter(
+        (field) => field.key !== 'transfer_specification' && field.key !== 'finished_specification',
+      )
       .forEach((field) => expect(payload[field.key]).toBeNull())
-    expect(payload.transfer_specification).toBe('旧转料规格')
+    expect(payload.transfer_specification).toBe(document.transfer_specification)
+    expect(payload.finished_specification).toBe(document.finished_specification)
     expect(payload).not.toHaveProperty('batch_no')
   })
 

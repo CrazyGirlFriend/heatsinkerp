@@ -599,7 +599,7 @@ const validation = useDialogValidation(() => {
     }
     if (routeProblem(line)) add('route', routeProblem(line))
     if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid)
-      add('specification', '请补全实际尺寸')
+      add('specification', '请补全尺寸')
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) {
       if (!sludgeWeight(line.gross, 100)) add('gross', '请填写有效废泥实重')
       if (!sludgeWeight(1, line.percent)) add('percent', '请填写有效材料占比')
@@ -1602,7 +1602,7 @@ watch(
                 v-model:open="line.specificationOpen"
               >
                 <template #summary>
-                  <span class="specification-label">实际尺寸</span>
+                  <span class="specification-label">尺寸</span>
                   <span class="specification-summary">{{
                     !line.specificationOpen && line.specification ? line.specification : '选填'
                   }}</span>
@@ -1613,7 +1613,7 @@ watch(
                 <ElFormItem label-width="0" :error="lineError(line, 'specification')">
                   <SpecificationInput
                     v-model="line.specification"
-                    :label="`${line.source.transfer.batch_no}实际尺寸`"
+                    :label="`${line.source.transfer.batch_no}尺寸`"
                     placeholder="如 100 × 80 × 5 mm"
                     @validity-change="line.specificationValid = $event"
                   />

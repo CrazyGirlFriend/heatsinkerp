@@ -137,7 +137,7 @@ describe('inventory display columns', () => {
       expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
       check('物料类型', true)
       check('加工分类', false)
-      check('实际尺寸', false)
+      check('尺寸', false)
       await button('应用').trigger('click')
       const saved = latest()
       wrapper.unmount()
@@ -375,7 +375,7 @@ describe('inventory display columns', () => {
     const display = (key: string) =>
       inventoryColumns.find((column) => column.key === key)!.format(row)
     expect(display('customer_code')).toBe('—')
-    expect(display('transfer_specification')).toBe('多规格')
+    expect(display('transfer_specification')).toBe('多种尺寸')
     expect(display('finished_quantity')).toBe('100')
     row.finished_quantity_count = 2
     expect(display('finished_quantity')).toBe('各批不同')

@@ -73,13 +73,38 @@ def test_one_to_twenty_then_eight_leaves_twelve_registered_pieces(client, proces
 def test_mixed_batches_do_not_mark_all_material_processed(client, processing):
     s = processing
     lot = receive(client, s)
-    assert change(client, s, lot, 20, workshop=True).status_code == 201
+    size = "20 × 10 × 2 mm"
+    assert change(client, s, lot, 20, workshop=True, transfer_specification=size).status_code == 201
     other = receive(client, s, idempotency_key="another-intake")
     url = base(s, True)
     groups = client.get(url + "/inventory").json()["items"]
     assert len(groups) == 2
     by_state = {group["processing_state"]: group for group in groups}
     assert set(by_state) == {"registered", "unregistered"}
+    assert lot["serial_no"] == other["serial_no"]
+    assert by_state["registered"]["transfer_specification"] == size
+    assert by_state["unregistered"]["transfer_specification"] == (
+        other["transfer_specification"] or ""
+    )
+    filtered = client.get(
+        url + "/inventory", params={"search_field": "transfer_specification", "query": size}
+    )
+    assert [row["batch_no"] for row in filtered.json()["items"]] == [lot["batch_no"]]
+    physical = client.get(
+        "/api/serial-inventory/batches",
+        params={
+            "serial_no": lot["serial_no"],
+            "team_id": s["other"]["id"],
+            "material_name": lot["material_name"],
+            "material_type": lot["material_type"],
+            "shared": False,
+            "location": "stock",
+        },
+    )
+    assert {row["batch_no"]: row["transfer_specification"] for row in physical.json()["items"]} == {
+        lot["batch_no"]: size,
+        other["batch_no"]: other["transfer_specification"],
+    }
     for state, source, quantity in [("registered", lot, 20), ("unregistered", other, 1)]:
         group = by_state[state]
         opposite = "unregistered" if state == "registered" else "registered"

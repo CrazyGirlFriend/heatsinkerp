@@ -64,7 +64,7 @@ export const transferRecordColumns = [
     (row) => materialTransferStatusLabel(row.status, row.entry_kind),
     true,
   ),
-  column('transfer_specification', '实际尺寸', 180, (row) => row.transfer_specification, true),
+  column('transfer_specification', '尺寸', 180, (row) => row.transfer_specification, true),
   column(
     'sent_employee_name',
     '转料人',
@@ -96,7 +96,6 @@ export const transferRecordColumns = [
     row.sent_processing_status ? processingStateLabels[row.sent_processing_status] : '未登记',
   ),
   column('entry_kind', '转料方式', 130, (row) => materialEntryLabel(row.entry_kind)),
-  column('finished_specification', '成品规格', 180, (row) => row.finished_specification),
   column('source_transfer_batch_no', '上一批次号', 210, (row) => row.source_transfer_batch_no),
   column('source_batch_no', '原单批号', 160, (row) => row.source_batch_no),
   column('customer_code', '客户代码', 140, (row) => row.customer_code),

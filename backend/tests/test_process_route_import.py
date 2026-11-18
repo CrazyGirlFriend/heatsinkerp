@@ -191,13 +191,14 @@ def test_explicit_weight_units_are_normalized_to_kg(label, raw, expected):
     assert values(result)["weight"] == expected
 
 
-def test_inline_fields_and_customer_requirements_keep_their_own_text():
+@pytest.mark.parametrize("finished_label", ["成品规格", "成品尺寸"])
+def test_inline_fields_and_customer_requirements_keep_their_own_text(finished_label):
     result = parser.parse_docx(
         docx(
             [
                 ["流水号：ORDER-9；材质：W80；客户代码：ACME"],
                 ["来料重量(kg)：2.5"],
-                ["成品规格", "10×20×2 mm", "来料尺寸", "100×80×5 mm"],
+                [finished_label, "10×20×2 mm", "来料尺寸", "100×80×5 mm"],
                 ["产品编号", "P-8", "件号", "N-7", "原单批号", "B-6"],
                 ["技术要求：无磕碰；按图纸加工。", "特殊工艺", "热处理"],
                 ["应发成品件数", "100件"],
@@ -205,6 +206,10 @@ def test_inline_fields_and_customer_requirements_keep_their_own_text():
             ]
         )
     )
+    fields = result[0]["receipt_fields"]
+    assert fields["finished_specification"]["label"] == "成品尺寸"
+    assert fields["finished_specification"]["source_label"] == finished_label
+    assert fields["transfer_specification"]["label"] == "尺寸"
     assert values(result) == {
         "serial_no": "ORDER-9",
         "material_name": "W80",

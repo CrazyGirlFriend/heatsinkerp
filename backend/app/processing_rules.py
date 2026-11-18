@@ -68,7 +68,7 @@ def prepare_split(lot, payload, q, w):
     elif any(
         line.role == "produced" and not line.transfer_specification for line in payload.outputs
     ):
-        raise ProcessingRuleError(422, "请填写已加工产出的实际尺寸")
+        raise ProcessingRuleError(422, "请填写加工后尺寸")
     return payload, input_quantity
 
 

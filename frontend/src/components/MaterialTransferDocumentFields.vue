@@ -47,13 +47,15 @@ const fields = computed<DocumentField[]>(() => {
       value: t.delivery_quantity == null ? '—' : `${t.delivery_quantity} 件`,
     },
     ...materialDocumentTextFields
-      .filter((field) =>
-        props.group === 'all'
-          ? field.group === 'basic' || t[field.key]
-          : field.group === props.group,
+      .filter(
+        (field) =>
+          field.key !== 'finished_specification' &&
+          (props.group === 'all'
+            ? field.group === 'basic' || t[field.key]
+            : field.group === props.group),
       )
       .map((field) => ({
-        label: processed && field.key === 'transfer_specification' ? '实际尺寸' : field.label,
+        label: processed && field.key === 'transfer_specification' ? '加工后尺寸' : field.label,
         value: t[field.key] || '—',
         fullWidth: field.multiline,
       })),

@@ -274,7 +274,7 @@ describe('warehouse grouped stock', () => {
       ...(mode.processing ? ['工艺工序', '返工情况', '加工状态'] : []),
       '材质',
       '物料类型',
-      '实际尺寸',
+      '尺寸',
       '操作',
     ])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
@@ -334,7 +334,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('[data-field="on_hand_quantity"]').map((cell) => cell.text())).toEqual(
       data().map((row) => String(row.on_hand_quantity)),
     )
-    expect(headers()).toContain('成品规格')
+    expect(headers()).not.toContain('成品尺寸')
     expect(headers()).not.toContain('工艺工序')
     const settings = columnSettings()
     expect(
@@ -856,9 +856,7 @@ describe('warehouse grouped stock', () => {
     ).toEqual(['—', '3.456'])
     expect(wrapper.findAllComponents(ProcessingStockStatus).at(-1)!.text()).toBe('—')
     const dimensions = () =>
-      wrapper
-        .findAll('tbody tr')
-        .map((row) => row.findAll('td')[headers().indexOf('实际尺寸')]!.text())
+      wrapper.findAll('tbody tr').map((row) => row.findAll('td')[headers().indexOf('尺寸')]!.text())
     expect(dimensions()).toEqual(['100 × 80 × 5 mm', '20 × 10 × 2 mm', '—'])
     await wrapper.setProps({ fullscreen: true })
     expect(dimensions()).toEqual(['100 × 80 × 5 mm', '20 × 10 × 2 mm', '—'])
@@ -872,7 +870,7 @@ describe('warehouse grouped stock', () => {
       })),
     )
     await flushPromises()
-    expect(headers()).not.toContain('实际尺寸')
+    expect(headers()).not.toContain('尺寸')
     expect(wrapper.findAll('.inventory-material-kind').map((row) => row.text())).toEqual(kinds)
     expect(headers()).not.toContain('加工分类')
     expect(wrapper.text()).toContain('本班组加工')
@@ -1064,7 +1062,7 @@ describe('warehouse grouped stock', () => {
       ]),
     )
     expect(source.fields.find((field) => field.key === 'transfer_specification')!.label).toBe(
-      '实际尺寸',
+      '尺寸',
     )
     vi.mocked(teamMaterialApi.teamInventory).mockImplementation(async (_id, params) => ({
       items: params?.page === 1 ? data() : [warehouseFixture({ group_id: 14 })],
@@ -1520,8 +1518,8 @@ describe('warehouse grouped stock', () => {
     expect(row.find('.inventory-cell-stack, .inventory-ownership-details, br').exists()).toBe(false)
     expect(row.text()).not.toContain('未指定任务')
     expect(row.text()).not.toContain('规格未填写')
-    expect(headers()).toContain('实际尺寸')
-    expect(row.findAll('td')[headers().indexOf('实际尺寸')]!.text()).toBe('100 × 80 × 5')
+    expect(headers()).toContain('尺寸')
+    expect(row.findAll('td')[headers().indexOf('尺寸')]!.text()).toBe('100 × 80 × 5')
     columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({
@@ -1531,11 +1529,11 @@ describe('warehouse grouped stock', () => {
     )
     await flushPromises()
     expect(row.text()).not.toContain('100 × 80 × 5')
-    expect(hints()).toContain('规格：100 × 80 × 5')
+    expect(hints()).toContain('尺寸：100 × 80 × 5')
     expect(
       wrapper
         .findAllComponents(ElTooltip)
-        .find((item) => item.props('content') === '规格：100 × 80 × 5')!
+        .find((item) => item.props('content') === '尺寸：100 × 80 × 5')!
         .props('trigger'),
     ).toEqual(['hover', 'focus'])
     expect(row.get('.inventory-material').attributes('tabindex')).toBe('0')
@@ -1551,12 +1549,12 @@ describe('warehouse grouped stock', () => {
       warehouseColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
     )
     await flushPromises()
-    expect(headers()).toContain('实际尺寸')
+    expect(headers()).toContain('尺寸')
     expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5')
     expect(
       wrapper
         .findAllComponents(ElTooltip)
-        .find((item) => item.props('content') === '规格：100 × 80 × 5')!
+        .find((item) => item.props('content') === '尺寸：100 × 80 × 5')!
         .props('disabled'),
     ).toBe(true)
     expect(wrapper.get('tbody tr').text()).not.toContain('未指定任务')
@@ -1673,7 +1671,7 @@ describe('warehouse grouped stock', () => {
       '数量（件）',
       '材质',
       '物料类型',
-      '实际尺寸',
+      '尺寸',
       '操作',
     ])
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
@@ -1892,7 +1890,7 @@ describe('warehouse grouped stock', () => {
       '数量（件）',
       '材质',
       '物料类型',
-      '实际尺寸',
+      '尺寸',
       '操作',
     ])
     expect(wrapper.text()).not.toContain('车间转入 ·')
@@ -2061,7 +2059,7 @@ describe('warehouse grouped stock', () => {
       '数量（件）',
       '材质',
       '物料类型',
-      '实际尺寸',
+      '尺寸',
       '操作',
     ])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
@@ -2239,8 +2237,8 @@ describe('warehouse grouped stock', () => {
     })
     await render(undefined, true, true, false)
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
-    expect(hints()).toContain('规格：100 × 80 × 5')
-    expect(hints()).toContain('规格：40 × 30 × 2')
+    expect(hints()).toContain('尺寸：100 × 80 × 5')
+    expect(hints()).toContain('尺寸：40 × 30 × 2')
   })
   it('promotes a searched hidden column and restores custom column order', async () => {
     await render(

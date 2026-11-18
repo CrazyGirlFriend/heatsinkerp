@@ -90,7 +90,6 @@ onBeforeUnmount(() => {
           ><span v-if="field === 'serial_no'">{{
             [
               item.details.material_name,
-              item.details.finished_specification,
               item.details.customer_code && `客户 ${item.details.customer_code}`,
               item.details.product_code && `产品 ${item.details.product_code}`,
               item.details.part_no && `零件 ${item.details.part_no}`,

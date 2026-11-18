@@ -94,10 +94,7 @@ const form = reactive({
 })
 
 const autofill = useMaterialAutofill(() => form.serialNo, form.document)
-const specificationValidity = reactive<Record<string, boolean>>({
-  finished_specification: true,
-  transfer_specification: true,
-})
+const dimensionValid = ref(true)
 
 let formGeneration = 0
 const external = computed(() =>
@@ -267,11 +264,10 @@ const validation = useDialogValidation(() => {
       form.finishedQuantity > 2147483647)
   )
     add('finishedQuantity', '成品件数须为非负整数，不能超过 2147483647')
+  if (!external.value && !dimensionValid.value) add('transfer_specification', '请填完整尺寸')
   for (const section of documentSections)
     for (const field of section.fields) {
-      if (!external.value && specificationValidity[field.key] === false)
-        add(field.key, '请填完整规格尺寸')
-      else if (form.document[field.key].trim().length > field.maxLength)
+      if (form.document[field.key].trim().length > field.maxLength)
         add(field.key, `${field.label}不能超过 ${field.maxLength} 个字符`)
     }
   if (form.notes.trim().length > 2000) add('notes', `${notesLabel.value}不能超过 2000 个字符`)
@@ -281,7 +277,7 @@ const { formRef: transferForm, fieldErrors } = validation
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   autofill.reset()
-  specificationValidity.finished_specification = specificationValidity.transfer_specification = true
+  dimensionValid.value = true
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
   sender.value = null
@@ -765,7 +761,7 @@ onBeforeUnmount(() => {
               v-model="form.document[field.key]"
               :field="field"
               :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')"
-              @validity-change="specificationValidity[field.key] = $event"
+              @validity-change="dimensionValid = $event"
             />
           </ElFormItem>
           <ElFormItem

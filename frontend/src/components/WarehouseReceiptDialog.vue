@@ -42,7 +42,6 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import {
   materialDocumentTextFields,
-  materialSpecificationKeys as specificationKeys,
   materialDocumentFormSections,
   isScrapType,
   isWeightOnlyType,
@@ -340,10 +339,7 @@ const originalSludge = computed(() => {
   }
 })
 const autofill = useMaterialAutofill(() => form.serialNo, form.document)
-const specificationValidity = reactive<Record<string, boolean>>({
-  finished_specification: true,
-  transfer_specification: true,
-})
+const dimensionValid = ref(true)
 
 let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
@@ -367,7 +363,7 @@ function fill(
   routeReviewed.value = false
   documentImport.reset()
   autofill.reset()
-  specificationValidity.finished_specification = specificationValidity.transfer_specification = true
+  dimensionValid.value = true
   form.warehouseLocation = payload?.warehouse_location || ''
   form.warehouseLocationKey = payload?.warehouse_location_reservation_key || ''
   form.receiptKind = payload?.receipt_kind || 'external'
@@ -507,10 +503,9 @@ const validation = useDialogValidation(() => {
           : 'deliveryQuantity'
       ] = message
   }
+  if (!dimensionValid.value) issues.transfer_specification = '请填完整尺寸'
   for (const field of materialDocumentTextFields) {
-    if (specificationValidity[field.key] === false) issues[field.key] = '请填完整规格尺寸'
-    else if (form.document[field.key].trim().length > field.maxLength)
-      issues[field.key] = '内容过长'
+    if (form.document[field.key].trim().length > field.maxLength) issues[field.key] = '内容过长'
   }
   if (
     !weightOnly.value &&
@@ -970,14 +965,14 @@ onBeforeUnmount(() => {
             @update:weight="form.weight = $event"
           />
           <ElFormItem
-            label="实际尺寸（选填）"
+            label="尺寸（选填）"
             class="form-field--long"
             :class="importedClass('transfer_specification')"
             :error="fieldErrors.transfer_specification"
             data-validation-field="transfer_specification"
           >
             <template #label>
-              实际尺寸（选填）<AutofillBadge
+              尺寸（选填）<AutofillBadge
                 :source="
                   documentSource('transfer_specification') ||
                   autofill.source('transfer_specification')
@@ -988,10 +983,10 @@ onBeforeUnmount(() => {
             </template>
             <SpecificationInput
               v-model="form.document.transfer_specification"
-              label="实际尺寸"
+              label="尺寸"
               placeholder="如 100 × 80 × 5 mm"
               :disabled="readonly"
-              @validity-change="specificationValidity.transfer_specification = $event"
+              @validity-change="dimensionValid = $event"
             />
           </ElFormItem>
         </CompactFormSection>
@@ -1050,10 +1045,7 @@ onBeforeUnmount(() => {
                 :key="field.key"
                 :label="field.label"
                 :error="fieldErrors[field.key]"
-                :class="[
-                  { 'form-field--long': specificationKeys.includes(field.key) || field.multiline },
-                  importedClass(field.key),
-                ]"
+                :class="[{ 'form-field--long': field.multiline }, importedClass(field.key)]"
                 ><template #label
                   >{{ field.label
                   }}<AutofillBadge
@@ -1064,7 +1056,6 @@ onBeforeUnmount(() => {
                   v-model="form.document[field.key]"
                   :field="field"
                   :disabled="readonly"
-                  @validity-change="specificationValidity[field.key] = $event"
               /></ElFormItem>
               <ElFormItem
                 v-if="section.name === 'document' && !weightOnly"

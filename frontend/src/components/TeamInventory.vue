@@ -1392,7 +1392,7 @@ onBeforeUnmount(() => {
           </div>
           <ElTooltip
             v-else-if="column.key === 'material_name'"
-            :content="`规格：${row.transfer_specification}`"
+            :content="`尺寸：${row.transfer_specification}`"
             :disabled="!row.transfer_specification || separateSpecification"
             :trigger="['hover', 'focus']"
             placement="top"

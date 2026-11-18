@@ -1622,7 +1622,7 @@ export function traceFlowOption(
           const worker = event.changes.processor_name?.after
           const workDate = event.changes.processing_date?.after
           return chainTooltip(
-            `${node.batch.batch_no}\n${node.batch.next_team.name} · ${event.changes.work_kind?.after === 'rework' ? `返工第 ${event.changes.rework_round?.after || 1} 次 · 原加工 #${event.changes.rework_of_id?.after}` : '加工登记'}\n${work}${worker ? `\n加工人 ${worker}` : ''}${workDate ? `\n实际加工日期 ${workDate}` : ''}${measured ? `\n实测重量 ${num(Number(measured.before))} → ${num(Number(measured.after))} kg` : ''}${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`,
+            `${node.batch.batch_no}\n${node.batch.next_team.name} · ${event.changes.work_kind?.after === 'rework' ? `返工第 ${event.changes.rework_round?.after || 1} 次 · 原加工 #${event.changes.rework_of_id?.after}` : '加工登记'}\n${work}${worker ? `\n加工人 ${worker}` : ''}${workDate ? `\n实际加工日期 ${workDate}` : ''}${measured ? `\n实测重量 ${num(Number(measured.before))} → ${num(Number(measured.after))} kg` : ''}${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n加工后尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`,
           )
         }
         const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined

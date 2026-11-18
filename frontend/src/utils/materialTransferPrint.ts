@@ -149,7 +149,6 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
   if (!item.shared_unallocated)
     fields.push(
       { label: '客户代码', value: value(item.customer_code) },
-      { label: '成品规格', value: value(item.finished_specification) },
       { label: '要求发货日期', value: value(item.delivery_date) },
       {
         label: '应发成品件数',
@@ -165,8 +164,6 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
         ...[
           { label: '关联流水号', value: member.serial_no },
           { label: '客户代码', value: member.customer_code || '—' },
-          { label: '成品规格', value: member.finished_specification || '—' },
-          { label: '计划切割尺寸', value: member.planned_specification || '未登记' },
           {
             label: '计划用料重量',
             value: member.planned_weight == null ? '未登记' : `${member.planned_weight} kg`,
@@ -196,7 +193,6 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
           label: '计划切出件数',
           value: member.planned_quantity == null ? '未登记' : `${member.planned_quantity} 件`,
         },
-        { label: '计划切割尺寸', value: member.planned_specification || '未登记' },
       )
   }
   if (item.delivery_origin_batch_no)
@@ -225,7 +221,7 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
     })
   for (const [label, content] of [
     ['材质', item.material_name],
-    ['实际尺寸', item.transfer_specification],
+    [item.entry_kind === 'processing_output' ? '加工后尺寸' : '尺寸', item.transfer_specification],
     ['接收任务', materialPurposeLabel(item)],
   ] as const) {
     if (content && content.length > 24) fields.push({ label, value: content })

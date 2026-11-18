@@ -183,7 +183,7 @@ describe('warehouse manual receipt', () => {
       }),
     )
   })
-  it.each(['成品规格', '实际尺寸'])('retains %s validation on physical receipts', async (label) => {
+  it('validates only the physical batch dimensions on receipts', async () => {
     await render()
     expect(
       wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
@@ -191,7 +191,7 @@ describe('warehouse manual receipt', () => {
     await fill()
     const shape = wrapper
       .findAllComponents(ElSelect)
-      .find((item) => item.find(`input[aria-label="${label}形状"]`).exists())!
+      .find((item) => item.find('input[aria-label="尺寸形状"]').exists())!
     shape.vm.$emit('update:modelValue', 'rectangle')
     shape.vm.$emit('change', 'rectangle')
     await flushPromises()
@@ -201,7 +201,8 @@ describe('warehouse manual receipt', () => {
     expect(wrapper.text()).toContain('请填完整尺寸')
     expect(
       wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
-    ).toBe(label === '成品规格' ? 'true' : 'false')
+    ).toBe('false')
+    expect(wrapper.find('input[aria-label="成品尺寸"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   })
   it.each(['', '100 × 80 × 5 mm'])(
@@ -209,8 +210,8 @@ describe('warehouse manual receipt', () => {
     async (dimensions) => {
       await render()
       const section = wrapper.get('[aria-label="入库数量与仓位"]')
-      expect(section.text()).toContain('实际尺寸（选填）')
-      const input = section.get('input[aria-label="实际尺寸"]')
+      expect(section.text()).toContain('尺寸（选填）')
+      const input = section.get('input[aria-label="尺寸"]')
       await fill()
       wrapper
         .findAllComponents(ElSelect)
@@ -404,7 +405,7 @@ describe('warehouse manual receipt', () => {
     await fill()
     expect(wrapper.get('.receipt-heading strong').text()).toBe('库房')
     expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
-    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(5)
+    expect(wrapper.find('input[aria-label="成品尺寸形状"]').exists()).toBe(false)
     expect(wrapper.find('button[aria-label="入库仓位"]').exists()).toBe(true)
     expect(wrapper.find('input[aria-label="入库重量单位"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('接收班组')
@@ -1054,7 +1055,7 @@ it('does not turn a historical multi-serial route into a shared receipt', async 
   await importFile()
   expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
-  for (const label of ['入库件数', '入库重量', '编号', '实际尺寸'])
+  for (const label of ['入库件数', '入库重量', '编号', '尺寸'])
     expect(wrapper.find(`[aria-label="${label}"]`).exists()).toBe(true)
 })
 

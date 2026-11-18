@@ -49,8 +49,8 @@ VALUES = [
 ]
 
 
-def xlsx(values=None, *, formula=False, extra_rows=False, parts=None):
-    rows = [LABELS, values or VALUES]
+def xlsx(values=None, *, labels=None, formula=False, extra_rows=False, parts=None):
+    rows = [labels or LABELS, values or VALUES]
     if extra_rows:
         rows.append(VALUES)
     xml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
@@ -94,6 +94,18 @@ def test_single_order_maps_only_equivalent_fields_and_preserves_every_column():
         not {"quantity", "weight", "part_no", "category_level3", "finished_quantity"}
         & fields.keys()
     )
+
+
+@pytest.mark.parametrize("label", ["成品规格", "成品尺寸"])
+def test_order_size_preserves_original_header(label):
+    order = parse_order(xlsx([*VALUES, "10×20 mm"], labels=[*LABELS, label]), "订单.xlsx")
+    field = order["receipt_fields"]["finished_specification"]
+    assert (field["label"], field["value"], field["source_label"]) == (
+        "成品尺寸",
+        "10×20 mm",
+        label,
+    )
+    assert "transfer_specification" not in order["receipt_fields"]
 
 
 def test_word_wins_in_either_upload_order_and_order_serial_is_independent():

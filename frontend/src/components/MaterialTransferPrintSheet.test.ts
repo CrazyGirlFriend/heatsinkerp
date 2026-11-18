@@ -66,7 +66,7 @@ describe('shared transfer print template', () => {
         '流水号',
         '材质',
         '物料类型',
-        '实际尺寸',
+        '尺寸',
         '件数',
         '重量 (kg)',
         '接收任务',
@@ -135,7 +135,7 @@ describe('shared transfer print template', () => {
     }
     wrapper.unmount()
   })
-  it('retains every optional document field and every character of long notes in both copies', async () => {
+  it('prints the batch size and complete technical notes on both copies', async () => {
     const technical = `首行\n${'技术要求完整保留，'.repeat(350)}末行`
     const document: MaterialTransfer = {
       ...transfer,
@@ -181,7 +181,10 @@ describe('shared transfer print template', () => {
         'TL-ORIGIN',
       ])
         expect(copy.text()).toContain(value)
-      expect(copy.get('.transfer-print-material').findAll('td')[4]!.text()).toBe('—')
+      const cells = copy.get('.transfer-print-material').findAll('td')
+      expect(cells[3]!.text()).toBe('散装')
+      expect(copy.text()).not.toContain('Φ20×4')
+      expect(cells[4]!.text()).toBe('—')
       expect(copy.get('.transfer-print-total').text()).not.toContain('99')
     }
     wrapper.unmount()

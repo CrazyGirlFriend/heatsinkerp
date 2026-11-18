@@ -75,7 +75,7 @@ it.each(['incoming', 'outgoing'])(
       expect(wrapper.findAll('.serial-record-table thead th').map((cell) => cell.text())).toEqual([
         '交接批次',
         '材质',
-        '规格',
+        '尺寸',
         '来源',
         '去向',
         '件数',
@@ -123,8 +123,10 @@ it('supports source-batch dispatch and loss only for writable available inventor
       id,
       batch_no: `TL-${id}`,
       serial_no: 'SERIAL-DETAIL',
+      transfer_specification: '100 × 80 × 5 mm',
       status: 'received',
     }),
+    current_specification: id === 1 ? '20 × 10 × 2 mm' : null,
     available_quantity: quantity,
     available_weight: 0,
     on_hand_quantity: quantity,
@@ -187,6 +189,11 @@ it('supports source-batch dispatch and loss only for writable available inventor
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
     const headings = wrapper.findAll('.serial-record-table thead th').map((cell) => cell.text())
     const cells = wrapper.get('.serial-record-table tbody tr').findAll('td')
+    expect(
+      wrapper
+        .findAll('.serial-record-table tbody tr')
+        .map((row) => row.findAll('td')[headings.indexOf('尺寸')]!.text()),
+    ).toEqual(['20 × 10 × 2 mm', '100 × 80 × 5 mm', '100 × 80 × 5 mm'])
     expect(cells[headings.indexOf('库存件数')]!.text()).toBe('10')
     expect(cells[headings.indexOf('库存重量 (kg)')]!.text()).toBe('0')
     expect(wrapper.find('.serial-record-table .material-amount').exists()).toBe(false)

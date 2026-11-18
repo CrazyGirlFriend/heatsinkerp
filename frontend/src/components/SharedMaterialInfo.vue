@@ -7,12 +7,7 @@ import type { SharedMaterialFields } from '@/types/sharedMaterial'
 const props = defineProps<{ item: SharedMaterialFields & { serial_no?: string } }>()
 const members = computed(() => props.item.shared_serials || [])
 const hasPlan = computed(() =>
-  members.value.some(
-    (member) =>
-      member.planned_weight != null ||
-      member.planned_quantity != null ||
-      member.planned_specification,
-  ),
+  members.value.some((member) => member.planned_weight != null || member.planned_quantity != null),
 )
 const plannedWeight = computed(() =>
   members.value.length && members.value.every((member) => member.planned_weight != null)
@@ -68,16 +63,6 @@ const plannedQuantity = computed(() =>
       <ElTableColumn v-if="hasPlan" label="计划切出 (件)" min-width="130"
         ><template #default="{ row }">{{
           row.planned_quantity == null ? '未登记' : inventoryAmount(row.planned_quantity)
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn v-if="hasPlan" label="计划切割尺寸" min-width="185" show-overflow-tooltip
-        ><template #default="{ row }">{{
-          row.planned_specification || '未登记'
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn label="成品规格" min-width="165" show-overflow-tooltip
-        ><template #default="{ row }">{{
-          row.finished_specification || '—'
         }}</template></ElTableColumn
       >
       <ElTableColumn label="要求发货日期" min-width="145"

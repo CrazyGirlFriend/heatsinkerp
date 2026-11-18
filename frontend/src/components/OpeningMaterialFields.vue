@@ -227,11 +227,11 @@ watch(
     class="dialog-field opening-specification-field"
     :class="{ 'is-error': errors?.[`${index}.transfer_specification`] }"
   >
-    <span class="dialog-field-label">规格</span
+    <span class="dialog-field-label">尺寸</span
     ><SpecificationInput
       :key="generation"
       v-model="form.transfer_specification"
-      label="规格"
+      label="尺寸"
       :disabled="disabled"
       @validity-change="emit('validity-change', $event)"
     />

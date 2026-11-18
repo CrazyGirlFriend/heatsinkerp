@@ -16,9 +16,9 @@ export const inventoryColumns = [
   },
   {
     key: 'transfer_specification',
-    label: '规格',
+    label: '尺寸',
     width: 144,
-    format: (row: SerialSummary) => meta(row, 'transfer_specification', '多规格'),
+    format: (row: SerialSummary) => meta(row, 'transfer_specification', '多种尺寸'),
   },
   {
     key: 'available_quantity',
@@ -45,12 +45,6 @@ export const inventoryColumns = [
     label: '产品编号',
     width: 150,
     format: (row: SerialSummary) => meta(row, 'product_code'),
-  },
-  {
-    key: 'finished_specification',
-    label: '成品规格',
-    width: 160,
-    format: (row: SerialSummary) => meta(row, 'finished_specification', '多规格'),
   },
   {
     key: 'finished_quantity',

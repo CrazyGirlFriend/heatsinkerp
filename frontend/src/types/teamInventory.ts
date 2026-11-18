@@ -133,7 +133,6 @@ export function inventoryStockStatus(row: TeamInventoryRow) {
 const extraKeys = [
   'customer_code',
   'product_code',
-  'finished_specification',
   'finished_quantity',
   'lost_quantity',
   'lost_weight',
@@ -247,7 +246,7 @@ export const warehouseColumns = [
   },
   {
     key: 'transfer_specification',
-    label: '实际尺寸',
+    label: '尺寸',
     width: 180,
     defaultVisible: true,
     format: (row: TeamInventoryRow) => row.transfer_specification || '—',

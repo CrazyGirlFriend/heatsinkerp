@@ -97,8 +97,6 @@ const meta = computed(
   () =>
     [
       ['material_name', '材质'],
-      ['transfer_specification', '转料规格'],
-      ['finished_specification', '成品规格'],
       ['finished_quantity', '成品件数'],
       ['source_batch_no', '原单批号'],
       ['customer_code', '客户代码'],
@@ -348,6 +346,11 @@ onBeforeUnmount(() => {
               materialTypeLabel(row.transfer.material_type)
             }}</template></ElTableColumn
           >
+          <ElTableColumn label="尺寸" min-width="150" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              row.current_specification ?? row.transfer.transfer_specification ?? '—'
+            }}</template></ElTableColumn
+          >
           <ElTableColumn label="来源" min-width="140"
             ><template #default="{ row }">{{
               materialSourceLabel(row.transfer)
@@ -475,7 +478,7 @@ onBeforeUnmount(() => {
           <ElTableColumn label="材质" min-width="140" show-overflow-tooltip
             ><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn
           >
-          <ElTableColumn label="规格" min-width="150" show-overflow-tooltip
+          <ElTableColumn label="尺寸" min-width="150" show-overflow-tooltip
             ><template #default="{ row }">{{
               row.transfer_specification || '—'
             }}</template></ElTableColumn

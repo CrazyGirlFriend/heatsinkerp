@@ -144,7 +144,7 @@ defineEmits<{ open: [code: string] }>()
           <dd>{{ processingRoleLabels[batch.processing_role] }}</dd>
         </div>
         <div v-if="batch.transfer_specification">
-          <dt>实际尺寸</dt>
+          <dt>尺寸</dt>
           <dd>{{ batch.transfer_specification }}</dd>
         </div>
         <div>

@@ -166,7 +166,6 @@ def origin_columns(include_team=False, registered=None, task_bindings=None):
         "process_step_index": mt.process_step_index,
         "process_step_complete": mt.process_step_complete,
         "material_name": func.coalesce(mt.material_name, ""),
-        "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
         "processing_role": mt.processing_role,
         "processing_group": processing_group,
@@ -233,6 +232,10 @@ def warehouse_groups(team_id, filters):
     recent = case((losses.c.at > recent, losses.c.at), else_=recent)
     meta = []
     for name in META_FIELDS:
+        if name == "transfer_specification":
+            current = func.coalesce(registered.c.after_specification, mt.transfer_specification, "")
+            meta.append(func.max(current).label(name))
+            continue
         if name in origins:
             continue
         column = getattr(mt, name)
@@ -489,7 +492,7 @@ def list_inventory(db, team_id, filters):
             conditions.append(batch_matches(term, previous=field == "previous_batch_no"))
         elif field == "task_batch_number":
             conditions.append(numeric_search_predicate(batch_number, term, filters.search_operator))
-        elif field == "warehouse_location":
+        elif field in ("warehouse_location", "transfer_specification"):
             conditions.append(literal_query(term, [table.c[field]]))
         elif field in ("last_activity_at", "oldest_received_at"):
             start, end = day_bounds(date.fromisoformat(term))
@@ -565,7 +568,6 @@ def list_inventory(db, team_id, filters):
                                 mt.batch_no,
                                 mt.customer_code,
                                 mt.product_code,
-                                mt.finished_specification,
                             ],
                         ),
                     )

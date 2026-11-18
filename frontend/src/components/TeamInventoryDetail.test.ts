@@ -566,8 +566,8 @@ it('shows each shared order and its original cutting plan directly in inventory 
   expect(
     table.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text())),
   ).toEqual([
-    ['ORDER-A', 'CA', '60', '30', '25 × 12 × 2 mm', '20 × 10 × 2 mm', '2026-11-01', '30'],
-    ['ORDER-B', 'CB', '40', '20', '12 × 12 × 2 mm', '—', '—', '—'],
+    ['ORDER-A', 'CA', '60', '30', '2026-11-01', '30'],
+    ['ORDER-B', 'CB', '40', '20', '—', '—'],
   ])
   expect(wrapper.get('.shared-material-info footer').text()).toContain('100 kg')
   expect(wrapper.get('.shared-material-info footer').text()).toContain('50 件')

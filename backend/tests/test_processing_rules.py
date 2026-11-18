@@ -103,7 +103,7 @@ def test_invalid_work_is_rejected_before_any_persistence(changes, message):
 
 
 def test_split_work_requires_the_dimensions_the_operator_enters():
-    with pytest.raises(ProcessingRuleError, match="实际尺寸"):
+    with pytest.raises(ProcessingRuleError, match="加工后尺寸"):
         normalize(
             production(
                 "split",

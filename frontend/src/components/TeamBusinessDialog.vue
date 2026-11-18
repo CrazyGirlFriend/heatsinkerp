@@ -180,7 +180,7 @@ const validation = useDialogValidation(() => {
     }
     if (!line.material_name.trim()) add('material_name', '请输入材质')
     if (!line.material_type) add('material_type', '请选择物料类型')
-    if (invalidSpecifications.has(line)) add('transfer_specification', '请填完整规格尺寸')
+    if (invalidSpecifications.has(line)) add('transfer_specification', '请填完整尺寸')
     if (!Number.isInteger(enteredQuantity(line)) || Number(enteredQuantity(line)) < 0)
       add('quantity', '请填写有效非负整数')
     if (

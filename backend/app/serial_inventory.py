@@ -9,6 +9,7 @@ from sqlalchemy import and_, case, func, literal, or_, select, union_all
 
 from .inspections import hold_column
 from .models import MaterialStockBalance, MaterialTransfer, SharedMaterialMember, Team, utcnow
+from .processing_records import registered_lots
 from .warehouse_inventory import WarehouseInventoryFilters
 
 
@@ -62,7 +63,7 @@ def require_serial(db, serial):
     return serial
 
 
-def inventory_rows(serial):
+def inventory_rows(serial, stock_team_id=None):
     mt, balance = MaterialTransfer, MaterialStockBalance
     metadata = (
         mt.id,
@@ -70,18 +71,23 @@ def inventory_rows(serial):
         func.coalesce(mt.material_name, "").label("material_name"),
         func.coalesce(mt.material_type, "").label("material_type"),
         mt.shared_unallocated,
-        mt.transfer_specification,
         mt.rework_pending,
         mt.rework_count,
     )
+    current_size = mt.transfer_specification
+    if stock_team_id is not None:
+        registered = registered_lots(stock_team_id)
+        current_size = func.coalesce(registered.c.after_specification, current_size)
     current = (
         select(
             *metadata,
+            current_size.label("transfer_specification"),
             balance.team_id,
             balance.on_hand_quantity.label("quantity"),
             balance.on_hand_weight.label("weight"),
             literal("stock").label("location"),
         )
+        .select_from(mt)
         .join(balance, balance.transfer_id == mt.id)
         .where(
             serial_predicate(serial),
@@ -90,8 +96,11 @@ def inventory_rows(serial):
             or_(balance.on_hand_quantity != 0, balance.on_hand_weight != 0),
         )
     )
+    if stock_team_id is not None:
+        current = current.outerjoin(registered, registered.c.lot_id == mt.id)
     incoming = select(
         *metadata,
+        mt.transfer_specification,
         mt.next_team_id.label("team_id"),
         mt.quantity,
         mt.weight,
@@ -157,7 +166,7 @@ def batches(
     db, serial, *, team_id, material_name, material_type, shared, location, page, page_size
 ):
     serial = require_serial(db, serial)
-    rows = inventory_rows(serial)
+    rows = inventory_rows(serial, team_id if location == "stock" else None)
     predicates = [
         rows.c.team_id == team_id,
         rows.c.material_name == material_name,

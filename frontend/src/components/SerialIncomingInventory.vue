@@ -222,7 +222,7 @@ const columns = [
   },
   {
     key: 'transfer_specification',
-    label: '实际尺寸',
+    label: '尺寸',
     width: 150,
     value: (row: MaterialTransfer) => row.transfer_specification || '—',
   },

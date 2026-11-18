@@ -405,7 +405,7 @@ class WarehouseReceiptCreate(WarehouseReceiptFields, MaterialTransferDocumentFie
                 or self.delivery_date
                 or self.delivery_quantity
             ):
-                raise ValueError("共投料的流水号、客户、成品规格与交期须分别填写")
+                raise ValueError("共投料的流水号、客户、成品尺寸与交期须分别填写")
         elif (not self.serial_no and self.receipt_kind == "return") or self.serial_no.startswith(
             "共投-"
         ):

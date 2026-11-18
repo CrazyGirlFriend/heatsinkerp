@@ -83,14 +83,14 @@ export const materialDocumentTextFields = [
   { key: 'material_name', label: '材质', maxLength: 160, group: 'basic', multiline: false },
   {
     key: 'finished_specification',
-    label: '成品规格',
+    label: '成品尺寸',
     maxLength: 240,
     group: 'basic',
     multiline: false,
   },
   {
     key: 'transfer_specification',
-    label: '转料规格',
+    label: '尺寸',
     maxLength: 240,
     group: 'basic',
     multiline: false,
@@ -140,10 +140,10 @@ export const materialDocumentFormSections = [
   },
   {
     name: 'specification',
-    label: '规格工艺',
+    label: '尺寸与工艺',
     fields: materialDocumentTextFields.filter(
       (field) =>
-        materialSpecificationKeys.includes(field.key) ||
+        field.key === 'transfer_specification' ||
         ['technical_requirements', 'special_process'].includes(field.key),
     ),
   },

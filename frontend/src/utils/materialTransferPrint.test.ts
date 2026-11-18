@@ -103,7 +103,7 @@ it('prints every shared requirement and counts the unsplit physical batch only o
     text = JSON.stringify(groups[0]!.blocks.flatMap((block) => block.fields || []))
   expect(text).toContain('计划用料重量')
   expect(text).toContain('5 kg')
-  expect(text).toContain('25 × 12 × 3 mm')
+  expect(text).not.toContain('25 × 12 × 3 mm')
   expect(text).toContain('计划切出件数')
   expect(text).toContain('ORDER-20')
   expect(text).toContain('49 件')

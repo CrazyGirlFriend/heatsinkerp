@@ -145,8 +145,9 @@ function actionLabel(action: keyof typeof actions): string {
   }
   return actions[action]
 }
-function fieldLabel(field: string, clearance = false, amendment = false): string {
-  if (field === 'reason' && amendment) return '修改原因 / 处理说明'
+function fieldLabel(field: string, action: keyof typeof actions, clearance = false): string {
+  if (field === 'transfer_specification' && action === 'quantity_changed') return '加工后尺寸'
+  if (field === 'reason' && action.startsWith('amendment_')) return '修改原因 / 处理说明'
   if (props.transfer.entry_kind === 'processing_output') {
     const processingLabels: Record<string, string> = {
       quantity: '实物件数',
@@ -159,7 +160,7 @@ function fieldLabel(field: string, clearance = false, amendment = false): string
       purpose_name: '加工任务',
       received_at: '加工时间',
       received_by: '登记人',
-      transfer_specification: '实际尺寸',
+      transfer_specification: '加工后尺寸',
     }
     if (processingLabels[field]) return processingLabels[field]
   }
@@ -317,13 +318,7 @@ function valueText(field: string, value: unknown): string {
               <dl>
                 <div v-for="(change, field) in event.changes" :key="field">
                   <dt>
-                    {{
-                      fieldLabel(
-                        field,
-                        !!event.changes.outbound_batches,
-                        event.action.startsWith('amendment_'),
-                      )
-                    }}
+                    {{ fieldLabel(field, event.action, !!event.changes.outbound_batches) }}
                   </dt>
                   <dd>
                     <span class="history-before"

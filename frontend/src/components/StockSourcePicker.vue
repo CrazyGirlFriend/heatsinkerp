@@ -268,7 +268,7 @@ onBeforeUnmount(() => {
           v-if="
             rows.some((row) => row.current_specification || row.transfer.transfer_specification)
           "
-          label="当前实际尺寸"
+          label="尺寸"
           min-width="180"
           show-overflow-tooltip
           ><template #default="{ row }">{{

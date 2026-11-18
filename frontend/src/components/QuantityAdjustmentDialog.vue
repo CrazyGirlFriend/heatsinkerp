@@ -760,12 +760,12 @@ onBeforeUnmount(() => {
               >
               <ElFormItem
                 v-if="processing && !detailed && !unitProcessing"
-                label="加工后实际尺寸（选填）"
+                label="加工后尺寸（选填）"
                 class="form-field--full"
                 :class="{ 'is-error': submitted && !specificationValid }"
                 ><SpecificationInput
                   v-model="specification"
-                  label="加工后实际尺寸"
+                  label="加工后尺寸"
                   @validity-change="specificationValid = $event"
               /></ElFormItem>
               <ProcessingInspectionFields
@@ -896,7 +896,7 @@ onBeforeUnmount(() => {
                 active-text="按明细登记"
               /><span>{{
                 detailed
-                  ? '按实际尺寸分别填写加工产出。有未加工余料时填写余料行。'
+                  ? '按加工后尺寸分别填写产出。有未加工余料时填写余料行。'
                   : '一批产出有多种尺寸时，可按明细登记。'
               }}</span>
             </div>
@@ -918,7 +918,7 @@ onBeforeUnmount(() => {
                       <th>物料类型</th>
                       <th>件数</th>
                       <th>实测重量</th>
-                      <th>实际尺寸</th>
+                      <th>加工后尺寸</th>
                       <th v-if="snapshot.shared_unallocated" class="shared-owner-column">
                         归属流水号 *
                       </th>
@@ -1005,7 +1005,7 @@ onBeforeUnmount(() => {
                           >
                             <SpecificationInput
                               v-model="line.specification"
-                              :label="`明细${index + 1}实际尺寸`"
+                              :label="`明细${index + 1}加工后尺寸`"
                               @validity-change="line.specificationValid = $event"
                             />
                           </div>
@@ -1108,7 +1108,7 @@ onBeforeUnmount(() => {
             }}</ElDescriptionsItem>
             <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
             <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
-            <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{
+            <ElDescriptionsItem v-if="processing" label="尺寸" :span="2">{{
               snapshot.transfer_specification || '—'
             }}</ElDescriptionsItem>
           </ElDescriptions>
@@ -1163,7 +1163,7 @@ onBeforeUnmount(() => {
                   <dd>{{ formatProcessingParameter(field.key, row) }}</dd>
                 </div>
                 <div>
-                  <dt>登记后尺寸</dt>
+                  <dt>加工后尺寸</dt>
                   <dd>{{ row.after_specification || '—' }}</dd>
                 </div>
                 <div>

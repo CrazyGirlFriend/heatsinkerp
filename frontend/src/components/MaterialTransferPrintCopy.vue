@@ -70,7 +70,7 @@ const totals = computed(() => transferPrintTotals(props.group.items))
           <th>流水号</th>
           <th>材质</th>
           <th>物料类型</th>
-          <th>实际尺寸</th>
+          <th>{{ group.items[0]!.entry_kind === 'processing_output' ? '加工后尺寸' : '尺寸' }}</th>
           <th>件数</th>
           <th>重量 (kg)</th>
           <th>

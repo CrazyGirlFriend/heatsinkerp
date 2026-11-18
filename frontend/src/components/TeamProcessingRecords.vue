@@ -329,7 +329,7 @@ function exportSource() {
       },
       {
         key: 'after_specification',
-        label: '登记后实际尺寸',
+        label: '加工后尺寸',
         value: (row) => row.after_specification || '',
       },
       { key: 'on_hand_quantity', label: '当前未转出件数', value: (row) => row.on_hand_quantity },
@@ -861,7 +861,7 @@ onBeforeUnmount(() => {
       >
       <ElTableColumn
         prop="after_specification"
-        label="登记后实际尺寸"
+        label="加工后尺寸"
         min-width="180"
         show-overflow-tooltip
       />

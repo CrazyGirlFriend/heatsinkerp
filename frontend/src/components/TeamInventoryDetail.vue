@@ -245,7 +245,7 @@ function exportStock() {
         : []),
       {
         key: 'specification',
-        label: '实际尺寸',
+        label: '尺寸',
         value: (row) => row.current_specification ?? row.transfer.transfer_specification ?? '',
       },
       { key: 'location', label: '仓位', value: currentLocations },
@@ -431,7 +431,7 @@ onBeforeUnmount(() => {
           compact
       /></ElDescriptionsItem>
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="规格">{{
+      <ElDescriptionsItem label="尺寸">{{
         group.transfer_specification || '—'
       }}</ElDescriptionsItem>
       <ElDescriptionsItem label="物料类型">{{
@@ -540,7 +540,7 @@ onBeforeUnmount(() => {
               }}</ElButton></template
             ></ElTableColumn
           >
-          <ElTableColumn label="当前实际尺寸" min-width="180" show-overflow-tooltip
+          <ElTableColumn label="尺寸" min-width="180" show-overflow-tooltip
             ><template #default="{ row }">{{
               row.current_specification ?? row.transfer.transfer_specification ?? '—'
             }}</template></ElTableColumn

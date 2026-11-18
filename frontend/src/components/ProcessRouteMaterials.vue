@@ -4,6 +4,7 @@ import AppDetailTable from './AppDetailTable.vue'
 import ElInput from '@/components/AppInput.vue'
 import { computed } from 'vue'
 
+import { materialDocumentTextFields } from '@/types/materialTransfer'
 import type { ProcessRoute, RouteMaterialField } from '@/types/processRoute'
 const props = defineProps<{
   data: ProcessRoute['source_data']
@@ -20,6 +21,11 @@ const fields = computed(() =>
     ([key]) => key !== 'serial_no' && !props.exclude?.includes(key),
   ),
 )
+function fieldLabel(key: string, field: RouteMaterialField) {
+  if (key === 'finished_specification' || key === 'transfer_specification')
+    return materialDocumentTextFields.find((column) => column.key === key)!.label
+  return field.label
+}
 function source(field: RouteMaterialField) {
   return field.source_kind === 'excel' ? '订单表' : '工艺单'
 }
@@ -49,13 +55,13 @@ function warningLabel(warning: string) {
           :key="key"
           :class="{ 'has-difference': field.alternative }"
         >
-          <th scope="row">{{ field.label }}</th>
+          <th scope="row">{{ fieldLabel(key, field) }}</th>
           <td>
             <span v-if="readonly">{{ field.value === '' ? '—' : field.value }}</span>
             <ElInput
               v-else
               :model-value="String(field.value)"
-              :aria-label="`工艺资料：${field.label}`"
+              :aria-label="`工艺资料：${fieldLabel(key, field)}`"
               :disabled="disabled"
               :type="String(field.value).length > 60 ? 'textarea' : 'text'"
               :autosize="{ minRows: 1, maxRows: 4 }"
