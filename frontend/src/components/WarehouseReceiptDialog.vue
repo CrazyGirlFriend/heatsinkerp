@@ -911,6 +911,7 @@ onBeforeUnmount(() => {
               :material-type="form.materialType"
               :active="modelValue"
               :disabled="readonly"
+              :show-stock-preview="!editing"
               @busy-change="locationBusy = $event"
           /></ElFormItem>
 

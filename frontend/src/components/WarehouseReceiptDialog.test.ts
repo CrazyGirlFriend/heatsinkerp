@@ -143,6 +143,7 @@ describe('warehouse manual receipt', () => {
     })
     await render(original)
     expect(wrapper.text()).toContain('TL-RECEIPT')
+    expect(wrapper.getComponent(WarehouseLocationSelect).props('showStockPreview')).toBe(false)
     expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '钼铜')
     await wrapper.get('input[aria-label="流水号"]').setValue('QA-IN')
     await submit()

@@ -122,6 +122,18 @@ describe('warehouse location selector', () => {
       },
     ],
   }
+  it('shows existing stock in the picker when the inline preview is hidden', async () => {
+    vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [filled] })
+    await render({ modelValue: filled.name, showStockPreview: false })
+    expect(wrapper.text()).toContain(filled.name)
+    expect(wrapper.text()).not.toContain('TL10')
+
+    await wrapper.get('[aria-label="入库仓位"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('TL10')
+    expect(wrapper.text()).not.toContain('此仓位已有')
+  })
+
   it('requires an explicit list selection and shows existing batches before choosing an occupied slot', async () => {
     vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [slot, filled] })
     vi.mocked(warehouseLocationApi.reserve).mockImplementation(async (id, key) => ({

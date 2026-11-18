@@ -28,12 +28,13 @@ const props = withDefaults(
     active?: boolean
     disabled?: boolean
     required?: boolean
+    showStockPreview?: boolean
     serialNo?: string
     materialName?: string
     materialType?: string
     leaseGroup?: WarehouseLeaseGroup
   }>(),
-  { active: true, reservationKey: '' },
+  { active: true, reservationKey: '', showStockPreview: true },
 )
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -431,7 +432,7 @@ onBeforeUnmount(() => {
         @current-change="changePage"
       />
     </WatermelonDialog>
-    <div v-if="selectedStock?.batches.length" class="location-stock">
+    <div v-if="showStockPreview && selectedStock?.batches.length" class="location-stock">
       <strong>当前库存 {{ currentQuantity }} 件 · {{ currentWeight }} kg</strong>
       <span>此仓位已有 {{ selectedStock.batches.length }} 批物料</span>
       <div class="location-batches">
