@@ -6,6 +6,7 @@ import type {
   TeamPurpose,
   TeamProcessingTask,
   OpeningLine,
+  OpeningOrderOption,
   OpeningState,
   SerialHistory,
 } from '@/types/teamBusiness'
@@ -343,6 +344,9 @@ export const teamMaterialApi = {
   async openingState(teamId: number) {
     const result = await request<OpeningState>(path(teamId, 'opening-stock'))
     return { ...result, items: result.items.map(normalizeMaterialTransfer) }
+  },
+  openingOptions(teamId: number, serial_no: string) {
+    return request<OpeningOrderOption[]>(path(teamId, 'opening-stock/options', { serial_no }))
   },
   async createOpening(teamId: number, lines: OpeningLine[], idempotency_key: string) {
     const result = await request<{ items: unknown[] }>(path(teamId, 'opening-stock'), {

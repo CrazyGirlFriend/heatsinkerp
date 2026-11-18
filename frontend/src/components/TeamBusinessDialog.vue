@@ -29,6 +29,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { useAuthStore } from '@/stores/auth'
 import {
   isWeightOnlyType,
+  isScrapType,
   materialTypeOptions,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
@@ -100,13 +101,7 @@ const canManageDirectory = computed(
   () => canManage.value && (!editingProblems.value || canManageProblems.value),
 )
 const purposes = ref<TeamPurpose[]>([])
-const openingPurposeOptions = computed(() => {
-  const options = new Map(purposes.value.map(({ id, name, active }) => [id, { id, name, active }]))
-  for (const { purpose_id, name, active } of tasks.value) {
-    if (purpose_id) options.set(purpose_id, { id: purpose_id, name, active })
-  }
-  return [...options.values()].filter((option) => option.active).sort((a, b) => b.id - a.id)
-})
+const warehouse = computed(() => props.teamCode === 'FACTORY-WAREHOUSE')
 const directory = computed(() =>
   editingEquipment.value
     ? equipment
@@ -177,8 +172,12 @@ const validation = useDialogValidation(() => {
     const add = (field: string, message: string) => {
       issues[`${index}.${field}`] = message
     }
-    if (!line.serial_no.trim() || line.serial_no.trim().length > 80)
-      add('serial_no', '请输入有效流水号')
+    if (line.stock_type === 'order') {
+      if (!line.serial_no.trim() || line.serial_no.trim().length > 80)
+        add('serial_no', '请输入有效流水号')
+      if (!line.production_schedule_id) add('production_schedule_id', '请选择排期批次')
+      if (line.process_step_index == null) add('process_step_index', '请选择当前工序')
+    }
     if (!line.material_name.trim()) add('material_name', '请输入材质')
     if (!line.material_type) add('material_type', '请选择物料类型')
     if (invalidSpecifications.has(line)) add('transfer_specification', '请填完整规格尺寸')
@@ -213,6 +212,7 @@ function enteredQuantity(line: OpeningLine) {
 }
 function blank(): OpeningLine {
   return {
+    stock_type: 'order',
     serial_no: '',
     material_name: '',
     material_type: '',
@@ -296,7 +296,11 @@ watch(
             line && typeof line.serial_no === 'string' && typeof line.material_name === 'string',
         )
       )
-        lines.value = draft.map((line) => ({ ...blank(), ...line }))
+        lines.value = draft.map((line) => ({
+          ...blank(),
+          ...line,
+          stock_type: line.stock_type ?? (isScrapType(line.material_type) ? 'non_order' : 'order'),
+        }))
     } catch {
       /* A missing/unreadable optional draft never changes server stock. */
     }
@@ -418,8 +422,8 @@ async function submitOpening() {
     ...line,
     quantity: enteredQuantity(line),
     ...sludgePayload(line.material_type, line.sludge_gross_weight, line.sludge_content_percent),
-    purpose_id: props.processingTasks ? line.purpose_id || null : null,
-    serial_no: line.serial_no.trim(),
+    purpose_id: null,
+    serial_no: line.stock_type === 'non_order' ? '' : line.serial_no.trim(),
     material_name: line.material_name.trim(),
   }))
   const current = epoch
@@ -675,6 +679,8 @@ async function submitOpening() {
                     </template>
                     <OpeningMaterialFields
                       :line="line"
+                      :team-id="teamId"
+                      :warehouse="warehouse"
                       :index="index"
                       :errors="fieldErrors"
                       :disabled="saving || !modelValue"
@@ -696,25 +702,14 @@ async function submitOpening() {
                           :aria-label="`第${index + 1}行物料类型`"
                           :disabled="saving"
                           ><ElOption
-                            v-for="option in materialTypeOptions"
+                            v-for="option in materialTypeOptions.filter(({ value }) =>
+                              line.stock_type === 'order'
+                                ? !isScrapType(value)
+                                : isScrapType(value) || (warehouse && value === 'raw_material'),
+                            )"
                             :key="option.value"
                             :value="option.value"
                             :label="option.label"
-                        /></ElSelect>
-                      </div>
-                      <div v-if="processingTasks" class="dialog-field">
-                        <span class="dialog-field-label">加工任务</span
-                        ><ElSelect
-                          v-model="line.purpose_id"
-                          aria-label="初始库存加工任务"
-                          clearable
-                          placeholder="未分类"
-                          :disabled="saving"
-                          ><ElOption
-                            v-for="item in openingPurposeOptions"
-                            :key="item.id"
-                            :value="item.id"
-                            :label="item.name"
                         /></ElSelect>
                       </div>
                       <div

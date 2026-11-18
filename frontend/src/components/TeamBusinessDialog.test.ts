@@ -20,6 +20,16 @@ const allowed = {
   can_submit: true,
   items: [],
 }
+const openingOrder = {
+  schedule_id: 71,
+  task_id: 19,
+  task_batch_number: 1,
+  due_at: '2026-11-30T00:00:00Z',
+  route_id: 9,
+  route_title: '联动工艺',
+  route_version: 2,
+  steps: [{ index: 1, sequence_no: 1, name: '精切' }],
+}
 beforeEach(() => {
   state.auth = { currentUser: { id: 41, team_id: 2 }, isTeamAccount: true, isAdmin: false }
   localStorage.clear()
@@ -32,6 +42,7 @@ beforeEach(() => {
     { id: 1, team_id: 2, name: '检验', active: true, version: 1 },
   ])
   vi.spyOn(teamMaterialApi, 'openingState').mockResolvedValue(allowed)
+  vi.spyOn(teamMaterialApi, 'openingOptions').mockResolvedValue([openingOrder])
   vi.spyOn(teamMaterialApi, 'savePurpose').mockResolvedValue({
     id: 1,
     team_id: 2,
@@ -397,7 +408,12 @@ describe('team business settings', () => {
   })
   it('posts measured sludge opening stock in effective kg', async () => {
     await render()
-    await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('input[aria-label="第1行登记类型"]').exists())!
+      .vm.$emit('update:modelValue', 'non_order')
+    await flushPromises()
+    expect(wrapper.find('input[aria-label="第1行流水号"]').exists()).toBe(false)
     await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
     wrapper
       .findAllComponents(ElSelect)
@@ -412,6 +428,8 @@ describe('team business settings', () => {
       2,
       [
         expect.objectContaining({
+          stock_type: 'non_order',
+          serial_no: '',
           quantity: 0,
           weight: 3,
           sludge_gross_weight: 10,
@@ -420,6 +438,77 @@ describe('team business settings', () => {
       ],
       expect.any(String),
     )
+  })
+
+  it('requires an explicit order batch and route step when several match the serial', async () => {
+    vi.mocked(teamMaterialApi.openingOptions).mockResolvedValue([
+      openingOrder,
+      {
+        ...openingOrder,
+        schedule_id: 72,
+        task_batch_number: 2,
+        steps: [...openingOrder.steps, { index: 2, sequence_no: 2, name: '复切' }],
+      },
+    ])
+    await render()
+    await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
+    await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
+    const select = (label: string) =>
+      wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.find(`input[aria-label="第1行${label}"]`).exists())!
+    select('物料类型').vm.$emit('update:modelValue', 'semi_finished')
+    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 10)
+    wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 2)
+    await vi.waitFor(() => expect(teamMaterialApi.openingOptions).toHaveBeenCalledWith(2, '000012'))
+    await click('确认初始库存登记')
+    expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
+    select('排期批次').vm.$emit('update:modelValue', 72)
+    await click('确认初始库存登记')
+    expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
+    select('当前工序').vm.$emit('update:modelValue', 2)
+    await flushPromises()
+    select('工序状态').vm.$emit('update:modelValue', true)
+    await click('确认初始库存登记')
+    expect(teamMaterialApi.createOpening).toHaveBeenCalledWith(
+      2,
+      [
+        expect.objectContaining({
+          stock_type: 'order',
+          process_route_id: 9,
+          process_route_version: 2,
+          production_schedule_id: 72,
+          process_step_index: 2,
+          process_step_complete: true,
+        }),
+      ],
+      expect.any(String),
+    )
+  })
+
+  it('does not silently replace a saved opening draft’s order route', async () => {
+    localStorage.setItem(
+      'heatsink.opening-draft.v1:41:2',
+      JSON.stringify([
+        {
+          stock_type: 'order',
+          serial_no: '000012',
+          material_name: '铜钼',
+          material_type: 'semi_finished',
+          quantity: 12,
+          weight: 2,
+          production_schedule_id: 71,
+          process_route_id: 8,
+          process_route_version: 2,
+          process_step_index: 1,
+          process_step_complete: true,
+        },
+      ]),
+    )
+    await render()
+    await vi.waitFor(() => expect(wrapper.text()).toContain('草稿中的排期或工艺已变化'))
+    await click('确认初始库存登记')
+    expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
   })
   it('rejects a blank existing name without taking the separate new-business draft', async () => {
     await render('purposes')
@@ -496,7 +585,7 @@ describe('team business settings', () => {
         .vm.$emit('update:modelValue', 'semi_finished')
       wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
       wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10)
-      await flushPromises()
+      await vi.waitFor(() => expect(wrapper.text()).toContain(openingOrder.route_title))
       await click('确认初始库存登记')
     }
     const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
@@ -522,6 +611,7 @@ describe('team business settings', () => {
         .vm.$emit('update:modelValue', 'semi_finished')
       wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
       wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.125)
+      await vi.waitFor(() => expect(wrapper.text()).toContain(openingOrder.route_title))
       await click('保存本机草稿')
       expect(
         localStorage.getItem(`heatsink.opening-draft.v1:${actor === 'administrator' ? 1 : 41}:2`),

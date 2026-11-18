@@ -20,6 +20,7 @@ from test_dispatch_planning import dispatcher as dispatcher
 from test_order_document_preview import pdf
 from test_process_route_orders import xlsx
 from test_process_routes import published
+from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
 
@@ -54,6 +55,106 @@ def post(client, dispatcher, body, content=None, filename="订单.xlsx"):
         data={"payload": json.dumps(body)},
         files={"file": (filename, content)} if content is not None else None,
     )
+
+
+def test_opening_stock_uses_the_selected_order_batch_and_can_dispatch(
+    client, warehouse, dispatcher
+):
+    body = setup_order(client, warehouse)
+    serial = body["serial_no"]
+    for key in ("opening-first-order", "opening-second-order"):
+        response = post(client, dispatcher, {**body, "idempotency_key": key}, order_file(serial))
+        assert response.status_code == 201, response.text
+    task = response.json()
+    endpoint = base(warehouse, True) + "/opening-stock"
+    headers = warehouse["other_headers"]
+    assert client.put(endpoint + "/authorization", json={"enabled": True}).status_code == 200
+    response = client.get(endpoint + "/options", params={"serial_no": serial}, headers=headers)
+    assert response.status_code == 200, response.text
+    choices = response.json()
+    assert [choice["task_batch_number"] for choice in choices] == [1, 2]
+    option = choices[1]
+    assert option["task_id"] == task["id"]
+    assert [step["index"] for step in option["steps"]] == [1]
+    line = {
+        "stock_type": "order",
+        "serial_no": serial,
+        "material_name": "铜钼",
+        "material_type": "semi_finished",
+        "quantity": 12,
+        "weight": 2,
+        "production_schedule_id": option["schedule_id"],
+        "process_route_id": option["route_id"],
+        "process_route_version": option["route_version"],
+        "process_step_index": 1,
+        "process_step_complete": True,
+        "transfer_specification": "100 × 80 × 5 mm",
+    }
+    invalid = client.post(
+        endpoint,
+        headers=headers,
+        json={"idempotency_key": "opening", "lines": [{**line, "process_step_index": 0}]},
+    )
+    assert invalid.status_code == 422, invalid.text
+    created = client.post(
+        endpoint, headers=headers, json={"idempotency_key": "opening", "lines": [line]}
+    )
+    assert created.status_code == 201, created.text
+    lot = created.json()["items"][0]
+    assert lot["schedule_task_id"] == task["id"]
+    assert lot["task_batch_number"] == 2
+    assert lot["process_route"]["step_index"] == 1
+    assert lot["process_route"]["next_team_id"] == warehouse["team"]["id"]
+    assert lot["process_route"]["complete"] is True
+
+    moved = dispatch(
+        client,
+        warehouse,
+        [{"source_transfer_id": lot["id"], "quantity": 12, "weight": 2}],
+        workshop=True,
+    )
+    assert moved.status_code == 201, moved.text
+    transfer = moved.json()["items"][0]
+    assert transfer["process_route"]["step_index"] == 2
+    detail = client.get("/api/material-transfers/" + transfer["batch_no"]).json()
+    assert detail["schedule_task_id"] == task["id"]
+    assert detail["task_batch_number"] == 2
+
+
+@pytest.mark.parametrize(("kind", "name"), [("waste", "铜钼废渣"), ("scrap_chips", "铜钼废屑")])
+def test_anonymous_scrap_opening_can_transfer_to_the_warehouse(client, warehouse, kind, name):
+    endpoint = base(warehouse, True) + "/opening-stock"
+    opening = client.post(
+        endpoint,
+        json={
+            "idempotency_key": "opening-scrap",
+            "lines": [
+                {
+                    "stock_type": "non_order",
+                    "material_name": name,
+                    "material_type": kind,
+                    "quantity": 0,
+                    "weight": 8,
+                }
+            ],
+        },
+    )
+    assert opening.status_code == 201, opening.text
+    lot = opening.json()["items"][0]
+    assert lot["serial_no"] == ""
+    moved = dispatch(
+        client,
+        warehouse,
+        [{"source_transfer_id": lot["id"], "quantity": 0, "weight": 3}],
+        workshop=True,
+    )
+    assert moved.status_code == 201, moved.text
+    item = moved.json()["items"][0]
+    assert item["serial_no"] == "" and item["weight"] == 3
+    assert item["process_route"] is None
+    detail = client.get("/api/material-transfers/" + item["batch_no"]).json()
+    assert detail["schedule_task_id"] is None
+    assert confirm(client, warehouse, moved.json()).status_code == 200
 
 
 def test_order_upload_is_required_validated_atomic_and_idempotent(client, warehouse, dispatcher):

@@ -1813,6 +1813,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/team-materials/{team_id}/opening-stock/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Options */
+    get: operations['options_api_team_materials__team_id__opening_stock_options_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/team-materials/{team_id}/outbound-batches': {
     parameters: {
       query?: never
@@ -4975,15 +4992,31 @@ export interface components {
       outsourced_unit?: string | null
       /** Part No */
       part_no?: string | null
+      /** Process Route Id */
+      process_route_id?: number | null
+      /** Process Route Version */
+      process_route_version?: number | null
+      /**
+       * Process Step Complete
+       * @default false
+       */
+      process_step_complete: boolean
+      /** Process Step Index */
+      process_step_index?: number | null
       /** Product Code */
       product_code?: string | null
+      /** Production Schedule Id */
+      production_schedule_id?: number | null
       /** Purpose Category */
       purpose_category?: string | null
       /** Purpose Id */
       purpose_id?: number | null
       /** Quantity */
       quantity: number
-      /** Serial No */
+      /**
+       * Serial No
+       * @default
+       */
       serial_no: string
       /** Sludge Content Percent */
       sludge_content_percent?: number | string | null
@@ -4993,12 +5026,45 @@ export interface components {
       source_batch_no?: string | null
       /** Special Process */
       special_process?: string | null
+      /** Stock Type */
+      stock_type?: ('order' | 'non_order') | null
       /** Technical Requirements */
       technical_requirements?: string | null
       /** Transfer Specification */
       transfer_specification?: string | null
       /** Weight */
       weight: number | string
+    }
+    /** OpeningOrderOption */
+    OpeningOrderOption: {
+      /**
+       * Due At
+       * Format: date-time
+       */
+      due_at: string
+      /** Route Id */
+      route_id: number
+      /** Route Title */
+      route_title: string
+      /** Route Version */
+      route_version: number
+      /** Schedule Id */
+      schedule_id: number
+      /** Steps */
+      steps: components['schemas']['OpeningStepOption'][]
+      /** Task Batch Number */
+      task_batch_number: number
+      /** Task Id */
+      task_id: number
+    }
+    /** OpeningStepOption */
+    OpeningStepOption: {
+      /** Index */
+      index: number
+      /** Name */
+      name: string
+      /** Sequence No */
+      sequence_no: number
     }
     /** OpeningStockResultResponse */
     OpeningStockResultResponse: {
@@ -14343,6 +14409,39 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['OpeningAuthorizationResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  options_api_team_materials__team_id__opening_stock_options_get: {
+    parameters: {
+      query: {
+        serial_no: string
+      }
+      header?: never
+      path: {
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['OpeningOrderOption'][]
         }
       }
       /** @description Validation Error */

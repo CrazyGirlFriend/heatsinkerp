@@ -32,7 +32,6 @@ import type { ProcessingRecord } from '@/types/materialProcessing'
 import { stockAvailable, stockSelectable } from '@/utils/materialStock'
 import DeliverySchedules from '@/components/DeliverySchedules.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
-import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
@@ -459,18 +458,18 @@ const losses = ref<MaterialLoss[]>([])
 const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
-const processingPickerOpen = ref(false),
-  processingGroupId = ref<number | undefined>()
+const processingGroupId = ref<number>()
 const openingProcessing = ref(0)
 const processingOpen = ref(false),
   processingSourceId = ref<number | null>(null)
-async function openProcessing(groupId?: number) {
+function chooseProcessingBatch() {
+  if (!canWrite.value || !hasProcessing.value) return
+  void router.push({ path: route.path, query: { tab: 'stock' } })
+  showToast('在库存列表勾选一个批次后，点「加工登记」', 'info')
+}
+async function openProcessing(groupId: number) {
   if (!canWrite.value || !hasProcessing.value || openingProcessing.value) return
   processingGroupId.value = groupId
-  if (groupId == null) {
-    processingPickerOpen.value = true
-    return
-  }
   const current = ++actionVersion,
     scope = teamKey.value
   openingProcessing.value = current
@@ -487,10 +486,17 @@ async function openProcessing(groupId?: number) {
       !hasProcessing.value
     )
       return
-    if (result.total === 1 && result.items.length === 1)
-      selectProcessingSource(Number(result.items[0]!.transfer.id))
-    else if (result.total > 1) processingPickerOpen.value = true
-    else showToast('该物料暂无可登记加工的在库批次，请刷新库存后重试', 'info')
+    const batch = result.items[0]
+    if (!batch || result.total !== 1 || Number(batch.transfer.id) !== groupId) {
+      showToast('该批次已无法登记加工，请刷新库存后重试', 'info')
+      return
+    }
+    if (batch.transfer.rework_pending && !batch.transfer.rework_route_ready) {
+      showToast('请等待返工工艺制定后再登记加工', 'info')
+      return
+    }
+    processingSourceId.value = groupId
+    processingOpen.value = true
   } catch (error) {
     if (current === actionVersion && scope === teamKey.value)
       showToast(error instanceof Error ? error.message : '加工批次读取失败，请重试', 'error')
@@ -498,13 +504,9 @@ async function openProcessing(groupId?: number) {
     if (openingProcessing.value === current) openingProcessing.value = 0
   }
 }
-function selectProcessingSource(sourceId: number) {
-  if (!canWrite.value || !hasProcessing.value) return
-  processingPickerOpen.value = false
-  processingSourceId.value = sourceId
-  processingOpen.value = true
-}
 function processingSaved() {
+  if (processingSourceId.value != null)
+    inventoryPanel.value?.clearBatchSelection(processingSourceId.value)
   showToast('加工件数已登记，库存已更新', 'success')
   void loadView()
 }
@@ -664,7 +666,7 @@ function closeDetails() {
   receiptOpen.value = false
   actionSources.value = []
   initialSchedule.value = undefined
-  processingPickerOpen.value = processingOpen.value = false
+  processingOpen.value = false
   openingProcessing.value = 0
   processingSourceId.value = null
 }
@@ -919,7 +921,7 @@ function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
   )
   void loadView()
   if ('items' in result) {
-    inventoryPanel.value?.clearDispatchSelection()
+    inventoryPanel.value?.clearBatchSelection()
     openPrint(result.items)
   }
 }
@@ -1253,7 +1255,7 @@ onBeforeUnmount(() => {
           :fullscreen="fullscreen"
           :refresh-key="overview"
           :dispatching-record-id="processingDispatch?.recordId"
-          @register="openProcessing()"
+          @register="chooseProcessingBatch"
           @dispatch="dispatchProcessing"
         />
         <TeamSerialHistory
@@ -1652,13 +1654,6 @@ onBeforeUnmount(() => {
             void loadView()
           }
         "
-      />
-      <ProcessingBatchPicker
-        v-if="processingPickerOpen && canWrite && hasProcessing"
-        :team-id="teamId"
-        :group-id="processingGroupId"
-        @close="processingPickerOpen = false"
-        @selected="selectProcessingSource"
       />
       <QuantityAdjustmentDialog
         v-if="hasProcessing"

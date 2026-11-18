@@ -950,9 +950,9 @@ describe('warehouse grouped stock', () => {
       expect(rowButtons.some((button) => button.text() === '检验')).toBe(false)
       expect(rowButtons.some((button) => button.text() === '汇总发货')).toBe(inspection)
       await entry.trigger('click')
-      expect(wrapper.emitted('process')).toEqual([[]])
+      expect(wrapper.emitted('process')).toBeUndefined()
       await rowButtons.find((button) => button.text() === '加工登记')!.trigger('click')
-      expect(wrapper.emitted('process')).toEqual([[], [data()[0]!.group_id]])
+      expect(wrapper.emitted('process')).toEqual([[data()[0]!.group_id]])
       await wrapper.setProps({ canWrite: false })
       expect(wrapper.find('.inventory-process').exists()).toBe(false)
       expect(

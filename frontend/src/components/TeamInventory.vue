@@ -93,7 +93,7 @@ const emit = defineEmits<{
   refresh: []
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
   reallocate: [source: StockBatch]
-  process: [groupId?: number]
+  process: [groupId: number]
 }>()
 const route = useRoute(),
   router = useRouter(),
@@ -110,13 +110,16 @@ const rows = ref<TeamInventoryRow[]>([]),
   error = ref(''),
   refreshError = ref('')
 const asOf = ref('')
-const dispatchSelection = useBatchSelection(
+const batchSelection = useBatchSelection(
   rows,
   (row) => String(row.group_id),
-  (row) => row.batch_count === 1 && !row.inspection_hold_count && inventoryCanDispatch(row),
+  (row) =>
+    row.batch_count === 1 &&
+    !row.inspection_hold_count &&
+    (inventoryCanDispatch(row) || (props.processing === true && canRegisterProcessing(row))),
 )
 const preparingDispatch = ref(false)
-watch(rows, dispatchSelection.reconcile)
+watch(rows, batchSelection.reconcile)
 const expandedScheduleGroups = ref<number[]>([])
 const {
   loading: scheduleLoading,
@@ -498,7 +501,7 @@ function exportSource() {
     ),
   )
 }
-defineExpose({ exportSource, dispatchSelected, clearDispatchSelection, preparingDispatch })
+defineExpose({ exportSource, dispatchSelected, clearBatchSelection, preparingDispatch })
 const activeFilters = computed(() => {
   const chips: { key: keyof TeamInventoryParams; label: string }[] = []
   if (props.warehouse && text('location_status'))
@@ -809,12 +812,30 @@ async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate'
     if (current === sourceVersion) openingSource.value = null
   }
 }
-function clearDispatchSelection() {
-  dispatchSelection.selected.clear()
+function clearBatchSelection(sourceId?: number) {
+  if (sourceId == null) batchSelection.selected.clear()
+  else batchSelection.selected.delete(String(sourceId))
+}
+function canRegisterProcessing(row: TeamInventoryRow) {
+  return (
+    !row.inspection_hold_count &&
+    !isScrapMaterialType(row.material_type) &&
+    (Number(row.on_hand_quantity) > 0 || Number(row.on_hand_weight) > 0)
+  )
+}
+function processSelected() {
+  if (!props.processing || !props.canWrite || props.processingLoadingGroupId != null) return
+  if (batchSelection.selected.size !== 1) {
+    showToast('请在库存列表勾选一个批次后登记加工', 'info')
+    return
+  }
+  const [row] = batchSelection.selected.values()
+  if (row && canRegisterProcessing(row)) emit('process', row.group_id)
+  else showToast('所选批次无法登记加工，请重新勾选', 'info')
 }
 async function dispatchSelected() {
   if (!props.canWrite || loading.value || openingSource.value || preparingDispatch.value) return
-  const ids = [...dispatchSelection.selected.keys()]
+  const ids = [...batchSelection.selected.keys()]
   if (!ids.length) {
     showToast('请先在库存列表勾选要出库的批次', 'info')
     return
@@ -834,7 +855,7 @@ async function dispatchSelected() {
     const sources = ids.flatMap((id) => {
       const batch = available.get(id)
       if (batch) return [batch]
-      dispatchSelection.selected.delete(id)
+      batchSelection.selected.delete(id)
       return []
     })
     if (sources.length !== ids.length) {
@@ -881,7 +902,7 @@ function resetDetails() {
   ++sourceVersion
   openingSource.value = null
   preparingDispatch.value = false
-  clearDispatchSelection()
+  clearBatchSelection()
   editingReceipt.value = null
   detail.value = picker.value = pending.value = null
   serialOpen.value = false
@@ -1279,14 +1300,14 @@ onBeforeUnmount(() => {
       /></template>
       <template #primary-actions>
         <ElButton
-          v-if="canWrite && dispatchSelection.selected.size"
+          v-if="canWrite && batchSelection.selected.size"
           text
           :disabled="preparingDispatch"
-          @click="clearDispatchSelection"
+          @click="clearBatchSelection()"
           >清空勾选</ElButton
         >
         <ElButton
-          v-if="fullscreen && canWrite && dispatchSelection.selected.size"
+          v-if="fullscreen && canWrite && batchSelection.selected.size"
           :loading="preparingDispatch"
           @click="dispatchSelected"
           >新建出库</ElButton
@@ -1296,7 +1317,7 @@ onBeforeUnmount(() => {
           class="inventory-process"
           :icon="Operation"
           :disabled="processingLoadingGroupId != null"
-          @click="emit('process')"
+          @click="processSelected"
           >加工登记</ElButton
         >
       </template>
@@ -1364,26 +1385,26 @@ onBeforeUnmount(() => {
           <ElCheckbox
             aria-label="选择本页可用批次"
             title="选择本页可用批次"
-            :model-value="dispatchSelection.allChecked.value"
+            :model-value="batchSelection.allChecked.value"
             :indeterminate="
-              dispatchSelection.checkedCount.value > 0 && !dispatchSelection.allChecked.value
+              batchSelection.checkedCount.value > 0 && !batchSelection.allChecked.value
             "
-            :disabled="preparingDispatch || !dispatchSelection.availableRows.value.length"
-            @change="dispatchSelection.toggleAll"
+            :disabled="preparingDispatch || !batchSelection.availableRows.value.length"
+            @change="batchSelection.toggleAll"
           />
         </template>
         <template #default="{ row }">
           <div v-if="column.key === 'batch_no'" class="inventory-inline">
             <ElCheckbox
-              v-if="canWrite && dispatchSelection.available(asRow(row))"
-              :aria-label="`勾选出库 ${row.batch_no}`"
-              :model-value="dispatchSelection.selected.has(String(row.group_id))"
+              v-if="canWrite && batchSelection.available(asRow(row))"
+              :aria-label="`勾选批次 ${row.batch_no}`"
+              :model-value="batchSelection.selected.has(String(row.group_id))"
               :disabled="
                 preparingDispatch ||
-                (dispatchSelection.selected.size >= 100 &&
-                  !dispatchSelection.selected.has(String(row.group_id)))
+                (batchSelection.selected.size >= 100 &&
+                  !batchSelection.selected.has(String(row.group_id)))
               "
-              @change="dispatchSelection.toggle(asRow(row), $event)"
+              @change="batchSelection.toggle(asRow(row), $event)"
             />
             <span>{{ column.format(asRow(row)) }}</span>
           </div>
@@ -1565,12 +1586,7 @@ onBeforeUnmount(() => {
               @click="openReceiptEdit(asRow(row))"
               >修改入库</ElButton
             ><ElButton
-              v-if="
-                processing &&
-                canWrite &&
-                !isScrapMaterialType(row.material_type) &&
-                (row.on_hand_quantity > 0 || row.on_hand_weight > 0)
-              "
+              v-if="processing && canWrite && canRegisterProcessing(asRow(row))"
               link
               class="action-cool"
               :loading="processingLoadingGroupId === row.group_id"

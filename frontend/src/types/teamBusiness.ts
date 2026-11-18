@@ -5,8 +5,15 @@ export type TeamPurpose = TeamDirectoryItem
 export type TeamEmployee = TeamDirectoryItem
 export type TeamProcessingTask = TeamDirectoryItem &
   Partial<Pick<components['schemas']['TeamProcessingTaskResponse'], 'purpose_id'>>
+export type OpeningOrderOption = components['schemas']['OpeningOrderOption']
 export interface OpeningLine extends SludgeMeasurement {
+  stock_type: 'order' | 'non_order'
   serial_no: string
+  production_schedule_id?: number | null
+  process_route_id?: number | null
+  process_route_version?: number | null
+  process_step_index?: number | null
+  process_step_complete?: boolean
   material_name: string
   material_type: MaterialType | ''
   transfer_specification: string

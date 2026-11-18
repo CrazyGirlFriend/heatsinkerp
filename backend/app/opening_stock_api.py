@@ -1,6 +1,6 @@
 """HTTP validation and identity boundary for opening stock."""
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from . import opening_stock as service
@@ -8,10 +8,20 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .database import get_db
 from .models import User
-from .opening_stock import OpeningCreate
+from .opening_stock import OpeningCreate, OpeningOrderOption
 from .stock_read_schemas import OpeningStockResultResponse, OpeningStockStateResponse
 
 router = APIRouter(prefix="/api/team-materials", tags=["opening stock"])
+
+
+@router.get("/{team_id}/opening-stock/options", response_model=list[OpeningOrderOption])
+def options(
+    team_id: int = Path(ge=1),
+    serial_no: str = Query(min_length=1, max_length=80),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.options(team_id=team_id, serial_no=serial_no, user=user, db=db)
 
 
 @router.get("/{team_id}/opening-stock", response_model=OpeningStockStateResponse)

@@ -580,7 +580,11 @@ def create_dispatch(db, team_id, payload, user):
                 if line.serial_no is not None and lot.serial_no and serial != lot.serial_no:
                     raise HTTPException(422, "出库流水号不能与原批次不一致")
                 anonymous = not lot.serial_no and not lot.shared_unallocated
-                if anonymous and (source.code != WAREHOUSE_TEAM_CODE or lot.process_route_id):
+                if (
+                    anonymous
+                    and lot.material_type not in SCRAP_MATERIAL_TYPES
+                    and (source.code != WAREHOUSE_TEAM_CODE or lot.process_route_id)
+                ):
                     raise HTTPException(422, "仅未分配流水号的库房来料可在出库时填写流水号")
                 route_lot = lot
                 if line.shared_serials:
