@@ -11,7 +11,7 @@ import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Operation, Search } from '@element-plus/icons-vue'
 import { ElCheckbox, ElOption, ElOptionGroup, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
@@ -36,11 +36,13 @@ import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { materialTransferApi } from '@/services/materialTransferApi'
 import {
   materialTypeLabel,
   materialTypeOptions,
   isScrapType as isScrapMaterialType,
   isWeightOnlyType,
+  type MaterialTransfer,
 } from '@/types/materialTransfer'
 import {
   warehouseColumns,
@@ -72,6 +74,7 @@ import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { inventoryScheduleBaseline, inventoryScheduleTone } from '@/utils/inventorySchedule'
 
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
+const WarehouseReceiptDialog = defineAsyncComponent(() => import('./WarehouseReceiptDialog.vue'))
 const props = defineProps<{
   teamId: number
   overview: TeamMaterialOverview
@@ -375,7 +378,8 @@ const actionWidth = computed(
           : 88) +
     (props.processing && props.canWrite ? 64 : 0) +
     (props.inspection && props.canWrite ? 80 : 0) +
-    (props.canWrite && props.canReallocate ? 48 : 0),
+    (props.canWrite && props.canReallocate ? 48 : 0) +
+    (props.warehouse && props.canWrite && rows.value.some((row) => row.receipt_editable) ? 80 : 0),
 )
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
@@ -710,8 +714,35 @@ const detail = ref<TeamInventoryRow | null>(null),
   pending = ref<TeamInventoryRow | null>(null)
 const shipment = ref<TeamInventoryRow | null>(null)
 const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
-const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' } | null>(null)
+const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' | 'edit' } | null>(
+  null,
+)
+const editingReceipt = ref<MaterialTransfer | null>(null)
 let sourceVersion = 0
+async function openReceiptEdit(row: TeamInventoryRow) {
+  if (!props.canWrite || !row.receipt_editable || !row.batch_no || openingSource.value) return
+  const current = ++sourceVersion
+  openingSource.value = { groupId: row.group_id, mode: 'edit' }
+  try {
+    const receipt = await materialTransferApi.get(row.batch_no)
+    if (current !== sourceVersion || !props.canWrite) return
+    if (!receipt.allowed_actions.includes('edit_receipt')) {
+      showToast('此批已不能修改，请查看入库和流转记录', 'error')
+      void load(true)
+      return
+    }
+    editingReceipt.value = receipt
+  } catch (failure) {
+    if (current === sourceVersion)
+      showToast(failure instanceof Error ? failure.message : '入库单读取失败，请重试', 'error')
+  } finally {
+    if (current === sourceVersion) openingSource.value = null
+  }
+}
+function receiptEdited() {
+  editingReceipt.value = null
+  emit('changed')
+}
 async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate') {
   if (
     !props.canWrite ||
@@ -781,6 +812,7 @@ function reallocate(source: StockBatch) {
 function resetDetails() {
   ++sourceVersion
   openingSource.value = null
+  editingReceipt.value = null
   detail.value = picker.value = pending.value = null
   serialOpen.value = false
   expandedScheduleGroups.value = []
@@ -1410,6 +1442,14 @@ onBeforeUnmount(() => {
           ><div class="inventory-row-actions">
             <ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton
             ><ElButton
+              v-if="warehouse && canWrite && row.receipt_editable"
+              link
+              type="primary"
+              :loading="openingSource?.groupId === row.group_id && openingSource?.mode === 'edit'"
+              :disabled="!!openingSource"
+              @click="openReceiptEdit(asRow(row))"
+              >修改入库</ElButton
+            ><ElButton
               v-if="
                 processing &&
                 canWrite &&
@@ -1511,6 +1551,14 @@ onBeforeUnmount(() => {
       @action="action"
       @pending="pending = detail"
       @schedule="viewSchedule"
+    />
+    <WarehouseReceiptDialog
+      v-if="editingReceipt"
+      :model-value="true"
+      :team-id="teamId"
+      :receipt="editingReceipt"
+      @update:model-value="editingReceipt = null"
+      @saved="receiptEdited"
     />
     <InventoryPendingDialog
       v-if="pending"

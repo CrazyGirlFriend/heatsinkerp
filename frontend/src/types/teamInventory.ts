@@ -29,6 +29,7 @@ export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, Sh
   task_batch_number?: number | null
   batch_no?: string | null
   batch_nos?: string[]
+  receipt_editable?: boolean
   previous_batch_no?: string | null
   previous_batch_nos?: string[]
   warehouse_location?: string | null

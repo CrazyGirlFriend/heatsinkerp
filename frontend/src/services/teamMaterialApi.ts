@@ -12,6 +12,7 @@ import type {
 import { normalizeMaterialTransfer } from './materialTransferApi'
 import type {
   CreateWarehouseReceipt,
+  UpdateWarehouseReceipt,
   WarehouseReceiptParams,
   CreatedMaterialBatches,
   CreateSerialReallocation,
@@ -434,6 +435,11 @@ export const teamMaterialApi = {
   async createReceipt(teamId: number, payload: CreateWarehouseReceipt) {
     return normalizeMaterialTransfer(
       await request(path(teamId, 'receipts'), { method: 'POST', body: payload }),
+    )
+  },
+  async updateReceipt(teamId: number, lotId: number, payload: UpdateWarehouseReceipt) {
+    return normalizeMaterialTransfer(
+      await request(path(teamId, `receipts/${lotId}`), { method: 'PATCH', body: payload }),
     )
   },
   async reallocate(teamId: number, payload: CreateSerialReallocation) {

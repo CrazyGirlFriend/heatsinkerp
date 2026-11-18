@@ -253,6 +253,19 @@ export interface CreateWarehouseReceipt
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
 }
+
+export type UpdateWarehouseReceipt = Omit<
+  CreateWarehouseReceipt,
+  | 'idempotency_key'
+  | 'shared_serials'
+  | 'process_route'
+  | 'document_ids'
+  | 'confirmed_imports'
+  | 'receipt_kind'
+  | 'return_dispatch_no'
+  | 'delivery_date'
+  | 'delivery_quantity'
+> & { expected_version: number }
 export interface DispatchParams extends MaterialPageParams {
   next_team_id?: string | number
   status?: Exclude<DispatchStatus, 'partial'>

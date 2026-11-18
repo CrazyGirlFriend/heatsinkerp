@@ -568,10 +568,15 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
 
 
 def get_material_transfer(db, batch_no: str, user: User) -> dict[str, Any]:
+    from .warehouse_receipts import edit_actions
+
     transfer = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
     if transfer is None:
         raise HTTPException(404, "material transfer not found")
-    return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
+    result = material_transfer_dict(transfer, user)
+    if transfer.entry_kind == "warehouse_receipt":
+        result["allowed_actions"] = edit_actions(db, transfer, user)
+    return with_schedule(db, [result])[0]
 
 
 def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str, Any]:

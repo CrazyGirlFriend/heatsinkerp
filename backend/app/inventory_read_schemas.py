@@ -15,6 +15,7 @@ class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     serial_no: str
     batch_no: str | None
     batch_nos: list[str] = Field(default_factory=list)
+    receipt_editable: bool = False
     previous_batch_no: str | None = None
     previous_batch_nos: list[str] = Field(default_factory=list)
     warehouse_location: str | None

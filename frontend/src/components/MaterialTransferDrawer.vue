@@ -19,7 +19,7 @@ import { sludgeSummary } from '@/utils/sludgeWeight'
 import { CircleCheck, Delete, EditPen, Lock, Printer } from '@element-plus/icons-vue'
 import { ElIcon } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import BarcodeCard from '@/components/BarcodeCard.vue'
 import MaterialTransferDetailFrame from '@/components/MaterialTransferDetailFrame.vue'
@@ -79,6 +79,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
+const WarehouseReceiptDialog = defineAsyncComponent(() => import('./WarehouseReceiptDialog.vue'))
 const current = ref<MaterialTransfer | null>(null)
 const grouped = computed(() =>
   Boolean(
@@ -182,6 +183,12 @@ const canEdit = computed(() =>
     !props.receiptOnly && isSource.value && current.value && canEditMaterialTransfer(current.value),
   ),
 )
+const canEditReceipt = computed(
+  () =>
+    !props.receiptOnly &&
+    isReceiver.value &&
+    current.value?.allowed_actions.includes('edit_receipt'),
+)
 const canRequestAmendment = computed(() =>
   Boolean(
     !props.receiptOnly &&
@@ -239,7 +246,7 @@ const stateMessage = computed(() => {
   if (current.value.entry_kind === 'processing_output')
     return '本班组加工实物已登记，来源单据保持不变'
   if (opening.value) return '初始库存已登记，单据已锁定'
-  if (receipt.value) return '手工入库已完成，单据已锁定'
+  if (receipt.value) return canEditReceipt.value ? '可更正本次入库登记' : '手工入库已完成'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
   if (external.value && current.value.status === 'pending')
     return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
@@ -926,6 +933,9 @@ watch(
           "
           >查看交期源单</a
         >
+        <ElButton v-if="canEditReceipt" type="primary" :icon="EditPen" @click="editOpen = true"
+          >修改入库</ElButton
+        >
         <ElButton
           v-if="canEdit"
           type="primary"
@@ -1013,10 +1023,18 @@ watch(
     @busy="deliveryBusy = $event"
   />
   <MaterialTransferFormDialog
-    v-model="editOpen"
+    :model-value="editOpen && !receipt"
+    @update:model-value="editOpen = $event"
     :transfer="current"
     @saved="updateCurrent"
     @refreshed="updateCurrent"
+  />
+  <WarehouseReceiptDialog
+    v-if="editOpen && receipt && current"
+    v-model="editOpen"
+    :team-id="Number(current.next_team.id)"
+    :receipt="current"
+    @saved="updateCurrent"
   />
   <Teleport to="body"
     ><MaterialTransferPrintSheet v-if="current && printReady" ref="printSheet" :transfer="current"

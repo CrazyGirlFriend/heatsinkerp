@@ -33,6 +33,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElForm, ElFormItem, ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
+import { showToast } from '@/stores/toast'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
@@ -49,9 +50,13 @@ import {
   type MaterialTransferTextField,
   type MaterialType,
 } from '@/types/materialTransfer'
-import type { CreateWarehouseReceipt } from '@/types/teamMaterials'
+import type { CreateWarehouseReceipt, UpdateWarehouseReceipt } from '@/types/teamMaterials'
 
-const props = defineProps<{ modelValue: boolean; teamId: number }>()
+const props = defineProps<{
+  modelValue: boolean
+  teamId: number
+  receipt?: MaterialTransfer | null
+}>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   saved: [transfer: MaterialTransfer]
@@ -79,6 +84,8 @@ const canWrite = computed(
     !auth.currentUserError,
 )
 const identity = computed(() => `${auth.currentUser?.id ?? ''}:${props.teamId}`)
+const editing = computed(() => Boolean(props.receipt))
+const original = ref<MaterialTransfer | null>(null)
 const saving = ref(false),
   locationBusy = ref(false)
 const error = ref('')
@@ -313,7 +320,22 @@ watch(intakeSerials, () => {
 })
 const detailsOpen = ref(false)
 const weightOnly = computed(() => isWeightOnlyType(form.materialType))
-const enteredQuantity = computed(() => (weightOnly.value ? 0 : form.quantity))
+const enteredQuantity = computed(() =>
+  weightOnly.value
+    ? original.value?.material_type === form.materialType
+      ? original.value.quantity
+      : 0
+    : form.quantity,
+)
+const originalSludge = computed(() => {
+  const receipt = original.value
+  if (receipt?.material_type !== 'sludge') return
+  return {
+    weight: receipt.weight,
+    sludge_gross_weight: receipt.sludge_gross_weight ?? undefined,
+    sludge_content_percent: receipt.sludge_content_percent ?? undefined,
+  }
+})
 const autofill = useMaterialAutofill(() => form.serialNo, form.document)
 const specificationValidity = reactive<Record<string, boolean>>({
   finished_specification: true,
@@ -323,7 +345,11 @@ const specificationValidity = reactive<Record<string, boolean>>({
 let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
 
-function fill(payload: CreateWarehouseReceipt | null = null) {
+function fill(
+  payload: Partial<
+    Omit<CreateWarehouseReceipt, 'process_route' | 'document_ids' | 'shared_serials'>
+  > | null = null,
+) {
   ++importGeneration
   importBusy.value = false
   importedRoute.value = null
@@ -423,13 +449,26 @@ const validation = useDialogValidation(() => {
     (form.receiptKind !== 'external' || isScrapType(form.materialType || null))
   )
     issues.processRoute = '工艺单用于正常物料的首次入库'
-  if (!form.externalSource.trim() || form.externalSource.trim().length > 240)
+  if (
+    (!form.externalSource.trim() &&
+      (!original.value || original.value.external_source || form.receiptKind === 'return')) ||
+    form.externalSource.trim().length > 240
+  )
     issues.externalSource = '请填写外部来源单位'
   if ((!form.serialNo.trim() && form.receiptKind === 'return') || form.serialNo.trim().length > 80)
     issues.serialNo = '请输入有效流水号'
   if (!form.document.material_name.trim()) issues.material_name = '请输入材质'
   if (!form.materialType) issues.materialType = '请选择物料类型'
-  if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) {
+  const originalMeasurement = originalSludge.value
+  const unchangedMeasurement =
+    originalMeasurement &&
+    form.gross === originalMeasurement.sludge_gross_weight &&
+    form.percent === originalMeasurement.sludge_content_percent
+  if (
+    form.materialType === 'sludge' &&
+    !unchangedMeasurement &&
+    !sludgeWeight(form.gross, form.percent)
+  ) {
     if (!sludgeWeight(form.gross, 100)) issues.gross = '请填写有效废泥实重'
     if (!sludgeWeight(1, form.percent)) issues.percent = '请填写有效材料占比'
     if (!issues.gross && !issues.percent) issues.gross = '折算重量须达到 0.000001 kg'
@@ -456,7 +495,7 @@ const validation = useDialogValidation(() => {
   else if (enteredQuantity.value === 0 && form.weight === 0) {
     issues.quantity = issues.weight = '件数和重量至少一项大于 0'
   }
-  if (form.receiptKind === 'external' && !weightOnly.value) {
+  if (!editing.value && form.receiptKind === 'external' && !weightOnly.value) {
     const message = deliveryError(form.deliveryDate, form.deliveryQuantity)
     if (message)
       issues[
@@ -500,7 +539,7 @@ watch(
   },
   { flush: 'sync' },
 )
-function payload(): CreateWarehouseReceipt {
+function receiptFields(): Omit<UpdateWarehouseReceipt, 'expected_version'> {
   return {
     ...Object.fromEntries(
       materialDocumentTextFields.map((field) => [
@@ -511,9 +550,7 @@ function payload(): CreateWarehouseReceipt {
     serial_no: form.serialNo.trim(),
     material_name: form.document.material_name.trim(),
     material_type: form.materialType as MaterialType,
-    receipt_kind: form.receiptKind,
-    external_source: form.externalSource.trim(),
-    return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
+    external_source: form.externalSource.trim() || null,
     warehouse_location: form.warehouseLocation.trim() || null,
     ...(form.warehouseLocationKey
       ? { warehouse_location_reservation_key: form.warehouseLocationKey }
@@ -525,6 +562,13 @@ function payload(): CreateWarehouseReceipt {
     ...(form.materialType === 'sludge'
       ? sludgePayload(form.materialType, form.gross, form.percent)
       : {}),
+  }
+}
+function payload(): CreateWarehouseReceipt {
+  return {
+    ...receiptFields(),
+    receipt_kind: form.receiptKind,
+    return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
     ...(form.receiptKind === 'external'
       ? {
           delivery_date: weightOnly.value ? null : form.deliveryDate || null,
@@ -572,7 +616,20 @@ async function submit() {
     await directory.refreshTeamDirectory()
     if (current !== generation || scope !== identity.value || !props.modelValue) return
     if (!canWrite.value) {
-      error.value = '账号或库房信息已变更，当前不能入库'
+      error.value = editing.value
+        ? '账号或库房信息已变更，当前不能修改入库单'
+        : '账号或库房信息已变更，当前不能入库'
+      return
+    }
+    if (original.value) {
+      const saved = await teamMaterialApi.updateReceipt(teamId, Number(original.value.id), {
+        ...receiptFields(),
+        expected_version: Number(original.value.version),
+      })
+      if (current !== generation || scope !== identity.value || !props.modelValue) return
+      showToast(`入库单 ${saved.batch_no} 已修改`, 'success')
+      emit('saved', saved)
+      emit('update:modelValue', false)
       return
     }
     const body = attempt.value || payload()
@@ -618,8 +675,14 @@ async function submit() {
       error.value = failure instanceof Error ? failure.message : '入库提交失败，请重试核对'
     }
   } catch (failure) {
-    if (current === generation && scope === identity.value)
-      error.value = failure instanceof Error ? failure.message : '账号信息核验失败，请重试'
+    if (current === generation && scope === identity.value) {
+      error.value =
+        failure instanceof Error
+          ? failure.message
+          : editing.value
+            ? '保存修改失败，请重新核对'
+            : '账号信息核验失败，请重试'
+    }
   } finally {
     if (current === generation) saving.value = false
   }
@@ -645,7 +708,23 @@ watch(
     ++importGeneration
     importBusy.value = false
     saving.value = false
-    if (open) restoreAttempt()
+    if (!open) return
+    original.value = props.receipt || null
+    if (!original.value) {
+      restoreAttempt()
+      return
+    }
+    attempt.value = null
+    recoveryBlocked.value = false
+    validation.reset()
+    error.value = ''
+    fill({
+      ...original.value,
+      notes: original.value.notes ?? '',
+      material_name: original.value.material_name ?? '',
+      receipt_kind: original.value.receipt_kind === 'return' ? 'return' : 'external',
+      material_type: original.value.material_type || undefined,
+    })
   },
   { immediate: true },
 )
@@ -665,7 +744,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     :model-value="modelValue"
-    title="库房手工入库"
+    :title="editing ? '修改入库' : '库房手工入库'"
     width="min(1440px, 96vw)"
     top="16px"
     class="warehouse-receipt-dialog"
@@ -676,8 +755,9 @@ onBeforeUnmount(() => {
   >
     <template #header="{ titleId, titleClass }"
       ><div class="receipt-heading">
-        <h2 :id="titleId" :class="titleClass">手工入库</h2>
-        <span
+        <h2 :id="titleId" :class="titleClass">{{ editing ? '修改入库' : '手工入库' }}</h2>
+        <span v-if="original">{{ original.batch_no }}</span>
+        <span v-else
           >入库库房 · <strong>{{ warehouse?.name || '当前库房不可用' }}</strong></span
         >
       </div></template
@@ -699,7 +779,7 @@ onBeforeUnmount(() => {
       show-icon
     />
     <FormWorkspace class="receipt-document-layout">
-      <template #documents>
+      <template v-if="!editing" #documents>
         <div v-if="modelValue" class="receipt-document-panel" aria-label="入库附件">
           <WarehouseReceiptDocuments
             :team-id="teamId"
@@ -732,7 +812,7 @@ onBeforeUnmount(() => {
           "
         />
         <CompactFormSection title="入库信息" class="receipt-primary-section">
-          <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required
+          <ElFormItem v-if="!editing" label="入库来源" :error="fieldErrors.receiptKind" required
             ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
               ><ElOption value="external" label="外部来料" /><ElOption
                 value="return"
@@ -742,7 +822,9 @@ onBeforeUnmount(() => {
             label="外部来源单位"
             :error="fieldErrors.externalSource"
             :class="importedClass('external_source')"
-            required
+            :required="
+              !editing || Boolean(original?.external_source) || form.receiptKind === 'return'
+            "
             ><template #label
               >外部来源单位<AutofillBadge
                 :source="documentSource('external_source')"
@@ -757,7 +839,7 @@ onBeforeUnmount(() => {
               placeholder="供应商、外委单位或退回单位"
           /></ElFormItem>
           <ElFormItem
-            v-if="form.receiptKind === 'return'"
+            v-if="!editing && form.receiptKind === 'return'"
             label="原出库批次"
             :error="fieldErrors.returnDispatchNo"
             class="dialog-field-wide"
@@ -812,7 +894,7 @@ onBeforeUnmount(() => {
               field="serial_no"
               label="流水号"
               :maxlength="80"
-              :disabled="readonly"
+              :disabled="readonly || Boolean(original?.return_dispatch_no)"
               placeholder="选填，出库时可补充"
               @selected="autofill.select"
           /></ElFormItem>
@@ -875,6 +957,7 @@ onBeforeUnmount(() => {
           /></ElFormItem>
           <SludgeWeightFields
             v-else
+            :existing="originalSludge"
             v-model:gross="form.gross"
             v-model:percent="form.percent"
             :disabled="readonly"
@@ -884,7 +967,7 @@ onBeforeUnmount(() => {
           />
         </CompactFormSection>
         <ElFormItem
-          v-if="form.receiptKind === 'external' || importedRoute"
+          v-if="!editing && (form.receiptKind === 'external' || importedRoute)"
           label="关联工艺"
           :error="fieldErrors.processRoute"
           class="receipt-route-choice"
@@ -900,9 +983,12 @@ onBeforeUnmount(() => {
           </div>
         </ElFormItem>
         <AppDisclosure v-model:open="detailsOpen" class="receipt-optional-details">
-          <template #summary><strong>交期与物料资料</strong><span>选填</span></template>
+          <template #summary>
+            <strong>{{ editing ? '物料资料' : '交期与物料资料' }}</strong
+            ><span>选填</span>
+          </template>
           <CompactFormSection
-            v-if="form.receiptKind === 'external' && !weightOnly"
+            v-if="!editing && form.receiptKind === 'external' && !weightOnly"
             title="交期信息"
           >
             <MaterialDeliveryFields
@@ -1028,7 +1114,7 @@ onBeforeUnmount(() => {
           locationBusy
         "
         @click="submit"
-        >{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton
+        >{{ editing ? '保存修改' : attempt ? '重试核对入库' : '确认入库' }}</ElButton
       ></template
     >
   </AppDialog>

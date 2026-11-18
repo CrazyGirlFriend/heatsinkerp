@@ -78,6 +78,15 @@ def apply_changes(connection, changes, fields):
         model = type(obj)
         after = None if deleted else {key: getattr(obj, key) for key in fields[model]}
         if model is MaterialTransfer:
+            corrected_receipt = (
+                before
+                and after
+                and after["entry_kind"] == "warehouse_receipt"
+                and any(
+                    before[field] != after[field]
+                    for field in ("warehouse_location", "quantity", "weight")
+                )
+            )
             if (
                 before
                 and before["next_team_id"] == warehouse_id
@@ -97,20 +106,24 @@ def apply_changes(connection, changes, fields):
                     .mappings()
                     .all()
                 )
-                # Only arrival/first selection allocates stock. A later edit to
-                # a received document must not put returned stock back in a slot.
+                # Allocate on arrival or while correcting an unused manual receipt.
+                # An amendment to a received handoff never restores its old slot.
                 first = (
-                    before is None or before["warehouse_location"] != after["warehouse_location"]
+                    before is None
+                    or before["warehouse_location"] != after["warehouse_location"]
+                    or corrected_receipt
                 )
                 if first and existing:
                     connection.execute(delete(table).where(table.c.transfer_id == obj.id))
                     existing = []
                 if first and not existing:
                     location_id = connection.scalar(
-                        select(WarehouseLocation.id).where(
+                        select(WarehouseLocation.id)
+                        .where(
                             WarehouseLocation.team_id == warehouse_id,
                             WarehouseLocation.name == after["warehouse_location"],
                         )
+                        .with_for_update()
                     )
                     if location_id is not None:
                         connection.execute(
@@ -132,6 +145,7 @@ def apply_changes(connection, changes, fields):
                 and after
                 and before["status"] == after["status"] == "received"
                 and after["next_team_id"] == warehouse_id
+                and not corrected_receipt
             ):
                 # Approved receipt corrections reduce current placements, including
                 # later manual placements. Added stock stays unassigned.

@@ -3,13 +3,26 @@
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import object_session
 
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
-from .auth import actor_name
+from .auth import actor_name, can_manage_team
 from .batch_numbers import next_transfer_batch_number
 from .material_weight import sludge_measurement, validate_material_amounts
-from .models import MaterialDispatch, MaterialTransfer, Team, utcnow
+from .models import (
+    MaterialDispatch,
+    MaterialInspection,
+    MaterialLoss,
+    MaterialQuantityAdjustment,
+    MaterialTransfer,
+    MaterialTransferEvent,
+    ProductionScheduleSource,
+    Team,
+    WarehousePlacement,
+    WarehouseReceiptDocument,
+    utcnow,
+)
 from .process_route_schemas import RouteWrite
 from .process_routes import require_route
 from .record_filters import RecordFilters
@@ -30,11 +43,162 @@ def check_warehouse_actor(db, user, team_id):
         require_warehouse(stock.actor_team(db, user, team_id))
 
 
+def editable_ids(db, lot_ids, *, locking=False):
+    lot = MaterialTransfer.__table__
+    child = lot.alias("receipt_child")
+    event = MaterialTransferEvent.__table__
+    dependencies = (
+        select(child.c.id).where(child.c.source_transfer_id == lot.c.id),
+        select(MaterialLoss.id).where(MaterialLoss.source_transfer_id == lot.c.id),
+        select(MaterialQuantityAdjustment.id).where(
+            MaterialQuantityAdjustment.source_transfer_id == lot.c.id
+        ),
+        select(MaterialInspection.id).where(MaterialInspection.source_transfer_id == lot.c.id),
+        select(ProductionScheduleSource.schedule_id).where(
+            ProductionScheduleSource.source_transfer_id == lot.c.id
+        ),
+        select(event.c.id).where(
+            event.c.transfer_id == lot.c.id,
+            event.c.changes["main_system_schema_version"]["after"].as_string().is_not(None),
+        ),
+    )
+    statement = select(lot.c.id).where(
+        lot.c.id.in_(lot_ids),
+        lot.c.entry_kind == "warehouse_receipt",
+        lot.c.next_team_code == WAREHOUSE_TEAM_CODE,
+        lot.c.status == "received",
+        lot.c.stock_tracked.is_(True),
+        lot.c.shared_group_id.is_(None),
+        *(~(query.with_for_update() if locking else query).exists() for query in dependencies),
+    )
+    return set(db.scalars(statement.with_for_update() if locking else statement))
+
+
+def edit_actions(db, lot, user):
+    if (
+        lot.entry_kind == "warehouse_receipt"
+        and lot.next_team is not None
+        and lot.next_team.active
+        and can_manage_team(user, lot.next_team_id)
+        and editable_ids(db, [lot.id])
+    ):
+        return ["edit_receipt"]
+    return []
+
+
+def _correction_location(db, lot, team, payload, user):
+    from .warehouse_locations import consume, lock_location
+
+    if (
+        payload.warehouse_location_reservation_key
+        or payload.warehouse_location != lot.warehouse_location
+    ):
+        return consume(db, team, payload, user, required=True)
+    if not payload.warehouse_location:
+        raise HTTPException(422, "请选择入库仓位")
+    if (payload.quantity, payload.weight) == (lot.quantity, lot.weight):
+        return lot.warehouse_location
+    location_ids = db.scalars(
+        select(WarehousePlacement.location_id)
+        .where(WarehousePlacement.transfer_id == lot.id)
+        .with_for_update()
+    ).all()
+    if len(location_ids) != 1:
+        raise HTTPException(409, "请重新选择仓位以登记更正后的库存")
+    location = lock_location(db, location_ids[0])
+    if not location.active or location.team_id != team.id:
+        raise HTTPException(409, "原仓位已不可用，请重新选择仓位")
+    return location.name
+
+
+def update_receipt(db, team_id, lot_id, payload, user):
+    from .material_delivery import FIELDS as delivery_fields
+    from .material_delivery import with_schedule
+    from .material_entry_validation import require_registered_serial
+    from .process_route_paths import require_order_route
+
+    stock.require_actor(user, team_id)
+    try:
+        with db.begin():
+            if db.bind.dialect.name == "sqlite":
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            lot = stock.lock_lot(db, lot_id, team_id)
+            team = require_warehouse(stock.actor_team(db, user, team_id))
+            if lot.id not in editable_ids(db, [lot.id], locking=True):
+                raise HTTPException(
+                    409, "此入库单已有流转、加工、盘点或排期记录，或来自主系统，不能修改"
+                )
+            if lot.version != payload.expected_version:
+                raise HTTPException(409, "入库单已更新，请重新打开并核对")
+            serial = payload.serial_no if "serial_no" in payload.model_fields_set else lot.serial_no
+            if serial.startswith("共投-") or (lot.receipt_kind == "return" and not serial):
+                raise HTTPException(422, "请输入有效流水号")
+            if lot.receipt_kind == "return" and not (
+                payload.external_source
+                if "external_source" in payload.model_fields_set
+                else lot.external_source
+            ):
+                raise HTTPException(422, "外部返料须填写来源单位")
+            if serial != lot.serial_no:
+                if lot.return_dispatch_no:
+                    raise HTTPException(422, "已关联原出库批次的返料须沿用原流水号")
+                documents = db.scalars(
+                    select(WarehouseReceiptDocument).where(
+                        WarehouseReceiptDocument.transfer_id == lot.id
+                    )
+                ).all()
+                if any(
+                    row.kind == "order" and row.parsed.get("serial_no") != serial
+                    for row in documents
+                ):
+                    raise HTTPException(422, "流水号须与已归档的订单表一致")
+                require_registered_serial(db, serial, payload.material_type, documents=documents)
+                if lot.process_route:
+                    require_order_route(db, lot.process_route, serial)
+            if lot.process_route and payload.material_type in SCRAP_MATERIAL_TYPES:
+                raise HTTPException(422, "已关联工艺的入库单不能改为废料")
+            validate_material_amounts(
+                payload.material_type, payload.quantity, payload.weight, existing=lot
+            )
+            measured = sludge_measurement(
+                payload.material_type,
+                payload.weight,
+                payload.sludge_gross_weight,
+                payload.sludge_content_percent,
+                existing=lot,
+            )
+            location = _correction_location(db, lot, team, payload, user)
+            before = workflow._snapshot(lot)
+            fields = set(workflow.DOCUMENT_FIELDS) - set(delivery_fields)
+            fields.update(("serial_no", "external_source", "quantity", "weight", "notes"))
+            for field in fields & payload.model_fields_set:
+                setattr(lot, field, getattr(payload, field))
+            for field in workflow.SLUDGE_FIELDS:
+                setattr(lot, field, measured.get(field))
+            lot.warehouse_location = location
+            if workflow._snapshot(lot) != before:
+                lot.version += 1
+                lot.updated_at = utcnow()
+                workflow._record_event(db, lot, user, "receipt_updated", before)
+            result = workflow.material_transfer_dict(lot, user)
+            result["allowed_actions"] = ["edit_receipt"]
+            return with_schedule(db, [result])[0]
+    except OperationalError as exc:
+        db.rollback()
+        if getattr(exc.orig, "sqlite_errorcode", None) in (5, 6) or getattr(
+            exc.orig, "args", (None,)
+        )[0] in (1205, 1213):
+            raise HTTPException(409, "库存正在更新，请重新打开入库单核对") from exc
+        raise
+
+
 def replay(prior, user, request_hash, team_id):
     if prior.entry_kind != "warehouse_receipt":
         raise HTTPException(409, "idempotency key was used for another operation")
     stock._replay(prior, user, request_hash, "next_team_id", team_id)
-    return workflow.material_transfer_dict(prior, user)
+    result = workflow.material_transfer_dict(prior, user)
+    result["allowed_actions"] = edit_actions(object_session(prior), prior, user)
+    return result
 
 
 def intake_route(db, team, payload, user):
@@ -211,6 +375,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 }
                 db.flush()
             result = workflow.material_transfer_dict(receipt, user)
+            if not source_reference:
+                result["allowed_actions"] = ["edit_receipt"]
         return result
     except (IntegrityError, OperationalError) as exc:
         db.rollback()

@@ -31,6 +31,7 @@ from .schemas import (
     MaterialTransferList,
     MaterialTransferResponse,
     WarehouseReceiptCreate,
+    WarehouseReceiptUpdate,
 )
 from .stock_read_schemas import (
     MaterialLossResponse,
@@ -239,6 +240,17 @@ def create_warehouse_receipt(
     db: Session = Depends(get_db),
 ):
     return warehouse_receipts.create_receipt(db, team_id, payload, user)
+
+
+@router.patch("/{team_id}/receipts/{lot_id}", response_model=MaterialTransferResponse)
+def update_warehouse_receipt(
+    payload: WarehouseReceiptUpdate,
+    team_id: int = Path(ge=1),
+    lot_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return warehouse_receipts.update_receipt(db, team_id, lot_id, payload, user)
 
 
 @router.get("/{team_id}/receipts", response_model=MaterialTransferList)

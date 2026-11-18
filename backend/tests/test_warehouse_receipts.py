@@ -16,6 +16,8 @@ from app.models import (
     TeamEmployee,
     TransferBatchNumberSequence,
     User,
+    WarehouseLocation,
+    WarehousePlacement,
 )
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
@@ -75,7 +77,7 @@ def intake(client, setup, **overrides):
     )
 
 
-def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, warehouse):
+def test_manual_intake_is_a_stock_origin_not_a_self_transfer(client, warehouse):
     response = intake(client, warehouse)
     assert response.status_code == 201, response.text
     receipt = response.json()
@@ -84,7 +86,7 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     assert receipt["source_transfer_id"] is None and receipt["dispatch_no"] is None
     assert receipt["next_team"]["id"] == warehouse["team"]["id"]
     assert receipt["status"] == "received" and receipt["stock_tracked"] and receipt["locked"]
-    assert receipt["allowed_actions"] == [] and receipt["version"] == 1
+    assert receipt["allowed_actions"] == ["edit_receipt"] and receipt["version"] == 1
     assert (
         receipt["barcode_payload"] == receipt["batch_no"] and receipt["barcode_type"] == "CODE128"
     )
@@ -116,6 +118,46 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     assert client.get(base + "/stock").json()["items"][0]["transfer"]["id"] == receipt["id"]
 
 
+def test_correcting_unused_receipt_keeps_batch_and_updates_stock_and_slot(client, warehouse):
+    receipt = intake(client, warehouse, serial_no="").json()
+    url = f"{warehouse['url']}/{receipt['id']}"
+    payload = {
+        "expected_version": receipt["version"],
+        "serial_no": "WAREHOUSE-001",
+        "material_name": "钼铜",
+        "material_type": "raw_material",
+        "quantity": 80,
+        "weight": "8.125",
+        "warehouse_location": receipt["warehouse_location"],
+    }
+    assert client.patch(url, headers=warehouse["other_headers"], json=payload).status_code == 403
+    updated = client.patch(url, headers=warehouse["headers"], json=payload)
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["batch_no"] == receipt["batch_no"]
+    assert updated.json()["history"][-1]["changes"]["serial_no"]["after"] == "WAREHOUSE-001"
+    assert client.patch(url, json=payload).status_code == 409
+
+    new_slot = select_location(client, warehouse)
+    moved = client.patch(
+        url,
+        headers=warehouse["headers"],
+        json={**payload, **new_slot, "expected_version": 2, "quantity": 60, "weight": "6.125"},
+    )
+    assert moved.status_code == 200, moved.text
+    inventory = client.get(warehouse["url"].replace("/receipts", "/inventory")).json()["items"]
+    assert len(inventory) == 1
+    row = inventory[0]
+    assert row["batch_no"] == receipt["batch_no"] and row["receipt_editable"]
+    assert (row["on_hand_quantity"], row["on_hand_weight"]) == (60, 6.125)
+    with SessionLocal() as db:
+        slots = db.execute(
+            select(WarehouseLocation.name, WarehousePlacement.quantity, WarehousePlacement.weight)
+            .join(WarehouseLocation)
+            .where(WarehousePlacement.transfer_id == receipt["id"])
+        ).all()
+    assert slots == [(new_slot["warehouse_location"], 60, 6.125)]
+
+
 def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, warehouse):
     origin = intake(client, warehouse, quantity=0, weight="100.000").json()
     response = sender_post(
@@ -130,6 +172,20 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
     )
     assert response.status_code == 201, response.text
     previous = response.json()["items"][0]
+    detail = client.get(f"/api/material-transfers/{origin['batch_no']}").json()
+    assert "edit_receipt" not in detail["allowed_actions"]
+    blocked = client.patch(
+        f"{warehouse['url']}/{origin['id']}",
+        json={
+            "expected_version": origin["version"],
+            "material_name": origin["material_name"],
+            "material_type": origin["material_type"],
+            "quantity": 0,
+            "weight": 90,
+            "warehouse_location": origin["warehouse_location"],
+        },
+    )
+    assert blocked.status_code == 409, blocked.text
     assert (
         receipt_post(
             client,

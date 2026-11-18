@@ -2004,6 +2004,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/team-materials/{team_id}/receipts/{lot_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update Warehouse Receipt */
+    patch: operations['update_warehouse_receipt_api_team_materials__team_id__receipts__lot_id__patch']
+    trace?: never
+  }
   '/api/team-materials/{team_id}/serial-history': {
     parameters: {
       query?: never
@@ -2980,6 +2997,11 @@ export interface components {
       /** Purpose Name */
       purpose_name: string
       /**
+       * Receipt Editable
+       * @default false
+       */
+      receipt_editable: boolean
+      /**
        * Receipt Source
        * @enum {string}
        */
@@ -3679,6 +3701,11 @@ export interface components {
       purpose_id: number | null
       /** Purpose Name */
       purpose_name: string
+      /**
+       * Receipt Editable
+       * @default false
+       */
+      receipt_editable: boolean
       /**
        * Receipt Source
        * @enum {string}
@@ -9734,6 +9761,69 @@ export interface components {
       /** Weight */
       weight: number | string
     }
+    /** WarehouseReceiptUpdate */
+    WarehouseReceiptUpdate: {
+      /** Category Level3 */
+      category_level3?: string | null
+      /** Customer Code */
+      customer_code?: string | null
+      /** Expected Version */
+      expected_version: number
+      /** External Source */
+      external_source?: string | null
+      /** Finished Quantity */
+      finished_quantity?: number | null
+      /** Finished Specification */
+      finished_specification?: string | null
+      /** Material Description */
+      material_description?: string | null
+      /** Material Name */
+      material_name: string
+      /** Material Shape */
+      material_shape?: string | null
+      /** Material Type */
+      material_type: string
+      /**
+       * Notes
+       * @default
+       */
+      notes: string
+      /** Order Category */
+      order_category?: string | null
+      /** Outsourced Unit */
+      outsourced_unit?: string | null
+      /** Part No */
+      part_no?: string | null
+      /** Product Code */
+      product_code?: string | null
+      /** Purpose Category */
+      purpose_category?: string | null
+      /** Quantity */
+      quantity: number
+      /**
+       * Serial No
+       * @default
+       */
+      serial_no: string
+      /** Sludge Content Percent */
+      sludge_content_percent?: number | string | null
+      /** Sludge Gross Weight */
+      sludge_gross_weight?: number | string | null
+      /** Source Batch No */
+      source_batch_no?: string | null
+      /** Special Process */
+      special_process?: string | null
+      /** Technical Requirements */
+      technical_requirements?: string | null
+      /** Transfer Specification */
+      transfer_specification?: string | null
+      /** Warehouse Location */
+      warehouse_location?: string | null
+      /** Warehouse Location Reservation Key */
+      warehouse_location_reservation_key?: string | null
+      /** Weight */
+      weight: number | string
+    }
   }
   responses: never
   parameters: never
@@ -14792,6 +14882,42 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MaterialTransferResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  update_warehouse_receipt_api_team_materials__team_id__receipts__lot_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        lot_id: number
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['WarehouseReceiptUpdate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
         headers: {
           [name: string]: unknown
         }

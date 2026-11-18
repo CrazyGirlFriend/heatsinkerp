@@ -14,7 +14,7 @@ import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { warehouseColumns } from '@/types/teamInventory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -85,6 +85,10 @@ async function render(
         SerialMaterialDrawer: true,
         StockSourcePicker: true,
         InventoryPendingDialog: true,
+        WarehouseReceiptDialog: {
+          props: ['receipt'],
+          template: '<div data-receipt-edit>{{ receipt.batch_no }} · {{ receipt.version }}</div>',
+        },
       },
     },
   })
@@ -130,6 +134,36 @@ async function showColumns(...keys: string[]) {
 }
 
 describe('warehouse grouped stock', () => {
+  it('opens the current receipt from the editable inventory row', async () => {
+    const batchNo = 'TL20261117000001'
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+      items: [
+        warehouseFixture({ batch_no: batchNo, receipt_editable: true }),
+        warehouseFixture({ group_id: 12, batch_no: 'TL20261117000002', receipt_editable: false }),
+      ],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    const receipt = normalizeMaterialTransfer({
+      id: 51,
+      batch_no: batchNo,
+      entry_kind: 'warehouse_receipt',
+      status: 'received',
+      version: 2,
+      allowed_actions: ['edit_receipt'],
+    })
+    const read = vi.spyOn(materialTransferApi, 'get').mockResolvedValue(receipt)
+    await render(undefined, true, true, false)
+    const actions = wrapper.findAll('button').filter((button) => button.text() === '修改入库')
+    expect(actions).toHaveLength(1)
+    await actions[0]!.trigger('click')
+    await vi.dynamicImportSettled()
+    await flushPromises()
+    expect(read).toHaveBeenCalledWith(batchNo)
+    expect(wrapper.get('[data-receipt-edit]').text()).toBe(`${batchNo} · 2`)
+  })
+
   it.each([
     { warehouse: true, processing: false, inspection: false },
     { warehouse: false, processing: true, inspection: false },

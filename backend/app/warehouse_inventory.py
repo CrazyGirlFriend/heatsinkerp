@@ -730,6 +730,14 @@ def list_inventory(db, team_id, filters):
         ).mappings()
         for row in root_rows:
             differences.setdefault(tuple(row[name] for name in origins), []).append(row)
+    from .warehouse_receipts import editable_ids
+
+    receipt_ids = [
+        row["group_id"]
+        for row in rows
+        if row["warehouse_batch_no"] and row["receipt_source"] in ("external", "return")
+    ]
+    editable_receipts = editable_ids(db, receipt_ids) if receipt_ids else set()
     items = []
     teams = {team.id: team for team in db.scalars(select(Team))} if team_id is None else {}
     for row in rows:
@@ -739,6 +747,7 @@ def list_inventory(db, team_id, filters):
         item.pop("schedule_task_id")
         current, previous = batches[tuple(row[name] for name in origins)]
         item["batch_nos"] = sorted(current)
+        item["receipt_editable"] = row["group_id"] in editable_receipts
         item["previous_batch_nos"] = sorted(previous)
         rework_route = routes.get(item["rework_route_id"])
         item["rework_round"] = rework_route.rework_round if rework_route else None

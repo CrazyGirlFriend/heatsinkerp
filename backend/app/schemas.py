@@ -330,30 +330,53 @@ class MaterialTransferUpdate(
         return self
 
 
-class WarehouseReceiptCreate(
-    MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement
-):
-    """Explicit stock origin; never impersonate an upstream team or ERP event."""
-
+class WarehouseReceiptFields(MaterialDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
     serial_no: str = Field(default="", max_length=80)
-    shared_serials: list[SharedMaterialSerial] | None = Field(
-        default=None, min_length=2, max_length=20
-    )
     material_name: str = Field(min_length=1, max_length=160)
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str = Field(default="", max_length=2000)
+    external_source: str | None = Field(default=None, min_length=1, max_length=240)
+
+    @field_validator("external_source")
+    @classmethod
+    def normalize_external_source(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("来源单位不能为空白")
+        return value.strip() if value is not None else None
+
+    @field_validator("serial_no", "notes")
+    @classmethod
+    def trim_text(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_amount(self):
+        if self.quantity == 0 and self.weight == 0:
+            raise ValueError("quantity or weight must be positive")
+        return self
+
+
+class WarehouseReceiptUpdate(WarehouseReceiptFields):
+    expected_version: int = Field(ge=1)
+
+
+class WarehouseReceiptCreate(WarehouseReceiptFields, MaterialTransferDocumentFields):
+    """Explicit stock origin; never impersonate an upstream team or ERP event."""
+
+    shared_serials: list[SharedMaterialSerial] | None = Field(
+        default=None, min_length=2, max_length=20
+    )
     idempotency_key: str = Field(min_length=1, max_length=100)
     process_route: RouteIntakeWrite | None = None
     document_ids: list[int] = Field(default_factory=list, max_length=12)
     confirmed_imports: bool = False
     receipt_kind: Literal["external", "return"] = "external"
-    external_source: str | None = Field(default=None, min_length=1, max_length=240)
     return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
 
-    @field_validator("external_source", "return_dispatch_no")
+    @field_validator("return_dispatch_no")
     @classmethod
     def normalize_source(cls, value):
         if value is not None and not value.strip():
@@ -367,14 +390,8 @@ class WarehouseReceiptCreate(
             raise ValueError("required text cannot be blank")
         return value.strip()
 
-    @field_validator("notes")
-    @classmethod
-    def normalize_notes(cls, value: str) -> str:
-        return value.strip()
-
     @model_validator(mode="after")
     def validate_intake(self):
-        self.serial_no = self.serial_no.strip()
         if self.shared_serials:
             if self.receipt_kind != "external" or self.material_type in SCRAP_MATERIAL_TYPES:
                 raise ValueError("共投入库须为正常物料的外部来料")
@@ -399,8 +416,6 @@ class WarehouseReceiptCreate(
             raise ValueError("仅外部返料可关联原出库单")
         if not self.material_name:
             raise ValueError("material_name is required")
-        if self.quantity == 0 and self.weight == 0:
-            raise ValueError("quantity or weight must be positive")
         return self
 
 

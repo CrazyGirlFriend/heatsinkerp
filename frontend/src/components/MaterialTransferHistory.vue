@@ -40,6 +40,7 @@ const actions = {
   received: '确认签收',
   voided: '作废转料单',
   stocked: '手工入库已完成',
+  receipt_updated: '修改入库',
   dispatched: '确认出库',
   rejected: '库房退回核对',
   quantity_changed: '加工件数变更',

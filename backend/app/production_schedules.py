@@ -630,9 +630,14 @@ def validate_plan(db, payload, plan=None):
                 raise HTTPException(422, "排期前后序不能形成循环")
             seen.add(current.id)
             current = db.get(Plan, current.predecessor_id) if current.predecessor_id else None
-    for source in payload.sources:
+    for source in sorted(payload.sources, key=lambda item: item.source_transfer_id):
+        # The same lot lock protects corrections to a warehouse receipt.
         lot = db.scalar(
-            select(Transfer).options(lazyload("*")).where(Transfer.id == source.source_transfer_id)
+            select(Transfer)
+            .options(lazyload("*"))
+            .where(Transfer.id == source.source_transfer_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if (
             lot is None

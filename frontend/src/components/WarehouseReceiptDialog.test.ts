@@ -79,9 +79,9 @@ afterEach(() => {
   vi.restoreAllMocks()
   sessionStorage.clear()
 })
-async function render() {
+async function render(original?: ReturnType<typeof receipt>) {
   wrapper = mount(WarehouseReceiptDialog, {
-    props: { modelValue: true, teamId: 901 },
+    props: { modelValue: true, teamId: 901, receipt: original },
     global: {
       stubs: {
         ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
@@ -125,6 +125,42 @@ async function submit() {
 }
 
 describe('warehouse manual receipt', () => {
+  it('loads an existing receipt and saves a correction using its version', async () => {
+    const original = {
+      ...receipt(),
+      version: 3,
+      serial_no: '',
+      material_name: '钼铜',
+      material_type: 'raw_material' as const,
+      warehouse_location: 'A区-01',
+      quantity: 10,
+      weight: 6,
+    }
+    const update = vi.spyOn(teamMaterialApi, 'updateReceipt').mockResolvedValue({
+      ...original,
+      serial_no: 'QA-IN',
+      version: 4,
+    })
+    await render(original)
+    expect(wrapper.text()).toContain('TL-RECEIPT')
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '钼铜')
+    await wrapper.get('input[aria-label="流水号"]').setValue('QA-IN')
+    await submit()
+    expect(update).toHaveBeenCalledWith(
+      901,
+      51,
+      expect.objectContaining({
+        expected_version: 3,
+        serial_no: 'QA-IN',
+        warehouse_location: 'A区-01',
+        quantity: 10,
+        weight: 6,
+      }),
+    )
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ batch_no: 'TL-RECEIPT', version: 4 })
+  })
+
   it('requires a location even when the serial is unknown', async () => {
     await render()
     await fill()
