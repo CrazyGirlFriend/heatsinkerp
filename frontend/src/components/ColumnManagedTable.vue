@@ -197,6 +197,7 @@ export default defineComponent({
                 // Element Plus retains column slots; read the current query when rendering them.
                 const query = props.columnQuery
                 return h('span', { class: 'table-column-heading' }, [
+                  field && query ? cellSlots?.header?.(scope) : null,
                   field && query
                     ? h(TableColumnFilter, {
                         label: entry.label,

@@ -16,6 +16,7 @@ import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
 import MaterialDocumentInput from './MaterialDocumentInput.vue'
+import SpecificationInput from './SpecificationInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
@@ -91,7 +92,9 @@ const saving = ref(false),
 const error = ref('')
 const documentSections = materialDocumentFormSections.map((section) => ({
   ...section,
-  fields: section.fields.filter((field) => field.key !== 'material_name'),
+  fields: section.fields.filter(
+    (field) => field.key !== 'material_name' && field.key !== 'transfer_specification',
+  ),
 }))
 const importedRoute = ref<ProcessRoute | null>(null)
 const importBusy = ref(false),
@@ -966,6 +969,31 @@ onBeforeUnmount(() => {
             :percent-error="fieldErrors.percent"
             @update:weight="form.weight = $event"
           />
+          <ElFormItem
+            label="实际尺寸（选填）"
+            class="form-field--long"
+            :class="importedClass('transfer_specification')"
+            :error="fieldErrors.transfer_specification"
+            data-validation-field="transfer_specification"
+          >
+            <template #label>
+              实际尺寸（选填）<AutofillBadge
+                :source="
+                  documentSource('transfer_specification') ||
+                  autofill.source('transfer_specification')
+                "
+                :kind="documentSource('transfer_specification') ? 'document' : undefined"
+                :modified="documentChanged('transfer_specification')"
+              />
+            </template>
+            <SpecificationInput
+              v-model="form.document.transfer_specification"
+              label="实际尺寸"
+              placeholder="如 100 × 80 × 5 mm"
+              :disabled="readonly"
+              @validity-change="specificationValidity.transfer_specification = $event"
+            />
+          </ElFormItem>
         </CompactFormSection>
         <ElFormItem
           v-if="!editing && (form.receiptKind === 'external' || importedRoute)"

@@ -4,6 +4,7 @@ import { h, reactive, Transition } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FilterDialog from '@/components/FilterDialog.vue'
+import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import { ElCheckbox, ElSelect } from 'element-plus'
 import WorkspaceTools from '@/components/WorkspaceTools.vue'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
@@ -215,7 +216,7 @@ afterEach(async () => {
   vi.useRealTimers()
   expect(unexpectedRequests, `Unmocked requests: ${unexpectedRequests.join(', ')}`).toEqual([])
 })
-async function render(path = '/team-workspaces/914', animate = false) {
+async function render(path = '/team-workspaces/914', animate = false, stockActionDialog = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -250,7 +251,8 @@ async function render(path = '/team-workspaces/914', animate = false) {
         MaterialDispatchDrawer: true,
         BarcodeCard: true,
         MaterialTransferDrawer: true,
-        MaterialStockActionDialog: true,
+        MaterialStockActionDialog: !stockActionDialog,
+        ...(stockActionDialog ? { SerialRouteAttachments: true } : {}),
         SerialReallocationDialog: true,
         WarehouseReceiptDialog: true,
         WarehouseManagement: {
@@ -270,18 +272,18 @@ async function openToolbarMenu() {
   await flushPromises()
 }
 
+const dispatchableRow = (id: number) =>
+  warehouseFixture({
+    group_id: id,
+    batch_no: `TL${id}`,
+    batch_count: 1,
+    current_batch_count: 1,
+    available_quantity: 9,
+    available_weight: 0.005,
+  })
 function mockDispatchableRows(...ids: number[]) {
   vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
-    items: ids.map((id) =>
-      warehouseFixture({
-        group_id: id,
-        batch_no: `TL${id}`,
-        batch_count: 1,
-        current_batch_count: 1,
-        available_quantity: 9,
-        available_weight: 0.005,
-      }),
-    ),
+    items: ids.map(dispatchableRow),
     total: 45,
     page: 1,
     page_size: 10,
@@ -1474,6 +1476,102 @@ describe('team workspace material ledger', () => {
       }
     },
   )
+  it('carries all selected batches from filtered inventory pages into the dispatch form', async () => {
+    const pageOne = Array.from({ length: 10 }, (_, index) => dispatchableRow(10 + index))
+    const pageTwo = [dispatchableRow(20), dispatchableRow(21)]
+    vi.mocked(teamMaterialApi.teamInventory).mockImplementation(async (_teamId, params) => ({
+      items: params?.page === 2 ? pageTwo : pageOne,
+      total: 12,
+      page: params?.page || 1,
+      page_size: 10,
+    }))
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: [source(21), source(12), source(10)],
+      total: 3,
+      page: 1,
+      page_size: 100,
+    })
+    await render('/team-workspaces/914?tab=stock', false, true)
+    const inventory = wrapper.getComponent(TeamInventory)
+    const filters = inventory.getComponent(FilterDialog)
+    await filters.get('button[aria-label="库存筛选"]').trigger('click')
+    await flushPromises()
+    const type = filters
+      .findAllComponents(ElSelect)
+      .find((select) => select.find('input[aria-label="库存物料类型筛选"]').exists())!
+    type.vm.$emit('update:modelValue', 'raw_material')
+    filters.vm.$emit('apply')
+    await flushPromises()
+    const batchFilter = inventory
+      .findAllComponents(TableColumnFilter)
+      .find((filter) => filter.props('label') === '批次号')!
+    batchFilter.vm.$emit('apply', 'TL', '', { operator: 'starts_with' })
+    await flushPromises()
+
+    await dispatchCheckbox(10).setValue(true)
+    await dispatchCheckbox(12).setValue(true)
+    await inventory
+      .getComponent(WorkspacePagination)
+      .get('button[aria-label="下一页"], button.btn-next')
+      .trigger('click')
+    await flushPromises()
+    const [, params] = vi.mocked(teamMaterialApi.teamInventory).mock.lastCall!
+    expect(params).toMatchObject({ page: 2, material_type: 'raw_material' })
+    expect(JSON.parse(params!.table_query!)).toMatchObject({
+      filters: [{ field: 'batch_no', operator: 'starts_with', value: 'TL' }],
+    })
+    expect(inventory.find('label[aria-label="勾选出库 TL10"]').exists()).toBe(false)
+    await dispatchCheckbox(21).setValue(true)
+    expect(inventory.find('.batch-selection-bar').exists()).toBe(false)
+
+    await newDispatch()
+    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
+      source_ids: '10,12,21',
+      availability: 'dispatchable',
+      page_size: 100,
+    })
+    const dialog = wrapper.getComponent(MaterialStockActionDialog)
+    expect(dialog.props('modelValue')).toBe(true)
+    expect(
+      dialog.findAll('.source-line .source-meta').map((line) =>
+        line
+          .findAll('span')
+          .find((item) => item.text().startsWith('批次 '))
+          ?.text(),
+      ),
+    ).toEqual(['批次 TL10', '批次 TL12', '批次 TL21'])
+  })
+  it('selects and clears inventory batches through the header and toolbar in fullscreen', async () => {
+    mockDispatchableRows(10, 11)
+    await render('/team-workspaces/914?tab=stock')
+    await wrapper.get('.team-workspace__fullscreen').trigger('click')
+    await flushPromises()
+
+    const inventory = wrapper.getComponent(TeamInventory)
+    const selectPage = inventory.get<HTMLInputElement>(
+      'thead label[aria-label="选择本页可用批次"] input',
+    )
+    await selectPage.setValue(true)
+    expect(dispatchCheckbox(10).element.checked).toBe(true)
+    expect(dispatchCheckbox(11).element.checked).toBe(true)
+    expect(inventory.find('.batch-selection-bar').exists()).toBe(false)
+
+    const toolbar = inventory.get('form[role="search"]')
+    await toolbar
+      .findAll('button')
+      .find((button) => button.text() === '清空勾选')!
+      .trigger('click')
+    expect(selectPage.element.checked).toBe(false)
+    expect(dispatchCheckbox(10).element.checked).toBe(false)
+    expect(dispatchCheckbox(11).element.checked).toBe(false)
+
+    await selectPage.setValue(true)
+    await newDispatch()
+    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(
+      914,
+      expect.objectContaining({ source_ids: '10,11' }),
+    )
+  })
   it('opens the inventory list to select batches when starting from outbound records', async () => {
     const router = await render('/team-workspaces/914?tab=outgoing&status=pending')
     await newDispatch()

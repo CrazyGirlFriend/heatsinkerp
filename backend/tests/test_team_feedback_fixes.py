@@ -17,27 +17,27 @@ from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
 
-def test_normal_transfer_requires_dimensions_and_cannot_clear_them(client):
+def test_normal_transfer_can_omit_or_clear_dimensions_and_still_be_received(client):
     setup = _setup_three_teams(client)
     response = _create(client, setup, transfer_specification="   ")
-    assert response.status_code == 422 and "实际尺寸" in response.text
-    created = _create(client, setup).json()
+    assert response.status_code == 201, response.text
+    assert response.json()["transfer_specification"] is None
+    created = _create(client, setup, idempotency_key="receive-without-size").json()
     result = client.patch(
         f"/api/material-transfers/{created['batch_no']}",
         headers=setup["source_headers"],
         json={"transfer_specification": "", "expected_version": created["version"]},
     )
-    assert result.status_code == 422
-    # An older pending document cannot bypass the receiving boundary either.
-    with SessionLocal.begin() as db:
-        db.get(MaterialTransfer, created["id"]).transfer_specification = None
+    assert result.status_code == 200, result.text
+    assert result.json()["transfer_specification"] is None
     result = receipt_post(
         client,
         f"/api/material-transfers/{created['batch_no']}/confirm",
         headers=setup["target_headers"],
         json={"idempotency_key": "receive"},
     )
-    assert result.status_code == 422 and "实际尺寸" in result.text
+    assert result.status_code == 200, result.text
+    assert result.json()["transfer_specification"] is None
 
 
 def test_unknown_intake_serial_blocked_when_engineering_enabled(client, warehouse):
@@ -209,7 +209,7 @@ def test_total_allocation_never_allocates_negative_stock_measurements():
 
 
 @pytest.mark.usefixtures("legacy_stock")
-def test_dispatch_rejects_missing_or_cleared_dimensions_before_reserving_stock(
+def test_dispatch_accepts_optional_dimensions_and_preserves_explicit_values(
     client, inspection_stock
 ):
     setup, lots = inspection_stock
@@ -218,14 +218,15 @@ def test_dispatch_rejects_missing_or_cleared_dimensions_before_reserving_stock(
     base = f"/api/team-materials/{setup['target']['id']}"
     payload = {
         "next_team_id": setup["third"]["id"],
-        "idempotency_key": "required-dimensions",
+        "idempotency_key": "missing-dimensions",
         "lines": [{"source_transfer_id": lots[0]["id"], "quantity": 5, "weight": 1}],
     }
     missing = sender_post(
         client, base + "/dispatches", headers=setup["target_headers"], json=payload
     )
-    assert missing.status_code == 422 and "实际尺寸" in missing.text
-    assert client.get(base + "/overview").json()["totals"]["reserved_quantity"] == 0
+    assert missing.status_code == 201, missing.text
+    assert missing.json()["items"][0]["transfer_specification"] is None
+    payload["idempotency_key"] = "filled-dimensions"
     payload["lines"][0]["transfer_specification"] = "20 × 10 × 2 mm"
     valid = sender_post(client, base + "/dispatches", headers=setup["target_headers"], json=payload)
     assert valid.status_code == 201, valid.text
@@ -235,4 +236,5 @@ def test_dispatch_rejects_missing_or_cleared_dimensions_before_reserving_stock(
     cleared = sender_post(
         client, base + "/dispatches", headers=setup["target_headers"], json=payload
     )
-    assert cleared.status_code == 422 and "实际尺寸" in cleared.text
+    assert cleared.status_code == 201, cleared.text
+    assert cleared.json()["items"][0]["transfer_specification"] is None

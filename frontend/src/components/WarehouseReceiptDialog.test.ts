@@ -183,7 +183,7 @@ describe('warehouse manual receipt', () => {
       }),
     )
   })
-  it.each(['成品规格', '转料规格'])('retains %s validation on physical receipts', async (label) => {
+  it.each(['成品规格', '实际尺寸'])('retains %s validation on physical receipts', async (label) => {
     await render()
     expect(
       wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
@@ -198,22 +198,37 @@ describe('warehouse manual receipt', () => {
     await wrapper.get('.receipt-optional-details .app-disclosure-trigger').trigger('click')
     await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请填完整尺寸')
     expect(
       wrapper.get('.receipt-optional-details .app-disclosure-trigger').attributes('aria-expanded'),
-    ).toBe('true')
+    ).toBe(label === '成品规格' ? 'true' : 'false')
     expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   })
-  it('accepts raw intake without a serial number or route', async () => {
-    await render()
-    await fill()
-    await wrapper.get('input[aria-label="流水号"]').setValue('')
-    await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
-      901,
-      expect.objectContaining({ serial_no: '' }),
-    )
-    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].process_route).toBeUndefined()
-  })
+  it.each(['', '100 × 80 × 5 mm'])(
+    'has a visible optional intake dimensions field %j',
+    async (dimensions) => {
+      await render()
+      const section = wrapper.get('[aria-label="入库数量与仓位"]')
+      expect(section.text()).toContain('实际尺寸（选填）')
+      const input = section.get('input[aria-label="实际尺寸"]')
+      await fill()
+      wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.find('input[aria-label="物料类型"]').exists())!
+        .vm.$emit('update:modelValue', 'raw_material')
+      await wrapper.get('input[aria-label="流水号"]').setValue('')
+      if (dimensions) await input.setValue(dimensions)
+      await submit()
+      const [teamId, body] = vi.mocked(teamMaterialApi.createReceipt).mock.lastCall!
+      expect(teamId).toBe(901)
+      expect(body).toMatchObject({
+        material_type: 'raw_material',
+        serial_no: '',
+        transfer_specification: dimensions || null,
+      })
+      expect(body.process_route).toBeUndefined()
+    },
+  )
   it('does not offer joint production when registering physical receipts', async () => {
     await render()
     await fill()
@@ -1039,7 +1054,7 @@ it('does not turn a historical multi-serial route into a shared receipt', async 
   await importFile()
   expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
-  for (const label of ['入库件数', '入库重量', '编号', '转料规格'])
+  for (const label of ['入库件数', '入库重量', '编号', '实际尺寸'])
     expect(wrapper.find(`[aria-label="${label}"]`).exists()).toBe(true)
 })
 

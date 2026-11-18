@@ -181,21 +181,15 @@ describe('material transfer document form', () => {
       expect.objectContaining({ source_team_id: 2, next_team_id: 3, sent_employee_id: 22 }),
     )
   })
-  it('requires dimensions when creating or editing a normal internal handoff', async () => {
+  it('allows blank dimensions when creating or editing an internal handoff', async () => {
     await render()
     await base()
     await wrapper.get('input[aria-label="转料规格"]').setValue('')
     await submit()
-    expect(materialTransferApi.create).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-validation-field="transfer_specification"]').classes()).toContain(
-      'is-error',
-    )
+    expect(materialTransferApi.create).toHaveBeenCalled()
     wrapper.unmount()
     await render(fixture())
     await wrapper.get('input[aria-label="转料规格"]').setValue('')
-    await submit()
-    expect(materialTransferApi.update).not.toHaveBeenCalled()
-    await wrapper.get('input[aria-label="转料规格"]').setValue('50×30×2 mm')
     await submit()
     expect(materialTransferApi.update).toHaveBeenCalled()
   })

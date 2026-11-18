@@ -33,12 +33,3 @@ def require_registered_serial(db, serial, material_type, *, documents=()):
     raise HTTPException(
         422, "流水号未登记，请先关联工艺、订单排期或导入对应原件；暂未分配流水号的原料请留空"
     )
-
-
-def require_transfer_dimensions(target, material_type, specification):
-    if (
-        target is not None
-        and material_type not in SCRAP_MATERIAL_TYPES
-        and not (specification or "").strip()
-    ):
-        raise HTTPException(422, "正常物料转入下一班组前必须填写实际尺寸")

@@ -11,6 +11,12 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import AppDialog from './AppDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
+import SharedDispatchFields from './SharedDispatchFields.vue'
+import WordDocumentPreview from './WordDocumentPreview.vue'
+import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
+import { routeFixture } from '@/testFixtures/processRoute'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { factoryToday } from '@/utils/format'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -203,28 +209,26 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
   })
-  it('shows missing dimensions immediately and blocks a normal handoff until they are filled', async () => {
+  it.each(['', '30 × 20 × 2 mm'])('accepts optional outbound dimensions %j', async (dimensions) => {
     const lot = source()
+    lot.transfer.material_type = 'raw_material'
     lot.transfer.transfer_specification = null
     await render('dispatch', [lot])
-    expect(
-      wrapper.get('.source-specification-field button[aria-expanded]').attributes('aria-expanded'),
-    ).toBe('true')
+    expect(wrapper.get('.source-specification-field').text()).toContain('选填')
     await destination()
-    await submit()
-    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(
-      wrapper.get('.source-specification-field button[aria-expanded]').attributes('aria-expanded'),
-    ).toBe('true')
-    wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '30×20×2 mm')
+    if (dimensions)
+      wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', dimensions)
     await flushPromises()
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
       expect.objectContaining({
-        lines: [expect.objectContaining({ transfer_specification: '30×20×2 mm' })],
+        lines: [expect.objectContaining({ source_transfer_id: 10 })],
       }),
     )
+    expect(
+      vi.mocked(teamMaterialApi.createDispatch).mock.lastCall?.[1].lines[0]?.transfer_specification,
+    ).toBe(dimensions || undefined)
   })
   const schedule = (id: number) =>
     ({
@@ -1795,4 +1799,47 @@ it('does not show joint production for downstream stock or external returns', as
   wrapper.unmount()
   await render('dispatch', [returned])
   expect(wrapper.findAll('button').some((button) => button.text() === '共投')).toBe(false)
+})
+
+it('opens the process, drawing and order belonging to the clicked joint production row', async () => {
+  vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
+    ...routeFixture,
+    id: serial === 'ORDER-A' ? 8 : 9,
+    state: 'published',
+    serial_nos: [serial],
+    steps: [{ ...routeFixture.steps[0]!, team_id: 2 }],
+    drawings: [{ id: serial === 'ORDER-A' ? 1 : 2, filename: `${serial}.pdf`, size_bytes: 100 }],
+  }))
+  vi.mocked(processRouteApi.dispatchOrder).mockImplementation(async (routeId, serial) => ({
+    task_id: 100 + routeId,
+    document: { ...orderFixture, filename: `${serial}.xlsx`, serial_no: serial },
+  }))
+  wrapper = mount(SharedDispatchFields, {
+    props: { teamId: 2, modelValue: [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }] },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot /></div>' },
+        WordDocumentPreview: true,
+        ProcessRouteDrawingPreview: true,
+        ProcessRouteAttachments: true,
+      },
+    },
+  })
+  await vi.waitFor(() => expect(wrapper.findAll('[aria-label$="订单表"]')).toHaveLength(2))
+  await wrapper.get('button[aria-label="查看 ORDER-A 工艺原件"]').trigger('click')
+  expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(8)
+  wrapper.getComponent(AppDialog).vm.$emit('close')
+  await flushPromises()
+  await wrapper.get('button[aria-label="查看 ORDER-B 图纸"]').trigger('click')
+  expect(wrapper.getComponent(ProcessRouteDrawingPreview).props()).toMatchObject({
+    routeId: 9,
+    drawing: { id: 2, filename: 'ORDER-B.pdf' },
+  })
+  wrapper.getComponent(AppDialog).vm.$emit('close')
+  await flushPromises()
+  await wrapper.get('button[aria-label="查看 ORDER-A 订单表"]').trigger('click')
+  expect(wrapper.getComponent(ProcessRouteAttachments).props()).toMatchObject({
+    orderTaskId: 108,
+    orderDocument: { filename: 'ORDER-A.xlsx' },
+  })
 })

@@ -8,7 +8,6 @@ import ElDatePicker from '@/components/AppDatePicker.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
-import BatchSelectionBar from './BatchSelectionBar.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -1281,6 +1280,20 @@ onBeforeUnmount(() => {
       /></template>
       <template #primary-actions>
         <ElButton
+          v-if="canWrite && dispatchSelection.selected.size"
+          text
+          :disabled="preparingDispatch"
+          @click="clearDispatchSelection"
+          >清空勾选</ElButton
+        >
+        <ElButton
+          v-if="fullscreen && canWrite && dispatchSelection.selected.size"
+          type="primary"
+          :loading="preparingDispatch"
+          @click="dispatchSelected"
+          >新建出库</ElButton
+        >
+        <ElButton
           v-if="processing && canWrite"
           class="inventory-process"
           type="primary"
@@ -1317,25 +1330,6 @@ onBeforeUnmount(() => {
         >按{{ searchedColumn.label }}查询 · 首列显示</ElTag
       >
     </div>
-    <BatchSelectionBar
-      v-if="canWrite && dispatchSelection.selected.size"
-      :count="dispatchSelection.selected.size"
-      :quantity="dispatchSelection.totals.value.quantity"
-      :weight="dispatchSelection.totals.value.weight"
-      :all-checked="dispatchSelection.allChecked.value"
-      :partial="dispatchSelection.checkedCount.value > 0 && !dispatchSelection.allChecked.value"
-      :disabled="loading || preparingDispatch"
-      @all="dispatchSelection.toggleAll"
-      @clear="!preparingDispatch && clearDispatchSelection()"
-    >
-      <ElButton
-        v-if="fullscreen"
-        type="primary"
-        :loading="preparingDispatch"
-        @click="dispatchSelected"
-        >新建出库</ElButton
-      >
-    </BatchSelectionBar>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <WorkspaceTable
@@ -1369,6 +1363,18 @@ onBeforeUnmount(() => {
               : ''
         "
       >
+        <template v-if="canWrite && column.key === 'batch_no'" #header>
+          <ElCheckbox
+            aria-label="选择本页可用批次"
+            title="选择本页可用批次"
+            :model-value="dispatchSelection.allChecked.value"
+            :indeterminate="
+              dispatchSelection.checkedCount.value > 0 && !dispatchSelection.allChecked.value
+            "
+            :disabled="preparingDispatch || !dispatchSelection.availableRows.value.length"
+            @change="dispatchSelection.toggleAll"
+          />
+        </template>
         <template #default="{ row }">
           <div v-if="column.key === 'batch_no'" class="inventory-inline">
             <ElCheckbox

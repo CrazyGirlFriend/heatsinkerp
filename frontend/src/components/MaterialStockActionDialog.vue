@@ -133,7 +133,6 @@ const lines = ref<
     dispatchOrderAvailable?: boolean
     shared: boolean
     sharedMembers: SharedMaterialSerial[]
-    sharedRoutes: ProcessRoute[]
     sharedProblem: string
     serialNo: string
     routeLoading?: boolean
@@ -551,11 +550,7 @@ const validation = useDialogValidation(() => {
       issues[`${line.key}.${field}`] = message
     }
     if (routeProblem(line)) add('route', routeProblem(line))
-    if (
-      !isLoss.value &&
-      !isScrapType(line.materialType) &&
-      (!line.specificationValid || (!external.value && !line.specification.trim()))
-    )
+    if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid)
       add('specification', '请补全实际尺寸')
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) {
       if (!sludgeWeight(line.gross, 100)) add('gross', '请填写有效废泥实重')
@@ -636,7 +631,6 @@ watch(
       key: materialRequestKey(),
       shared: false,
       sharedMembers: [],
-      sharedRoutes: [],
       sharedProblem: '请填写共投明细',
       serialNo: source.transfer.serial_no || '',
       warehouseLocation: '',
@@ -761,11 +755,7 @@ async function submit() {
     return
   }
   lines.value.forEach((line) => {
-    if (
-      !line.specificationValid ||
-      (!external.value && !isScrapType(line.materialType) && !line.specification.trim())
-    )
-      line.specificationOpen = true
+    if (!line.specificationValid) line.specificationOpen = true
   })
   if (!validation.validate()) return
   if (
@@ -970,13 +960,11 @@ function toggleShared(line: (typeof lines.value)[number]) {
   line.selectedRoute = undefined
   line.scheduleId = undefined
   line.scheduleBatchId = undefined
-  line.sharedRoutes = []
   line.sharedProblem = '请填写共投明细'
   if (line.shared && !line.sharedMembers.length)
     line.sharedMembers = [{ serial_no: line.serialNo }, { serial_no: '' }]
 }
 function setSharedRoutes(line: (typeof lines.value)[number], routes: ProcessRoute[]) {
-  line.sharedRoutes = routes
   if (routes.length === line.sharedMembers.length && routes.length) {
     const first = routes[0]!.steps[1]
     if (first && routes.every((route) => route.steps[1]?.team_id === first.team_id)) {
@@ -989,7 +977,7 @@ function selectedSchedule(line: (typeof lines.value)[number]) {
 }
 const attachmentItems = computed(() =>
   lines.value
-    .filter((line) => !isScrapType(line.materialType))
+    .filter((line) => !line.shared && !isScrapType(line.materialType))
     .flatMap<{
       serialNo: string
       batchNo: string
@@ -997,20 +985,6 @@ const attachmentItems = computed(() =>
       route?: ProcessRoute
       scheduleTaskId?: number | null
     }>((line) => {
-      if (line.shared)
-        return line.sharedMembers.flatMap((member) => {
-          const route = line.sharedRoutes.find((item) => item.id === member.process_route_id)
-          return route
-            ? [
-                {
-                  serialNo: member.serial_no,
-                  batchNo: line.source.transfer.batch_no,
-                  routeId: route.id,
-                  route,
-                },
-              ]
-            : []
-        })
       if (needsRoute(line) && !line.selectedRoute) return []
       return [
         {
@@ -1306,30 +1280,6 @@ watch(
                 </AppPopover>
               </div>
             </header>
-            <div v-if="needsRoute(line)" class="dispatch-route-choice dialog-form-grid">
-              <ElFormItem
-                v-if="!line.source.transfer.serial_no"
-                label="流水号"
-                :error="lineError(line, 'route')"
-                required
-              >
-                <MaterialInput
-                  v-model="line.serialNo"
-                  field="serial_no"
-                  aria-label="出库流水号"
-                  label="出库流水号"
-                  :disabled="busy"
-                  placeholder="输入或选择流水号"
-                />
-              </ElFormItem>
-              <p
-                v-if="line.serialNo.trim() && routeProblem(line)"
-                class="field-error"
-                role="status"
-              >
-                {{ routeProblem(line) }}
-              </p>
-            </div>
             <template v-if="line.shared">
               <SharedDispatchFields
                 v-model="line.sharedMembers"
@@ -1506,10 +1456,27 @@ watch(
             <div
               class="source-inputs dialog-form-grid"
               :class="{
+                'source-inputs-inline': !isLoss && !isWeightOnlyType(line.materialType),
                 'source-inputs-weight-only': isWeightOnlyType(line.materialType),
                 'source-inputs-sludge': converted(line),
               }"
             >
+              <ElFormItem
+                v-if="needsRoute(line) && !line.source.transfer.serial_no"
+                class="source-serial-field"
+                label="流水号"
+                :error="lineError(line, 'route')"
+                required
+              >
+                <MaterialInput
+                  v-model="line.serialNo"
+                  field="serial_no"
+                  aria-label="出库流水号"
+                  label="出库流水号"
+                  :disabled="busy"
+                  placeholder="输入或选择流水号"
+                />
+              </ElFormItem>
               <ElFormItem
                 class="source-quantity-field"
                 v-if="!isWeightOnlyType(line.materialType)"
@@ -1593,6 +1560,36 @@ watch(
                     :label="type.label"
                     :value="type.value" /></ElSelect
               ></ElFormItem>
+              <AppDisclosure
+                v-if="!isLoss && !isScrapType(line.materialType)"
+                class="source-specification-field"
+                v-model:open="line.specificationOpen"
+              >
+                <template #summary>
+                  <span class="specification-label">实际尺寸</span>
+                  <span class="specification-summary">{{
+                    !line.specificationOpen && line.specification ? line.specification : '选填'
+                  }}</span>
+                  <span class="source-disclosure-action">{{
+                    line.specificationOpen ? '收起' : line.specification ? '编辑' : '填写'
+                  }}</span>
+                </template>
+                <ElFormItem label-width="0" :error="lineError(line, 'specification')">
+                  <SpecificationInput
+                    v-model="line.specification"
+                    :label="`${line.source.transfer.batch_no}实际尺寸`"
+                    placeholder="如 100 × 80 × 5 mm"
+                    @validity-change="line.specificationValid = $event"
+                  />
+                </ElFormItem>
+              </AppDisclosure>
+              <p
+                v-if="needsRoute(line) && line.serialNo.trim() && routeProblem(line)"
+                class="field-error dialog-field-wide source-route-status"
+                role="status"
+              >
+                {{ routeProblem(line) }}
+              </p>
               <ElFormItem
                 v-if="!isLoss && lineSchedules(line).length"
                 class="dialog-field-wide"
@@ -1638,29 +1635,6 @@ watch(
                     :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
                 /></ElSelect>
               </ElFormItem>
-              <AppDisclosure
-                v-if="!isLoss && !isScrapType(line.materialType)"
-                class="source-specification-field"
-                v-model:open="line.specificationOpen"
-              >
-                <template #summary>
-                  <span>实际尺寸</span>
-                  <span class="specification-summary">{{
-                    line.specification || (external ? '选填' : '必填')
-                  }}</span>
-                  <span class="source-disclosure-action">{{
-                    line.specificationOpen ? '收起' : line.specification ? '编辑' : '填写'
-                  }}</span>
-                </template>
-                <ElFormItem label-width="0" :error="lineError(line, 'specification')">
-                  <SpecificationInput
-                    class="source-specification"
-                    v-model="line.specification"
-                    :label="`${line.source.transfer.batch_no}实际尺寸`"
-                    @validity-change="line.specificationValid = $event"
-                  />
-                </ElFormItem>
-              </AppDisclosure>
               <ElFormItem
                 v-if="!isLoss && warehouse"
                 label="入库仓位"
@@ -1980,18 +1954,32 @@ watch(
 .source-inputs.source-inputs-sludge {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.dispatch-route-choice {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: end;
-  gap: 8px 16px;
-  margin-bottom: 16px;
+.source-inputs-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
 }
-.dispatch-route-choice .field-error {
+.source-inputs-inline > .source-serial-field,
+.source-inputs-inline > .source-quantity-field {
+  flex: 1 1 154px;
+}
+.source-inputs-inline > .source-weight-field {
+  flex: 1 1 224px;
+}
+.source-inputs-inline > .source-material-type-field {
+  flex: 1 1 104px;
+}
+.source-inputs-inline > .source-specification-field {
+  flex: 2 1 338px;
+}
+.source-inputs-inline > .dialog-field-wide {
+  flex: 1 0 100%;
+}
+.source-route-status {
   margin: 0;
-  padding-block: 8px;
 }
 .source-inputs :deep(.el-form-item),
-.dispatch-route-choice :deep(.el-form-item),
 .dispatch-context-fields :deep(.el-form-item) {
   margin-bottom: 0;
   flex-direction: column;
@@ -2046,10 +2034,20 @@ watch(
   display: none;
 }
 .source-specification-field {
-  grid-column: 1 / -1;
-  margin-top: 2px;
   min-width: 0;
-  border-top: 1px solid var(--line-light);
+}
+.source-specification-field :deep(.app-disclosure-trigger.el-button) {
+  min-height: 30px;
+  height: 30px;
+  align-items: flex-start;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.specification-label,
+.source-disclosure-action {
+  flex-shrink: 0;
 }
 .specification-summary,
 .notes-summary {
@@ -2060,13 +2058,10 @@ watch(
   white-space: nowrap;
 }
 .specification-summary {
-  color: var(--text);
+  color: var(--muted);
 }
 .source-disclosure-action {
   color: var(--muted);
-}
-.source-specification-field[data-open] {
-  padding-bottom: 6px;
 }
 .action-notes-section {
   margin-top: 14px;
@@ -2134,11 +2129,13 @@ watch(
     padding-inline: 12px;
   }
   .dispatch-context-fields,
-  .dispatch-route-choice,
   .source-inputs,
   .source-inputs.source-inputs-weight-only,
   .source-inputs.source-inputs-sludge {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .source-inputs-inline > :is(.el-form-item, .source-specification-field) {
+    flex-basis: 100%;
   }
   .source-identity {
     flex-basis: 100%;

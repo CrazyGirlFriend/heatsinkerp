@@ -4,7 +4,12 @@ import ElSelect from '@/components/AppSelect.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { ElOption } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
-const props = defineProps<{ modelValue: string; label: string; disabled?: boolean }>()
+const props = defineProps<{
+  modelValue: string
+  label: string
+  disabled?: boolean
+  placeholder?: string
+}>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'validity-change': [valid: boolean]
@@ -90,7 +95,7 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
       :aria-label="label"
       :disabled="disabled"
       maxlength="240"
-      placeholder="如：异形件，按图纸 HS-01 加工"
+      :placeholder="placeholder || '如：异形件，按图纸 HS-01 加工'"
       @update:model-value="update($event)"
     />
     <div

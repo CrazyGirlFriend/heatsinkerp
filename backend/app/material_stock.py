@@ -716,9 +716,6 @@ def create_dispatch(db, team_id, payload, user):
                     fields["transfer_specification"] = record.after_specification or None
                 if "transfer_specification" in line.model_fields_set:
                     fields["transfer_specification"] = line.transfer_specification or None
-                from .material_entry_validation import require_transfer_dimensions
-
-                require_transfer_dimensions(target, kind, fields.get("transfer_specification"))
                 # A split inherits its origin's live requirement, never a second planned quantity.
                 fields.update(delivery_date=None, delivery_quantity=None)
                 if "material_type" in line.model_fields_set:
