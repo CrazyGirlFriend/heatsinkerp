@@ -216,14 +216,23 @@ def require_processing_team(db, team_id):
     return team
 
 
+def next_local_work(team_id, lot_ids):
+    from .process_routes import local_work_pending
+    from .processing_tasks import can_continue
+
+    return or_(
+        and_(Transfer.process_route_id.is_(None), can_continue(team_id, lot_ids)),
+        and_(Transfer.process_route_id.is_not(None), local_work_pending()),
+    )
+
+
 def list_sources(
     db, team_id, user, *, group_id=None, rework_record_id=None, query=None, page=1, page_size=20
 ):
     require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
-    from .process_routes import local_work_pending
-    from .processing_tasks import can_continue, completed_work
+    from .processing_tasks import completed_work
 
     live_lots = select(balance.c.transfer_id).where(
         or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0),
@@ -234,12 +243,9 @@ def list_sources(
         or_(
             and_(
                 Transfer.process_route_id.is_(None),
-                or_(
-                    func.coalesce(registered.c.processing_status, "") != "complete",
-                    can_continue(team_id, live_lots),
-                ),
+                func.coalesce(registered.c.processing_status, "") != "complete",
             ),
-            and_(Transfer.process_route_id.is_not(None), local_work_pending()),
+            next_local_work(team_id, live_lots),
             Transfer.rework_pending.is_(True),
         ),
         ~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),

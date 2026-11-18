@@ -28,7 +28,13 @@ from .models import (
     WarehousePlacement,
     utcnow,
 )
-from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
+from .processing_records import (
+    annotate_source,
+    next_local_work,
+    registered_lots,
+    source_metadata,
+    summary_columns,
+)
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate
 from .schedule_task_identity import (
@@ -738,6 +744,15 @@ def list_inventory(db, team_id, filters):
         row["group_id"] for row in rows if row["receipt_source"] in ("external", "return")
     ]
     editable_receipts = editable_ids(db, receipt_ids) if receipt_ids else set()
+    completed_by_team = {}
+    for row in rows:
+        if row["processing_state"] == "complete":
+            owner = team_id if team_id is not None else row["team_id"]
+            completed_by_team.setdefault(owner, []).append(row["group_id"])
+    lots_with_next_task = set()
+    for owner, ids in completed_by_team.items():
+        statement = select(mt.id).where(mt.id.in_(ids), next_local_work(owner, ids))
+        lots_with_next_task.update(db.scalars(statement))
     items = []
     teams = {team.id: team for team in db.scalars(select(Team))} if team_id is None else {}
     for row in rows:
@@ -748,6 +763,7 @@ def list_inventory(db, team_id, filters):
         current, previous = batches[tuple(row[name] for name in origins)]
         item["batch_nos"] = sorted(current)
         item["receipt_editable"] = row["group_id"] in editable_receipts
+        item["has_next_processing_task"] = row["group_id"] in lots_with_next_task
         item["previous_batch_nos"] = sorted(previous)
         rework_route = routes.get(item["rework_route_id"])
         item["rework_round"] = rework_route.rework_round if rework_route else None

@@ -59,6 +59,7 @@ class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     processing_unregistered_batch_count: int
     processing_partial_batch_count: int
     processing_complete_batch_count: int
+    has_next_processing_task: bool = False
     processing_registered_quantity: int
     processing_registered_weight: float
     processing_unregistered_quantity: int

@@ -24,6 +24,7 @@ import type { InventoryScheduleSummary } from './productionSchedule'
 export type WarehouseSource =
   'external' | 'return' | 'internal' | 'opening' | 'processing' | 'rework'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
+  has_next_processing_task?: boolean
   process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
   task_batch_number?: number | null

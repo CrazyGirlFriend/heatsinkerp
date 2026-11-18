@@ -652,7 +652,7 @@ describe('team workspace material ledger', () => {
       expect(router.currentRoute.value.query).toEqual({ tab: 'stock' })
       await dispatchCheckbox(10).setValue(true)
       await dispatchCheckbox(11).setValue(true)
-      await wrapper.get('.inventory-process').trigger('click')
+      expect(wrapper.find('.inventory-process').exists()).toBe(false)
       expect(teamMaterialApi.processingSources).not.toHaveBeenCalled()
       expect(dispatchCheckbox(10).element.checked).toBe(true)
       expect(dispatchCheckbox(11).element.checked).toBe(true)

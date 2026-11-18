@@ -2928,6 +2928,11 @@ export interface components {
       finished_specification_count: number
       /** Group Id */
       group_id: number
+      /**
+       * Has Next Processing Task
+       * @default false
+       */
+      has_next_processing_task: boolean
       /** In Transit Quantity */
       in_transit_quantity: number
       /** In Transit Weight */
@@ -3633,6 +3638,11 @@ export interface components {
       finished_specification_count: number
       /** Group Id */
       group_id: number
+      /**
+       * Has Next Processing Task
+       * @default false
+       */
+      has_next_processing_task: boolean
       /** In Transit Quantity */
       in_transit_quantity: number
       /** In Transit Weight */

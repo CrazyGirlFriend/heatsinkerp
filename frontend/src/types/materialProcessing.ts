@@ -16,6 +16,21 @@ export interface ProcessingSummary {
   processing_unregistered_quantity?: number
   processing_unregistered_weight?: number
 }
+export function stockProcessingState(summary?: ProcessingSummary, pending = false) {
+  const reported = summary?.processing_state
+  if (reported && reported !== 'not_required') return reported
+  const registered = summary?.processing_registered_batch_count ?? 0
+  const unregistered = summary?.processing_unregistered_batch_count ?? 0
+  if (summary?.rework_pending && (registered || unregistered)) return 'rework'
+  if (registered && unregistered) return 'mixed'
+  if (registered) {
+    if (summary?.processing_partial_batch_count) return 'partial'
+    return summary?.processing_complete_batch_count === registered ? 'complete' : 'registered'
+  }
+  if (unregistered) return 'unregistered'
+  return pending ? 'pending' : 'cleared'
+}
+
 export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFields {
   task_batch_number?: number | null
   finished_quantity?: number | null

@@ -5,7 +5,7 @@ import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { ElTag, ElTooltip } from 'element-plus'
 
 describe('processing stock meaning', () => {
-  it('keeps a compact status and accessible weight warning with quantities in its tooltip', () => {
+  it('shows only a short, accessible weight warning in the tooltip', () => {
     const wrapper = mount(ProcessingStockStatus, {
       props: {
         compact: true,
@@ -19,9 +19,9 @@ describe('processing stock meaning', () => {
     })
     expect(wrapper.text()).toBe('部分加工')
     expect(wrapper.find('small').exists()).toBe(false)
-    expect(wrapper.get('[role="img"]').attributes('aria-label')).toContain('差异超 1 kg')
-    expect(wrapper.getComponent(ElTooltip).props('content')).toContain('12 件')
-    expect(wrapper.getComponent(ElTooltip).props('content')).toContain('差异超 1 kg')
+    const warning = '同批重量相差超过 1 kg'
+    expect(wrapper.get('[role="img"]').attributes('aria-label')).toBe(warning)
+    expect(wrapper.getComponent(ElTooltip).props('content')).toBe(warning)
     wrapper.unmount()
   })
   it('flags a same-source cumulative difference only when the largest absolute root value exceeds one kg', async () => {
@@ -29,8 +29,9 @@ describe('processing stock meaning', () => {
       props: { state: 'partial', summary: { max_weight_difference: 1 } },
     })
     expect(wrapper.find('.processing-weight-warning').exists()).toBe(false)
+    expect(wrapper.getComponent(ElTooltip).props('disabled')).toBe(true)
     await wrapper.setProps({ summary: { max_weight_difference: 1.000001 } })
-    expect(wrapper.get('.processing-weight-warning').text()).toContain('累计差异超 1 kg')
+    expect(wrapper.get('.processing-weight-warning').text()).toBe('同批重量相差超过 1 kg')
     wrapper.unmount()
   })
   it('labels twelve remaining pieces as registered processing, without calling them finished', () => {

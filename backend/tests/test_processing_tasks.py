@@ -75,6 +75,7 @@ def test_two_tasks_keep_100_physical_pieces_and_group_work_separately(client, wa
     assert context["purpose_id"] == purpose["id"]
     candidates = client.get(url + "/processing-stock").json()
     assert candidates["total"] == 1 and candidates["items"][0]["transfer"]["id"] == child["id"]
+    assert client.get(url + "/inventory").json()["items"][0]["has_next_processing_task"]
     assert (
         work(
             client,
@@ -100,6 +101,7 @@ def test_two_tasks_keep_100_physical_pieces_and_group_work_separately(client, wa
     assert totals["on_hand_quantity"] == 100 and totals["on_hand_weight"] == 100
     assert ctx(client, s, final)["allowed_task_ids"] == []
     assert client.get(url + "/processing-stock").json()["total"] == 0
+    assert not client.get(url + "/inventory").json()["items"][0]["has_next_processing_task"]
     daily = client.get(url + "/processing-daily").json()["items"]
     assert {(row["processing_task_name"], row["completed_quantity"]) for row in daily} == {
         ("粗磨", 100),

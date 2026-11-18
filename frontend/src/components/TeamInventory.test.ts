@@ -1002,13 +1002,48 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.text()).not.toContain('未转出 12 件')
     expect(wrapper.getComponent(ProcessingStockStatus).props('compact')).toBe(true)
     expect(
-      wrapper.getComponent(ProcessingStockStatus).getComponent(ElTooltip).props('content'),
-    ).toContain('12 件 / 60 kg')
+      wrapper.getComponent(ProcessingStockStatus).getComponent(ElTooltip).props('disabled'),
+    ).toBe(true)
     await wrapper
       .findAll('.inventory-row-actions button')
       .find((button) => button.text() === '加工登记')!
       .trigger('click')
     expect(wrapper.emitted('process')).toEqual([[11]])
+  })
+  it('offers only the remaining operations on completed stock from the row and selection', async () => {
+    const items = [false, true].map((hasNext, index) =>
+      warehouseFixture({
+        group_id: index + 11,
+        batch_no: `TL${index + 11}`,
+        batch_count: 1,
+        available_quantity: 12,
+        available_weight: 60,
+        processing_state: hasNext ? 'complete' : undefined,
+        processing_registered_batch_count: 1,
+        processing_complete_batch_count: 1,
+        has_next_processing_task: hasNext,
+      }),
+    )
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+      items,
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    await render(undefined, true, false, false)
+    await wrapper.setProps({ processing: true })
+    const [finished, nextStep] = wrapper.findAll('.inventory-row-actions')
+    expect(finished!.text()).not.toContain('登记')
+    expect(finished!.text()).toContain('出库')
+    expect(nextStep!.text()).toContain('登记下一工序')
+    const check = (id: number) => wrapper.get(`label[aria-label="勾选批次 TL${id}"] input`)
+    await check(11).setValue(true)
+    expect(wrapper.find('.inventory-process').exists()).toBe(false)
+    await check(11).setValue(false)
+    await check(12).setValue(true)
+    expect(wrapper.get('.inventory-process').text()).toBe('登记下一工序')
+    await wrapper.get('.inventory-process').trigger('click')
+    expect(wrapper.emitted('process')).toEqual([[12]])
   })
   it('exports every page with the applied filters, visible defaults and repeated serial values', async () => {
     await render(
@@ -1149,6 +1184,9 @@ describe('warehouse grouped stock', () => {
       '加工完成',
       '待返工',
     ])
+    expect(
+      wrapper.findAll('.inventory-row-actions').map((row) => row.text().includes('加工登记')),
+    ).toEqual([true, true, false, true])
     expect(headers()).toContain('加工状态')
     const picker = select('库存加工状态筛选')
     expect(

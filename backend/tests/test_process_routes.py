@@ -265,6 +265,10 @@ def test_planned_repeated_local_task_is_not_rework(client, warehouse):
     assert ctx["process_route"]["sequence_no"] == 2
     choices = client.get(base(s, True) + "/processing-stock").json()
     assert child["id"] in {item["transfer"]["id"] for item in choices["items"]}
+    inventory = client.get(base(s, True) + "/inventory").json()["items"]
+    assert next(row for row in inventory if row["group_id"] == child["id"])[
+        "has_next_processing_task"
+    ]
 
     result = work(client, s, child)
     assert result.status_code == 201, result.text
@@ -272,6 +276,7 @@ def test_planned_repeated_local_task_is_not_rework(client, warehouse):
     inventory = client.get(base(s, True) + "/inventory").json()["items"]
     assert inventory[0]["process_route"]["sequence_no"] == 2
     assert inventory[0]["process_route"]["step_name"] == "二次轧板"
+    assert not inventory[0]["has_next_processing_task"]
     assert not inventory[0]["rework_pending"]
 
 

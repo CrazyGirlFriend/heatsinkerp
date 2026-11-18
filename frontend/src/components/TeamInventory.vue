@@ -26,6 +26,7 @@ import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import {
   inventoryProcessingStateOptions,
+  stockProcessingState,
   processingStateLabels,
   processingRoleLabels,
 } from '@/types/materialProcessing'
@@ -113,7 +114,7 @@ const batchSelection = useBatchSelection(
   (row) =>
     row.batch_count === 1 &&
     !row.inspection_hold_count &&
-    (inventoryCanDispatch(row) || (props.processing === true && canRegisterProcessing(row))),
+    (inventoryCanDispatch(row) || (props.processing === true && !!processingAction(row))),
 )
 const preparingDispatch = ref(false)
 watch(rows, batchSelection.reconcile)
@@ -798,22 +799,29 @@ function clearBatchSelection(sourceId?: number) {
   if (sourceId == null) batchSelection.selected.clear()
   else batchSelection.selected.delete(String(sourceId))
 }
-function canRegisterProcessing(row: TeamInventoryRow) {
-  return (
-    !row.inspection_hold_count &&
-    !isScrapMaterialType(row.material_type) &&
-    (Number(row.on_hand_quantity) > 0 || Number(row.on_hand_weight) > 0)
+function processingAction(row: TeamInventoryRow) {
+  if (
+    row.inspection_hold_count ||
+    isScrapMaterialType(row.material_type) ||
+    !(Number(row.on_hand_quantity) > 0 || Number(row.on_hand_weight) > 0)
   )
+    return ''
+  if (stockProcessingState(row) === 'complete')
+    return row.has_next_processing_task ? '登记下一工序' : ''
+  return '加工登记'
 }
+const selectedProcessingRow = computed(() =>
+  batchSelection.selected.size === 1 ? batchSelection.selected.values().next().value : undefined,
+)
+const selectedProcessingAction = computed(() => {
+  if (selectedProcessingRow.value) return processingAction(selectedProcessingRow.value)
+  return batchSelection.selected.size ? '' : '加工登记'
+})
 function processSelected() {
   if (!props.processing || !props.canWrite || props.processingLoadingGroupId != null) return
-  if (batchSelection.selected.size !== 1) {
-    showToast('请在库存列表勾选一个批次后登记加工', 'info')
-    return
-  }
-  const [row] = batchSelection.selected.values()
-  if (row && canRegisterProcessing(row)) emit('process', row.group_id)
-  else showToast('所选批次无法登记加工，请重新勾选', 'info')
+  if (!selectedProcessingAction.value) return
+  if (selectedProcessingRow.value) emit('process', selectedProcessingRow.value.group_id)
+  else showToast('请在库存列表勾选一个批次后登记加工', 'info')
 }
 async function dispatchSelected() {
   if (!props.canWrite || loading.value || openingSource.value || preparingDispatch.value) return
@@ -1287,12 +1295,12 @@ onBeforeUnmount(() => {
           >新建出库</ElButton
         >
         <ElButton
-          v-if="processing && canWrite"
+          v-if="processing && canWrite && selectedProcessingAction"
           class="inventory-process"
           :icon="Operation"
           :disabled="processingLoadingGroupId != null"
           @click="processSelected"
-          >加工登记</ElButton
+          >{{ selectedProcessingAction }}</ElButton
         >
       </template>
       <template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template>
@@ -1554,13 +1562,13 @@ onBeforeUnmount(() => {
               @click="openReceiptEdit(asRow(row))"
               >修改入库</ElButton
             ><ElButton
-              v-if="processing && canWrite && canRegisterProcessing(asRow(row))"
+              v-if="processing && canWrite && processingAction(asRow(row))"
               link
               class="action-cool"
               :loading="processingLoadingGroupId === row.group_id"
               :disabled="processingLoadingGroupId != null"
               @click="emit('process', row.group_id)"
-              >加工登记</ElButton
+              >{{ processingAction(asRow(row)) }}</ElButton
             ><ElButton
               v-if="canWrite && inventoryCanDispatch(asRow(row))"
               link
