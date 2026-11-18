@@ -20,7 +20,7 @@ import { orderFixture } from '@/testFixtures/processRouteOrder'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { factoryToday } from '@/utils/format'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
-import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
+import type { ProductionSchedule, ScheduleBatch, ScheduleSummary } from '@/types/productionSchedule'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -181,7 +181,10 @@ async function submit() {
   await flushPromises()
 }
 async function destination(id = 3) {
-  wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id)
+  wrapper
+    .findAllComponents(ElSelect)
+    .find((item) => item.find('input[aria-label="出库接收班组"]').exists())!
+    .vm.$emit('update:modelValue', id)
   await flushPromises()
   if (id === 1) {
     wrapper.findAllComponents(WarehouseLocationSelect).forEach((location, index) => {
@@ -247,11 +250,62 @@ describe('source batch dispatch and loss drafts', () => {
     await destination()
     expect(wrapper.text()).toContain('已自动关联')
     expect(wrapper.find('[aria-label="TL10交货排期"]').exists()).toBe(false)
+    expect(wrapper.get('.source-schedule-estimate').text()).toContain('交期 2026-10-24 16:00')
+    expect(wrapper.get('.source-schedule-estimate').text()).toContain('件数已满足')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
       expect.objectContaining({ lines: [expect.objectContaining({ production_schedule_id: 4 })] }),
     )
+  })
+  it('projects all entered quantities against their selected delivery batch only', async () => {
+    const batches = [
+      {
+        id: 41,
+        batch_number: 1,
+        due_at: '2026-10-25T01:00:00Z',
+        target_quantity: 40,
+        dispatched_quantity: 10,
+        target_weight: 4,
+        dispatched_weight: 1,
+      },
+      {
+        id: 42,
+        batch_number: 2,
+        due_at: '2026-10-26T02:00:00Z',
+        target_quantity: 25,
+        dispatched_quantity: 0,
+        target_weight: 2,
+        dispatched_weight: 0,
+      },
+    ] as ScheduleBatch[]
+    const plan: ScheduleSummary = { ...schedule(4), completion_basis: 'both', batches }
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: [10, 11].map((id) => ({ source_transfer_id: id, schedules: [plan] })),
+    })
+    await render()
+    await destination()
+    expect(wrapper.find('.source-schedule-estimate').exists()).toBe(false)
+    const batchPickers = wrapper
+      .findAllComponents(ElSelect)
+      .filter((item) => String(item.props('ariaLabel')).endsWith('交货批次'))
+    batchPickers.forEach((picker) => picker.vm.$emit('update:modelValue', 41))
+    const inputs = sourceAmountInputs()
+    inputs[0]!.vm.$emit('update:modelValue', 12)
+    inputs[1]!.vm.$emit('update:modelValue', 1.1)
+    inputs[2]!.vm.$emit('update:modelValue', 6)
+    inputs[3]!.vm.$emit('update:modelValue', 0.7)
+    await flushPromises()
+    const estimates = () => wrapper.findAll('.source-schedule-estimate').map((item) => item.text())
+    expect(estimates()).toEqual([
+      expect.stringContaining('交期 2026-10-25 09:00'),
+      expect.stringContaining('还差 12 件 · 还差 1.2 kg'),
+    ])
+    batchPickers[1]!.vm.$emit('update:modelValue', 42)
+    await flushPromises()
+    expect(estimates()[0]).toContain('还差 18 件 · 还差 1.9 kg')
+    expect(estimates()[1]).toContain('交期 2026-10-26 10:00')
+    expect(estimates()[1]).toContain('还差 19 件 · 还差 1.3 kg')
   })
   it.each(['quantity', 'weight', 'both'] as const)(
     'labels task progress by its %s completion basis without treating reference amounts as due',
@@ -276,8 +330,10 @@ describe('source batch dispatch and loss drafts', () => {
       await destination()
       expect(wrapper.text()).toContain('SAME-SERIAL · 第1批')
       expect(wrapper.text()).not.toContain('#4')
-      expect(wrapper.text().includes('待交 17 件')).toBe(completionBasis !== 'weight')
-      expect(wrapper.text().includes('待交 4.875 kg')).toBe(completionBasis !== 'quantity')
+      const remaining = wrapper.get('.schedule-remaining').text()
+      expect(remaining).toContain('待交')
+      expect(remaining.includes('17 件')).toBe(completionBasis !== 'weight')
+      expect(remaining.includes('4.875 kg')).toBe(completionBasis !== 'quantity')
     },
   )
   it('requires an explicit allocation when one batch has multiple deadlines', async () => {
@@ -436,7 +492,7 @@ describe('source batch dispatch and loss drafts', () => {
     expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
       allowed,
     )
-    await destination()
+    if (!row.transfer.process_route) await destination()
     sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 120)
     await flushPromises()
     expect(wrapper.find('.processing-count-notice').exists()).toBe(allowed)
@@ -1020,7 +1076,6 @@ describe('source batch dispatch and loss drafts', () => {
     row.unassigned_quantity = 100
     row.unassigned_weight = 10
     await render('dispatch', [row])
-    await destination()
     expect(wrapper.text()).toContain('当前仓位 未分配仓位')
     expect(wrapper.text()).not.toContain('历史仓位')
     expect(wrapper.text()).not.toContain('登记加工后件数')
@@ -1625,6 +1680,7 @@ it('automatically resolves a warehouse serial and submits its complete documents
   resolveRoute(resolved)
   await flushPromises()
   expect(processRouteApi.resolve).toHaveBeenCalledWith(row.transfer.serial_no)
+  expect(wrapper.get('.destination-field [role="status"]').text()).toBe('退火')
   expect(wrapper.text()).not.toContain('选择工艺')
   expect(productionScheduleApi.candidates).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -1632,7 +1688,15 @@ it('automatically resolves a warehouse serial and submits its complete documents
       process_route_id: routeFixture.id,
     }),
   )
-  expect(wrapper.getComponent(SerialRouteAttachments).props('items')[0].scheduleTaskId).toBe(31)
+  expect(wrapper.find('.form-workspace-documents').exists()).toBe(false)
+  expect(wrapper.findComponent(SerialRouteAttachments).exists()).toBe(false)
+  await wrapper.get('.source-line button[aria-label="查看 SERIAL10 订单表"]').trigger('click')
+  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
+    documentKind: 'order',
+    items: [expect.objectContaining({ scheduleTaskId: 31 })],
+  })
+  wrapper.findAllComponents(AppDialog).at(-1)!.vm.$emit('close')
+  await flushPromises()
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
     2,
@@ -1673,7 +1737,7 @@ it('requires the current order instead of accepting another order retained by th
   expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
 })
 
-it('keeps documents and route bindings separate for multiple outbound serials', async () => {
+it('routes multiple outbound serials together only when their next teams agree', async () => {
   const { routeFixture } = await import('@/testFixtures/processRoute')
   const { orderFixture } = await import('@/testFixtures/processRouteOrder')
   const { processRouteApi } = await import('@/services/processRouteApi')
@@ -1682,11 +1746,30 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
     row.transfer.serial_no = ''
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
   })
+  vi.mocked(productionScheduleApi.candidates).mockImplementation(async (params) => ({
+    items:
+      params.serial_no === 'ORDER-A'
+        ? [
+            {
+              source_transfer_id: 10,
+              schedules: [
+                {
+                  id: 81,
+                  task_batch_number: 2,
+                  serial_no: 'ORDER-A',
+                  due_at: '2026-12-03T00:00:00Z',
+                  remaining_quantity: 120,
+                } as ScheduleSummary,
+              ],
+            },
+          ]
+        : [],
+  }))
   vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
     ...routeFixture,
     id: serial === 'ORDER-A' ? 8 : 9,
     state: 'published',
-    serial_nos: [serial],
+    serial_nos: ['ORDER-A', 'ORDER-B', 'ORDER-C'],
     source_data: {
       ...routeFixture.source_data,
       order_document: { ...orderFixture, serial_no: serial },
@@ -1694,29 +1777,53 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
     drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
     steps: [
       { ...routeFixture.steps[0]!, team_id: 2 },
-      { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
+      { ...routeFixture.steps[1]!, team_id: 1, serial_nos: ['ORDER-C'] },
+      { ...routeFixture.steps[2]!, team_id: 3, serial_nos: ['ORDER-A', 'ORDER-B'] },
     ],
   }))
   await render('dispatch', rows)
+  expect(wrapper.get('.source-lines').element.nextElementSibling).toBe(
+    wrapper.get('.dispatch-context').element,
+  )
+  const receiver = () => wrapper.get('.destination-field [role="status"]').text()
+  expect(receiver()).toBe('填写流水号后按工艺带出')
   const inputs = wrapper.findAll('input[aria-label="出库流水号"]')
   await inputs[0]!.setValue('ORDER-A')
+  await vi.waitFor(() =>
+    expect(wrapper.get('.source-schedule-estimate').text()).toContain('还差 20 件'),
+  )
+  expect(wrapper.findAll('.source-schedule-estimate')).toHaveLength(1)
+  expect(receiver()).toBe('填写流水号后按工艺带出')
   await inputs[1]!.setValue('ORDER-B')
-  await new Promise((resolve) => setTimeout(resolve, 350))
+  await vi.waitFor(() => expect(receiver()).toBe('退火'))
   await flushPromises()
-  expect(wrapper.getComponent(SerialRouteAttachments).props('items')).toEqual([
-    expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8, batchNo: 'TL10' }),
-    expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9, batchNo: 'TL11' }),
-  ])
+  const sourceCards = wrapper.findAll('.source-line')
+  await sourceCards[0]!.get('button[aria-label="查看 ORDER-A 工艺原件"]').trigger('click')
+  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
+    documentKind: 'process',
+    items: [expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8, batchNo: 'TL10' })],
+  })
+  await sourceCards[1]!.get('button[aria-label="查看 ORDER-B 图纸"]').trigger('click')
+  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
+    documentKind: 'drawing',
+    items: [expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9, batchNo: 'TL11' })],
+  })
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
     2,
     expect.objectContaining({
+      next_team_id: 3,
       lines: [
         expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
         expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
       ],
     }),
   )
+  await inputs[1]!.setValue('ORDER-C')
+  expect(receiver()).toBe('填写流水号后按工艺带出')
+  await vi.waitFor(() => expect(receiver()).toContain('请按接收班组分开出库'))
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
 })
 
 it.each([null, 'ORDER-A', 'ORDER-B'])(
@@ -1768,6 +1875,7 @@ it.each([null, 'ORDER-A', 'ORDER-B'])(
     expect(wrapper.findAll('[role="alert"]').map((node) => node.text())).toEqual([])
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
     const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+    expect(body.next_team_id).toBe(3)
     expect(body.lines).toHaveLength(1)
     expect(body.lines[0]).toMatchObject({
       quantity: 100,

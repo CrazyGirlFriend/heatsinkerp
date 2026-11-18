@@ -1,6 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
-import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
+import type { ProductionSchedule, ScheduleBatch, ScheduleSummary } from '@/types/productionSchedule'
 import { isScheduleApplicable } from '@/utils/inventorySchedule'
 import { formatDateTime } from '@/utils/format'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
@@ -17,7 +17,7 @@ interface ScheduleLine {
   scheduleBatchId?: number
 }
 
-export function useStockActionSchedules(
+export function useStockActionSchedules<Line extends ScheduleLine>(
   props: {
     modelValue: boolean
     teamId: number
@@ -25,7 +25,8 @@ export function useStockActionSchedules(
     initialSchedule?: Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>
   },
   form: { nextTeamId: string | number; entryKind: DispatchKind; externalDestination: string },
-  lines: Ref<ScheduleLine[]>,
+  lines: Ref<Line[]>,
+  nextTeamForLine: (line: Line) => number | null | undefined,
 ) {
   const isLoss = computed(() => props.mode === 'loss')
   const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
@@ -40,23 +41,44 @@ export function useStockActionSchedules(
       ? scheduleCandidates.value[scheduleKey(line)] || []
       : []
   }
-  function scheduleLabel(schedule: ScheduleSummary) {
+  function scheduleRemaining(schedule: ScheduleSummary, batch?: ScheduleBatch) {
     const basis =
       schedule.completion_basis ||
       (schedule.target_quantity != null || schedule.remaining_quantity != null
         ? 'quantity'
         : 'weight')
-    const quantity = basis === 'weight' ? null : schedule.remaining_quantity
-    const weight = basis === 'quantity' ? null : schedule.remaining_weight
+    const quantity = batch ? batch.target_quantity : schedule.remaining_quantity
+    const weight = batch ? batch.target_weight : schedule.remaining_weight
+    return {
+      quantity:
+        basis === 'weight' || quantity == null
+          ? null
+          : Math.max(0, quantity - (batch?.dispatched_quantity ?? 0)),
+      weight:
+        basis === 'quantity' || weight == null
+          ? null
+          : Math.max(0, weight - (batch?.dispatched_weight ?? 0)),
+    }
+  }
+  function scheduleLabel(schedule: ScheduleSummary) {
+    const { quantity, weight } = scheduleRemaining(schedule)
     return `${schedule.serial_no} · ${formatScheduleBatch(schedule)} · ${formatDateTime(schedule.due_at)}${quantity == null ? '' : ` · 待交 ${quantity} 件`}${weight == null ? '' : ` · 待交 ${weight} kg`}`
   }
-  function lineScheduleBatches(line: ScheduleLine) {
+  function selectedSchedule(line: ScheduleLine) {
     const options = lineSchedules(line)
     return (
-      (
-        options.find((s) => s.id === line.scheduleId) ||
-        (options.length === 1 ? options[0] : undefined)
-      )?.batches || []
+      options.find((schedule) => schedule.id === line.scheduleId) ??
+      (options.length === 1 ? options[0] : undefined)
+    )
+  }
+  function lineScheduleBatches(line: ScheduleLine) {
+    return selectedSchedule(line)?.batches || []
+  }
+  function selectedScheduleBatch(line: ScheduleLine) {
+    const batches = lineScheduleBatches(line)
+    return (
+      batches.find((batch) => batch.id === line.scheduleBatchId) ??
+      (batches.length === 1 ? batches[0] : undefined)
     )
   }
   watch(
@@ -84,49 +106,52 @@ export function useStockActionSchedules(
       scheduleError.value = ''
       scheduleCandidates.value = {}
       schedulesLoading.value = false
-      if (
-        !props.modelValue ||
-        isLoss.value ||
-        (!external.value && !form.nextTeamId) ||
-        (external.value && !form.externalDestination)
+      if (!props.modelValue || isLoss.value || (external.value && !form.externalDestination)) return
+      const destination = external.value
+        ? { external_destination: form.externalDestination }
+        : form.nextTeamId
+          ? { next_team_id: Number(form.nextTeamId) }
+          : undefined
+      const applicable = lines.value.filter(
+        (line) => !line.shared && isScheduleApplicable(line.materialType),
       )
-        return
-      const ids = [
-        ...new Set(
-          lines.value
-            .filter((line) => isScheduleApplicable(line.materialType))
-            .map((line) => Number(line.source.transfer.id)),
-        ),
-      ]
-      if (!ids.length) return
+      const ids = [...new Set(applicable.map((line) => Number(line.source.transfer.id)))]
+      const lookups = applicable.flatMap((line) => {
+        if (destination && !line.selectedRoute) return []
+        const teamId = destination ? undefined : nextTeamForLine(line)
+        if (!destination && !teamId) return []
+        return [{ line, destination: destination ?? { next_team_id: teamId! } }]
+      })
+      if (!ids.length || (!destination && !lookups.length)) return
       schedulesLoading.value = true
       try {
-        const result = await productionScheduleApi.candidates({
-          team_id: props.teamId,
-          source_transfer_ids: ids.join(','),
-          ...(external.value
-            ? { external_destination: form.externalDestination }
-            : { next_team_id: Number(form.nextTeamId) }),
-        })
-        const candidates: Record<string, ScheduleSummary[]> = Object.fromEntries(
-          lines.value.map((line) => [
-            scheduleKey(line),
-            result.items.find((item) => item.source_transfer_id === Number(line.source.transfer.id))
-              ?.schedules || [],
-          ]),
-        )
-        for (const line of lines.value) {
+        const candidates: Record<string, ScheduleSummary[]> = {}
+        if (destination) {
+          const result = await productionScheduleApi.candidates({
+            team_id: props.teamId,
+            source_transfer_ids: ids.join(','),
+            ...destination,
+          })
           if (!current) return
-          if (line.shared || !line.selectedRoute || !isScheduleApplicable(line.materialType))
-            continue
+          for (const line of applicable)
+            candidates[scheduleKey(line)] =
+              result.items.find(
+                (item) => item.source_transfer_id === Number(line.source.transfer.id),
+              )?.schedules || []
+        }
+        for (const lookup of lookups) {
+          if (!current) return
+          const { line } = lookup
           const resolved = await productionScheduleApi.candidates({
             team_id: props.teamId,
             source_transfer_ids: String(line.source.transfer.id),
-            serial_no: line.serialNo.trim(),
-            process_route_id: line.selectedRoute.id,
-            ...(external.value
-              ? { external_destination: form.externalDestination }
-              : { next_team_id: Number(form.nextTeamId) }),
+            ...lookup.destination,
+            ...(line.selectedRoute
+              ? {
+                  serial_no: line.serialNo.trim(),
+                  process_route_id: line.selectedRoute.id,
+                }
+              : {}),
           })
           candidates[scheduleKey(line)] = resolved.items[0]?.schedules || []
         }
@@ -169,6 +194,9 @@ export function useStockActionSchedules(
     scheduleRefresh,
     lineSchedules,
     lineScheduleBatches,
+    selectedSchedule,
+    selectedScheduleBatch,
+    scheduleRemaining,
     scheduleLabel,
   }
 }

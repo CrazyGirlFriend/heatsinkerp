@@ -7,7 +7,7 @@ import ElButton from '@/components/AppButton.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
-import type { ReceiptDocument } from '@/types/warehouseReceiptDocuments'
+import type { ReceiptDocument, ReceiptDocumentKind } from '@/types/warehouseReceiptDocuments'
 import { processRouteApi } from '@/services/processRouteApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
@@ -15,6 +15,7 @@ import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 
 const props = defineProps<{
   batchNo?: string
+  documentKind?: ReceiptDocumentKind
   items: {
     serialNo: string
     batchNo?: string
@@ -45,6 +46,10 @@ const batchSerial = ref('')
 const batchTaskId = ref<number | null>()
 const scheduleTaskId = computed(() => current.value?.scheduleTaskId || batchTaskId.value)
 const serialNo = computed(() => current.value?.serialNo || batchSerial.value)
+const routeDocumentKinds = computed<('word' | 'drawing' | 'order')[] | undefined>(() => {
+  if (!props.documentKind) return undefined
+  return [props.documentKind === 'process' ? 'word' : props.documentKind]
+})
 const sourceRoute = ref<ProcessRoute>()
 const route = ref<ProcessRoute>(),
   loading = ref(false),
@@ -121,7 +126,7 @@ async function load() {
       if (version !== generation) return
       sourceRoute.value = original
     }
-    if (!selectedBatch.value) {
+    if (!selectedBatch.value && (!props.documentKind || props.documentKind === 'order')) {
       const order = await processRouteApi.dispatchOrder(
         sourceRoute.value?.id || result.id,
         serialNo.value,
@@ -144,7 +149,12 @@ watch(
   { immediate: true },
 )
 watch(
-  [() => (current.value ? key(current.value) : ''), () => current.value?.route, selectedBatch],
+  [
+    () => (current.value ? key(current.value) : ''),
+    () => current.value?.route,
+    selectedBatch,
+    () => props.documentKind,
+  ],
   load,
   {
     immediate: true,
@@ -168,9 +178,12 @@ onBeforeUnmount(() => {
         "
       />
     </ElSelect>
-    <strong v-else-if="current" class="serial-attachments-label" :title="current.serialNo">{{
-      current.serialNo
-    }}</strong>
+    <strong
+      v-else-if="current && !documentKind"
+      class="serial-attachments-label"
+      :title="current.serialNo"
+      >{{ current.serialNo }}</strong
+    >
     <span v-if="loading" class="serial-attachments-state" role="status">读取资料…</span>
     <template v-if="error">
       <ElAlert :title="error" type="error" :closable="false" />
@@ -190,6 +203,7 @@ onBeforeUnmount(() => {
       :serial-no="serialNo"
       :schedule-task-id="scheduleTaskId"
       :documents="receiptDocuments"
+      :document-kind="documentKind"
       @error="documentsError = $event"
     />
     <ProcessRouteAttachments
@@ -197,6 +211,7 @@ onBeforeUnmount(() => {
       :key="selected"
       :route="route"
       :source-route="sourceRoute"
+      :documents="routeDocumentKinds"
       :order-document="dispatchOrder?.document ?? null"
       :order-task-id="dispatchOrder?.task_id"
       :order-download="orderDownload"

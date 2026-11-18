@@ -67,6 +67,18 @@ it('inherits engineering originals, drawings and the serial-specific dispatch or
   expect(wrapper.get('[data-document-kind="order"]').text()).not.toContain('替换')
 })
 
+it('opens a drawing without loading the other dispatch documents', async () => {
+  const route = { ...routeFixture, drawings: [{ id: 4, filename: '加工.pdf', size_bytes: 100 }] }
+  render({ route, serialNo: 'S-001', editable: false, documentKind: 'drawing' })
+  await flushPromises()
+  expect(wrapper.getComponent(ProcessRouteDrawingPreview).props('drawing')).toEqual(
+    route.drawings[0],
+  )
+  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+  expect(wrapper.findComponent(OrderDocumentPreview).exists()).toBe(false)
+  expect(processRouteApi.dispatchOrder).not.toHaveBeenCalled()
+})
+
 it('does not copy a different engineering order when the selected serial has no dispatch order', async () => {
   render({
     route: {

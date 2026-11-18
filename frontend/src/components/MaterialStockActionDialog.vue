@@ -44,7 +44,7 @@ import ProcessingDurationInput from './ProcessingDurationInput.vue'
 import { validProcessingMinutes } from '@/utils/processingDuration'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
-import { factoryToday, formatDateTime } from '@/utils/format'
+import { factoryToday, formatAmount, formatDateTime } from '@/utils/format'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import { useStockActionSchedules } from '@/composables/useStockActionSchedules'
 import type { ProductionSchedule } from '@/types/productionSchedule'
@@ -83,6 +83,7 @@ import {
 } from '@/utils/materialStock'
 import type { WarehouseLeaseGroup } from '@/services/warehouseLocationApi'
 import { currentLocations } from '@/utils/warehousePlacement'
+import type { ReceiptDocumentKind } from '@/types/warehouseReceiptDocuments'
 
 const props = defineProps<{
   modelValue: boolean
@@ -115,7 +116,7 @@ function routeProblem(line: (typeof lines.value)[number]) {
   const route = line.selectedRoute
   if (!route) return '未找到对应工艺'
   const missing = [
-    !line.dispatchOrderAvailable &&
+    !line.dispatchOrder &&
       route.source_data.order_document?.serial_no !== line.serialNo.trim() &&
       '订单表',
     !route.filename && '工艺原件',
@@ -130,9 +131,10 @@ const lines = ref<
   {
     key: string
     selectedRoute?: ProcessRoute
-    dispatchOrderAvailable?: boolean
+    dispatchOrder?: Awaited<ReturnType<typeof processRouteApi.dispatchOrder>>
     shared: boolean
     sharedMembers: SharedMaterialSerial[]
+    sharedRoutes: ProcessRoute[]
     sharedProblem: string
     serialNo: string
     routeLoading?: boolean
@@ -169,13 +171,18 @@ function converted(line: (typeof lines.value)[number]) {
   )
 }
 const form = reactive({
-  nextTeamId: '' as string | number,
+  manualNextTeamId: '' as string | number,
+  get nextTeamId(): string | number {
+    return routeDestination.value?.teamId ?? this.manualNextTeamId
+  },
   entryKind: 'transfer' as DispatchKind,
   externalDestination: '',
   notes: '',
   reason: '',
 })
 const sender = ref<TeamEmployee | null>(null)
+const attachmentLabels = { process: '工艺原件', drawing: '图纸', order: '订单表' } as const
+const attachmentPreview = ref<{ lineKey: string; kind: ReceiptDocumentKind }>()
 const activeActions = ref('')
 function setLineActions(key: string, open: boolean) {
   if (open) activeActions.value = key
@@ -246,15 +253,6 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
       : null
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
-watch(
-  () => [form.nextTeamId, form.entryKind],
-  () => {
-    lines.value.forEach((line) => {
-      line.warehouseLocation = ''
-      line.warehouseLocationKey = ''
-    })
-  },
-)
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const dialogTitle = computed(() =>
   isLoss.value
@@ -279,12 +277,63 @@ const destinations = computed(() =>
       (!containsScrap.value || team.kind === 'warehouse'),
   ),
 )
-const warehouse = computed(
-  () =>
-    !external.value &&
-    destinations.value.find((team) => String(team.id) === String(form.nextTeamId))?.kind ===
-      'warehouse',
+function lineNextTeamId(line: (typeof lines.value)[number]) {
+  if (!needsRoute(line)) return line.source.transfer.process_route?.next_team_id ?? undefined
+  const route = line.selectedRoute
+  if (!route) return undefined
+  const serial = line.serialNo.trim()
+  // The resolve endpoint accepts an order alias only when all route serials use the same path.
+  const executionSerial = route.serial_nos.includes(serial) ? serial : route.serial_nos[0]
+  return (
+    route.steps.find(
+      (step, index) =>
+        index > 0 && (!step.serial_nos.length || step.serial_nos.includes(executionSerial ?? '')),
+    )?.team_id ?? null
+  )
+}
+const routeDestination = computed(() => {
+  if (isLoss.value || external.value) return
+  const targets = lines.value.flatMap<number | null | undefined>((line) => {
+    if (isScrapType(line.materialType)) return []
+    if (line.shared) {
+      if (!line.sharedRoutes.length || line.sharedRoutes.length !== line.sharedMembers.length)
+        return [undefined]
+      return line.sharedRoutes.map((route) => route.steps[1]?.team_id ?? null)
+    }
+    const nextTeamId = lineNextTeamId(line)
+    return nextTeamId !== undefined || needsRoute(line) ? [nextTeamId] : []
+  })
+  if (!targets.length) return
+  const teamIds = [...new Set(targets.filter((id): id is number => id != null))]
+  if (teamIds.length > 1)
+    return { teamId: '', error: '所选物料的下序班组不同，请按接收班组分开出库' }
+  if (targets.includes(null)) return { teamId: '', error: '部分物料的工艺没有可转出的下一道工序' }
+  if (targets.includes(undefined)) return { teamId: '', error: '' }
+  const teamId = teamIds[0]!
+  return {
+    teamId,
+    error:
+      teamId === props.teamId
+        ? '下一道工序仍在本班组，请在本班组继续处理'
+        : destinations.value.some((team) => Number(team.id) === teamId)
+          ? ''
+          : '工艺指定的接收班组当前不可用',
+  }
+})
+const destinationTeam = computed(() =>
+  destinations.value.find((team) => Number(team.id) === Number(form.nextTeamId)),
 )
+watch(
+  () => [form.nextTeamId, form.entryKind] as const,
+  ([teamId, entryKind], [previousTeamId, previousKind]) => {
+    if (teamId === previousTeamId && entryKind === previousKind) return
+    lines.value.forEach((line) => {
+      line.warehouseLocation = ''
+      line.warehouseLocationKey = ''
+    })
+  },
+)
+const warehouse = computed(() => !external.value && destinationTeam.value?.kind === 'warehouse')
 const totalQuantity = computed(() =>
   lines.value.reduce((sum, line) => sum + (Number(enteredQuantity(line)) || 0), 0),
 )
@@ -537,12 +586,11 @@ const validation = useDialogValidation(() => {
     !externalDestinationOptions.some((option) => option === form.externalDestination)
   )
     issues.externalDestination = '请选择去向'
-  if (
-    !isLoss.value &&
-    !external.value &&
-    !destinations.value.some((team) => String(team.id) === String(form.nextTeamId))
-  )
-    issues.nextTeamId = '请选择接收班组'
+  if (!isLoss.value && !external.value) {
+    if (routeDestination.value?.error) issues.nextTeamId = routeDestination.value.error
+    else if (!destinationTeam.value)
+      issues.nextTeamId = routeDestination.value ? '请先确认各批次的工艺' : '请选择接收班组'
+  }
   if (form.notes.trim().length > 2000) issues.notes = '内容过长'
   if (isLoss.value && form.reason.trim().length > 2000) issues.reason = '内容过长'
   for (const line of lines.value) {
@@ -625,12 +673,14 @@ watch(
     ++generation
     saving.value = false
     refreshing.value = false
+    attachmentPreview.value = undefined
     Object.keys(processing).forEach((key) => delete processing[Number(key)])
     if (!open) return
     lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map((source) => ({
       key: materialRequestKey(),
       shared: false,
       sharedMembers: [],
+      sharedRoutes: [],
       sharedProblem: '请填写共投明细',
       serialNo: source.transfer.serial_no || '',
       warehouseLocation: '',
@@ -652,19 +702,12 @@ watch(
       if (!isLoss.value) fillAll(index)
     })
     validation.reset()
-    form.nextTeamId = ''
+    form.manualNextTeamId = ''
     form.entryKind = 'transfer'
     form.externalDestination = ''
-    if (!isLoss.value && !props.initialSchedule) {
-      const targets = props.sources.map((source) => source.transfer.process_route?.next_team_id)
-      if (
-        targets.length &&
-        targets.every((id) => id != null && id === targets[0] && id !== props.teamId)
-      )
-        form.nextTeamId = targets[0]!
-    }
     if (!isLoss.value && props.initialSchedule) {
-      if (props.initialSchedule.next_team_id) form.nextTeamId = props.initialSchedule.next_team_id
+      if (props.initialSchedule.next_team_id)
+        form.manualNextTeamId = props.initialSchedule.next_team_id
       else if (externalOption.value && props.initialSchedule.external_destination) {
         form.entryKind = externalOption.value
         form.externalDestination = props.initialSchedule.external_destination
@@ -688,8 +731,70 @@ const {
   scheduleRefresh,
   lineSchedules,
   lineScheduleBatches,
+  selectedSchedule,
+  selectedScheduleBatch,
+  scheduleRemaining,
   scheduleLabel,
-} = useStockActionSchedules(props, form, lines)
+} = useStockActionSchedules(props, form, lines, (line) => {
+  const nextTeamId = lineNextTeamId(line)
+  return destinations.value.some((team) => Number(team.id) === nextTeamId) ? nextTeamId : undefined
+})
+const scheduleEstimates = computed(() => {
+  const allocations = new Map<
+    string,
+    {
+      dueAt: string
+      remaining: ReturnType<typeof scheduleRemaining>
+      quantity: number
+      weight: number
+      lineKeys: string[]
+    }
+  >()
+  for (const line of lines.value) {
+    const schedule = selectedSchedule(line)
+    if (!schedule) continue
+    const batch = selectedScheduleBatch(line)
+    if (!batch && lineScheduleBatches(line).length) continue
+    const key = `${schedule.id}:${batch?.id ?? ''}`
+    const allocation = allocations.get(key) ?? {
+      dueAt: batch?.due_at ?? schedule.due_at,
+      remaining: scheduleRemaining(schedule, batch),
+      quantity: 0,
+      weight: 0,
+      lineKeys: [],
+    }
+    allocation.quantity += Math.max(0, enteredQuantity(line) || 0)
+    allocation.weight += Math.max(0, line.weight || 0)
+    allocation.lineKeys.push(line.key)
+    allocations.set(key, allocation)
+  }
+  const estimates: Record<string, { dueAt: string; remaining: string; estimate: string }> = {}
+  for (const allocation of allocations.values()) {
+    const remaining: string[] = []
+    const estimate: string[] = []
+    for (const [field, unit, met] of [
+      ['quantity', '件', '件数已满足'],
+      ['weight', 'kg', '重量已满足'],
+    ] as const) {
+      const amount = allocation.remaining[field]
+      if (amount == null) continue
+      remaining.push(`${formatAmount(amount)} ${unit}`)
+      const difference = Math.round((amount - allocation[field]) * 1_000_000) / 1_000_000
+      estimate.push(
+        difference === 0
+          ? met
+          : `${difference > 0 ? '还差' : '超出'} ${formatAmount(Math.abs(difference))} ${unit}`,
+      )
+    }
+    const info = {
+      dueAt: formatDateTime(allocation.dueAt),
+      remaining: remaining.join(' · '),
+      estimate: estimate.join(' · '),
+    }
+    for (const key of allocation.lineKeys) estimates[key] = info
+  }
+  return estimates
+})
 watch(
   () => `${auth.currentUser?.id ?? ''}:${auth.currentUser?.team_id ?? ''}:${auth.isTeamAccount}`,
   () => {
@@ -844,13 +949,7 @@ async function submit() {
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
         ? {
             production_schedule_id: line.scheduleId,
-            production_schedule_batch_id: lineScheduleBatches(line).some(
-              (b) => b.id === line.scheduleBatchId,
-            )
-              ? line.scheduleBatchId
-              : lineScheduleBatches(line).length === 1
-                ? lineScheduleBatches(line)[0]!.id
-                : undefined,
+            production_schedule_batch_id: selectedScheduleBatch(line)?.id,
           }
         : {}),
       quantity: Number(enteredQuantity(line)),
@@ -958,45 +1057,46 @@ function canShare(line: (typeof lines.value)[number]) {
 function toggleShared(line: (typeof lines.value)[number]) {
   line.shared = !line.shared
   line.selectedRoute = undefined
+  line.sharedRoutes = []
   line.scheduleId = undefined
   line.scheduleBatchId = undefined
   line.sharedProblem = '请填写共投明细'
   if (line.shared && !line.sharedMembers.length)
     line.sharedMembers = [{ serial_no: line.serialNo }, { serial_no: '' }]
 }
-function setSharedRoutes(line: (typeof lines.value)[number], routes: ProcessRoute[]) {
-  if (routes.length === line.sharedMembers.length && routes.length) {
-    const first = routes[0]!.steps[1]
-    if (first && routes.every((route) => route.steps[1]?.team_id === first.team_id)) {
-      form.nextTeamId = first.team_id || ''
-    }
-  }
+function hasAttachments(line: (typeof lines.value)[number]) {
+  return (
+    !isLoss.value &&
+    !line.shared &&
+    !isScrapType(line.materialType) &&
+    (line.selectedRoute || !needsRoute(line))
+  )
 }
-function selectedSchedule(line: (typeof lines.value)[number]) {
-  return lineSchedules(line).find((schedule) => schedule.id === line.scheduleId)
-}
-const attachmentItems = computed(() =>
-  lines.value
-    .filter((line) => !line.shared && !isScrapType(line.materialType))
-    .flatMap<{
-      serialNo: string
-      batchNo: string
-      routeId?: number
-      route?: ProcessRoute
-      scheduleTaskId?: number | null
-    }>((line) => {
-      if (needsRoute(line) && !line.selectedRoute) return []
-      return [
-        {
-          serialNo: line.serialNo.trim(),
-          batchNo: line.source.transfer.batch_no,
-          routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
-          route: line.selectedRoute,
-          scheduleTaskId: selectedSchedule(line)?.task_id || line.source.transfer.schedule_task_id,
-        },
-      ]
-    }),
+const previewLine = computed(
+  () =>
+    props.modelValue &&
+    lines.value.find(
+      (line) => line.key === attachmentPreview.value?.lineKey && hasAttachments(line),
+    ),
 )
+function attachmentTaskId(line: (typeof lines.value)[number]) {
+  return selectedSchedule(line)?.task_id || line.source.transfer.schedule_task_id
+}
+function attachmentName(line: (typeof lines.value)[number], kind: ReceiptDocumentKind) {
+  if (kind === 'process')
+    return line.selectedRoute?.title || line.source.transfer.process_route?.title
+  if (kind === 'drawing') {
+    const drawings = line.selectedRoute?.drawings ?? []
+    return drawings.length > 1 ? `${drawings.length} 张` : drawings[0]?.filename
+  }
+  const taskId = attachmentTaskId(line)
+  if (taskId && taskId !== line.dispatchOrder?.task_id) return selectedSchedule(line)?.task_title
+  const legacyOrder = line.selectedRoute?.source_data.order_document
+  return (
+    line.dispatchOrder?.document.filename ||
+    (legacyOrder?.serial_no === line.serialNo.trim() ? legacyOrder.filename : undefined)
+  )
+}
 
 watch(
   () => [
@@ -1011,7 +1111,7 @@ watch(
     const pending = lines.value.filter(needsRoute)
     pending.forEach((line) => {
       line.selectedRoute = undefined
-      line.dispatchOrderAvailable = false
+      line.dispatchOrder = null
       line.routeError = ''
       line.routeLoading = !!line.serialNo.trim()
     })
@@ -1029,7 +1129,7 @@ watch(
             throw new Error('工艺起始库房与本批物料不一致')
           const order = await processRouteApi.dispatchOrder(result.id, serial)
           if (cancelled) return
-          line.dispatchOrderAvailable = !!order
+          line.dispatchOrder = order
           line.selectedRoute = result
         } catch (e) {
           if (cancelled) return
@@ -1038,12 +1138,6 @@ watch(
           if (!cancelled) line.routeLoading = false
         }
       }
-      if (cancelled) return
-      const targets = lines.value.map(
-        (line) =>
-          line.selectedRoute?.steps[1]?.team_id || line.source.transfer.process_route?.next_team_id,
-      )
-      if (targets[0] && targets.every((id) => id === targets[0])) form.nextTeamId = targets[0]
     }, 300)
     onCleanup(() => {
       cancelled = true
@@ -1077,10 +1171,7 @@ watch(
     <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
       <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
     </ElAlert>
-    <FormWorkspace :documents="!isLoss && attachmentItems.length > 0">
-      <template v-if="!isLoss && attachmentItems.length" #documents>
-        <SerialRouteAttachments :items="attachmentItems" />
-      </template>
+    <FormWorkspace>
       <ElForm
         ref="formRef"
         label-position="top"
@@ -1088,69 +1179,14 @@ watch(
         :disabled="busy || !canWrite"
         @submit.prevent="submit"
       >
-        <section v-if="!isLoss" class="dispatch-context">
-          <div class="dispatch-context-heading">
-            <h3>收发信息</h3>
-            <ElRadioGroup v-if="externalOption" v-model="form.entryKind" aria-label="出库方式">
-              <ElRadioButton value="transfer">内部转料</ElRadioButton>
-              <ElRadioButton :value="externalOption">{{
-                externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
-              }}</ElRadioButton>
-            </ElRadioGroup>
-          </div>
-          <div class="dialog-form-grid dispatch-context-fields">
-            <ElFormItem label="转料人" :error="fieldErrors.sender" required>
-              <TeamEmployeeInput
-                v-if="modelValue"
-                v-model="sender"
-                :team-id="teamId"
-                label="转料人"
-                :disabled="busy || !canWrite"
-                :invalid="!!fieldErrors.sender"
-              />
-            </ElFormItem>
-            <ElFormItem
-              class="external-destination-field"
-              v-if="external"
-              :label="`${actionLabel}去向`"
-              :error="fieldErrors.externalDestination"
-              required
-            >
-              <ElSelect
-                v-model="form.externalDestination"
-                :aria-label="`${actionLabel}去向`"
-                :disabled="saving || !modelValue"
-                placeholder="请选择去向"
-              >
-                <ElOption
-                  v-for="destination in externalDestinationOptions"
-                  :key="destination"
-                  :label="destination"
-                  :value="destination"
-                />
-              </ElSelect>
-            </ElFormItem>
-            <ElFormItem
-              v-if="!isLoss && !external"
-              label="接收班组"
-              :error="fieldErrors.nextTeamId"
-              required
-              class="destination-field"
-            >
-              <ElSelect
-                v-model="form.nextTeamId"
-                aria-label="出库接收班组"
-                placeholder="选择接收班组"
-                filterable
-                ><ElOption
-                  v-for="team in destinations"
-                  :key="team.id"
-                  :value="team.id"
-                  :label="teamWorkspaceProfile(team.code)?.name || team.name"
-              /></ElSelect>
-            </ElFormItem>
-          </div>
-        </section>
+        <div v-if="!isLoss && externalOption" class="dispatch-mode">
+          <ElRadioGroup v-model="form.entryKind" aria-label="出库方式">
+            <ElRadioButton value="transfer">内部转料</ElRadioButton>
+            <ElRadioButton :value="externalOption">{{
+              externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
+            }}</ElRadioButton>
+          </ElRadioGroup>
+        </div>
         <div class="source-lines">
           <article v-for="(line, index) in lines" :key="line.key" class="source-line">
             <header>
@@ -1285,7 +1321,7 @@ watch(
                 v-model="line.sharedMembers"
                 :team-id="teamId"
                 :disabled="busy"
-                @routes-change="setSharedRoutes(line, $event)"
+                @routes-change="line.sharedRoutes = $event"
                 @validation-change="line.sharedProblem = $event"
               />
               <ElFormItem :error="lineError(line, 'route')" />
@@ -1590,6 +1626,26 @@ watch(
               >
                 {{ routeProblem(line) }}
               </p>
+              <div
+                v-if="hasAttachments(line)"
+                class="source-attachments dialog-field-wide"
+                role="group"
+                aria-label="本批关联资料"
+              >
+                <ElButton
+                  v-for="(label, kind) in attachmentLabels"
+                  :key="kind"
+                  size="small"
+                  :title="attachmentName(line, kind)"
+                  :aria-label="`查看 ${line.serialNo.trim() || line.source.transfer.batch_no} ${label}`"
+                  @click="attachmentPreview = { lineKey: line.key, kind }"
+                >
+                  <span>{{ label }}</span>
+                  <span v-if="attachmentName(line, kind)" class="source-attachment-name">
+                    {{ attachmentName(line, kind) }}
+                  </span>
+                </ElButton>
+              </div>
               <ElFormItem
                 v-if="!isLoss && lineSchedules(line).length"
                 class="dialog-field-wide"
@@ -1598,7 +1654,8 @@ watch(
                 :required="lineSchedules(line).length > 1"
               >
                 <span v-if="lineSchedules(line).length === 1" class="dialog-readonly">
-                  {{ scheduleLabel(lineSchedules(line)[0]!) }} · 已自动关联
+                  {{ lineSchedules(line)[0]!.serial_no }} ·
+                  {{ formatScheduleBatch(lineSchedules(line)[0]!) }} · 已自动关联
                 </span>
                 <ElSelect
                   v-else
@@ -1635,6 +1692,21 @@ watch(
                     :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
                 /></ElSelect>
               </ElFormItem>
+              <p
+                v-if="scheduleEstimates[line.key]"
+                class="source-schedule-estimate dialog-field-wide"
+                aria-live="polite"
+              >
+                <span
+                  >交期 <b>{{ scheduleEstimates[line.key].dueAt }}</b></span
+                >
+                <span v-if="scheduleEstimates[line.key].remaining" class="schedule-remaining"
+                  >待交 {{ scheduleEstimates[line.key].remaining }}</span
+                >
+                <span v-if="scheduleEstimates[line.key].estimate"
+                  >预计本次转出后 <b>{{ scheduleEstimates[line.key].estimate }}</b></span
+                >
+              </p>
               <ElFormItem
                 v-if="!isLoss && warehouse"
                 label="入库仓位"
@@ -1646,7 +1718,7 @@ watch(
                   v-model="line.warehouseLocation"
                   v-model:reservation-key="line.warehouseLocationKey"
                   :team-id="Number(form.nextTeamId)"
-                  :serial-no="line.source.transfer.serial_no"
+                  :serial-no="line.serialNo.trim()"
                   :material-name="line.source.transfer.material_name || ''"
                   :material-type="line.materialType"
                   :lease-group="locationLeases"
@@ -1673,6 +1745,68 @@ watch(
             />
           </article>
         </div>
+        <section v-if="!isLoss" class="dispatch-context">
+          <h3>收发信息</h3>
+          <div class="dialog-form-grid dispatch-context-fields">
+            <ElFormItem label="转料人" :error="fieldErrors.sender" required>
+              <TeamEmployeeInput
+                v-if="modelValue"
+                v-model="sender"
+                :team-id="teamId"
+                label="转料人"
+                :disabled="busy || !canWrite"
+                :invalid="!!fieldErrors.sender"
+              />
+            </ElFormItem>
+            <ElFormItem
+              class="external-destination-field"
+              v-if="external"
+              :label="`${actionLabel}去向`"
+              :error="fieldErrors.externalDestination"
+              required
+            >
+              <ElSelect
+                v-model="form.externalDestination"
+                :aria-label="`${actionLabel}去向`"
+                :disabled="saving || !modelValue"
+                placeholder="请选择去向"
+              >
+                <ElOption
+                  v-for="destination in externalDestinationOptions"
+                  :key="destination"
+                  :label="destination"
+                  :value="destination"
+                />
+              </ElSelect>
+            </ElFormItem>
+            <ElFormItem
+              v-if="!external"
+              label="接收班组"
+              :error="fieldErrors.nextTeamId"
+              required
+              class="destination-field"
+            >
+              <span v-if="routeDestination" class="dialog-readonly" role="status">{{
+                routeDestination.error ||
+                (destinationTeam
+                  ? teamWorkspaceProfile(destinationTeam.code)?.name || destinationTeam.name
+                  : '填写流水号后按工艺带出')
+              }}</span>
+              <ElSelect
+                v-else
+                v-model="form.manualNextTeamId"
+                aria-label="出库接收班组"
+                placeholder="选择接收班组"
+                filterable
+                ><ElOption
+                  v-for="team in destinations"
+                  :key="team.id"
+                  :value="team.id"
+                  :label="teamWorkspaceProfile(team.code)?.name || team.name"
+              /></ElSelect>
+            </ElFormItem>
+          </div>
+        </section>
         <AppDisclosure class="action-notes-section">
           <template #summary>
             <span>
@@ -1727,6 +1861,28 @@ watch(
         </AppDisclosure>
       </ElForm>
     </FormWorkspace>
+    <AppDialog
+      v-if="attachmentPreview && previewLine"
+      :model-value="true"
+      :title="`${previewLine.serialNo.trim() || previewLine.source.transfer.batch_no} · ${attachmentLabels[attachmentPreview.kind]}`"
+      width="min(960px, 94vw)"
+      append-to-body
+      @close="attachmentPreview = undefined"
+    >
+      <SerialRouteAttachments
+        class="source-attachment-preview"
+        :document-kind="attachmentPreview.kind"
+        :items="[
+          {
+            serialNo: previewLine.serialNo.trim(),
+            batchNo: previewLine.source.transfer.batch_no,
+            routeId: previewLine.source.transfer.process_route?.id || previewLine.selectedRoute?.id,
+            route: previewLine.selectedRoute,
+            scheduleTaskId: attachmentTaskId(previewLine),
+          },
+        ]"
+      />
+    </AppDialog>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
       v-if="balanceNotice"
@@ -1794,17 +1950,15 @@ watch(
   border-radius: 12px;
 }
 .dispatch-context {
-  padding: 0 0 12px;
+  margin-top: 16px;
 }
-.dispatch-context-heading {
+.dispatch-mode {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
-.dispatch-context-heading h3 {
-  margin: 0;
+.dispatch-context h3 {
+  margin: 0 0 10px;
   color: var(--wm-muted, #65786e);
   font-size: 12px;
   font-weight: 600;
@@ -1979,6 +2133,44 @@ watch(
 .source-route-status {
   margin: 0;
 }
+.source-attachments,
+.source-schedule-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.source-attachments :deep(.el-button) {
+  max-width: 100%;
+  margin: 0;
+}
+.source-attachments :deep(.el-button > span) {
+  min-width: 0;
+  gap: 6px;
+}
+.source-attachment-name {
+  max-width: 180px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-attachment-preview :deep(.word-document-preview--thumbnail),
+.source-attachment-preview :deep(.route-drawing-preview--thumbnail .drawing-preview-sheet),
+.source-attachment-preview :deep(.route-order-thumbnail) {
+  height: min(55dvh, 440px);
+}
+.source-schedule-estimate {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.source-schedule-estimate b {
+  font-weight: 600;
+  color: var(--text);
+}
 .source-inputs :deep(.el-form-item),
 .dispatch-context-fields :deep(.el-form-item) {
   margin-bottom: 0;
@@ -2009,7 +2201,8 @@ watch(
   width: 100%;
   max-width: none;
 }
-.source-inputs .dialog-readonly {
+.source-inputs .dialog-readonly,
+.destination-field .dialog-readonly {
   padding: 0;
   border: 0;
   border-radius: 0;
