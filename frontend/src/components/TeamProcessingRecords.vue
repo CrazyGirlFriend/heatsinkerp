@@ -11,6 +11,7 @@ import WorkspaceTable from './WorkspaceTable.vue'
 import ProductionReportTable from './ProductionReportTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
@@ -49,15 +50,12 @@ import {
 const props = defineProps<{
   teamId: number
   teamCode?: string
-  management?: boolean
   canWrite?: boolean
   fullscreen?: boolean
   refreshKey?: unknown
   dispatchingRecordId?: number
 }>()
-const reportTemplate = computed(() =>
-  props.management ? productionTemplates(props.teamCode)[0] : undefined,
-)
+const reportTemplates = computed(() => productionTemplates(props.teamCode))
 const isInspectionTeam = computed(() => props.teamCode === 'FACTORY-QC')
 function latestInspection(row: ProcessingRecord) {
   return row.report_inspections?.filter((check) => check.kind === 'inspection').at(-1)
@@ -73,6 +71,12 @@ const emit = defineEmits<{ register: []; changed: []; dispatch: [record: Process
 const route = useRoute(),
   router = useRouter()
 const text = (key: string) => (typeof route.query[key] === 'string' ? String(route.query[key]) : '')
+const canViewProduction = computed(() => props.canWrite && reportTemplates.value.length > 0)
+const reportTemplate = computed(() =>
+  canViewProduction.value && text('processing_view') === 'production'
+    ? reportTemplates.value[0]
+    : undefined,
+)
 const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() =>
   [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10,
@@ -156,8 +160,8 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
   void router.replace({
     path: route.path,
     query: {
-      tab: props.management ? 'settings' : 'processing',
-      management_tab: props.management ? 'production' : undefined,
+      tab: 'processing',
+      processing_view: reportTemplate.value ? 'production' : undefined,
       work_kind: (applyFilters ? workKind.value : text('work_kind')) || undefined,
       processing_task_id: applyFilters
         ? taskId.value || undefined
@@ -172,6 +176,15 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
       date_to: applyFilters ? dates.value.to || undefined : text('date_to') || undefined,
       page: nextPage > 1 ? String(nextPage) : undefined,
       page_size: size !== 10 ? String(size) : undefined,
+    },
+  })
+}
+function selectProcessingView(view: string) {
+  void router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      processing_view: view === 'production' ? 'production' : undefined,
     },
   })
 }
@@ -449,7 +462,7 @@ const dailyColumns = [
 function exportSources() {
   const id = props.teamId,
     params = filters()
-  const templates = productionTemplates(props.teamCode).map((template) => ({
+  const templates = reportTemplates.value.map((template) => ({
     title: template.label,
     total: total.value,
     fields: [],
@@ -465,7 +478,7 @@ function exportSources() {
     workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
       createProductionWorkbook(template.key, rows),
   }))
-  if (props.management && templates.length) return templates
+  if (reportTemplate.value) return templates
   const sources = [exportSource(), ...templates]
   return [
     ...sources,
@@ -531,7 +544,7 @@ onBeforeUnmount(() => {
   <WorkspaceDataPanel
     class="processing-records workspace-data-panel"
     :class="{ 'processing-records--fullscreen': fullscreen }"
-    aria-label="加工记录"
+    :aria-label="reportTemplate ? '产量登记' : '加工记录'"
   >
     <WorkspaceDataToolbar
       v-model="query"
@@ -594,8 +607,17 @@ onBeforeUnmount(() => {
         </FilterDialog>
       </template>
       <template #query-actions><div ref="columnSettingsTarget" /></template>
-      <template #tools
-        ><TableExportButton
+      <template #tools>
+        <WatermelonSegmented
+          v-if="canViewProduction"
+          label="加工视图"
+          :model-value="reportTemplate ? 'production' : 'records'"
+          :options="[
+            { value: 'records', label: '加工记录' },
+            { value: 'production', label: '产量登记' },
+          ]"
+          @change="selectProcessingView" />
+        <TableExportButton
           :source="() => exportSources()[0]!"
           :variants="() => exportSources().slice(1)"
           :disabled="loading || !!error"
@@ -717,8 +739,8 @@ onBeforeUnmount(() => {
         show-overflow-tooltip
       >
         <template #default="{ row }"
-          ><ProcessingPeople :people="row.processors" :fallback="row.processor_name"
-        /></template>
+          ><ProcessingPeople :people="row.processors" :fallback="row.processor_name" />
+        </template>
       </ElTableColumn>
       <ElTableColumn
         v-for="field in parameterColumns"

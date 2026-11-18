@@ -7,6 +7,9 @@ import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import ElSwitch from '@/components/AppSwitch.vue'
 import ElTabs from '@/components/AppTabs.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import AccountAvatar from './AccountAvatar.vue'
@@ -16,18 +19,10 @@ import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDi
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import {
-  computed,
-  defineComponent,
-  h,
-  nextTick,
-  onBeforeUnmount,
-  reactive,
-  ref,
-  watch,
-  useSlots,
-} from 'vue'
-import { ElForm, ElOption, ElTabPane } from 'element-plus'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { ElForm, ElOption, ElTableColumn, ElTabPane, ElTag } from 'element-plus'
+import { IconPlus } from '@tabler/icons-vue'
+import { RouterLink } from 'vue-router'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -79,7 +74,6 @@ const SettingsPage = defineComponent({
       ])
   },
 })
-const slots = useSlots()
 const auth = useAuthStore()
 const tab = ref('purposes'),
   loading = ref(false),
@@ -105,16 +99,24 @@ const canManageProblems = computed(() => props.inspectionProblems && canManage.v
 const canManageDirectory = computed(
   () => canManage.value && (!editingProblems.value || canManageProblems.value),
 )
-const directoryItems = computed(() =>
+const purposes = ref<TeamPurpose[]>([])
+const openingPurposeOptions = computed(() => {
+  const options = new Map(purposes.value.map(({ id, name, active }) => [id, { id, name, active }]))
+  for (const { purpose_id, name, active } of tasks.value) {
+    if (purpose_id) options.set(purpose_id, { id: purpose_id, name, active })
+  }
+  return [...options.values()].filter((option) => option.active).sort((a, b) => b.id - a.id)
+})
+const directory = computed(() =>
   editingEquipment.value
-    ? equipment.value
+    ? equipment
     : editingProblems.value
-      ? problems.value
+      ? problems
       : editingTasks.value
-        ? tasks.value
+        ? tasks
         : editingEmployees.value
-          ? employees.value
-          : purposes.value,
+          ? employees
+          : purposes,
 )
 const itemLabel = computed(() =>
   editingEquipment.value
@@ -127,13 +129,48 @@ const itemLabel = computed(() =>
           ? '员工'
           : '任务',
 )
-const purposes = ref<TeamPurpose[]>([]),
-  newName = ref(''),
-  opening = ref<OpeningState | null>(null)
+const directoryTabs = computed(() =>
+  [
+    { name: 'employees', label: '人员管理', visible: true },
+    {
+      name: 'tasks',
+      label: '加工任务设置',
+      visible: props.processingTasks && canManage.value && !props.employeesOnly,
+    },
+    { name: 'equipment', label: '设备管理', visible: hasEquipment.value && canManage.value },
+    { name: 'problems', label: '检验问题', visible: canManageProblems.value },
+    { name: 'purposes', label: '接收任务', visible: tab.value === 'purposes' },
+  ].filter((pane) => pane.visible),
+)
+const directoryQuery = ref('')
+const directoryStatus = ref('')
+const directoryPage = ref(1)
+const directoryPageSize = ref(10)
+const paginateDirectory = computed(() => tab.value !== 'opening' && !editingProblems.value)
+const fillDirectory = computed(() => props.inline && paginateDirectory.value)
+const adding = ref(false)
+const newName = ref('')
+const opening = ref<OpeningState | null>(null)
+const drafts = reactive(new Map<string, Pick<TeamDirectoryItem, 'name' | 'active' | 'version'>>())
+const draftKey = (id: number) => `${tab.value}:${id}`
+const filteredDirectoryItems = computed(() => {
+  const query = directoryQuery.value.trim().toLowerCase()
+  return directory.value.value.filter(
+    (item) =>
+      item.name.toLowerCase().includes(query) &&
+      (!directoryStatus.value || item.active === (directoryStatus.value === 'active')),
+  )
+})
+const directoryRows = computed(() => {
+  const items = filteredDirectoryItems.value
+  const start = (directoryPage.value - 1) * directoryPageSize.value
+  const rows = paginateDirectory.value ? items.slice(start, start + directoryPageSize.value) : items
+  return rows.map((item) => ({ ...item, draft: drafts.get(draftKey(item.id)) }))
+})
 const lines = ref<OpeningLine[]>([])
 const invalidSpecifications = reactive(new Set<OpeningLine>())
 const invalidPurpose = ref<number | 'new' | null>(null)
-const purposeSettings = ref<HTMLElement>()
+const directoryPanel = ref<HTMLElement | null>(null)
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   lines.value.forEach((line, index) => {
@@ -239,6 +276,10 @@ watch(
     if (!props.processingTasks && ['purposes', 'tasks'].includes(tab.value)) tab.value = 'employees'
     if (props.employeesOnly || (tab.value === 'equipment' && !hasEquipment.value))
       tab.value = 'employees'
+    drafts.clear()
+    directoryPage.value = 1
+    directoryPageSize.value = 10
+    adding.value = false
     newName.value = ''
     submission.reset()
     opening.value = null
@@ -273,7 +314,22 @@ watch(
 onBeforeUnmount(() => {
   ++epoch
 })
+watch([tab, directoryQuery, directoryStatus, directoryPageSize], () => {
+  directoryPage.value = 1
+})
+watch(
+  () => filteredDirectoryItems.value.length,
+  (total) => {
+    directoryPage.value = Math.min(
+      directoryPage.value,
+      Math.max(1, Math.ceil(total / directoryPageSize.value)),
+    )
+  },
+)
 watch(tab, () => {
+  directoryQuery.value = ''
+  directoryStatus.value = ''
+  adding.value = false
   newName.value = ''
   invalidPurpose.value = null
 })
@@ -285,20 +341,41 @@ function saveDraft() {
     error.value = '无法保存本机草稿，请检查浏览器存储权限'
   }
 }
-async function saveDirectoryItem(item?: TeamDirectoryItem) {
+function editDirectoryItem(id: number) {
+  const item = directory.value.value.find((row) => row.id === id)
+  if (item)
+    drafts.set(draftKey(id), { name: item.name, active: item.active, version: item.version })
+}
+function cancelDirectoryEdit(id: number) {
+  drafts.delete(draftKey(id))
+  if (invalidPurpose.value === id) invalidPurpose.value = null
+}
+async function startAdding() {
+  adding.value = true
+  await nextTick()
+  directoryPanel.value?.querySelector<HTMLInputElement>('.directory-add input')?.focus()
+}
+function cancelAdding() {
+  adding.value = false
+  newName.value = ''
+  if (invalidPurpose.value === 'new') invalidPurpose.value = null
+}
+async function saveDirectoryItem(id?: number) {
   if (saving.value || loading.value || !canManageDirectory.value) return
-  const name = (item ? item.name : newName.value).trim()
+  const edit = id === undefined ? undefined : drafts.get(draftKey(id))
+  if (id !== undefined && !edit) return
+  const name = (edit?.name ?? newName.value).trim()
   if (!name) {
-    invalidPurpose.value = item?.id ?? 'new'
+    invalidPurpose.value = id ?? 'new'
     await nextTick()
-    focusFirstInvalidField(purposeSettings.value)
+    focusFirstInvalidField(directoryPanel.value ?? undefined)
     return
   }
   const current = epoch
   saving.value = true
   error.value = ''
   try {
-    await (
+    const saved = await (
       editingEquipment.value
         ? teamMaterialApi.saveEquipment
         : editingProblems.value
@@ -310,14 +387,23 @@ async function saveDirectoryItem(item?: TeamDirectoryItem) {
               : teamMaterialApi.savePurpose
     )(
       props.teamId,
-      { name, active: item?.active ?? true, ...(item ? { expected_version: item.version } : {}) },
-      item?.id,
+      { name, active: edit?.active ?? true, ...(edit ? { expected_version: edit.version } : {}) },
+      id,
     )
     if (current !== epoch) return
-    newName.value = ''
-    invalidPurpose.value = null
+    const items = directory.value
+    if (id !== undefined) {
+      items.value = items.value.map((row) => (row.id === id ? saved : row))
+      cancelDirectoryEdit(id)
+    } else {
+      items.value = [saved, ...items.value]
+      cancelAdding()
+      directoryQuery.value = ''
+      directoryStatus.value = ''
+      directoryPage.value = 1
+    }
     emit('changed')
-    await load()
+    showToast(id !== undefined ? '修改已保存' : `已新增${itemLabel.value}`, 'success')
   } catch (e) {
     if (current === epoch) error.value = e instanceof Error ? e.message : '保存失败'
   } finally {
@@ -382,247 +468,320 @@ async function submitOpening() {
     :show-close="!saving"
     @close="close"
   >
-    <ElTabs v-model="tab">
-      <ElTabPane name="employees" label="人员管理" :disabled="saving" />
-      <ElTabPane
-        v-if="processingTasks && canManage && !employeesOnly"
-        name="tasks"
-        label="加工任务"
-        :disabled="saving"
-      />
-      <ElTabPane
-        v-if="hasEquipment && canManage"
-        name="equipment"
-        label="设备管理"
-        :disabled="saving"
-      />
-      <ElTabPane
-        v-if="slots.production && inline"
-        name="production"
-        label="产量登记"
-        :disabled="saving"
-      />
-      <ElTabPane v-if="canManageProblems" name="problems" label="检验问题" :disabled="saving" />
-      <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
-    </ElTabs>
-    <slot v-if="tab === 'production' && slots.production" name="production" />
-    <FormWorkspace v-else>
-      <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-      <StatePanel v-if="loading" state="loading" title="正在读取班组管理" compact />
-      <section
-        v-else-if="
-          tab === 'purposes' ||
-          editingEmployees ||
-          editingTasks ||
-          editingProblems ||
-          editingEquipment
-        "
-        ref="purposeSettings"
-        class="purpose-settings"
-      >
-        <p v-if="editingEquipment" class="settings-note">
-          加工时选择本班组启用的设备；改名、停用不改变历史记录。
-        </p>
-        <p v-else-if="editingProblems" class="settings-note">
-          检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
-        </p>
-        <p v-else-if="editingTasks" class="settings-note">
-          转料和加工使用同一份任务清单。改名、停用不改变历史记录。
-        </p>
-        <p v-else-if="!editingEmployees" class="settings-note">设置本班组接收物料时的任务。</p>
-        <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
-          <AccountAvatar v-if="editingEmployees" :name="item.name" :size="24" />
-          <ElInput
-            :class="{ 'is-error': invalidPurpose === item.id && !item.name.trim() }"
-            v-model="item.name"
-            :aria-label="`${itemLabel}名称 ${item.id}`"
-            maxlength="80"
-            :disabled="saving || !canManageDirectory"
-          />
-          <ElSwitch
-            v-model="item.active"
-            :aria-label="`${item.name}启用状态`"
-            active-text="启用"
-            :disabled="saving || !canManageDirectory"
-          />
-          <ElButton :disabled="saving || !canManageDirectory" @click="saveDirectoryItem(item)"
-            >保存</ElButton
-          >
-        </div>
-        <ElAlert
-          v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
-          title="任务全部停用后，上序无法新建转给本班组的转料单。"
-          type="info"
-          :closable="false"
-        />
-        <div class="purpose-editor">
-          <ElInput
-            :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
-            v-model="newName"
-            :aria-label="`新增${itemLabel}名称`"
-            :placeholder="
-              editingEquipment
-                ? teamCode === 'FACTORY-ANNEAL'
-                  ? '例如：1号炉、2号炉'
-                  : '例如：01号机、02号机'
-                : editingProblems
-                  ? '请输入统一的问题名称'
-                  : editingTasks
-                    ? '例如：粗磨、精磨'
-                    : editingEmployees
-                      ? '请输入员工姓名'
-                      : '例如：检验、去毛刺'
-            "
-            maxlength="80"
-            :disabled="saving || !canManageDirectory"
-            @keyup.enter="saveDirectoryItem()"
-          /><ElButton
-            type="primary"
-            :loading="saving"
-            :disabled="!canManageDirectory"
-            @click="saveDirectoryItem()"
-            >新增{{ itemLabel }}</ElButton
-          >
-        </div>
-        <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
-          尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的任务。
-        </p>
-      </section>
-      <section v-else-if="!businessOnly" class="opening-settings">
-        <ElAlert
-          v-if="!opening?.enabled && !auth.isAdmin"
-          title="请系统管理员在“班组管理”中开启初始库存录入权限。"
-          type="info"
-          :closable="false"
-        />
-        <template v-if="opening?.can_submit">
-          <ElForm
-            ref="formRef"
-            label-position="top"
-            :show-message="false"
-            class="opening-lines dialog-form-compact"
-            @submit.prevent="submitOpening"
-          >
-            <CompactFormSection
-              v-for="(line, index) in lines"
-              :key="index"
-              class="opening-line opening-fields"
-              :title="`物料 ${index + 1}`"
+    <div
+      ref="directoryPanel"
+      class="team-settings-tabs"
+      :class="{ 'team-settings-tabs--paginated': fillDirectory }"
+    >
+      <ElTabs v-model="tab">
+        <ElTabPane
+          v-for="pane in directoryTabs"
+          :key="pane.name"
+          :name="pane.name"
+          :label="pane.label"
+          :disabled="saving"
+        >
+          <section v-if="tab === pane.name" class="directory-settings">
+            <WorkspaceDataToolbar
+              v-model="directoryQuery"
+              :search-label="'搜索' + itemLabel"
+              :placeholder="editingEmployees ? '搜索姓名' : '搜索' + itemLabel + '名称'"
+              :loading="loading"
+              :refresh="false"
             >
-              <template #actions
-                ><ElButton
-                  v-if="lines.length > 1"
-                  text
-                  type="danger"
-                  :disabled="saving"
-                  @click="lines.splice(index, 1)"
-                  >移除</ElButton
+              <template #filters>
+                <ElSelect
+                  v-model="directoryStatus"
+                  class="directory-status-filter"
+                  aria-label="状态筛选"
+                  placeholder="全部状态"
                 >
+                  <ElOption value="" label="全部状态" />
+                  <ElOption value="active" label="启用" />
+                  <ElOption value="inactive" label="停用" />
+                </ElSelect>
               </template>
-              <OpeningMaterialFields
-                :line="line"
-                :index="index"
-                :errors="fieldErrors"
-                :disabled="saving || !modelValue"
-                @update="Object.assign(line, $event)"
-                @validity-change="
-                  $event ? invalidSpecifications.delete(line) : invalidSpecifications.add(line)
-                "
+              <template #primary-actions>
+                <ElButton
+                  v-if="canManageDirectory"
+                  :disabled="loading || saving || adding"
+                  @click="startAdding"
+                >
+                  <IconPlus :size="17" />新增{{ itemLabel }}
+                </ElButton>
+              </template>
+            </WorkspaceDataToolbar>
+            <p v-if="editingEquipment" class="settings-note">
+              加工时选择本班组启用的设备；改名、停用不改变历史记录。
+            </p>
+            <p v-else-if="editingProblems" class="settings-note">
+              检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
+            </p>
+            <p v-else-if="editingTasks" class="settings-note">
+              转料和加工使用同一份任务清单。改名、停用不改变历史记录。
+            </p>
+            <p v-else-if="!editingEmployees" class="settings-note">设置本班组接收物料时的任务。</p>
+            <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+            <form v-if="adding" class="directory-add" @submit.prevent="saveDirectoryItem()">
+              <ElInput
+                v-model="newName"
+                :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
+                :aria-label="'新增' + itemLabel + '名称'"
+                :placeholder="editingEmployees ? '请输入员工姓名' : '请输入' + itemLabel + '名称'"
+                maxlength="80"
+                :disabled="saving"
+              />
+              <ElButton :disabled="saving" @click="cancelAdding">取消</ElButton>
+              <ElButton type="primary" native-type="submit" :disabled="saving">保存新增</ElButton>
+            </form>
+            <WorkspaceTable
+              :key="directoryPage"
+              :data="directoryRows"
+              :loading="loading"
+              row-key="id"
+              :height="fillDirectory ? '100%' : undefined"
+              :fill="fillDirectory"
+              :embedded="false"
+              :column-settings="false"
+              :aria-label="pane.label"
+            >
+              <ElTableColumn
+                :label="editingEmployees ? '姓名' : itemLabel + '名称'"
+                min-width="190"
+                align="center"
               >
-                <div
-                  class="dialog-field"
-                  :class="{ 'is-error': lineError(index, 'material_type') }"
-                >
-                  <span class="dialog-field-label is-required">物料类型</span
-                  ><ElSelect
-                    v-model="line.material_type"
-                    placeholder="选择物料类型"
-                    :aria-label="`第${index + 1}行物料类型`"
+                <template #default="{ row }">
+                  <ElInput
+                    v-if="row.draft"
+                    v-model="row.draft.name"
+                    class="directory-name-input"
+                    :class="{ 'is-error': invalidPurpose === row.id && !row.draft.name.trim() }"
+                    :aria-label="itemLabel + '名称 ' + row.id"
+                    maxlength="80"
                     :disabled="saving"
-                    ><ElOption
-                      v-for="option in materialTypeOptions"
-                      :key="option.value"
-                      :value="option.value"
-                      :label="option.label"
-                  /></ElSelect>
-                </div>
-                <div v-if="processingTasks" class="dialog-field">
-                  <span class="dialog-field-label">加工任务</span
-                  ><ElSelect
-                    v-model="line.purpose_id"
-                    aria-label="初始库存加工任务"
-                    clearable
-                    placeholder="未分类"
-                    :disabled="saving"
-                    ><ElOption
-                      v-for="item in purposes.filter((item) => item.active)"
-                      :key="item.id"
-                      :value="item.id"
-                      :label="item.name"
-                  /></ElSelect>
-                </div>
-                <div
-                  v-if="!isWeightOnlyType(line.material_type)"
-                  class="dialog-field"
-                  :class="{ 'is-error': lineError(index, 'quantity') }"
-                >
-                  <span class="dialog-field-label is-required">件数</span
-                  ><ElInputNumber
-                    v-model="line.quantity"
-                    :aria-label="`第${index + 1}行件数`"
-                    :min="0"
-                    :precision="0"
-                    :disabled="saving"
-                    controls-position="right"
-                    ><template #suffix
-                      ><span class="dialog-input-unit">件</span></template
-                    ></ElInputNumber
-                  >
-                </div>
-                <div
-                  class="dialog-field"
-                  v-if="line.material_type !== 'sludge'"
-                  :class="{ 'is-error': lineError(index, 'weight') }"
-                >
-                  <span class="dialog-field-label is-required">重量</span
-                  ><WeightInput
-                    v-model="line.weight"
-                    :ariaLabel="`第${index + 1}行重量`"
-                    :disabled="saving"
+                    @keyup.enter="saveDirectoryItem(row.id)"
                   />
-                </div>
-                <SludgeWeightFields
-                  class="form-field--full"
-                  v-else
-                  v-model:gross="line.sludge_gross_weight"
-                  v-model:percent="line.sludge_content_percent"
-                  :label="`第${index + 1}行`"
-                  :gross-error="lineError(index, 'gross')"
-                  :percent-error="lineError(index, 'percent')"
-                  :disabled="saving"
-                  @update:weight="line.weight = $event"
-                />
-              </OpeningMaterialFields>
-              <div class="dialog-field form-field--full">
-                <span class="dialog-field-label">备注</span
-                ><ElInput
-                  v-model="line.notes"
-                  aria-label="初始库存备注"
-                  maxlength="2000"
-                  type="textarea"
-                  :rows="2"
-                  :disabled="saving"
-                  placeholder="选填"
-                />
-              </div>
-            </CompactFormSection>
-          </ElForm>
-        </template>
-        <p v-if="opening?.completed" class="settings-note">
-          共 {{ opening.items.length }} 个初始库存批次，可在库存明细和收发历史中查看。
-        </p>
-      </section>
-    </FormWorkspace>
+                  <span v-else class="directory-name">
+                    <AccountAvatar v-if="editingEmployees" :name="row.name" :size="24" />
+                    {{ row.name }}
+                  </span>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="状态" min-width="112" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.draft" class="directory-status-control">
+                    <ElSwitch
+                      v-model="row.draft.active"
+                      :aria-label="row.name + '启用状态'"
+                      :disabled="saving"
+                    />
+                    {{ row.draft.active ? '启用' : '停用' }}
+                  </span>
+                  <ElTag v-else :type="row.active ? 'success' : 'info'" effect="plain">
+                    {{ row.active ? '启用' : '停用' }}
+                  </ElTag>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn v-if="canManageDirectory" label="操作" min-width="136" align="center">
+                <template #default="{ row }">
+                  <template v-if="row.draft">
+                    <ElButton link :disabled="saving" @click="cancelDirectoryEdit(row.id)">
+                      取消
+                    </ElButton>
+                    <ElButton
+                      link
+                      type="primary"
+                      :aria-label="'保存 ' + row.name"
+                      :disabled="saving"
+                      @click="saveDirectoryItem(row.id)"
+                      >保存</ElButton
+                    >
+                  </template>
+                  <ElButton
+                    v-else
+                    link
+                    type="primary"
+                    :aria-label="'编辑 ' + row.name"
+                    :disabled="saving"
+                    @click="editDirectoryItem(row.id)"
+                    >编辑</ElButton
+                  >
+                </template>
+              </ElTableColumn>
+              <template #empty>
+                <StatePanel v-if="loading" state="loading" title="正在读取班组管理" compact />
+                <template v-else>
+                  {{ directoryQuery || directoryStatus ? '没有匹配记录' : '暂无' + itemLabel }}
+                </template>
+              </template>
+            </WorkspaceTable>
+            <WorkspacePagination
+              v-if="paginateDirectory && !loading"
+              v-model:current-page="directoryPage"
+              v-model:page-size="directoryPageSize"
+              :total="filteredDirectoryItems.length"
+              :disabled="saving"
+            />
+            <ElAlert
+              v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
+              title="任务全部停用后，上序无法新建转给本班组的转料单。"
+              type="info"
+              :closable="false"
+            />
+            <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
+              尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的任务。
+            </p>
+          </section>
+        </ElTabPane>
+        <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving">
+          <FormWorkspace v-if="tab === 'opening'">
+            <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+            <StatePanel v-if="loading" state="loading" title="正在读取初始库存" compact />
+            <section v-else class="opening-settings">
+              <ElAlert
+                v-if="!opening?.enabled && !auth.isAdmin"
+                title="请联系系统管理员，在「系统设置 → 班组管理」找到本班组，再点击「初始库存录入」授权。"
+                type="info"
+                :closable="false"
+              />
+              <p v-else-if="opening && !opening.enabled && auth.isAdmin" class="settings-note">
+                给班组授权时，请前往
+                <RouterLink to="/settings/teams">系统设置 → 班组管理</RouterLink>
+                ，在本班组所在行点击「初始库存录入」。
+              </p>
+              <template v-if="opening?.can_submit">
+                <ElForm
+                  ref="formRef"
+                  label-position="top"
+                  :show-message="false"
+                  class="opening-lines dialog-form-compact"
+                  @submit.prevent="submitOpening"
+                >
+                  <CompactFormSection
+                    v-for="(line, index) in lines"
+                    :key="index"
+                    class="opening-line opening-fields"
+                    :title="`物料 ${index + 1}`"
+                  >
+                    <template #actions
+                      ><ElButton
+                        v-if="lines.length > 1"
+                        text
+                        type="danger"
+                        :disabled="saving"
+                        @click="lines.splice(index, 1)"
+                        >移除</ElButton
+                      >
+                    </template>
+                    <OpeningMaterialFields
+                      :line="line"
+                      :index="index"
+                      :errors="fieldErrors"
+                      :disabled="saving || !modelValue"
+                      @update="Object.assign(line, $event)"
+                      @validity-change="
+                        $event
+                          ? invalidSpecifications.delete(line)
+                          : invalidSpecifications.add(line)
+                      "
+                    >
+                      <div
+                        class="dialog-field"
+                        :class="{ 'is-error': lineError(index, 'material_type') }"
+                      >
+                        <span class="dialog-field-label is-required">物料类型</span
+                        ><ElSelect
+                          v-model="line.material_type"
+                          placeholder="选择物料类型"
+                          :aria-label="`第${index + 1}行物料类型`"
+                          :disabled="saving"
+                          ><ElOption
+                            v-for="option in materialTypeOptions"
+                            :key="option.value"
+                            :value="option.value"
+                            :label="option.label"
+                        /></ElSelect>
+                      </div>
+                      <div v-if="processingTasks" class="dialog-field">
+                        <span class="dialog-field-label">加工任务</span
+                        ><ElSelect
+                          v-model="line.purpose_id"
+                          aria-label="初始库存加工任务"
+                          clearable
+                          placeholder="未分类"
+                          :disabled="saving"
+                          ><ElOption
+                            v-for="item in openingPurposeOptions"
+                            :key="item.id"
+                            :value="item.id"
+                            :label="item.name"
+                        /></ElSelect>
+                      </div>
+                      <div
+                        v-if="!isWeightOnlyType(line.material_type)"
+                        class="dialog-field"
+                        :class="{ 'is-error': lineError(index, 'quantity') }"
+                      >
+                        <span class="dialog-field-label is-required">件数</span
+                        ><ElInputNumber
+                          v-model="line.quantity"
+                          :aria-label="`第${index + 1}行件数`"
+                          :min="0"
+                          :precision="0"
+                          :disabled="saving"
+                          controls-position="right"
+                          ><template #suffix
+                            ><span class="dialog-input-unit">件</span></template
+                          ></ElInputNumber
+                        >
+                      </div>
+                      <div
+                        class="dialog-field"
+                        v-if="line.material_type !== 'sludge'"
+                        :class="{ 'is-error': lineError(index, 'weight') }"
+                      >
+                        <span class="dialog-field-label is-required">重量</span
+                        ><WeightInput
+                          v-model="line.weight"
+                          :ariaLabel="`第${index + 1}行重量`"
+                          :disabled="saving"
+                        />
+                      </div>
+                      <SludgeWeightFields
+                        class="form-field--full"
+                        v-else
+                        v-model:gross="line.sludge_gross_weight"
+                        v-model:percent="line.sludge_content_percent"
+                        :label="`第${index + 1}行`"
+                        :gross-error="lineError(index, 'gross')"
+                        :percent-error="lineError(index, 'percent')"
+                        :disabled="saving"
+                        @update:weight="line.weight = $event"
+                      />
+                    </OpeningMaterialFields>
+                    <div class="dialog-field form-field--full">
+                      <span class="dialog-field-label">备注</span
+                      ><ElInput
+                        v-model="line.notes"
+                        aria-label="初始库存备注"
+                        maxlength="2000"
+                        type="textarea"
+                        :rows="2"
+                        :disabled="saving"
+                        placeholder="选填"
+                      />
+                    </div>
+                  </CompactFormSection>
+                </ElForm>
+              </template>
+              <p v-if="opening?.completed" class="settings-note">
+                共 {{ opening.items.length }} 个初始库存批次，可在库存明细和收发历史中查看。
+              </p>
+            </section>
+          </FormWorkspace>
+        </ElTabPane>
+      </ElTabs>
+    </div>
     <template #footer>
       <ElButton v-if="!inline" :disabled="saving" @click="close">关闭</ElButton>
       <template v-if="!businessOnly && tab === 'opening' && opening?.can_submit && !loading">
@@ -651,14 +810,6 @@ async function submitOpening() {
   min-height: 0;
   overflow: auto;
 }
-:deep(.team-settings-page__content:has(> .processing-records)) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-:deep(.team-settings-page__content > .el-tabs) {
-  flex-shrink: 0;
-}
 :deep(.team-settings-page__footer) {
   display: flex;
   justify-content: flex-end;
@@ -674,22 +825,58 @@ async function submitOpening() {
   font-size: 13px;
   line-height: 1.6;
 }
-.purpose-settings {
-  display: grid;
-  gap: 10px;
-  padding-block: 4px 12px;
+.settings-note a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.purpose-editor {
+.team-settings-tabs {
+  padding-block: 12px;
+}
+.directory-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.team-settings-tabs--paginated {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.team-settings-tabs--paginated > :deep(.el-tabs),
+.team-settings-tabs--paginated :deep(.el-tabs__content),
+.team-settings-tabs--paginated :deep(.el-tab-pane:not([aria-hidden='true'])),
+.team-settings-tabs--paginated .directory-settings {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.team-settings-tabs--paginated :deep(.el-tabs__header),
+.team-settings-tabs--paginated .directory-settings > :not(.el-table) {
+  flex-shrink: 0;
+}
+.directory-status-filter {
+  width: 128px;
+}
+.directory-add {
   display: flex;
   align-items: center;
-  gap: 10px;
-  max-width: 560px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.purpose-editor :deep(.el-input) {
-  flex: 1;
+.directory-add :deep(.el-input) {
+  flex: 0 1 280px;
 }
-.purpose-editor :deep(.el-switch) {
-  flex-shrink: 0;
+.directory-name,
+.directory-status-control {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  gap: 8px;
+}
+.directory-name-input {
+  max-width: 280px;
 }
 .opening-lines {
   display: grid;
@@ -703,14 +890,5 @@ async function submitOpening() {
 }
 .opening-fields :deep(.opening-specification-field) {
   grid-column: 1 / -1;
-}
-@media (max-width: 560px) {
-  .purpose-editor {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .purpose-editor :deep(.el-input) {
-    flex-basis: 100%;
-  }
 }
 </style>

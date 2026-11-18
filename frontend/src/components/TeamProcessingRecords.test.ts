@@ -214,7 +214,7 @@ describe('cutting processing records', () => {
     const source = wrapper.getComponent(TableExportButton).props('source')()!
     const exported = await source.load(new AbortController().signal, () => {})
     expect(exported[0]).toMatchObject({ processing_minutes: 120, completed_quantity: 10 })
-    await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+    await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
     const template = wrapper.getComponent(TableExportButton).props('source')()!
     const templateRows = await template.load(new AbortController().signal, () => {})
     expect(templateRows[0]).toMatchObject({ processing_minutes: 120, completed_quantity: 10 })
@@ -774,8 +774,8 @@ it.each([
   ['FACTORY-ENGRAVE', '雕刻产量表'],
   ['FACTORY-QC', '检验产量表'],
 ])('defaults production registration to the original %s template', async (teamCode, title) => {
-  await render(false, '/team-workspaces/5?tab=settings&management_tab=production')
-  await wrapper.setProps({ management: true, teamCode })
+  await render(true, '/team-workspaces/5?tab=processing&processing_view=production')
+  await wrapper.setProps({ teamCode })
   const button = wrapper.getComponent(TableExportButton)
   await button.get('button').trigger('click')
   const dialog = wrapper.getComponent(TableExportDialog)
@@ -793,10 +793,10 @@ it('keeps actual-date and task filters and loads all matching records for the de
     items: [{ ...record(), completed_quantity: 123, processing_minutes: 90, labor_minutes: 90 }],
   })
   await render(
-    false,
-    '/team-workspaces/5?tab=settings&management_tab=production&date_from=2026-11-01&date_to=2026-11-15&processing_task_id=8&page_size=20',
+    true,
+    '/team-workspaces/5?tab=processing&processing_view=production&date_from=2026-11-01&date_to=2026-11-15&processing_task_id=8&page_size=20',
   )
-  await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+  await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
   const source = wrapper.getComponent(TableExportButton).props('source')()!
   const rows = await source.load(new AbortController().signal, () => {})
   expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
@@ -819,15 +819,15 @@ it('uses ordinary details for processing history and teams without a supplied te
   const button = wrapper.getComponent(TableExportButton)
   expect(button.props('source')()!.workbook).toBeUndefined()
   expect(button.props('variants')!()[0]!.title).toBe('轧制产量表')
-  await wrapper.setProps({ management: true, teamCode: 'FACTORY-PLATE' })
+  await wrapper.setProps({ teamCode: 'FACTORY-PLATE' })
   expect(button.props('source')()!.title).toBe('逐笔加工明细')
   expect(button.props('source')()!.workbook).toBeUndefined()
   expect(button.props('variants')!().some((source) => source.workbook)).toBe(false)
 })
 
 it('uses only original columns in daily registration and leaves unrecorded roles blank', async () => {
-  await render(false, '/team-workspaces/5?tab=settings&management_tab=production')
-  await wrapper.setProps({ management: true, teamCode: 'FACTORY-ROLL' })
+  await render(true, '/team-workspaces/5?tab=processing&processing_view=production')
+  await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
   await flushPromises()
   const headers = wrapper.findAll('thead th').map((cell) => cell.text())
   for (const label of ['日期', '流水号', '主操', '副操', '加工成品 / 件数', '备注']) {

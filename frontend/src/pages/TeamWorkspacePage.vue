@@ -396,8 +396,8 @@ function selectSection(section: TeamWorkspaceSection) {
     void router.push(workspaceNavigation.workspaceLocation(teamKey.value, section))
 }
 watch(
-  () => queryText('tab'),
-  (value) => {
+  [() => queryText('tab'), () => queryText('management_tab')],
+  ([value, oldManagementView]) => {
     if (value === 'serials' || value === 'materials' || value === 'material-types')
       void router.replace({
         path: route.path,
@@ -410,6 +410,14 @@ watch(
         query: { ...route.query, tab: 'history' },
         hash: route.hash,
       })
+    if (value === 'settings' && oldManagementView === 'production') {
+      const { management_tab: _previousView, ...query } = route.query
+      void router.replace({
+        path: route.path,
+        query: { ...query, tab: 'processing', processing_view: 'production' },
+        hash: route.hash,
+      })
+    }
   },
   { immediate: true },
 )
@@ -1128,7 +1136,7 @@ onBeforeUnmount(() => {
     <template v-if="tab === 'dashboard'" #heading-tools>
       <div ref="dashboardToolbarTarget" />
     </template>
-    <template v-if="canWrite && hasProcessing" #messages>
+    <template v-if="tab !== 'settings' && canWrite && hasProcessing" #messages>
       <ElButton @click="reworkRequestOpen = true">提交问题</ElButton>
     </template>
     <template v-if="syncMessage" #fullscreen-status
@@ -1182,25 +1190,12 @@ onBeforeUnmount(() => {
           :team-id="teamId"
           :team-name="title"
           :team-code="team?.code"
-          :initial-tab="route.query.management_tab === 'production' ? 'production' : 'employees'"
+          initial-tab="employees"
           :processing-tasks="hasProcessing"
           :inspection-problems="team?.code === 'FACTORY-QC'"
           @changed="businessChanged"
           @stocked="openingStocked"
-        >
-          <template v-if="hasProcessing" #production>
-            <TeamProcessingRecords
-              :team-id="teamId"
-              :team-code="team?.code"
-              management
-              :can-write="canWrite"
-              :refresh-key="overview"
-              :dispatching-record-id="processingDispatch?.recordId"
-              @register="openProcessing()"
-              @dispatch="dispatchProcessing"
-            />
-          </template>
-        </TeamBusinessDialog>
+        />
         <TeamDashboard
           v-else-if="tab === 'dashboard'"
           :key="teamId"

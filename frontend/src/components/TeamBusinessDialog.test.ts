@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElInputNumber, ElSelect, ElSwitch, ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamBusinessDialog from './TeamBusinessDialog.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 
 vi.mock('@/services/materialInputApi', () => ({
@@ -55,10 +56,15 @@ afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
 })
-async function render(initialTab = 'opening') {
+async function render(initialTab = 'opening', teamCode?: string) {
   wrapper = mount(TeamBusinessDialog, {
-    props: { modelValue: true, teamId: 2, initialTab },
-    global: { stubs: { ElDialog: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    props: { modelValue: true, teamId: 2, initialTab, teamCode },
+    global: {
+      stubs: {
+        RouterLink: true,
+        ElDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+      },
+    },
   })
   await flushPromises()
 }
@@ -67,6 +73,11 @@ async function click(text: string) {
     .findAll('button')
     .find((button) => button.text() === text)!
     .trigger('click')
+  await flushPromises()
+}
+
+async function saveNew() {
+  await wrapper.get('.directory-add').trigger('submit')
   await flushPromises()
 }
 
@@ -93,6 +104,7 @@ describe('team business settings', () => {
       await flushPromises()
       expect(wrapper.text()).toContain('检验问题')
       expect(wrapper.text()).toContain('改名不改变历史记录')
+      await wrapper.get('button[aria-label="编辑 划伤"]').trigger('click')
       await wrapper.get('input[aria-label="问题名称 15"]').setValue('表面划伤')
       wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
       await click('保存')
@@ -102,8 +114,9 @@ describe('team business settings', () => {
         15,
       )
       expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
-      await wrapper.get('input[aria-label="新增问题名称"]').setValue('尺寸超差')
       await click('新增问题')
+      await wrapper.get('input[aria-label="新增问题名称"]').setValue('尺寸超差')
+      await saveNew()
       expect(save).toHaveBeenLastCalledWith(2, { name: '尺寸超差', active: true }, undefined)
     },
   )
@@ -140,7 +153,7 @@ describe('team business settings', () => {
     await flushPromises()
     expect(wrapper.text()).not.toContain('加工任务')
     expect(wrapper.text()).not.toContain('接收任务')
-    expect(wrapper.find('input[aria-label="新增员工名称"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === '新增员工')).toBe(true)
     expect(wrapper.text()).toContain('初始库存')
     expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
     expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
@@ -165,13 +178,15 @@ describe('team business settings', () => {
       version: 4,
     })
     await render('tasks')
+    await wrapper.get('button[aria-label="编辑 粗磨"]').trigger('click')
     await wrapper.get('input[aria-label="任务名称 9"]').setValue('精磨')
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
     await click('保存')
     expect(save).toHaveBeenCalledWith(2, { name: '精磨', active: false, expected_version: 3 }, 9)
     expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
-    await wrapper.get('input[aria-label="新增任务名称"]').setValue('去毛刺')
     await click('新增任务')
+    await wrapper.get('input[aria-label="新增任务名称"]').setValue('去毛刺')
+    await saveNew()
     expect(save).toHaveBeenLastCalledWith(2, { name: '去毛刺', active: true }, undefined)
   })
   it('maintains employees separately from businesses without a login account', async () => {
@@ -187,16 +202,18 @@ describe('team business settings', () => {
     })
     await render('employees')
     expect(wrapper.find('[aria-label="任务名称 1"]').exists()).toBe(false)
+    await wrapper.get('button[aria-label="编辑 王师傅"]').trigger('click')
     await wrapper.get('input[aria-label="员工名称 4"]').setValue('王工')
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
     await click('保存')
     expect(save).toHaveBeenCalledWith(2, { name: '王工', active: false, expected_version: 1 }, 4)
     expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+    await click('新增员工')
     const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="新增员工名称"]').element
     const nameField = nameInput.closest<HTMLElement>('.el-input')!
     nameField.animate = vi.fn()
     const focus = vi.spyOn(nameInput, 'focus')
-    await click('新增员工')
+    await saveNew()
     expect(focus).toHaveBeenCalledWith({ preventScroll: true })
     expect(nameField.animate).toHaveBeenCalledOnce()
     expect(
@@ -206,8 +223,129 @@ describe('team business settings', () => {
         .classList.contains('is-error'),
     ).toBe(true)
     await wrapper.get('input[aria-label="新增员工名称"]').setValue('李师傅')
-    await click('新增员工')
+    await saveNew()
     expect(save).toHaveBeenLastCalledWith(2, { name: '李师傅', active: true }, undefined)
+  })
+
+  it('updates the saved row without losing other row edits or the new employee draft', async () => {
+    const first = { id: 4, team_id: 2, name: '王师傅', active: true, version: 1 }
+    const second = { id: 5, team_id: 2, name: '李师傅', active: true, version: 3 }
+    vi.mocked(teamMaterialApi.employees).mockImplementation(async () => [
+      { ...first },
+      { ...second },
+    ])
+    const save = vi.spyOn(teamMaterialApi, 'saveEmployee').mockResolvedValueOnce({
+      ...first,
+      name: '王工',
+      version: 2,
+    })
+    save.mockResolvedValueOnce({ ...second, name: '李工', version: 4 })
+    await render('employees')
+    await wrapper.get('button[aria-label="编辑 王师傅"]').trigger('click')
+    await wrapper.get('button[aria-label="编辑 李师傅"]').trigger('click')
+    await wrapper.get('input[aria-label="员工名称 4"]').setValue('王工')
+    await wrapper.get('input[aria-label="员工名称 5"]').setValue('李工')
+    await click('新增员工')
+    await wrapper.get('input[aria-label="新增员工名称"]').setValue('赵师傅')
+    await wrapper.get('button[aria-label="保存 王师傅"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('button[aria-label="编辑 王工"]').exists()).toBe(true)
+    expect(wrapper.get('input[aria-label="员工名称 5"]').element).toHaveProperty('value', '李工')
+    expect(wrapper.get('input[aria-label="新增员工名称"]').element).toHaveProperty(
+      'value',
+      '赵师傅',
+    )
+    expect(teamMaterialApi.employees).toHaveBeenCalledTimes(1)
+    await wrapper.get('button[aria-label="保存 李师傅"]').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith(2, { name: '李工', active: true, expected_version: 3 }, 5)
+  })
+
+  it.each([
+    ['employees', 'employees', 'saveEmployee', '员工'],
+    ['tasks', 'processingTasks', 'saveProcessingTask', '任务'],
+    ['equipment', 'equipment', 'saveEquipment', '设备'],
+  ] as const)(
+    'paginates %s and keeps a draft when a different page is saved',
+    async (tab, listMethod, saveMethod, label) => {
+      const items = Array.from({ length: 11 }, (_, index) => ({
+        id: index + 1,
+        team_id: 2,
+        name: `${label} ${index + 1}`,
+        active: true,
+        version: 1,
+      }))
+      const list = vi.spyOn(teamMaterialApi, listMethod).mockResolvedValue(items)
+      const save = vi.spyOn(teamMaterialApi, saveMethod).mockResolvedValue({
+        ...items[10]!,
+        name: '第二页已保存',
+        version: 2,
+      })
+      await render(tab, tab === 'equipment' ? 'FACTORY-WIRE' : undefined)
+      const pager = wrapper.getComponent(WorkspacePagination)
+      const firstRowInput = `input[aria-label="${label}名称 1"]`
+      expect(pager.props()).toMatchObject({ currentPage: 1, pageSize: 10, total: 11 })
+      expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+      await wrapper.get(`button[aria-label="编辑 ${label} 1"]`).trigger('click')
+      await wrapper.get(firstRowInput).setValue('第一页草稿')
+      wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
+      await click(`新增${label}`)
+      const newInput = `input[aria-label="新增${label}名称"]`
+      await wrapper.get(newInput).setValue('新增草稿')
+
+      await wrapper.get('button.btn-next').trigger('click')
+      expect(pager.props('currentPage')).toBe(2)
+      expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(1)
+      expect(wrapper.find(firstRowInput).exists()).toBe(false)
+      await wrapper.get(`button[aria-label="编辑 ${label} 11"]`).trigger('click')
+      await wrapper.get(`input[aria-label="${label}名称 11"]`).setValue('第二页已保存')
+      await click('保存')
+      expect(save).toHaveBeenCalledWith(
+        2,
+        { name: '第二页已保存', active: true, expected_version: 1 },
+        11,
+      )
+      expect(list).toHaveBeenCalledTimes(1)
+
+      await wrapper.get('button.btn-prev').trigger('click')
+      expect(pager.props('currentPage')).toBe(1)
+      expect(wrapper.get(firstRowInput).element).toHaveProperty('value', '第一页草稿')
+      expect(wrapper.getComponent(ElSwitch).props('modelValue')).toBe(false)
+      expect(wrapper.get(newInput).element).toHaveProperty('value', '新增草稿')
+    },
+  )
+
+  it('returns to the first page after searching or adding an employee', async () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      team_id: 2,
+      name: `员工 ${index + 1}`,
+      active: true,
+      version: 1,
+    }))
+    vi.mocked(teamMaterialApi.employees).mockResolvedValue(items)
+    vi.spyOn(teamMaterialApi, 'saveEmployee').mockResolvedValue({
+      id: 13,
+      team_id: 2,
+      name: '新增员工甲',
+      active: true,
+      version: 1,
+    })
+    await render('employees')
+    const pager = wrapper.getComponent(WorkspacePagination)
+    await wrapper.get('button.btn-next').trigger('click')
+    await wrapper.get('input[aria-label="搜索员工"]').setValue('员工 12')
+    expect(pager.props()).toMatchObject({ currentPage: 1, total: 1 })
+    expect(wrapper.find('button[aria-label="编辑 员工 12"]').exists()).toBe(true)
+
+    await wrapper.get('input[aria-label="搜索员工"]').setValue('')
+    await wrapper.get('button.btn-next').trigger('click')
+    await click('新增员工')
+    await wrapper.get('input[aria-label="新增员工名称"]').setValue('新增员工甲')
+    await saveNew()
+    expect(pager.props()).toMatchObject({ currentPage: 1, total: 13 })
+    expect(wrapper.find('button[aria-label="编辑 新增员工甲"]').exists()).toBe(true)
   })
 
   it('shows all batches together, preserves values and marks each invalid field', async () => {
@@ -246,8 +384,9 @@ describe('team business settings', () => {
     await flushPromises()
     expect(teamMaterialApi.purposes).toHaveBeenCalledWith(2)
     expect(teamMaterialApi.openingState).not.toHaveBeenCalled()
-    expect(wrapper.find('[aria-label="任务名称 1"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="编辑 检验"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('初始库存')
+    await wrapper.get('button[aria-label="编辑 检验"]').trigger('click')
     await wrapper.get('input[aria-label="任务名称 1"]').setValue('新业务')
     await click('保存')
     expect(teamMaterialApi.saveProcessingTask).toHaveBeenCalledWith(
@@ -284,6 +423,8 @@ describe('team business settings', () => {
   })
   it('rejects a blank existing name without taking the separate new-business draft', async () => {
     await render('purposes')
+    await wrapper.get('button[aria-label="编辑 检验"]').trigger('click')
+    await click('新增任务')
     await wrapper.get('input[aria-label="新增任务名称"]').setValue('去毛刺')
     await wrapper.get('input[aria-label="任务名称 1"]').setValue('')
     const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="任务名称 1"]').element
@@ -303,6 +444,7 @@ describe('team business settings', () => {
   })
   it('keeps a business edit after a failed save and submits disable with its version', async () => {
     await render('purposes')
+    await wrapper.get('button[aria-label="编辑 检验"]').trigger('click')
     await wrapper.get('input[aria-label="任务名称 1"]').setValue('去毛刺')
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
     vi.mocked(teamMaterialApi.saveProcessingTask).mockRejectedValueOnce(
@@ -328,7 +470,8 @@ describe('team business settings', () => {
       can_submit: false,
     })
     await render()
-    expect(wrapper.text()).toContain('请系统管理员')
+    expect(wrapper.text()).toContain('系统设置 → 班组管理')
+    expect(wrapper.text()).toContain('点击「初始库存录入」授权')
     expect(wrapper.text()).not.toContain('确认初始库存登记')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
   })
@@ -426,6 +569,7 @@ describe('team business settings', () => {
   })
   it('uses versioned own-team purpose saves without production registration', async () => {
     await render('purposes')
+    await wrapper.get('button[aria-label="编辑 检验"]').trigger('click')
     await wrapper.get('input[aria-label="任务名称 1"]').setValue('去毛刺')
     await click('保存')
     expect(teamMaterialApi.saveProcessingTask).toHaveBeenCalledWith(
@@ -433,8 +577,9 @@ describe('team business settings', () => {
       { name: '去毛刺', active: true, expected_version: 1 },
       1,
     )
-    await wrapper.get('input[aria-label="新增任务名称"]').setValue('发货')
     await click('新增任务')
+    await wrapper.get('input[aria-label="新增任务名称"]').setValue('发货')
+    await saveNew()
     expect(teamMaterialApi.saveProcessingTask).toHaveBeenLastCalledWith(
       2,
       { name: '发货', active: true },
@@ -478,11 +623,10 @@ it.each(['FACTORY-ANNEAL', 'FACTORY-ROLL', 'FACTORY-GRIND', 'FACTORY-WIRE', 'FAC
     expect(wrapper.text()).toContain('设备管理')
     await wrapper.get('#tab-equipment').trigger('click')
     await flushPromises()
-    expect((wrapper.get('input[aria-label="设备名称 3"]').element as HTMLInputElement).value).toBe(
-      '01号设备',
-    )
-    await wrapper.get('input[aria-label="新增设备名称"]').setValue('02号设备')
+    expect(wrapper.find('button[aria-label="编辑 01号设备"]').exists()).toBe(true)
     await click('新增设备')
+    await wrapper.get('input[aria-label="新增设备名称"]').setValue('02号设备')
+    await saveNew()
     expect(teamMaterialApi.saveEquipment).toHaveBeenCalledWith(
       2,
       { name: '02号设备', active: true },

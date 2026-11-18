@@ -430,13 +430,11 @@ describe('team workspace material ledger', () => {
         expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('人员管理')
         await wrapper.get('#tab-tasks').trigger('click')
         await flushPromises()
-        expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('加工任务')
-        expect(wrapper.find('[aria-label="新增任务名称"]').exists()).toBe(true)
+        expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('加工任务设置')
+        expect(wrapper.findAll('button').some((button) => button.text() === '新增任务')).toBe(true)
         expect(wrapper.find('.team-settings-page .el-dialog').exists()).toBe(false)
-        await wrapper.get('#tab-production').trigger('click')
-        await flushPromises()
-        expect(wrapper.getComponent(TeamProcessingRecords).props('management')).toBe(true)
-        expect(wrapper.getComponent(TeamProcessingRecords).props('teamCode')).toBe('FACTORY-ROLL')
+        expect(wrapper.find('#tab-production').exists()).toBe(false)
+        expect(wrapper.text()).not.toContain('提交问题')
       }
     },
   )
@@ -790,8 +788,12 @@ describe('team workspace material ledger', () => {
       )
       expect(wrapper.getComponent(MaterialStockActionDialog).props('sources')).toEqual([source(10)])
     })
-    it('dispatches from production registration within team management', async () => {
-      await render('/team-workspaces/914?tab=settings&management_tab=production')
+    it('redirects old production registration links to processing and preserves dispatch', async () => {
+      const router = await render('/team-workspaces/914?tab=settings&management_tab=production')
+      expect(router.currentRoute.value.query).toEqual({
+        tab: 'processing',
+        processing_view: 'production',
+      })
       dispatch()
       await flushPromises()
       expect(wrapper.getComponent(MaterialStockActionDialog).props()).toMatchObject({
