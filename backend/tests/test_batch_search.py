@@ -1,4 +1,4 @@
-"""Batch searches identify records before pagination without shrinking grouped totals."""
+"""Batch searches preserve the balance of the selected row before pagination."""
 
 import pytest
 from app.database import SessionLocal
@@ -27,7 +27,9 @@ def page(client, url, query, **params):
 
 
 @pytest.mark.parametrize("resource", ["serials", "inventory", "global"])
-def test_team_batch_search_keeps_complete_group_balances(client, stock_setup, resource):
+def test_team_batch_search_keeps_serial_totals_and_exact_batch_balances(
+    client, stock_setup, resource
+):
     first = receive_lot(client, stock_setup, quantity=30, weight=3)
     second = receive_lot(client, stock_setup, key="second", quantity=20, weight=2)
     identify([first, second], "ONE-ORDER")
@@ -36,7 +38,9 @@ def test_team_batch_search_keeps_complete_group_balances(client, stock_setup, re
     found = page(client, url, first["batch_no"], page_size=1)
     assert found["total"] == 1
     assert found["items"][0]["serial_no"] == "ONE-ORDER"
-    assert found["items"][0]["available_quantity"] == 50
+    assert found["items"][0]["available_quantity"] == (50 if resource == "serials" else 30)
+    if resource != "serials":
+        assert found["items"][0]["batch_no"] == first["batch_no"]
     assert page(client, url, first["batch_no"], page_size=1, page=2)["items"] == []
     assert page(client, url, "MISSING-BATCH")["total"] == 0
     assert page(client, url, "%")["total"] == 0

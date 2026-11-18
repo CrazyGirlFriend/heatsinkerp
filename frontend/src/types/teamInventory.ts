@@ -95,7 +95,7 @@ export const inventoryQuantity = (
 ) => (isWeightOnlyType(materialType) ? '—' : amount(quantity))
 export function inventoryDispatchable(row: TeamInventoryRow) {
   const prefix = isScrapType(row.material_type || null) ? 'scrap_available' : 'available'
-  return { quantity: row[`${prefix}_quantity`], weight: row[`${prefix}_weight`] }
+  return { quantity: row[`${prefix}_quantity`] ?? null, weight: row[`${prefix}_weight`] ?? null }
 }
 export const inventoryCanDispatch = (row: TeamInventoryRow) =>
   row.batch_count > 0 && Object.values(inventoryDispatchable(row)).every((value) => value != null)
@@ -166,6 +166,7 @@ export const warehouseColumns = [
     label: '排期批次',
     width: 130,
     defaultVisible: true,
+    numeric: true,
     format: (row: TeamInventoryRow) =>
       row.task_batch_number ? formatScheduleBatch(row) : '未关联排期',
   },
@@ -408,7 +409,6 @@ export const warehouseSearchColumns = [
   ...warehouseColumns.filter(
     (column) =>
       ![
-        'task_batch_number',
         'process_route',
         'material_type',
         'processing_role',

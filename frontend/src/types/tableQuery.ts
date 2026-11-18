@@ -2,6 +2,8 @@ export interface TableQueryColumn {
   field: string
   kind?: 'text' | 'number' | 'date' | 'select'
   options?: readonly { value: string; label: string }[]
+  valueLabel?: (value: string | null) => string
+  optionSearch?: (search: string) => string
 }
 export interface TableColumnCondition {
   field: string

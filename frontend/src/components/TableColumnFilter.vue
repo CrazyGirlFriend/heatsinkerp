@@ -16,6 +16,7 @@ const props = withDefaults(
     value?: string
     end?: string
     options?: readonly { value: string; label: string }[]
+    valueLabel?: (value: string | null) => string
     integer?: boolean
     context?: string
     sortable?: boolean
@@ -86,6 +87,7 @@ const active = computed(() =>
   Boolean(props.value || props.end || props.sort || props.condition?.operator),
 )
 function optionLabel(value: string | null) {
+  if (props.valueLabel) return props.valueLabel(value)
   return value === null
     ? '(空白)'
     : props.options.find((option) => option.value === value)?.label || value

@@ -28,6 +28,15 @@ afterEach(() => {
   httpClient.defaults.adapter = originalAdapter
 })
 describe('team material API contract', () => {
+  it('reads inventory filter values without interpreting them as stock rows', async () => {
+    data = { values: ['TL000001'], has_more: true, next_offset: 1 }
+    const table_query = JSON.stringify({ options: { field: 'batch_no' } })
+    await expect(teamMaterialApi.inventoryFilterOptions(8, { table_query })).resolves.toEqual(data)
+    const url = new URL(requests[0]!.url!, 'http://localhost')
+    expect(url.pathname).toBe('/team-materials/8/inventory')
+    expect(url.searchParams.get('table_query')).toBe(table_query)
+  })
+
   it('skips processing totals for list and export page reads unless explicitly requested', async () => {
     data = { items: [], total: 0, page: 1, page_size: 10, summary: null }
     await teamMaterialApi.processingRecords(8, { query: 'YS-007', page: 2 })

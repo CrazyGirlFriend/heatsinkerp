@@ -72,29 +72,29 @@ def get(client, url, **params):
     return response.json()
 
 
-def test_processing_states_split_before_pagination_and_match_sources(client, classified_lots):
+def test_batches_and_processing_states_are_preserved_before_pagination(client, classified_lots):
     team_id, ids = classified_lots
     team_url = f"/api/team-materials/{team_id}"
     expected = {"complete": 60, "unregistered": 40, "partial": 20, "registered": 5}
     for url in ("/api/serial-inventory/stock", team_url + "/inventory"):
         result = get(client, url, availability="owned")
-        assert result["total"] == 4
-        assert {
-            row["processing_state"]: row["owned_quantity"] for row in result["items"]
-        } == expected
+        assert result["total"] == 5
+        assert {row["group_id"] for row in result["items"]} == set.union(*ids.values())
         assert sum(row["owned_weight"] for row in result["items"]) == 125
         for row in result["items"]:
             state = row["processing_state"]
             sources = get(client, f"{team_url}/inventory/{row['group_id']}/sources")
-            assert {item["transfer"]["id"] for item in sources["items"]} == ids[state]
+            assert row["group_id"] in ids[state]
+            assert [item["transfer"]["id"] for item in sources["items"]] == [row["group_id"]]
             assert {item["processing_state"] for item in sources["items"]} == {state}
             movements = get(client, f"{team_url}/inventory/{row['group_id']}/movements")
-            assert {item["id"] for item in movements["items"]} == ids[state]
-            filtered = get(client, url, processing_state=state, page_size=1)
-            assert filtered["total"] == 1
-            assert filtered["items"][0]["owned_quantity"] == expected[state]
-        pages = [get(client, url, page=page, page_size=1) for page in range(1, 5)]
-        assert {p["items"][0]["processing_state"] for p in pages} == set(expected)
+            assert [item["id"] for item in movements["items"]] == [row["group_id"]]
+        for state, quantity in expected.items():
+            filtered = get(client, url, processing_state=state)
+            assert filtered["total"] == len(ids[state])
+            assert sum(row["owned_quantity"] for row in filtered["items"]) == quantity
+        pages = [get(client, url, page=page, page_size=1) for page in range(1, 6)]
+        assert {p["items"][0]["group_id"] for p in pages} == set.union(*ids.values())
 
 
 def test_batch_search_does_not_include_a_different_processing_state(client, classified_lots):
@@ -145,7 +145,7 @@ def test_rework_requests_keep_their_round_and_stock_separate_before_route_public
             assert sources["items"][0]["transfer"]["rework_route_id"] == row["rework_route_id"]
 
 
-def test_pending_outbound_and_processing_picker_keep_the_selected_group(
+def test_pending_outbound_and_processing_picker_keep_the_selected_batch(
     client, classified_lots, warehouse
 ):
     team_id, ids = classified_lots

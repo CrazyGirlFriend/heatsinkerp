@@ -363,6 +363,9 @@ export const teamMaterialApi = {
       (value) => ({ ...record(value), ...balance(value) }) as unknown as TeamInventoryRow,
     )
   },
+  inventoryFilterOptions(teamId: number, params: TeamInventoryParams) {
+    return request<import('@/types/tableQuery').TableOptionPage>(path(teamId, 'inventory', params))
+  },
   inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) {
     return page(path(teamId, `inventory/${groupId}/sources`, params), stock)
   },

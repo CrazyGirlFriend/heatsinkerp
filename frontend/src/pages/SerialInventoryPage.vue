@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
 import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
+import { scheduleBatchSearch } from '@/utils/scheduleBatch'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
@@ -330,16 +331,22 @@ async function applyFilters() {
     filterError.value = '开始日期不能晚于结束日期'
     return
   }
+  const batchSearch = draft.value.search_field === 'task_batch_number'
+  const query = batchSearch ? scheduleBatchSearch(draft.value.query || '') : draft.value.query
+  if (batchSearch && query && !/^\d+$/.test(query)) {
+    filterError.value = '请输入排期批次，例如第2批。'
+    return
+  }
   if (
-    draft.value.query &&
+    query &&
     searchKind.value === 'number' &&
-    (!Number.isFinite(Number(draft.value.query)) || Number(draft.value.query) < 0)
+    (!Number.isFinite(Number(query)) || Number(query) < 0)
   ) {
     filterError.value = '请输入有效非负数字'
     return
   }
   filtersOpen.value = false
-  await navigate({ ...draft.value, page: 1 })
+  await navigate({ ...draft.value, query, page: 1 })
 }
 function resetFilters() {
   draft.value = {
@@ -525,7 +532,13 @@ function exportSource() {
                 v-model="draft.query"
                 aria-label="搜索属性内容"
                 clearable
-                :placeholder="searchKind === 'number' ? '输入件数或重量' : '输入属性内容'"
+                :placeholder="
+                  draft.search_field === 'task_batch_number'
+                    ? '例如 第2批'
+                    : searchKind === 'number'
+                      ? '输入件数或重量'
+                      : '输入属性内容'
+                "
               />
             </label>
             <label

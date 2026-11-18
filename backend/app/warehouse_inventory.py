@@ -1,8 +1,4 @@
-"""Shared team balances grouped by serial, nature, specification and origin.
-
-Aggregate the shared stock ledger before filtering/pagination. A row's anchor is
-an actual received lot; it also scopes drill-down and outbound source selection.
-"""
+"""Stock balances and filters for individual received batches across teams."""
 
 from datetime import date, timedelta, timezone
 from types import SimpleNamespace
@@ -61,6 +57,7 @@ WarehouseSearchField = Literal[
     "source_batch_no",
     "batch_no",
     "previous_batch_no",
+    "task_batch_number",
     "warehouse_location",
     "shortage_weight",
     "processing_registered_quantity",
@@ -118,6 +115,7 @@ class WarehouseInventoryFilters(SerialFilters):
             "oldest_received_at": "last_activity_at",
             "on_hand_quantity": "available_quantity",
             "on_hand_weight": "available_weight",
+            "task_batch_number": "available_quantity",
             "shortage_weight": "available_weight",
         }.get(self.search_field, self.search_field)
         if field.startswith(("owned_", "in_transit_", "external_pending_", "processing_")):
@@ -153,7 +151,8 @@ def origin_columns(include_team=False, registered=None, task_bindings=None):
         "schedule_task_id": (
             task_bindings.c.task_id if task_bindings is not None else stock_task_id_column(mt.id)
         ),
-        "warehouse_batch_no": case((mt.next_team_code == WAREHOUSE_TEAM_CODE, mt.batch_no)),
+        # A physical batch remains a separate stock row for every team.
+        "stock_batch_no": mt.batch_no,
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
         "process_route_id": mt.process_route_id,
@@ -440,6 +439,14 @@ def list_inventory(db, team_id, filters):
         conditions.append(
             table.c.stock_age_started_at >= now - timedelta(days=filters.stock_age_max)
         )
+    from .models import ProductionScheduleTask as Task
+
+    batch_number = (
+        select(task_batch_number_column())
+        .where(Task.id == table.c.schedule_task_id)
+        .correlate_except(Task)
+        .scalar_subquery()
+    )
     term = (filters.query or "").strip()
     field = filters.search_field
     matching_sources = [
@@ -474,6 +481,8 @@ def list_inventory(db, team_id, filters):
     if term:
         if field in ("batch_no", "previous_batch_no"):
             conditions.append(batch_matches(term, previous=field == "previous_batch_no"))
+        elif field == "task_batch_number":
+            conditions.append(numeric_search_predicate(batch_number, term, filters.search_operator))
         elif field == "warehouse_location":
             conditions.append(literal_query(term, [table.c[field]]))
         elif field in ("last_activity_at", "oldest_received_at"):
@@ -609,14 +618,7 @@ def list_inventory(db, team_id, filters):
             for unit in ("quantity", "weight")
         },
     }
-    from .models import ProductionScheduleTask as Task
-
-    columns["task_batch_number"] = (
-        select(task_batch_number_column())
-        .where(Task.id == table.c.schedule_task_id)
-        .correlate_except(Task)
-        .scalar_subquery()
-    )
+    columns["task_batch_number"] = batch_number
     columns["team_name"] = (
         select(Team.name)
         .where(Team.id == (table.c.team_id if team_id is None else team_id))
@@ -733,9 +735,7 @@ def list_inventory(db, team_id, filters):
     from .warehouse_receipts import editable_ids
 
     receipt_ids = [
-        row["group_id"]
-        for row in rows
-        if row["warehouse_batch_no"] and row["receipt_source"] in ("external", "return")
+        row["group_id"] for row in rows if row["receipt_source"] in ("external", "return")
     ]
     editable_receipts = editable_ids(db, receipt_ids) if receipt_ids else set()
     items = []
@@ -743,7 +743,7 @@ def list_inventory(db, team_id, filters):
     for row in rows:
         item = dict(row)
         item.pop("matches_date")
-        item.pop("warehouse_batch_no")
+        item.pop("stock_batch_no")
         item.pop("schedule_task_id")
         current, previous = batches[tuple(row[name] for name in origins)]
         item["batch_nos"] = sorted(current)

@@ -297,9 +297,7 @@ def test_repeated_processing_uses_one_signed_weight_difference_for_its_received_
     assert trace["totals"]["on_hand"]["weight"] == float(100 + step)
 
 
-def test_sibling_processing_outputs_share_root_without_duplicating_group_difference(
-    client, machining
-):
+def test_sibling_processing_output_rows_preserve_root_weight_difference(client, machining):
     setup = machining
     lot = receive(client, setup)
     first = process(
@@ -313,9 +311,10 @@ def test_sibling_processing_outputs_share_root_without_duplicating_group_differe
             client, setup, child, [output("produced", 5, 50.6, "同尺寸")], key=f"sibling-{index}"
         )
     inventory = get(client, base(setup, True) + "/inventory")["items"]
-    assert len(inventory) == 1
-    assert inventory[0]["weight_difference"] == inventory[0]["max_weight_difference"] == 1.2
-    assert inventory[0]["on_hand_weight"] == 101.2
+    assert len(inventory) == 2
+    for row in inventory:
+        assert row["weight_difference"] == row["max_weight_difference"] == 1.2
+        assert row["on_hand_weight"] == 50.6
     trace = get(client, "/api/material-trace", serial_no=lot["serial_no"])
     assert trace["weight_difference"] == trace["max_weight_difference"] == 1.2
 

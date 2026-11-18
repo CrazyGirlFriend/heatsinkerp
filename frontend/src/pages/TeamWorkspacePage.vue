@@ -520,7 +520,7 @@ const reallocationOpen = ref(false),
   reallocationSource = ref<StockBatch | null>(null)
 const pickerOpen = ref(false)
 const reworkRequestOpen = ref(false)
-const pickerMode = ref<'dispatch' | 'loss' | 'reallocate'>('dispatch')
+const pickerMode = ref<'loss' | 'reallocate'>('loss')
 const openingDispatch = ref(false)
 const processingDispatch = ref<{ recordId: number; version: number } | null>(null)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
@@ -542,11 +542,11 @@ const actionBindings = computed(() => ({
   canReceive: canReceive.value,
   canReallocate: canReallocate.value,
   openingReceipt: openingReceipt.value,
-  openingDispatch: openingDispatch.value,
+  openingDispatch: openingDispatch.value || Boolean(inventoryPanel.value?.preparingDispatch),
   loading: loading.value,
   warehouse: isWarehouse.value,
   showScan: canWrite.value && tab.value !== 'pending',
-  onDispatch: () => openNewStockAction('dispatch'),
+  onDispatch: openNewDispatch,
   onLoss: () => openNewStockAction('loss'),
   onReallocate: () => openNewStockAction('reallocate'),
   onReceipt: openReceipt,
@@ -864,7 +864,16 @@ async function savedReallocation(item: MaterialTransfer) {
   if (tab.value === 'reallocations') await loadView()
   else await openingStocked()
 }
-async function openNewStockAction(mode: 'dispatch' | 'loss' | 'reallocate') {
+function openNewDispatch() {
+  if (!canWrite.value || openingDispatch.value) return
+  if (tab.value === 'stock') {
+    void inventoryPanel.value?.dispatchSelected()
+    return
+  }
+  void router.push({ path: route.path, query: { tab: 'stock' } })
+  showToast('在库存列表勾选批次后，点「新建出库」', 'info')
+}
+async function openNewStockAction(mode: 'loss' | 'reallocate') {
   if (!canWrite.value || openingDispatch.value || (mode === 'reallocate' && !canReallocate.value))
     return
   closeDetails()
@@ -901,7 +910,10 @@ function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
     'success',
   )
   void loadView()
-  if ('items' in result) openPrint(result.items)
+  if ('items' in result) {
+    inventoryPanel.value?.clearDispatchSelection()
+    openPrint(result.items)
+  }
 }
 
 async function openReceipt() {
@@ -1670,12 +1682,6 @@ onBeforeUnmount(() => {
         :processing="hasProcessing"
         @close="closeDetails"
         @selected="selectStockSources"
-        @outbound="
-          () => {
-            closeDetails()
-            router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })
-          }
-        "
       />
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
       <SerialReallocationDialog

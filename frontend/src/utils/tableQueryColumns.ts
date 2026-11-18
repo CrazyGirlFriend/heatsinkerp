@@ -3,6 +3,7 @@ import { inspectionStatusLabels, feedbackStates } from '@/types/qualityStatus'
 import type { TableQueryColumn } from '@/types/tableQuery'
 import { materialTypeOptions } from '@/types/materialTransfer'
 import { warehouseColumns } from '@/types/teamInventory'
+import { formatScheduleBatch, scheduleBatchSearch } from '@/utils/scheduleBatch'
 import {
   inventoryProcessingStateOptions,
   processingRoleLabels,
@@ -171,6 +172,7 @@ export const inventoryQueryColumns = {
     ['流水号', 'serial_no'],
     ['所在班组', 'team_name'],
     ['来源', 'source_name'],
+    ['上序班组', 'source_name'],
     ['滞留时间', 'stock_age', 'number'],
     ['待签收件数', 'in_transit_quantity', 'number'],
     ...warehouseColumns
@@ -189,13 +191,20 @@ export const inventoryQueryColumns = {
       .map((column): Definition => [
         column.label,
         column.key,
-        column.key === 'task_batch_number' || ('numeric' in column && column.numeric)
+        'numeric' in column && column.numeric
           ? 'number'
           : column.key.endsWith('_at')
             ? 'date'
             : 'text',
       ]),
   ]),
+  task_batch_number: {
+    field: 'task_batch_number',
+    kind: 'number',
+    valueLabel: (value) =>
+      value ? formatScheduleBatch({ task_batch_number: Number(value) }) : '未关联排期',
+    optionSearch: scheduleBatchSearch,
+  },
   加工状态: { field: 'processing_state', kind: 'select', options: inventoryProcessingStateOptions },
   加工分类: {
     field: 'processing_role',

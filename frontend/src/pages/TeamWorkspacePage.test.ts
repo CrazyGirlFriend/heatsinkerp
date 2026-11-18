@@ -270,6 +270,36 @@ async function openToolbarMenu() {
   await flushPromises()
 }
 
+function mockDispatchableRows(...ids: number[]) {
+  vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+    items: ids.map((id) =>
+      warehouseFixture({
+        group_id: id,
+        batch_no: `TL${id}`,
+        batch_count: 1,
+        current_batch_count: 1,
+        available_quantity: 9,
+        available_weight: 0.005,
+      }),
+    ),
+    total: 45,
+    page: 1,
+    page_size: 10,
+  })
+}
+const dispatchCheckbox = (id: number) =>
+  wrapper.get<HTMLInputElement>(`label[aria-label="勾选出库 TL${id}"] input`)
+async function newDispatch() {
+  if (!wrapper.findAll('button').some((button) => button.text() === '新建出库')) {
+    await openToolbarMenu()
+  }
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '新建出库')!
+    .trigger('click')
+  await flushPromises()
+}
+
 describe('team workspace material ledger', () => {
   it.each([901, 914, 900])(
     'keeps one column button above empty lists for team %s',
@@ -1348,14 +1378,10 @@ describe('team workspace material ledger', () => {
   })
   it('coalesces pushed changes, preserves filters and drafts, and closes its stream', async () => {
     vi.useFakeTimers()
+    mockDispatchableRows(10)
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2&page_size=20')
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('还未查询')
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建出库')!
-      .trigger('click')
-    await flushPromises()
+    await dispatchCheckbox(10).setValue(true)
     const before = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
     for (let index = 0; index < 12; index++) subscription.onData({ changed: true })
     await vi.advanceTimersByTimeAsync(110)
@@ -1369,7 +1395,7 @@ describe('team workspace material ledger', () => {
     expect(
       (wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value,
     ).toBe('还未查询')
-    expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(true)
+    expect(dispatchCheckbox(10).element.checked).toBe(true)
     subscription.onState('reconnecting')
     await flushPromises()
     expect(wrapper.text()).toContain('实时连接中断')
@@ -1401,76 +1427,90 @@ describe('team workspace material ledger', () => {
     document.dispatchEvent(new Event('visibilitychange'))
     expect(inventoryStream.subscribeInventoryChanges).toHaveBeenCalledTimes(2)
   })
-  it('starts dispatch from the ledger without changing its route and shows the saved group', async () => {
-    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
-    const path = router.currentRoute.value.fullPath
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建出库')!
-      .trigger('click')
-    await flushPromises()
-    expect(wrapper.getComponent(StockSourcePicker).props('teamId')).toBe(914)
-    wrapper.getComponent(StockSourcePicker).vm.$emit('selected', [source(), source(11)])
-    await flushPromises()
+  it.each(teamWorkspaceProfiles)(
+    'dispatches selected ledger batches directly for $name',
+    async (profile) => {
+      const previous = state.directory.items
+      state.directory.items = [
+        {
+          id: 914,
+          code: profile.code,
+          name: profile.name,
+          active: true,
+          kind: profile.code === 'FACTORY-WAREHOUSE' ? 'warehouse' : 'production',
+        },
+      ]
+      mockDispatchableRows(10, 11)
+      try {
+        const path = '/team-workspaces/914?tab=stock&query=AL&page=2'
+        const router = await render(path)
+        await dispatchCheckbox(10).setValue(true)
+        await dispatchCheckbox(11).setValue(true)
+        await newDispatch()
+        expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
+          source_ids: '10,11',
+          availability: 'dispatchable',
+          page_size: 100,
+        })
+        expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+        const dialog = wrapper.getComponent(MaterialStockActionDialog)
+        expect(dialog.props()).toMatchObject({
+          modelValue: true,
+          teamId: 914,
+          mode: 'dispatch',
+          sources: [source(), source(11)],
+        })
+        expect(router.currentRoute.value.fullPath).toBe(path)
+        dialog.vm.$emit('saved', dispatchFixture())
+        await flushPromises()
+        expect(dispatchCheckbox(10).element.checked).toBe(false)
+        expect(dispatchCheckbox(11).element.checked).toBe(false)
+        expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({
+          modelValue: true,
+          items: dispatchFixture().items,
+        })
+      } finally {
+        state.directory.items = previous
+      }
+    },
+  )
+  it('opens the inventory list to select batches when starting from outbound records', async () => {
+    const router = await render('/team-workspaces/914?tab=outgoing&status=pending')
+    await newDispatch()
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    expect(wrapper.getComponent(MaterialStockActionDialog).props()).toMatchObject({
-      modelValue: true,
-      teamId: 914,
-      mode: 'dispatch',
-      sources: [source(), source(11)],
-    })
-    expect(router.currentRoute.value.fullPath).toBe(path)
-    wrapper.getComponent(MaterialStockActionDialog).vm.$emit('saved', dispatchFixture())
-    await flushPromises()
-    expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({
-      modelValue: true,
-      items: dispatchFixture().items,
-    })
+    expect(router.currentRoute.value.query).toEqual({ tab: 'stock' })
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('勾选批次'), 'info')
   })
-  it('opens this team’s pending outbound records from the empty stock picker', async () => {
-    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建出库')!
-      .trigger('click')
-    await flushPromises()
-    wrapper.getComponent(StockSourcePicker).vm.$emit('outbound')
-    await flushPromises()
+  it('keeps valid selections when a checked batch is no longer available', async () => {
+    mockDispatchableRows(10, 11)
+    await render('/team-workspaces/914?tab=stock')
+    await dispatchCheckbox(10).setValue(true)
+    await dispatchCheckbox(11).setValue(true)
+    vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({
+      items: [source()],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    })
+    await newDispatch()
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    expect(router.currentRoute.value.query).toEqual({ tab: 'outgoing', status: 'pending' })
-    expect(teamMaterialApi.dispatches).toHaveBeenLastCalledWith(
-      914,
-      expect.objectContaining({ status: 'pending', page: 1 }),
-    )
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
+    expect(dispatchCheckbox(10).element.checked).toBe(true)
+    expect(dispatchCheckbox(11).element.checked).toBe(false)
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('无法出库'), 'warning')
   })
-  it('closes the picker on navigation and ignores a late permission refresh after cancellation', async () => {
-    const router = await render()
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建出库')!
-      .trigger('click')
-    await flushPromises()
-    await router.push('/team-workspaces/914?tab=outgoing')
-    await flushPromises()
-    expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建出库')!
-      .trigger('click')
-    await flushPromises()
+  it('ignores a late permission refresh after leaving the stock list', async () => {
+    mockDispatchableRows(10)
+    const router = await render('/team-workspaces/914?tab=stock')
+    await dispatchCheckbox(10).setValue(true)
     let finish!: () => void
     state.auth.refreshCurrentUser.mockReturnValueOnce(
       new Promise<void>((resolve) => {
         finish = resolve
       }),
     )
-    wrapper.getComponent(StockSourcePicker).vm.$emit('selected', [source()])
-    await flushPromises()
-    wrapper.getComponent(StockSourcePicker).vm.$emit('close')
+    await newDispatch()
+    await router.push('/team-workspaces/914?tab=outgoing')
     await flushPromises()
     finish()
     await flushPromises()

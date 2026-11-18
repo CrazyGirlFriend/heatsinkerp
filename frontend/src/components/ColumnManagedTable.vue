@@ -202,6 +202,7 @@ export default defineComponent({
                         label: entry.label,
                         kind: field.kind || 'text',
                         options: field.options,
+                        valueLabel: field.valueLabel,
                         condition: query.state.filters.find((item) => item.field === field.field),
                         loadOptions: query.loadOptions
                           ? (search: string, offset: number) =>

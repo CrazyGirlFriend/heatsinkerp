@@ -31,7 +31,7 @@ export function useTableQuery(
               options: {
                 field: column.field,
                 kind: column.kind || 'text',
-                search: column.options?.length ? '' : search,
+                search: column.options?.length ? '' : (column.optionSearch?.(search) ?? search),
                 offset,
               },
             }),

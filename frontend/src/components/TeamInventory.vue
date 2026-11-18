@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
 import { useInventorySchedules } from '@/composables/useInventorySchedules'
+import { useBatchSelection } from '@/composables/useBatchSelection'
 import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import BatchSelectionBar from './BatchSelectionBar.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -72,6 +74,7 @@ import { formatDateTime } from '@/utils/format'
 import { stockSelectable } from '@/utils/materialStock'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { inventoryScheduleBaseline, inventoryScheduleTone } from '@/utils/inventorySchedule'
+import { scheduleBatchSearch } from '@/utils/scheduleBatch'
 
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
 const WarehouseReceiptDialog = defineAsyncComponent(() => import('./WarehouseReceiptDialog.vue'))
@@ -108,6 +111,14 @@ const rows = ref<TeamInventoryRow[]>([]),
   error = ref(''),
   refreshError = ref('')
 const asOf = ref('')
+const dispatchSelection = useBatchSelection(
+  rows,
+  (row) => String(row.group_id),
+  inventoryDispatchable,
+  (row) => row.batch_count === 1 && !row.inspection_hold_count && inventoryCanDispatch(row),
+)
+const preparingDispatch = ref(false)
+watch(rows, dispatchSelection.reconcile)
 const expandedScheduleGroups = ref<number[]>([])
 const {
   loading: scheduleLoading,
@@ -213,10 +224,16 @@ watch(typeDraft, (value) => {
 const filterCount = computed(
   () =>
     activeFilters.value.length +
+    Number(Boolean(searchedColumn.value)) +
     Number(Boolean(dates.value.from || dates.value.to)) +
     Number(Boolean(analysisChoice.value)),
 )
 const searchKind = computed(() => warehouseSearchKind(fieldDraft.value))
+const searchTerm = computed(() =>
+  fieldDraft.value === 'task_batch_number'
+    ? scheduleBatchSearch(queryDraft.value)
+    : queryDraft.value.trim(),
+)
 const days = computed<7 | 30>(() => (text('days') === '7' ? 7 : 30))
 const ages: [AgeBand, string][] = [
   ['lt1', '不足1天'],
@@ -259,7 +276,7 @@ const columns = computed(() =>
       (column) =>
         !['processing_role', 'owned_quantity', 'owned_weight'].includes(column.key) &&
         (!props.warehouse || column.key !== 'purpose_name') &&
-        (props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key)) &&
+        (props.warehouse || column.key !== 'warehouse_location') &&
         (column.key !== 'process_route' || props.processing),
     )
     .map((column) => ({
@@ -275,6 +292,7 @@ const columns = computed(() =>
       width:
         (
           {
+            batch_no: 245,
             material_name: 120,
             material_type: 110,
             transfer_specification: 155,
@@ -300,10 +318,10 @@ const columns = computed(() =>
 )
 const requiredColumnKeys = computed(() =>
   props.processing
-    ? ['on_hand_quantity', 'process_route', 'rework', 'stock_status', 'material_name']
+    ? ['batch_no', 'on_hand_quantity', 'process_route', 'rework', 'stock_status', 'material_name']
     : props.warehouse
       ? ['batch_no', 'warehouse_location', 'on_hand_quantity', 'material_name']
-      : ['on_hand_quantity', 'material_name'],
+      : ['batch_no', 'on_hand_quantity', 'material_name'],
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
@@ -312,7 +330,7 @@ const searchColumns = computed(() =>
   warehouseSearchColumns
     .filter((column) => !['owned_quantity', 'owned_weight'].includes(column.key))
     .filter((column) => !props.warehouse || column.key !== 'purpose_name')
-    .filter((column) => props.warehouse || !['batch_no', 'warehouse_location'].includes(column.key))
+    .filter((column) => props.warehouse || column.key !== 'warehouse_location')
     .map((column) =>
       column.key === 'source'
         ? { ...column, label: props.warehouse ? '来源' : '上序班组' }
@@ -340,7 +358,7 @@ const searchedColumn = computed(() =>
 )
 const visibleColumns = computed(() => {
   const saved = [
-    ...(props.warehouse ? [columns.value.find((column) => column.key === 'batch_no')!] : []),
+    columns.value.find((column) => column.key === 'batch_no')!,
     { ...warehouseSerialColumn, width: 200 },
     ...(columnChoices.value.some((choice) => choice.key === 'task_batch_number' && choice.visible)
       ? [columns.value.find((column) => column.key === 'task_batch_number')!]
@@ -394,7 +412,8 @@ const tableQuery = useTableQuery(
   () => {
     if (page.value !== 1) apply({ ...filters.value, page: 1 })
   },
-  (table_query) => teamMaterialApi.teamInventory(props.teamId, { ...filters.value, table_query }),
+  (table_query) =>
+    teamMaterialApi.inventoryFilterOptions(props.teamId, { ...filters.value, table_query }),
 )
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
@@ -447,7 +466,7 @@ function exportSource() {
   const id = props.teamId,
     params = { ...filters.value }
   const fields = [
-    ...(props.warehouse ? [columns.value.find((column) => column.key === 'batch_no')!] : []),
+    columns.value.find((column) => column.key === 'batch_no')!,
     warehouseSerialColumn,
     ...columns.value.filter(
       (column) => column.key !== 'batch_no' && !column.key.startsWith('shortage_'),
@@ -481,7 +500,7 @@ function exportSource() {
     ),
   )
 }
-defineExpose({ exportSource })
+defineExpose({ exportSource, dispatchSelected, clearDispatchSelection, preparingDispatch })
 const activeFilters = computed(() => {
   const chips: { key: keyof TeamInventoryParams; label: string }[] = []
   if (props.warehouse && text('location_status'))
@@ -570,14 +589,13 @@ function selectAnalysis(value: string) {
   )
 }
 function draftFilters(): TeamInventoryParams {
+  const query = searchTerm.value
   return {
     ...(filterResetRequested.value ? { page_size: pageSize.value } : filters.value),
     page: 1,
-    query: queryDraft.value.trim() || undefined,
-    search_field:
-      queryDraft.value.trim() && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
-    search_operator:
-      queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
+    query: query || undefined,
+    search_field: query && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
+    search_operator: query && searchKind.value === 'number' ? operatorDraft.value : undefined,
     rework: reworkDraft.value || undefined,
     processing_state: isScrapMaterialType(typeDraft.value)
       ? undefined
@@ -600,7 +618,7 @@ function draftFilters(): TeamInventoryParams {
 function validSearch() {
   inputError.value = ''
   if (queryDraft.value.trim() && searchKind.value === 'number') {
-    const term = queryDraft.value.trim(),
+    const term = searchTerm.value,
       value = Number(term)
     if (
       !Number.isFinite(value) ||
@@ -608,7 +626,10 @@ function validSearch() {
       value > 1e15 ||
       !(fieldDraft.value.endsWith('weight') ? /^\d+(\.\d{1,3})?$/ : /^\d+$/).test(term)
     ) {
-      inputError.value = '请输入非负数字，件数为整数，重量最多三位小数。'
+      inputError.value =
+        fieldDraft.value === 'task_batch_number'
+          ? '请输入排期批次，例如第2批。'
+          : '请输入非负数字，件数为整数，重量最多三位小数。'
       return false
     }
   }
@@ -720,7 +741,14 @@ const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' | '
 const editingReceipt = ref<MaterialTransfer | null>(null)
 let sourceVersion = 0
 async function openReceiptEdit(row: TeamInventoryRow) {
-  if (!props.canWrite || !row.receipt_editable || !row.batch_no || openingSource.value) return
+  if (
+    !props.canWrite ||
+    !row.receipt_editable ||
+    !row.batch_no ||
+    openingSource.value ||
+    preparingDispatch.value
+  )
+    return
   const current = ++sourceVersion
   openingSource.value = { groupId: row.group_id, mode: 'edit' }
   try {
@@ -747,6 +775,7 @@ async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate'
   if (
     !props.canWrite ||
     openingSource.value ||
+    preparingDispatch.value ||
     (mode === 'reallocate' && (!props.canReallocate || row.shared_unallocated))
   )
     return
@@ -782,6 +811,47 @@ async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate'
     if (current === sourceVersion) openingSource.value = null
   }
 }
+function clearDispatchSelection() {
+  dispatchSelection.selected.clear()
+}
+async function dispatchSelected() {
+  if (!props.canWrite || loading.value || openingSource.value || preparingDispatch.value) return
+  const ids = [...dispatchSelection.selected.keys()]
+  if (!ids.length) {
+    showToast('请先在库存列表勾选要出库的批次', 'info')
+    return
+  }
+  const current = ++sourceVersion
+  preparingDispatch.value = true
+  try {
+    const result = await teamMaterialApi.stock(props.teamId, {
+      source_ids: ids.join(','),
+      availability: 'dispatchable',
+      page_size: 100,
+    })
+    if (current !== sourceVersion || !props.canWrite) return
+    const available = new Map(
+      result.items.filter(stockSelectable).map((batch) => [String(batch.transfer.id), batch]),
+    )
+    const sources = ids.flatMap((id) => {
+      const batch = available.get(id)
+      if (batch) return [batch]
+      dispatchSelection.selected.delete(id)
+      return []
+    })
+    if (sources.length !== ids.length) {
+      showToast('部分批次已无法出库，请核对勾选后重试', 'warning')
+      void load(true)
+      return
+    }
+    action('dispatch', sources)
+  } catch (failure) {
+    if (current === sourceVersion)
+      showToast(failure instanceof Error ? failure.message : '来源批次加载失败，请重试', 'error')
+  } finally {
+    if (current === sourceVersion) preparingDispatch.value = false
+  }
+}
 function selectedSources(sources: StockBatch[]) {
   if (pickerMode.value === 'reallocate') {
     if (sources.length === 1) reallocate(sources[0]!)
@@ -812,6 +882,8 @@ function reallocate(source: StockBatch) {
 function resetDetails() {
   ++sourceVersion
   openingSource.value = null
+  preparingDispatch.value = false
+  clearDispatchSelection()
   editingReceipt.value = null
   detail.value = picker.value = pending.value = null
   serialOpen.value = false
@@ -946,7 +1018,9 @@ onBeforeUnmount(() => {
           aria-label="库存明细搜索"
           :placeholder="
             fieldDraft === 'all'
-              ? '批次号、流水号、仓库或材质'
+              ? warehouse
+                ? '批次号、流水号、仓库或材质'
+                : '批次号、流水号或材质'
               : `搜索${searchColumns.find((column) => column.key === fieldDraft)?.label}`
           "
           clearable
@@ -985,12 +1059,25 @@ onBeforeUnmount(() => {
                   :value="column.key"
                   :label="column.label" /></ElSelect
             ></label>
+            <label v-if="fieldDraft === 'task_batch_number'"
+              >比较方式<ElSelect
+                :append-to="appendTo"
+                v-model="operatorDraft"
+                aria-label="排期批次比较方式"
+              >
+                <ElOption value="eq" label="等于" />
+                <ElOption value="gte" label="不少于" />
+                <ElOption value="lte" label="不多于" />
+              </ElSelect>
+            </label>
             <label
               >搜索内容<ElInput
                 v-model="queryDraft"
                 aria-label="库存筛选搜索内容"
                 clearable
-                placeholder="输入要查询的内容"
+                :placeholder="
+                  fieldDraft === 'task_batch_number' ? '例如 第2批' : '输入要查询的内容'
+                "
             /></label>
             <label v-if="warehouse"
               >来源<ElSelect
@@ -1182,8 +1269,8 @@ onBeforeUnmount(() => {
           :storage-key="storageKey"
           :description="
             processing
-              ? '流水号、数量、工艺工序、返工情况、加工状态、材质和操作始终显示。'
-              : '流水号、数量、材质和操作始终显示。'
+              ? '批次号、流水号、数量、工艺工序、返工情况、加工状态、材质和操作始终显示。'
+              : '批次号、流水号、数量、材质和操作始终显示。'
           "
           :columns="selectableColumns"
           :new-visible-keys="['task_batch_number']"
@@ -1230,6 +1317,25 @@ onBeforeUnmount(() => {
         >按{{ searchedColumn.label }}查询 · 首列显示</ElTag
       >
     </div>
+    <BatchSelectionBar
+      v-if="canWrite && dispatchSelection.selected.size"
+      :count="dispatchSelection.selected.size"
+      :quantity="dispatchSelection.totals.value.quantity"
+      :weight="dispatchSelection.totals.value.weight"
+      :all-checked="dispatchSelection.allChecked.value"
+      :partial="dispatchSelection.checkedCount.value > 0 && !dispatchSelection.allChecked.value"
+      :disabled="loading || preparingDispatch"
+      @all="dispatchSelection.toggleAll"
+      @clear="!preparingDispatch && clearDispatchSelection()"
+    >
+      <ElButton
+        v-if="fullscreen"
+        type="primary"
+        :loading="preparingDispatch"
+        @click="dispatchSelected"
+        >新建出库</ElButton
+      >
+    </BatchSelectionBar>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <WorkspaceTable
@@ -1251,15 +1357,7 @@ onBeforeUnmount(() => {
         :prop="column.key"
         :label="column.label"
         :min-width="column.width"
-        :fixed="
-          (
-            warehouse
-              ? column.key !== 'serial_no' && ['batch_no', searchedColumn?.key].includes(column.key)
-              : ['serial_no', 'on_hand_quantity', searchedColumn?.key].includes(column.key)
-          )
-            ? 'left'
-            : undefined
-        "
+        :fixed="['batch_no', searchedColumn?.key].includes(column.key) ? 'left' : undefined"
         align="center"
         show-overflow-tooltip
         :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''"
@@ -1272,7 +1370,21 @@ onBeforeUnmount(() => {
         "
       >
         <template #default="{ row }">
-          <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
+          <div v-if="column.key === 'batch_no'" class="inventory-inline">
+            <ElCheckbox
+              v-if="canWrite && dispatchSelection.available(asRow(row))"
+              :aria-label="`勾选出库 ${row.batch_no}`"
+              :model-value="dispatchSelection.selected.has(String(row.group_id))"
+              :disabled="
+                preparingDispatch ||
+                (dispatchSelection.selected.size >= 100 &&
+                  !dispatchSelection.selected.has(String(row.group_id)))
+              "
+              @change="dispatchSelection.toggle(asRow(row), $event)"
+            />
+            <span>{{ column.format(asRow(row)) }}</span>
+          </div>
+          <div v-else-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
             <ElButton
               class="serial-number-link"
               :title="sharedSerialLabel(row)"

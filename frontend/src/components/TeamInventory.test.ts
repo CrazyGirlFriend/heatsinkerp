@@ -3,8 +3,17 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElDatePicker, ElOption, ElPagination, ElSelect, ElTag, ElTooltip } from 'element-plus'
+import {
+  ElDatePicker,
+  ElInput,
+  ElOption,
+  ElPagination,
+  ElSelect,
+  ElTag,
+  ElTooltip,
+} from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
+import TableColumnFilter from './TableColumnFilter.vue'
 import TeamInventory from './TeamInventory.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
@@ -134,6 +143,63 @@ async function showColumns(...keys: string[]) {
 }
 
 describe('warehouse grouped stock', () => {
+  it.each([true, false])(
+    'combines toolbar and batch column filtering (warehouse=%s)',
+    async (warehouse) => {
+      const options = vi.spyOn(teamMaterialApi, 'inventoryFilterOptions').mockResolvedValue({
+        values: ['TL002', 'TL003'],
+        has_more: false,
+        next_offset: 2,
+      })
+      const router = await render('/team-workspaces/901?tab=stock&page=2', true, warehouse)
+      select('库存搜索字段').vm.$emit('update:modelValue', 'task_batch_number')
+      await flushPromises()
+      const input = wrapper
+        .findAllComponents(ElInput)
+        .find((item) => item.find('input[aria-label="库存筛选搜索内容"]').exists())!
+      await input.get('input').setValue('第2批')
+      await applyModal()
+      expect(router.currentRoute.value.query).toMatchObject({ page: '1', query: '2' })
+      const field = (label: string) =>
+        wrapper
+          .findAllComponents(TableColumnFilter)
+          .find((filter) => filter.props('label') === label)!
+      const batch = field('批次号')
+      expect(await batch.props('loadOptions')!('TL', 0)).toEqual({
+        values: ['TL002', 'TL003'],
+        has_more: false,
+        next_offset: 2,
+      })
+      expect(options).toHaveBeenLastCalledWith(
+        901,
+        expect.objectContaining({
+          search_field: 'task_batch_number',
+          query: '2',
+          table_query: expect.stringContaining('"field":"batch_no"'),
+        }),
+      )
+      batch.vm.$emit('apply', '', '', { operator: 'in', values: ['TL002'] })
+      await flushPromises()
+      field('批次号').vm.$emit('sort', 'desc')
+      await flushPromises()
+      const [, params] = vi.mocked(teamMaterialApi.teamInventory).mock.lastCall!
+      expect(params).toMatchObject({ search_field: 'task_batch_number', query: '2', page: 1 })
+      expect(JSON.parse(params!.table_query!)).toMatchObject({
+        filters: [{ field: 'batch_no', operator: 'in', values: ['TL002'] }],
+        sort: { field: 'batch_no', direction: 'desc' },
+      })
+      const scheduleBatch = field('排期批次')
+      expect(scheduleBatch.props('valueLabel')!('2')).toBe('第2批')
+      expect(scheduleBatch.props('valueLabel')!(null)).toBe('未关联排期')
+      await scheduleBatch.props('loadOptions')!('第2批', 0)
+      const [, scheduleParams] = options.mock.lastCall!
+      expect(JSON.parse(scheduleParams.table_query!).options).toMatchObject({
+        field: 'task_batch_number',
+        search: '2',
+      })
+    },
+  )
+
   it('opens the current receipt from the editable inventory row', async () => {
     const batchNo = 'TL20261117000001'
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
@@ -172,7 +238,7 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, mode.warehouse, false)
     await wrapper.setProps(mode)
     expect(headers()).toEqual([
-      ...(mode.warehouse ? ['批次号'] : []),
+      '批次号',
       '流水号',
       '排期批次',
       ...(mode.warehouse ? ['仓库'] : []),
@@ -1549,6 +1615,7 @@ describe('warehouse grouped stock', () => {
     })
     const router = await render(undefined, true, false)
     expect(headers()).toEqual([
+      '批次号',
       '流水号',
       '排期批次',
       '数量（件）',
@@ -1678,6 +1745,7 @@ describe('warehouse grouped stock', () => {
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
     expect(headers()).toEqual([
+      '批次号',
       '流水号',
       '排期批次',
       '数量（件）',
@@ -1701,7 +1769,7 @@ describe('warehouse grouped stock', () => {
       { key: 'on_hand_quantity', visible: true },
     ])
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '数量（件）', '材质', '重量（kg）', '操作'])
+    expect(headers()).toEqual(['批次号', '流水号', '数量（件）', '材质', '重量（kg）', '操作'])
     expect(wrapper.findAll('.inventory-balance')).toHaveLength(2)
   })
   it('uses waste handling availability and never turns unknown amounts into zero', async () => {
@@ -1765,6 +1833,7 @@ describe('warehouse grouped stock', () => {
     ] as ReturnType<typeof useTeamDirectoryStore>['items']
     await flushPromises()
     expect(headers()).toEqual([
+      '批次号',
       '流水号',
       '排期批次',
       '数量（件）',
@@ -2298,8 +2367,8 @@ it('identifies separate schedule batches in stock and its export for the same se
     page_size: 10,
   })
   await render(undefined, true, false, false)
-  expect(headers().slice(0, 2)).toEqual(['流水号', '排期批次'])
-  expect(wrapper.findAll('tbody tr').map((row) => row.findAll('td')[1]!.text())).toEqual([
+  expect(headers().slice(0, 3)).toEqual(['批次号', '流水号', '排期批次'])
+  expect(wrapper.findAll('tbody tr').map((row) => row.findAll('td')[2]!.text())).toEqual([
     '第2批',
     '第1批',
     '未关联排期',

@@ -1,5 +1,6 @@
 """History identifies the schedule actually used, including multiple tasks per serial."""
 
+import json
 from uuid import uuid4
 
 from test_processing_daily import work
@@ -171,6 +172,54 @@ def test_stock_and_pickers_separate_same_serial_by_bound_schedule(client, wareho
         assert filtered.json()["total"] == 1
         row = filtered.json()["items"][0]
         assert row.get("transfer", row)["task_batch_number"] == 2
+    for endpoint in (url + "/inventory", "/api/serial-inventory/stock"):
+        scope = {"serial_no": lot["serial_no"], "page_size": 1}
+        options = client.get(
+            endpoint,
+            params={
+                **scope,
+                "table_query": json.dumps({"options": {"field": "task_batch_number"}}),
+            },
+        )
+        assert options.status_code == 200, options.text
+        assert {"1", "2", None}.issubset(options.json()["values"])
+        filtered = client.get(
+            endpoint,
+            params={
+                **scope,
+                "search_field": "task_batch_number",
+                "query": "2",
+                "table_query": json.dumps(
+                    {
+                        "filters": [
+                            {
+                                "field": "batch_no",
+                                "operator": "in",
+                                "values": [outputs[2]["batch_no"]],
+                            }
+                        ]
+                    }
+                ),
+            },
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        assert filtered.json()["items"][0]["group_id"] == outputs[2]["id"]
+        sorted_rows = client.get(
+            endpoint,
+            params={
+                **scope,
+                "search_field": "task_batch_number",
+                "search_operator": "gte",
+                "query": "1",
+                "table_query": json.dumps(
+                    {"sort": {"field": "task_batch_number", "direction": "desc"}}
+                ),
+            },
+        )
+        assert sorted_rows.status_code == 200, sorted_rows.text
+        assert sorted_rows.json()["total"] == 2
+        assert sorted_rows.json()["items"][0]["group_id"] == outputs[2]["id"]
 
     # The next team's receipt has a delivery binding rather than a processing ID.
     finished = work(

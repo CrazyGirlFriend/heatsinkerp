@@ -15,34 +15,33 @@ from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
-def test_grouped_batches_are_complete_and_searchable_without_changing_balances(client, stock_setup):
+def test_batch_search_returns_only_matching_batches_without_changing_balances(client, stock_setup):
     team = stock_setup["target"]
     with SessionLocal.begin() as db:
         numbers = sorted(
             add_lot(db, team, "GROUPED", days=n, quantity=1).batch_no for n in range(60)
         )
         add_lot(db, stock_setup["third"], "GROUPED", quantity=2)
-    assert len("、".join(numbers)) > 1024
     for url in ("/api/serial-inventory/stock", f"/api/team-materials/{team['id']}/inventory"):
         response = client.get(url, params={"query": numbers[-1], "page_size": 1})
         assert response.status_code == 200, response.text
         result = response.json()
         assert result["total"] == 1
         row = result["items"][0]
-        assert row["batch_nos"] == numbers
-        assert row["batch_no"] == numbers[0]
+        assert row["batch_nos"] == [numbers[-1]]
+        assert row["batch_no"] == numbers[-1]
         assert row["previous_batch_nos"] == []
         assert row["previous_batch_no"] is None
-        assert row["on_hand_quantity"] == row["batch_count"] == 60
-        assert "warehouse_batch_no" not in row
+        assert row["on_hand_quantity"] == row["batch_count"] == 1
+        assert "stock_batch_no" not in row
         for params in (
             {"search_field": "batch_no", "query": numbers[-1]},
             {"table_query": json.dumps({"filters": [{"field": "batch_no", "value": numbers[-1]}]})},
         ):
             filtered = client.get(url, params={**params, "page_size": 1}).json()
             assert filtered["total"] == 1
-            assert filtered["items"][0]["batch_nos"] == numbers
-            assert filtered["items"][0]["on_hand_quantity"] == 60
+            assert filtered["items"][0]["batch_nos"] == [numbers[-1]]
+            assert filtered["items"][0]["on_hand_quantity"] == 1
         options = client.get(
             url,
             params={
@@ -76,7 +75,7 @@ def test_grouped_batches_are_complete_and_searchable_without_changing_balances(c
             params={"page_size": 100},
         )
         assert detail.status_code == 200, detail.text
-        assert {item["transfer"]["batch_no"] for item in detail.json()["items"]} == set(numbers)
+        assert [item["transfer"]["batch_no"] for item in detail.json()["items"]] == [numbers[-1]]
     assert stock(client, query="%", team_id=team["id"])["total"] == 0
 
 

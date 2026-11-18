@@ -477,31 +477,37 @@ it('keeps quantity and processing state visible even when column choices hide ev
   expect(table.text()).toContain('待加工')
 })
 
-it('combines property search with processing filters and clears pagination', async () => {
-  vi.spyOn(api, 'stock').mockResolvedValue(response())
-  const { page, router } = await render('/material-trace?page=2')
-  const filter = page.getComponent(FilterDialog)
-  await filter.get('button').trigger('click')
-  await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
-  const select = (name: string) =>
-    page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())!
-  select('搜索属性').vm.$emit('update:modelValue', 'on_hand_quantity')
-  await flushPromises()
-  select('比较方式').vm.$emit('update:modelValue', 'gte')
-  select('加工状态筛选').vm.$emit('update:modelValue', 'complete')
-  await page.get('input[aria-label="搜索属性内容"]').setValue('40')
-  filter.vm.$emit('apply')
-  await flushPromises()
-  expect(router.currentRoute.value.query.page).toBe('1')
-  expect(api.stock).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      search_field: 'on_hand_quantity',
-      search_operator: 'gte',
-      query: '40',
-      processing_state: 'complete',
-    }),
-  )
-})
+it.each([
+  { field: 'on_hand_quantity', term: '40', query: '40' },
+  { field: 'task_batch_number', term: '第2批', query: '2' },
+])(
+  'combines $field search with processing filters and clears pagination',
+  async ({ field, term, query }) => {
+    vi.spyOn(api, 'stock').mockResolvedValue(response())
+    const { page, router } = await render('/material-trace?page=2')
+    const filter = page.getComponent(FilterDialog)
+    await filter.get('button').trigger('click')
+    await vi.waitFor(() => expect(page.find('.filter-form-panel').exists()).toBe(true))
+    const select = (name: string) =>
+      page.findAllComponents(AppSelect).find((s) => s.find(`[aria-label="${name}"]`).exists())!
+    select('搜索属性').vm.$emit('update:modelValue', field)
+    await flushPromises()
+    select('比较方式').vm.$emit('update:modelValue', 'gte')
+    select('加工状态筛选').vm.$emit('update:modelValue', 'complete')
+    await page.get('input[aria-label="搜索属性内容"]').setValue(term)
+    filter.vm.$emit('apply')
+    await flushPromises()
+    expect(router.currentRoute.value.query.page).toBe('1')
+    expect(api.stock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search_field: field,
+        search_operator: 'gte',
+        query,
+        processing_state: 'complete',
+      }),
+    )
+  },
+)
 
 it.each(['waste', 'sludge', 'scrap_chips'] as const)(
   'uses the same %s material filter, quantities and export as team inventory',

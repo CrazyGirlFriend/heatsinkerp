@@ -47,7 +47,7 @@ def stock(client, **params):
     return response.json()
 
 
-def test_all_teams_match_team_inventory_and_preserve_source_groups(
+def test_all_teams_match_team_inventory_and_preserve_source_batches(
     client, stock_setup, monkeypatch
 ):
     monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
@@ -59,7 +59,7 @@ def test_all_teams_match_team_inventory_and_preserve_source_groups(
             add_lot(db, team, "000012", days=2, quantity=4, spec="30×10")
         db.commit()
     result = stock(client)
-    assert result["total"] == 4
+    assert result["total"] == 6
     assert {row["team_id"] for row in result["items"]} == {t["id"] for t in teams}
     for team in teams:
         local = client.get(
@@ -80,16 +80,15 @@ def test_all_teams_match_team_inventory_and_preserve_source_groups(
                 assert row[field] == original[field]
             assert row["team_name"] == team["name"]
             if row["transfer_specification"] == "20×10":
-                assert row["owned_quantity"] == 23
-                assert row["stock_age_hours"] == 120
+                assert row["stock_age_hours"] == {20: 120, 3: 24}[row["owned_quantity"]]
             detail = client.get(
                 f"/api/team-materials/{team['id']}/inventory/{row['group_id']}/sources"
             )
             assert detail.status_code == 200
             assert detail.json()["total"] == row["batch_count"]
-    assert stock(client, team_id=teams[0]["id"])["total"] == 2
+    assert stock(client, team_id=teams[0]["id"])["total"] == 3
     assert stock(client, serial_no="12")["total"] == 0
-    assert stock(client, query="000012")["total"] == 4
+    assert stock(client, query="000012")["total"] == 6
     assert stock(client, material_name="铝")["total"] == 0
 
 
@@ -281,15 +280,15 @@ def test_processed_and_remaining_stock_keep_receipt_clock_through_repeated_split
     )
     assert second.status_code == 201, second.text
     old = stock(client, team_id=s["other"]["id"], stock_age_min=7)
-    assert old["total"] == 2
+    assert old["total"] == 3
     assert sum(row["owned_quantity"] for row in old["items"]) == 10
     assert all(row["stock_age_hours"] == 240 for row in old["items"])
     completed = stock(
         client, team_id=s["other"]["id"], processing_state="complete", stock_age_min=7
     )
-    assert completed["total"] == 1
-    assert completed["items"][0]["owned_quantity"] == 8
-    assert completed["items"][0]["stock_age_hours"] == 240
+    assert completed["total"] == 2
+    assert sorted(row["owned_quantity"] for row in completed["items"]) == [2, 6]
+    assert all(row["stock_age_hours"] == 240 for row in completed["items"])
     assert stock(client, team_id=s["other"]["id"], stock_age_max=3)["total"] == 0
     analytics = client.get(base(s, True) + "/analytics").json()
     ages = {r["key"]: r["quantity"] for r in analytics["stock_age"]}
@@ -302,7 +301,7 @@ def test_processed_and_remaining_stock_keep_receipt_clock_through_repeated_split
     assert {row["received_at"] for row in attention} == {"2026-10-26T12:00:00+00:00"}
     assert lot["id"] not in {row["transfer_id"] for row in attention}
     filtered = client.get(base(s, True) + "/inventory", params={"stock_age": "ge7"}).json()
-    assert filtered["total"] == 2
+    assert filtered["total"] == 3
     assert sum(row["owned_quantity"] for row in filtered["items"]) == 10
 
     # Derive clocks from provenance; do not overwrite actual child creation/receipt facts.

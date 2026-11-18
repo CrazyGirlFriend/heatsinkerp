@@ -1,4 +1,4 @@
-"""All workshops share source/type stock grouping without changing receipt rules."""
+"""All workshops list individual batches without changing receipt rules."""
 
 from datetime import datetime, timedelta
 
@@ -82,11 +82,10 @@ def test_inventory_orders_latest_activity_before_pagination_with_stable_ties(
             row.received_at = row.created_at = row.updated_at = datetime(2026, 9, day, 3)
         db.commit()
 
-    indices = (0, 3, 2, 1) if workshop else (4, 3, 2, 1, 0)
-    expected = [lots[index]["id"] for index in indices]
+    expected = [lots[index]["id"] for index in (4, 3, 2, 1, 0)]
     rows = get_inventory(client, target)["items"]
     assert [row["group_id"] for row in rows] == expected
-    assert rows[0]["batch_count"] == (2 if workshop else 1)
+    assert rows[0]["batch_count"] == 1
     assert rows[0]["last_activity_at"].startswith("2026-09-04")
     pages = [
         get_inventory(client, target, page=page, page_size=2)
@@ -112,7 +111,7 @@ def test_inventory_orders_latest_activity_before_pagination_with_stable_ties(
 
 
 @pytest.mark.parametrize("name", ["轧制", "退火", "研磨", "线切割", "雕刻", "电镀", "检验"])
-def test_seven_workshops_share_classified_inventory(client, warehouse, name):
+def test_seven_workshops_keep_matching_batches_separate(client, warehouse, name):
     s = warehouse
     team = _team(client, "CLASSIFIED", f"{name}（分类验证）")
     _, headers = _leader(client, "classified-leader", team["id"])
@@ -132,14 +131,16 @@ def test_seven_workshops_share_classified_inventory(client, warehouse, name):
         material_type="semi_finished_surplus",
     )
     result = get_inventory(client, team["id"])
-    assert result["total"] == 5
-    row = next(row for row in result["items"] if row["group_id"] == first["id"])
-    assert row["serial_no"] == "000007" and row["batch_count"] == 2
-    assert row["on_hand_quantity"] == 20 and row["on_hand_weight"] == 2
-    assert row["source_name"] == "库房" and row["receipt_source"] == "internal"
+    assert result["total"] == 6
     prefix = f"/api/team-materials/{team['id']}/inventory"
-    sources = client.get(prefix + f"/{first['id']}/sources").json()
-    assert {item["transfer"]["id"] for item in sources["items"]} == {first["id"], second["id"]}
+    for lot in (first, second):
+        row = next(row for row in result["items"] if row["group_id"] == lot["id"])
+        assert row["serial_no"] == "000007" and row["batch_count"] == 1
+        assert row["batch_nos"] == [lot["batch_no"]]
+        assert row["on_hand_quantity"] == 10 and row["on_hand_weight"] == 1
+        assert row["source_name"] == "库房" and row["receipt_source"] == "internal"
+        sources = client.get(prefix + f"/{lot['id']}/sources").json()
+        assert [item["transfer"]["id"] for item in sources["items"]] == [lot["id"]]
     assert get_inventory(client, team["id"], source_team_id=s["other"]["id"])["total"] == 1
     assert get_inventory(client, team["id"], material_type="finished")["total"] == 1
     assert (
@@ -148,12 +149,12 @@ def test_seven_workshops_share_classified_inventory(client, warehouse, name):
         )["total"]
         == 0
     )
-    assert get_inventory(client, team["id"], search_field="source", query="库房")["total"] == 4
+    assert get_inventory(client, team["id"], search_field="source", query="库房")["total"] == 5
     assert (
         get_inventory(
             client, team["id"], search_field="on_hand_quantity", search_operator="gte", query="20"
         )["total"]
-        == 1
+        == 0
     )
     assert (
         get_inventory(client, team["id"], page_size=2, page=1)["items"][0]["on_hand_weight"]
@@ -340,13 +341,14 @@ def test_purposes_partition_balances_search_and_source_selection(client, warehou
         client, s["headers"], s["other_headers"], target, "deburr", purpose_id=purposes[1]["id"]
     )
     result = get_inventory(client, target)
-    assert result["total"] == 2
-    inspection = next(row for row in result["items"] if row["purpose_name"] == "检验")
-    assert inspection["on_hand_quantity"] == 20 and inspection["current_batch_count"] == 2
+    assert result["total"] == 3
+    inspection = [row for row in result["items"] if row["purpose_name"] == "检验"]
+    assert {row["group_id"] for row in inspection} == {first["id"], second["id"]}
+    assert all(
+        row["on_hand_quantity"] == 10 and row["current_batch_count"] == 1 for row in inspection
+    )
     assert get_inventory(client, target, search_field="purpose_name", query="毛刺")["total"] == 1
-    assert get_inventory(client, target, query="检验")["items"][0]["on_hand_quantity"] == 20
-    sources = client.get(f"/api/team-materials/{target}/inventory/{first['id']}/sources").json()
-    assert {row["transfer"]["id"] for row in sources["items"]} == {first["id"], second["id"]}
+    assert get_inventory(client, target, query="检验")["total"] == 2
     # Keep historical purpose snapshots separate when a label is later renamed.
     assert (
         client.patch(
@@ -359,11 +361,9 @@ def test_purposes_partition_balances_search_and_source_selection(client, warehou
     incoming(
         client, s["headers"], s["other_headers"], target, "recheck", purpose_id=purposes[0]["id"]
     )
-    assert get_inventory(client, target)["total"] == 3
-    assert (
-        client.get(f"/api/team-materials/{target}/inventory/{first['id']}/sources").json()["total"]
-        == 2
-    )
+    assert get_inventory(client, target)["total"] == 4
+    assert get_inventory(client, target, query="检验")["total"] == 2
+    assert get_inventory(client, target, query="复检")["total"] == 1
 
 
 def test_business_filter_is_exact_paginated_and_keeps_historical_receipts(client, warehouse):
@@ -473,7 +473,7 @@ def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(
     aged = get_inventory(client, target, stock_age="ge7")
     assert aged["total"] == 1  # Not the newer finished stock of the same serial.
     row = aged["items"][0]
-    assert row["current_batch_count"] == (2 if workshop else 1)
+    assert row["group_id"] == old["id"] and row["current_batch_count"] == 1
     assert datetime.fromisoformat(row["oldest_received_at"]).replace(
         tzinfo=None
     ) == now - timedelta(days=10)
@@ -485,9 +485,7 @@ def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(
     )
     assert get_inventory(client, target, stock_age="ge7")["total"] == 0
     row = next(
-        row
-        for row in get_inventory(client, target)["items"]
-        if row["group_id"] == (old["id"] if workshop else recent["id"])
+        row for row in get_inventory(client, target)["items"] if row["group_id"] == recent["id"]
     )
     assert row["current_batch_count"] == 1
     assert datetime.fromisoformat(row["oldest_received_at"]).replace(
