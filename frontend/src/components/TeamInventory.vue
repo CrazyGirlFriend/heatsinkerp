@@ -11,7 +11,7 @@ import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Operation, Search } from '@element-plus/icons-vue'
 import { ElCheckbox, ElOption, ElOptionGroup, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
@@ -21,8 +21,6 @@ import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryScheduleDetails from './InventoryScheduleDetails.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
-import StockSourcePicker from './StockSourcePicker.vue'
-import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import {
   inventoryProcessingStateOptions,
@@ -35,13 +33,11 @@ import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { materialTransferApi } from '@/services/materialTransferApi'
 import {
   materialTypeLabel,
   materialTypeOptions,
   isScrapType as isScrapMaterialType,
   isWeightOnlyType,
-  type MaterialTransfer,
 } from '@/types/materialTransfer'
 import {
   warehouseColumns,
@@ -74,23 +70,19 @@ import { inventoryScheduleBaseline, inventoryScheduleTone } from '@/utils/invent
 import { scheduleBatchSearch } from '@/utils/scheduleBatch'
 
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
-const WarehouseReceiptDialog = defineAsyncComponent(() => import('./WarehouseReceiptDialog.vue'))
 const props = defineProps<{
   teamId: number
   overview: TeamMaterialOverview
   canWrite?: boolean
-  canReallocate?: boolean
   warehouse?: boolean
   fullscreen?: boolean
   processing?: boolean
-  inspection?: boolean
   processingLoadingGroupId?: number
 }>()
 const emit = defineEmits<{
   changed: []
   refresh: []
   action: [mode: 'dispatch', sources: StockBatch[]]
-  reallocate: [source: StockBatch]
   process: [groupId: number]
 }>()
 const route = useRoute(),
@@ -136,8 +128,7 @@ const {
 )
 let scheduleClock: ReturnType<typeof setInterval> | undefined
 function refreshVisibleSchedules() {
-  if (document.hidden || loading.value || scheduleLoading.value || picker.value || pending.value)
-    return
+  if (document.hidden || loading.value || scheduleLoading.value || pending.value) return
   void loadSchedules()
 }
 function syncScheduleClock(refresh = false) {
@@ -377,16 +368,6 @@ const separateSpecification = computed(() =>
   visibleColumns.value.some((column) => column.key === 'transfer_specification'),
 )
 const hasPending = computed(() => rows.value.some(inventoryHasPending))
-const actionWidth = computed(
-  () =>
-    32 +
-    (props.canWrite ? 42 : 0) +
-    (hasPending.value ? 72 : 0) +
-    (props.processing && props.canWrite ? 64 : 0) +
-    (props.inspection && props.canWrite ? 80 : 0) +
-    (props.canWrite && props.canReallocate ? 48 : 0) +
-    (props.warehouse && props.canWrite && rows.value.some((row) => row.receipt_editable) ? 80 : 0),
-)
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   const external =
@@ -488,7 +469,7 @@ function exportSource() {
     ),
   )
 }
-defineExpose({ exportSource, dispatchSelected, clearBatchSelection, preparingDispatch })
+defineExpose({ exportSource, clearBatchSelection })
 const activeFilters = computed(() => {
   const chips: { key: keyof TeamInventoryParams; label: string }[] = []
   if (props.warehouse && text('location_status'))
@@ -715,86 +696,8 @@ async function load(background = false) {
     if (current === version) loading.value = false
   }
 }
-const picker = ref<TeamInventoryRow | null>(null),
-  pending = ref<TeamInventoryRow | null>(null)
-const shipment = ref<TeamInventoryRow | null>(null)
-const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
-const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' | 'edit' } | null>(
-  null,
-)
-const editingReceipt = ref<MaterialTransfer | null>(null)
+const pending = ref<TeamInventoryRow | null>(null)
 let sourceVersion = 0
-async function openReceiptEdit(row: TeamInventoryRow) {
-  if (
-    !props.canWrite ||
-    !row.receipt_editable ||
-    !row.batch_no ||
-    openingSource.value ||
-    preparingDispatch.value
-  )
-    return
-  const current = ++sourceVersion
-  openingSource.value = { groupId: row.group_id, mode: 'edit' }
-  try {
-    const receipt = await materialTransferApi.get(row.batch_no)
-    if (current !== sourceVersion || !props.canWrite) return
-    if (!receipt.allowed_actions.includes('edit_receipt')) {
-      showToast('此批已不能修改，请查看入库和流转记录', 'error')
-      void load(true)
-      return
-    }
-    editingReceipt.value = receipt
-  } catch (failure) {
-    if (current === sourceVersion)
-      showToast(failure instanceof Error ? failure.message : '入库单读取失败，请重试', 'error')
-  } finally {
-    if (current === sourceVersion) openingSource.value = null
-  }
-}
-function receiptEdited() {
-  editingReceipt.value = null
-  emit('changed')
-}
-async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate') {
-  if (
-    !props.canWrite ||
-    openingSource.value ||
-    preparingDispatch.value ||
-    (mode === 'reallocate' && (!props.canReallocate || row.shared_unallocated))
-  )
-    return
-  pickerMode.value = mode
-  if (row.batch_count !== 1) {
-    picker.value = row
-    return
-  }
-  const current = ++sourceVersion
-  openingSource.value = { groupId: row.group_id, mode }
-  try {
-    const result = await teamMaterialApi.inventorySources(props.teamId, row.group_id, {
-      current_only: false,
-      page: 1,
-      page_size: 2,
-    })
-    if (current !== sourceVersion) return
-    const source = result.items[0]
-    if (
-      result.total === 1 &&
-      result.items.length === 1 &&
-      source &&
-      stockSelectable(source) &&
-      (mode !== 'reallocate' || !source.transfer.shared_unallocated)
-    ) {
-      if (mode === 'reallocate') reallocate(source)
-      else dispatch([source])
-    } else picker.value = row
-  } catch (e) {
-    if (current === sourceVersion)
-      showToast(e instanceof Error ? e.message : '来源批次加载失败，请重试', 'error')
-  } finally {
-    if (current === sourceVersion) openingSource.value = null
-  }
-}
 function clearBatchSelection(sourceId?: number) {
   if (sourceId == null) batchSelection.selected.clear()
   else batchSelection.selected.delete(String(sourceId))
@@ -813,23 +716,18 @@ function processingAction(row: TeamInventoryRow) {
 const selectedProcessingRow = computed(() =>
   batchSelection.selected.size === 1 ? batchSelection.selected.values().next().value : undefined,
 )
-const selectedProcessingAction = computed(() => {
-  if (selectedProcessingRow.value) return processingAction(selectedProcessingRow.value)
-  return batchSelection.selected.size ? '' : '加工登记'
-})
-function processSelected() {
-  if (!props.processing || !props.canWrite || props.processingLoadingGroupId != null) return
-  if (!selectedProcessingAction.value) return
-  if (selectedProcessingRow.value) emit('process', selectedProcessingRow.value.group_id)
-  else showToast('请在库存列表勾选一个批次后登记加工', 'info')
-}
+const selectedProcessingAction = computed(() =>
+  selectedProcessingRow.value ? processingAction(selectedProcessingRow.value) : '',
+)
+const canDispatchSelection = computed(
+  () =>
+    batchSelection.selected.size > 0 &&
+    [...batchSelection.selected.values()].every(inventoryCanDispatch),
+)
 async function dispatchSelected() {
-  if (!props.canWrite || loading.value || openingSource.value || preparingDispatch.value) return
-  const ids = [...batchSelection.selected.keys()]
-  if (!ids.length) {
-    showToast('请先在库存列表勾选要出库的批次', 'info')
+  if (!props.canWrite || loading.value || !canDispatchSelection.value || preparingDispatch.value)
     return
-  }
+  const ids = [...batchSelection.selected.keys()]
   const current = ++sourceVersion
   preparingDispatch.value = true
   try {
@@ -853,7 +751,7 @@ async function dispatchSelected() {
       void load(true)
       return
     }
-    dispatch(sources)
+    emit('action', 'dispatch', sources)
   } catch (failure) {
     if (current === sourceVersion)
       showToast(failure instanceof Error ? failure.message : '来源批次加载失败，请重试', 'error')
@@ -861,33 +759,14 @@ async function dispatchSelected() {
     if (current === sourceVersion) preparingDispatch.value = false
   }
 }
-function selectedSources(sources: StockBatch[]) {
-  if (pickerMode.value === 'reallocate') {
-    if (sources.length === 1) reallocate(sources[0]!)
-  } else dispatch(sources)
-}
 function asRow(row: unknown) {
   return row as TeamInventoryRow
 }
-function dispatch(sources: StockBatch[]) {
-  if (props.canWrite) {
-    picker.value = null
-    emit('action', 'dispatch', sources)
-  }
-}
-function reallocate(source: StockBatch) {
-  if (props.canWrite && props.canReallocate) {
-    picker.value = null
-    emit('reallocate', source)
-  }
-}
 function resetDetails() {
   ++sourceVersion
-  openingSource.value = null
   preparingDispatch.value = false
   clearBatchSelection()
-  editingReceipt.value = null
-  picker.value = pending.value = null
+  pending.value = null
   expandedScheduleGroups.value = []
 }
 const searchBeforeFilters = ref({
@@ -960,10 +839,7 @@ watch(
     void loadPurposes()
   },
 )
-watch(
-  [() => props.teamId, () => props.canWrite, () => props.canReallocate, () => auth.currentUser?.id],
-  resetDetails,
-)
+watch([() => props.teamId, () => props.canWrite, () => auth.currentUser?.id], resetDetails)
 onMounted(() => {
   syncScheduleClock()
   document.addEventListener('visibilitychange', resumeScheduleClock)
@@ -1270,8 +1146,8 @@ onBeforeUnmount(() => {
           :storage-key="storageKey"
           :description="
             processing
-              ? '批次号、流水号、数量、工艺工序、返工情况、加工状态、材质和操作始终显示。'
-              : '批次号、流水号、数量、材质和操作始终显示。'
+              ? '批次号、流水号、数量、工艺工序、返工情况、加工状态和材质始终显示。'
+              : '批次号、流水号、数量和材质始终显示。'
           "
           :columns="selectableColumns"
           :new-visible-keys="['task_batch_number']"
@@ -1289,21 +1165,24 @@ onBeforeUnmount(() => {
           >清空勾选</ElButton
         >
         <ElButton
-          v-if="fullscreen && canWrite && batchSelection.selected.size"
+          v-if="canWrite && canDispatchSelection"
           :loading="preparingDispatch"
           @click="dispatchSelected"
-          >新建出库</ElButton
+          >出库</ElButton
         >
         <ElButton
           v-if="processing && canWrite && selectedProcessingAction"
           class="inventory-process"
           :icon="Operation"
+          :loading="
+            processingLoadingGroupId === selectedProcessingRow?.group_id &&
+            processingLoadingGroupId != null
+          "
           :disabled="processingLoadingGroupId != null"
-          @click="processSelected"
+          @click="selectedProcessingRow && emit('process', selectedProcessingRow.group_id)"
           >{{ selectedProcessingAction }}</ElButton
         >
       </template>
-      <template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template>
     </WorkspaceDataToolbar>
 
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
@@ -1545,64 +1424,10 @@ onBeforeUnmount(() => {
             @view-all="viewSchedule(undefined, row.serial_no)"
           /> </template
       ></ElTableColumn>
-      <ElTableColumn
-        v-if="canWrite || hasPending"
-        label="操作"
-        :width="actionWidth"
-        align="center"
-        fixed="right"
+      <ElTableColumn v-if="hasPending" label="操作" width="112" align="center" fixed="right"
         ><template #default="{ row }"
           ><div class="inventory-row-actions">
             <ElButton
-              v-if="warehouse && canWrite && row.receipt_editable"
-              link
-              type="primary"
-              :loading="openingSource?.groupId === row.group_id && openingSource?.mode === 'edit'"
-              :disabled="!!openingSource"
-              @click="openReceiptEdit(asRow(row))"
-              >修改入库</ElButton
-            ><ElButton
-              v-if="processing && canWrite && processingAction(asRow(row))"
-              link
-              class="action-cool"
-              :loading="processingLoadingGroupId === row.group_id"
-              :disabled="processingLoadingGroupId != null"
-              @click="emit('process', row.group_id)"
-              >{{ processingAction(asRow(row)) }}</ElButton
-            ><ElButton
-              v-if="canWrite && inventoryCanDispatch(asRow(row))"
-              link
-              class="action-warm"
-              :loading="
-                openingSource?.groupId === row.group_id && openingSource?.mode === 'dispatch'
-              "
-              :disabled="!!openingSource"
-              @click="openPicker(asRow(row), 'dispatch')"
-              >出库</ElButton
-            ><ElButton
-              v-if="
-                inspection &&
-                canWrite &&
-                inventoryCanDispatch(asRow(row)) &&
-                !isScrapMaterialType(row.material_type) &&
-                !row.shared_unallocated
-              "
-              link
-              class="action-warm"
-              @click="shipment = asRow(row)"
-              >汇总发货</ElButton
-            ><ElButton
-              v-if="canWrite && canReallocate && inventoryCanDispatch(asRow(row))"
-              link
-              type="primary"
-              :loading="
-                openingSource?.groupId === row.group_id && openingSource?.mode === 'reallocate'
-              "
-              :disabled="!!openingSource || row.shared_unallocated"
-              :title="row.shared_unallocated ? '共投料请通过加工登记拆分归属' : undefined"
-              @click="openPicker(asRow(row), 'reallocate')"
-              >转投</ElButton
-            ><ElButton
               v-if="inventoryHasPending(asRow(row))"
               link
               type="primary"
@@ -1644,52 +1469,12 @@ onBeforeUnmount(() => {
         >系统记录 · {{ formatDateTime(asOf) }}</small
       ></WorkspacePagination
     >
-    <WarehouseReceiptDialog
-      v-if="editingReceipt"
-      :model-value="true"
-      :team-id="teamId"
-      :receipt="editingReceipt"
-      @update:model-value="editingReceipt = null"
-      @saved="receiptEdited"
-    />
     <InventoryPendingDialog
       v-if="pending"
       :team-id="teamId"
       :group="pending"
       @close="pending = null"
       @changed="
-        () => {
-          load(true)
-          emit('changed')
-        }
-      "
-    />
-    <StockSourcePicker
-      v-if="picker && canWrite"
-      :team-id="teamId"
-      :processing="processing"
-      :group-id="picker.group_id"
-      :mode="pickerMode"
-      :group-label="
-        [
-          picker.serial_no,
-          materialTypeLabel(picker.material_type || null),
-          picker.purpose_name,
-          sourceLabel(picker),
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      "
-      @close="picker = null"
-      @selected="selectedSources"
-    />
-    <InventoryShipmentDialog
-      v-if="shipment && canWrite && inspection"
-      :team-id="teamId"
-      :group-id="shipment.group_id"
-      :serial-no="shipment.serial_no"
-      @close="shipment = null"
-      @saved="
         () => {
           load(true)
           emit('changed')
@@ -1759,9 +1544,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-.inventory-row-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 .inventory-as-of {
   font-size: var(--font-size-meta);

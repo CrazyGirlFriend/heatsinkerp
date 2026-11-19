@@ -6,7 +6,7 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElCheckbox, ElTableColumn, ElTag } from 'element-plus'
+import { ElTableColumn, ElTag } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { inventoryAmount } from '@/types/teamInventory'
@@ -15,29 +15,30 @@ import StatePanel from './StatePanel.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
 import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
-import { materialTypeLabel } from '@/types/materialTransfer'
+import { isScrapType, materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockSelectable } from '@/utils/materialStock'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
-import { useBatchSelection } from '@/composables/useBatchSelection'
 
-const props = withDefaults(
-  defineProps<{
-    teamId: number
-    groupId?: number
-    groupLabel?: string
-    mode?: 'dispatch' | 'reallocate' | 'loss'
-    processing?: boolean
-  }>(),
-  { mode: 'dispatch', processing: false },
+const props = defineProps<{
+  teamId: number
+  mode: 'reallocate' | 'loss' | 'shipment'
+  processing?: boolean
+}>()
+const emit = defineEmits<{ close: []; selected: [source: StockBatch] }>()
+const labels = computed(
+  () =>
+    ({
+      loss: { title: '登记丢失', action: '登记丢失', search: '丢失库存搜索' },
+      reallocate: { title: '流水号转投', action: '转投', search: '转投库存搜索' },
+      shipment: { title: '汇总发货', action: '选择', search: '发货库存搜索' },
+    })[props.mode],
 )
-const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outbound: [] }>()
-const actionLabel = computed(
-  () => ({ dispatch: '新建出库', reallocate: '流水号转投', loss: '登记丢失' })[props.mode],
-)
-const selectionLabel = computed(() => (props.mode === 'loss' ? '登记丢失' : '转投'))
 function singleSelectable(row: StockBatch) {
-  return stockSelectable(row) && (props.mode !== 'reallocate' || !row.transfer.shared_unallocated)
+  if (!stockSelectable(row)) return false
+  if (props.mode === 'shipment')
+    return !row.transfer.shared_unallocated && !isScrapType(row.transfer.material_type)
+  return props.mode !== 'reallocate' || !row.transfer.shared_unallocated
 }
 const visible = ref(true)
 const query = ref(''),
@@ -62,8 +63,6 @@ function applyFilters() {
 }
 const filtered = computed(() => !!(appliedQuery.value || dates.value.from || dates.value.to))
 const emptyTitle = computed(() => (filtered.value ? '没有符合筛选条件的来源批次' : '暂无来源批次'))
-const { selected, availableRows, checkedCount, allChecked, toggle, toggleAll, reconcile } =
-  useBatchSelection(rows, (row) => String(row.transfer.id), stockSelectable)
 let version = 0
 function asStock(row: unknown) {
   return row as StockBatch
@@ -84,39 +83,29 @@ async function load() {
   error.value = ''
   rows.value = []
   try {
-    const params = {
+    const result = await teamMaterialApi.stock(props.teamId, {
+      availability: 'dispatchable',
       date_from: dates.value.from || undefined,
       date_to: dates.value.to || undefined,
       query: appliedQuery.value || undefined,
       page: page.value,
       page_size: pageSize.value,
-    }
-    const result = props.groupId
-      ? await teamMaterialApi.inventorySources(props.teamId, props.groupId, {
-          ...params,
-          current_only: false,
-        })
-      : await teamMaterialApi.stock(props.teamId, { ...params, availability: 'dispatchable' })
+    })
     if (current !== version) return
     rows.value = result.items
     total.value = result.total
-    reconcile(result.items)
   } catch (e) {
     if (current === version) error.value = e instanceof Error ? e.message : '库存加载失败，请重试'
   } finally {
     if (current === version) loading.value = false
   }
 }
-function proceed() {
-  if (!loading.value && !error.value && selected.size) emit('selected', [...selected.values()])
-}
 function chooseSource(row: StockBatch) {
-  if (!loading.value && !error.value && singleSelectable(row)) emit('selected', [row])
+  if (!loading.value && !error.value && singleSelectable(row)) emit('selected', row)
 }
 watch(
-  () => [props.teamId, props.groupId],
+  () => props.teamId,
   () => {
-    selected.clear()
     dates.value = { from: '', to: '' }
     page.value = 1
     query.value = ''
@@ -133,20 +122,17 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     v-model="visible"
-    :title="`${actionLabel} · 选择来源批次`"
+    :title="`${labels.title} · 选择来源批次`"
     width="min(1040px, 94vw)"
     top="6vh"
     class="stock-source-picker"
     @closed="emit('close')"
   >
-    <p v-if="groupLabel" class="picker-scope">{{ groupLabel }}</p>
     <div class="picker-toolbar">
       <ElInput
         v-model="query"
         :prefix-icon="Search"
-        :aria-label="
-          mode === 'loss' ? '丢失库存搜索' : mode === 'reallocate' ? '转投库存搜索' : '出库库存搜索'
-        "
+        :aria-label="labels.search"
         placeholder="搜索流水号、批次号、材质或仓位"
         clearable
         @keyup.enter="search"
@@ -172,9 +158,6 @@ onBeforeUnmount(() => {
             label="接收日期" /></label
       ></FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
-      <ElButton v-if="mode === 'dispatch' && selected.size" text @click="selected.clear()"
-        >清空勾选</ElButton
-      >
     </div>
     <div class="picker-table">
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
@@ -194,26 +177,6 @@ onBeforeUnmount(() => {
             <p>{{ filtered ? '请调整搜索条件或日期后重试。' : '暂无已签收来源批次。' }}</p>
           </div></template
         >
-        <ElTableColumn v-if="mode === 'dispatch'" width="46" class-name="stock-selection-column">
-          <template #header
-            ><ElCheckbox
-              aria-label="选择本页出库物料"
-              :model-value="allChecked"
-              :indeterminate="checkedCount > 0 && !allChecked"
-              :disabled="!availableRows.length || (selected.size >= 100 && !checkedCount)"
-              @change="toggleAll"
-          /></template>
-          <template #default="{ row }"
-            ><ElCheckbox
-              :aria-label="`选择出库 ${row.transfer.batch_no}`"
-              :model-value="selected.has(String(row.transfer.id))"
-              :disabled="
-                !stockSelectable(asStock(row)) ||
-                (selected.size >= 100 && !selected.has(String(row.transfer.id)))
-              "
-              @change="toggle(asStock(row), $event)"
-          /></template>
-        </ElTableColumn>
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip
           ><template #default="{ row }">{{
             sharedSerialLabel(row.transfer)
@@ -296,21 +259,15 @@ onBeforeUnmount(() => {
             inventoryAmount(dispatchableAmounts(asStock(row)).weight)
           }}</template></ElTableColumn
         >
-        <ElTableColumn
-          v-if="mode !== 'dispatch'"
-          label="操作"
-          width="100"
-          align="center"
-          fixed="right"
-        >
+        <ElTableColumn label="操作" width="100" align="center" fixed="right">
           <template #default="{ row }">
             <ElButton
               link
               type="primary"
               :disabled="!singleSelectable(asStock(row))"
-              :aria-label="`${selectionLabel} ${row.transfer.batch_no}`"
+              :aria-label="`${labels.action} ${row.transfer.batch_no}`"
               @click="chooseSource(asStock(row))"
-              >{{ selectionLabel }}</ElButton
+              >{{ labels.action }}</ElButton
             >
           </template>
         </ElTableColumn>
@@ -328,18 +285,7 @@ onBeforeUnmount(() => {
         >共 {{ total }} 个来源批次</WorkspacePagination
       >
     </div>
-    <template #footer
-      ><span v-if="mode === 'dispatch'" class="picker-batch-note"
-        >每条物料独立批次、独立条码，可合并打印</span
-      ><ElButton @click="visible = false">取消</ElButton
-      ><ElButton
-        v-if="mode === 'dispatch'"
-        type="primary"
-        :disabled="!selected.size || loading || !!error"
-        @click="proceed"
-        >下一步：填写出库</ElButton
-      ></template
-    >
+    <template #footer><ElButton @click="visible = false">取消</ElButton></template>
   </AppDialog>
 </template>
 
@@ -350,11 +296,6 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-}
-.picker-scope {
-  margin: 0 0 16px;
-  font-size: 16px;
-  color: var(--text);
 }
 .picker-toolbar {
   margin-bottom: 12px;
@@ -398,12 +339,6 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
-}
-.picker-batch-note {
-  float: left;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 32px;
 }
 .picker-pagination {
   justify-content: space-between;

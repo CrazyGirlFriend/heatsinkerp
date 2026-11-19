@@ -31,6 +31,7 @@ import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamReworkRequestDialog from '@/components/TeamReworkRequestDialog.vue'
+import InventoryShipmentDialog from '@/components/InventoryShipmentDialog.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
@@ -254,6 +255,7 @@ async function render(path = '/team-workspaces/914', animate = false, stockActio
         ...(stockActionDialog ? { SerialRouteAttachments: true } : {}),
         SerialReallocationDialog: true,
         WarehouseReceiptDialog: true,
+        InventoryShipmentDialog: true,
         WarehouseManagement: {
           props: ['canManage'],
           components: { WorkspaceTools },
@@ -291,12 +293,10 @@ function mockDispatchableRows(...ids: number[]) {
 const dispatchCheckbox = (id: number) =>
   wrapper.get<HTMLInputElement>(`label[aria-label="勾选批次 TL${id}"] input`)
 async function newDispatch() {
-  if (!wrapper.findAll('button').some((button) => button.text() === '新建出库')) {
-    await openToolbarMenu()
-  }
+  const label = wrapper.findComponent(TeamInventory).exists() ? '出库' : '新建出库'
   await wrapper
     .findAll('button')
-    .find((button) => button.text() === '新建出库')!
+    .find((button) => button.text() === label)!
     .trigger('click')
   await flushPromises()
 }
@@ -530,16 +530,17 @@ describe('team workspace material ledger', () => {
           page: 1,
           page_size: 10,
         })
+        mockDispatchableRows(10)
         const router = await render('/team-workspaces/914?tab=stock')
         expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(true)
-        expect(wrapper.find('.inventory-process').exists()).toBe(canWrite)
+        expect(wrapper.find('.inventory-process').exists()).toBe(false)
         if (canWrite) {
+          await dispatchCheckbox(10).setValue(true)
           await wrapper.get('.inventory-process').trigger('click')
-          await flushPromises()
-          expect(teamMaterialApi.processingSources).not.toHaveBeenCalled()
-          expect(showToast).toHaveBeenCalledWith('请在库存列表勾选一个批次后登记加工', 'info')
+        } else {
+          expect(wrapper.find('label[aria-label="勾选批次 TL10"]').exists()).toBe(false)
+          wrapper.getComponent(TeamInventory).vm.$emit('process', 10)
         }
-        wrapper.getComponent(TeamInventory).vm.$emit('process', 10)
         await flushPromises()
         if (canWrite) {
           expect(teamMaterialApi.processingSources).toHaveBeenLastCalledWith(914, {
@@ -584,24 +585,24 @@ describe('team workspace material ledger', () => {
       }
     },
   )
-  describe('processing row shortcuts', () => {
+  describe('processing checked stock', () => {
     const sources = (items = [source(10)], total = items.length) => ({
       items,
       total,
       page: 1,
       page_size: 2,
     })
-    const rowButton = () =>
-      wrapper
-        .findAll('.inventory-row-actions button')
-        .find((button) => button.text() === '加工登记')!
+    async function registerCheckedBatch() {
+      await dispatchCheckbox(10).setValue(true)
+      await wrapper.get('.inventory-process').trigger('click')
+    }
     const activeDialog = () =>
       wrapper
         .findAllComponents(QuantityAdjustmentDialog)
         .find((dialog) => dialog.props('modelValue'))
     beforeEach(() => {
       vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
-        items: [warehouseFixture({ group_id: 10 })],
+        items: [dispatchableRow(10)],
         total: 1,
         page: 1,
         page_size: 10,
@@ -628,22 +629,25 @@ describe('team workspace material ledger', () => {
       'FACTORY-GRIND',
       'FACTORY-PLATE',
       'FACTORY-QC',
-    ])('opens the sole eligible batch directly from the fullscreen %s stock row', async (code) => {
-      const previous = state.directory.items
-      try {
-        state.directory.items = [
-          { id: 914, code, name: '加工班组', kind: 'production', active: true },
-        ]
-        await render('/team-workspaces/914?tab=stock')
-        await wrapper.get('.team-workspace__fullscreen').trigger('click')
-        await rowButton().trigger('click')
-        await flushPromises()
-        expect(activeDialog()?.props('sourceId')).toBe(10)
-        expect(teamMaterialApi.quantityContext).toHaveBeenCalledWith(914, 10, 1)
-      } finally {
-        state.directory.items = previous
-      }
-    })
+    ])(
+      'opens the sole eligible batch directly from the fullscreen %s stock selection',
+      async (code) => {
+        const previous = state.directory.items
+        try {
+          state.directory.items = [
+            { id: 914, code, name: '加工班组', kind: 'production', active: true },
+          ]
+          await render('/team-workspaces/914?tab=stock')
+          await wrapper.get('.team-workspace__fullscreen').trigger('click')
+          await registerCheckedBatch()
+          await flushPromises()
+          expect(activeDialog()?.props('sourceId')).toBe(10)
+          expect(teamMaterialApi.quantityContext).toHaveBeenCalledWith(914, 10, 1)
+        } finally {
+          state.directory.items = previous
+        }
+      },
+    )
     it('registers the checked stock batch and keeps multiple selections intact', async () => {
       mockDispatchableRows(10, 11)
       const router = await render('/team-workspaces/914?tab=processing')
@@ -667,7 +671,7 @@ describe('team workspace material ledger', () => {
     it('refuses a different batch even when it is the only lookup result', async () => {
       vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(sources([source(11)]))
       await render('/team-workspaces/914?tab=stock')
-      await rowButton().trigger('click')
+      await registerCheckedBatch()
       await flushPromises()
       expect(activeDialog()).toBeUndefined()
       expect(teamMaterialApi.quantityContext).not.toHaveBeenCalled()
@@ -678,7 +682,7 @@ describe('team workspace material ledger', () => {
       batch.transfer.rework_route_ready = false
       vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(sources([batch]))
       await render('/team-workspaces/914?tab=stock')
-      await rowButton().trigger('click')
+      await registerCheckedBatch()
       await flushPromises()
       expect(activeDialog()).toBeUndefined()
       expect(showToast).toHaveBeenCalledWith('请等待返工工艺制定后再登记加工', 'info')
@@ -686,7 +690,7 @@ describe('team workspace material ledger', () => {
     it('does not open an empty second picker when the batch is no longer eligible', async () => {
       vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(sources([]))
       await render('/team-workspaces/914?tab=stock')
-      await rowButton().trigger('click')
+      await registerCheckedBatch()
       await flushPromises()
       expect(activeDialog()).toBeUndefined()
       expect(showToast).toHaveBeenCalledWith('该批次已无法登记加工，请刷新库存后重试', 'info')
@@ -699,17 +703,17 @@ describe('team workspace material ledger', () => {
         }),
       )
       await render('/team-workspaces/914?tab=stock')
-      await rowButton().trigger('click')
+      await registerCheckedBatch()
       wrapper.getComponent(TeamInventory).vm.$emit('process', 10)
       await flushPromises()
       expect(teamMaterialApi.processingSources).toHaveBeenCalledTimes(1)
-      expect(rowButton().classes()).toContain('is-loading')
+      expect(wrapper.get('.inventory-process').classes()).toContain('is-loading')
       expect(wrapper.get('.inventory-process').attributes('disabled')).toBeDefined()
       reject(new Error('网络中断'))
       await flushPromises()
       expect(showToast).toHaveBeenCalledWith('网络中断', 'error')
-      expect(rowButton().attributes('disabled')).toBeUndefined()
-      await rowButton().trigger('click')
+      expect(wrapper.get('.inventory-process').attributes('disabled')).toBeUndefined()
+      await registerCheckedBatch()
       await flushPromises()
       expect(activeDialog()?.props('sourceId')).toBe(10)
     })
@@ -723,7 +727,7 @@ describe('team workspace material ledger', () => {
           }),
         )
         const router = await render('/team-workspaces/914?tab=stock')
-        await rowButton().trigger('click')
+        await registerCheckedBatch()
         if (change === 'team') await router.push('/team-workspaces/901?tab=stock')
         if (change === 'tab') await router.push('/team-workspaces/914?tab=outgoing')
         if (change === 'account') state.auth.currentUser.id = 99
@@ -1043,16 +1047,20 @@ describe('team workspace material ledger', () => {
       expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(914, expect.any(Object))
     },
   )
-  it('allows own-team and administrator reallocation, refreshing inventory after saving', async () => {
+  it('allows own-team and administrator reallocation from the reallocation ledger', async () => {
     const previous = state.directory.items
     try {
       state.directory.items = [
         { id: 914, code: 'FACTORY-PLATE', name: '电镀', kind: 'production', active: true },
       ]
-      const router = await render('/team-workspaces/914?tab=stock&query=000A')
-      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(true)
-      wrapper.getComponent(TeamInventory).vm.$emit('reallocate', source())
-      await flushPromises()
+      const router = await render('/team-workspaces/914?tab=reallocations&query=000A')
+      async function startReallocation() {
+        await wrapper.get('.workspace-actions button').trigger('click')
+        await flushPromises()
+        wrapper.getComponent(StockSourcePicker).vm.$emit('selected', source())
+        await flushPromises()
+      }
+      await startReallocation()
       const dialog = wrapper.getComponent(SerialReallocationDialog)
       expect(dialog.props()).toMatchObject({ modelValue: true, teamId: 914, source: source() })
       vi.mocked(teamMaterialApi.overview).mockClear()
@@ -1061,16 +1069,14 @@ describe('team workspace material ledger', () => {
         normalizeMaterialTransfer({ serial_no: '000B', source_serial_no: 'SERIAL10' }),
       )
       await flushPromises()
-      expect(router.currentRoute.value.query).toEqual({})
+      expect(router.currentRoute.value.query).toEqual({ tab: 'reallocations', query: '000A' })
       expect(teamMaterialApi.overview).toHaveBeenCalled()
       expect(wrapper.findComponent(SerialReallocationDialog).exists()).toBe(false)
       expect(wrapper.findComponent(MaterialBatchPrintDialog).props('modelValue')).toBe(false)
       state.auth.isAdmin = true
       state.auth.isTeamAccount = false
       await flushPromises()
-      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(true)
-      wrapper.getComponent(TeamInventory).vm.$emit('reallocate', source())
-      await flushPromises()
+      await startReallocation()
       expect(wrapper.getComponent(SerialReallocationDialog).props()).toMatchObject({
         modelValue: true,
         teamId: 914,
@@ -1126,7 +1132,7 @@ describe('team workspace material ledger', () => {
             .get('.inventory-row-actions')
             .findAll('button')
             .some((button) => button.text() === '出库'),
-        ).toBe(true)
+        ).toBe(false)
         expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
       } finally {
         state.directory.items = previous
@@ -1676,8 +1682,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('nav[aria-label$="视图"] [aria-current=page]').text()).toBe('库存明细')
-    await openToolbarMenu()
-    expect(wrapper.get('.workspace-toolbar .workspace-actions').text()).toContain('新建出库')
+    expect(wrapper.find('.workspace-toolbar .workspace-actions').exists()).toBe(false)
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
@@ -1699,15 +1704,15 @@ describe('team workspace material ledger', () => {
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
   it.each([
-    ['serials', ['新建入库', '新建出库', '扫码入库']],
-    ['stock', ['新建入库', '新建出库', '扫码入库']],
+    ['serials', []],
+    ['stock', []],
     ['outgoing', ['新建出库']],
     ['pending', []],
     ['receipts', ['新建入库']],
     ['losses', ['登记丢失']],
     ['reallocations', ['新建转投']],
-    ['materials', ['新建入库', '新建出库', '扫码入库']],
-    ['material-types', ['新建入库', '新建出库', '扫码入库']],
+    ['materials', []],
+    ['material-types', []],
     ['overview', []],
     ['history', []],
   ] as const)('shows only relevant actions on warehouse %s', async (tab, labels) => {
@@ -1753,7 +1758,7 @@ describe('team workspace material ledger', () => {
           next_team: { id: 901, name: '库房', code: 'FACTORY-WAREHOUSE' },
         },
       }
-      wrapper.getComponent(StockSourcePicker).vm.$emit('selected', [batch])
+      wrapper.getComponent(StockSourcePicker).vm.$emit('selected', batch)
       await flushPromises()
       expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
       if (tab === 'losses') {
@@ -2221,12 +2226,9 @@ describe('team workspace material ledger', () => {
     })
   })
   it('opens the receiving scanner for the current team and administrator', async () => {
-    await render('/team-workspaces/914?tab=stock')
-    await openToolbarMenu()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '扫码入库')!
-      .trigger('click')
+    const router = await render('/team-workspaces/914?tab=stock')
+    expect(wrapper.findComponent(MaterialReceiptScanner).exists()).toBe(false)
+    await router.push('/team-workspaces/914?tab=pending')
     await flushPromises()
     expect(wrapper.getComponent(MaterialReceiptScanner).props('teamId')).toBe(914)
     state.auth.isTeamAccount = false
@@ -2344,11 +2346,10 @@ describe('warehouse intake workspace', () => {
     })
     expect(wrapper.find('[aria-label="接收班组筛选"]').exists()).toBe(false)
   })
-  it('provides an intake entry only on the official warehouse and refreshes overview, stock and receipts after saving', async () => {
+  it('provides an intake entry only on the official warehouse and refreshes its receipts after saving', async () => {
     state.auth.currentUser.team_id = 901
-    await render('/team-workspaces/901')
+    await render('/team-workspaces/901?tab=receipts')
     expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
-    expect(wrapper.getComponent(TeamInventory).props('warehouse')).toBe(true)
     expect(wrapper.find('button[aria-label="库房统计"]').exists()).toBe(false)
     const button = wrapper.findAll('button').find((button) => button.text() === '新建入库')!
     expect(button.exists()).toBe(true)
@@ -2356,7 +2357,6 @@ describe('warehouse intake workspace', () => {
     await flushPromises()
     expect(wrapper.getComponent(WarehouseReceiptDialog).props('modelValue')).toBe(true)
     vi.mocked(teamMaterialApi.overview).mockClear()
-    vi.mocked(teamMaterialApi.teamInventory).mockClear()
     vi.mocked(teamMaterialApi.receipts).mockClear()
     wrapper.getComponent(WarehouseReceiptDialog).vm.$emit(
       'saved',
@@ -2368,8 +2368,58 @@ describe('warehouse intake workspace', () => {
     )
     await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(901)
-    expect(teamMaterialApi.teamInventory).toHaveBeenCalledWith(901, expect.any(Object))
     expect(teamMaterialApi.receipts).toHaveBeenCalledWith(901, expect.any(Object))
+  })
+  it('opens only editable warehouse receipts and checks the latest version before editing', async () => {
+    state.auth.currentUser.team_id = 901
+    const receipt = normalizeMaterialTransfer({
+      ...source().transfer,
+      entry_kind: 'warehouse_receipt',
+      allowed_actions: ['edit_receipt'],
+      version: 2,
+    })
+    const used = normalizeMaterialTransfer({
+      ...receipt,
+      id: 11,
+      batch_no: 'TL11',
+      allowed_actions: [],
+    })
+    vi.mocked(teamMaterialApi.receipts).mockResolvedValue({
+      items: [receipt, used],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(used).mockResolvedValueOnce(receipt)
+    await render('/team-workspaces/901?tab=receipts')
+    const editButtons = () => wrapper.findAll('button').filter((item) => item.text() === '修改入库')
+    expect(editButtons()).toHaveLength(1)
+    await editButtons()[0]!.trigger('click')
+    await flushPromises()
+    const editor = wrapper.getComponent(WarehouseReceiptDialog)
+    expect(editor.props('modelValue')).toBe(false)
+    await editButtons()[0]!.trigger('click')
+    await flushPromises()
+    expect(materialTransferApi.get).toHaveBeenLastCalledWith(receipt.batch_no)
+    expect(editor.props()).toMatchObject({ modelValue: true, receipt })
+  })
+  it('opens summary shipment for the selected inspection lot from outgoing records', async () => {
+    state.auth.currentUser.team_id = 900
+    await render('/team-workspaces/900?tab=outgoing')
+    await wrapper
+      .findAll('button')
+      .find((item) => item.text() === '汇总发货')!
+      .trigger('click')
+    await flushPromises()
+    const picker = wrapper.getComponent(StockSourcePicker)
+    expect(picker.props('mode')).toBe('shipment')
+    picker.vm.$emit('selected', source(17))
+    await flushPromises()
+    expect(wrapper.getComponent(InventoryShipmentDialog).props()).toMatchObject({
+      teamId: 900,
+      groupId: 17,
+      serialNo: 'SERIAL17',
+    })
   })
   it('keeps warehouse intake records searchable and read-only for other teams', async () => {
     vi.mocked(teamMaterialApi.receipts).mockResolvedValue({

@@ -2,7 +2,6 @@
 import ElInput from '@/components/AppInput.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
-import { type InputInstance } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { IconScan } from '@tabler/icons-vue'
@@ -25,7 +24,6 @@ const props = defineProps<{ teamId: number; paused?: boolean }>()
 const emit = defineEmits<{ received: [transfer: MaterialTransfer] }>()
 const auth = useAuthStore()
 const watermelon = useWatermelonAppearance()
-const input = ref<InputInstance>()
 const value = ref('')
 const receiver = defineModel<TeamEmployee | null>('receiver', { default: null })
 const receiverRequired = ref(false)
@@ -159,10 +157,6 @@ function handleKey(event: KeyboardEvent) {
   } else if (event.key.length === 1) hid += event.key
   else hid = ''
 }
-function focus() {
-  input.value?.focus()
-}
-defineExpose({ focus })
 watch(
   () => `${auth.currentUser?.id}:${auth.currentUser?.team_id}:${props.teamId}:${allowed.value}`,
   () => {
@@ -214,7 +208,6 @@ onBeforeUnmount(() => {
       </div>
       <div class="scanner-inline">
         <ElInput
-          ref="input"
           v-model="value"
           aria-label="扫描转料批次号"
           :placeholder="receiver ? '扫描批次条码，自动签收入库' : '请先选择接收人'"

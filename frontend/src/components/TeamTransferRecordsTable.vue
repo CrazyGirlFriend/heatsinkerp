@@ -33,6 +33,7 @@ defineProps<{
 }>()
 const emit = defineEmits<{
   detail: [MaterialTransfer]
+  editReceipt: [MaterialTransfer]
   selectionChange: [MaterialTransfer[]]
 }>()
 // Retain each list's existing saved column preferences.
@@ -191,7 +192,11 @@ const columnKeys = {
     >
       <template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template>
     </ElTableColumn>
-    <ElTableColumn label="操作" :width="kind === 'receipts' ? 100 : 110" fixed="right">
+    <ElTableColumn
+      label="操作"
+      :width="kind === 'receipts' && warehouse && canWrite ? 180 : 110"
+      fixed="right"
+    >
       <template #default="{ row }">
         <AppButton
           link
@@ -208,6 +213,18 @@ const columnKeys = {
                 ? '核对接收'
                 : '查看详情'
           }}</AppButton
+        >
+        <AppButton
+          v-if="
+            kind === 'receipts' &&
+            warehouse &&
+            canWrite &&
+            row.allowed_actions.includes('edit_receipt')
+          "
+          link
+          type="primary"
+          @click="emit('editReceipt', row)"
+          >修改入库</AppButton
         >
       </template>
     </ElTableColumn>

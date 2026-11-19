@@ -9,7 +9,7 @@ describe.each(['glass', 'watermelon'] as const)('workspace actions in %s', (appe
   it('keeps permissions, busy protection and section actions when sharing buttons', async () => {
     const wrapper = mount(TeamWorkspaceActions, {
       props: {
-        section: 'stock',
+        section: 'receipts',
         canWrite: true,
         canReceive: true,
         warehouse: true,
@@ -27,11 +27,15 @@ describe.each(['glass', 'watermelon'] as const)('workspace actions in %s', (appe
       expect(wrapper.emitted('receipt')).toBeUndefined()
       await wrapper.setProps({ openingReceipt: false })
       await button('新建入库').trigger('click')
+      expect(wrapper.text()).not.toContain('新建出库')
+      await wrapper.setProps({ section: 'outgoing' })
       await button('新建出库').trigger('click')
-      await button('扫码入库').trigger('click')
+      expect(wrapper.text()).not.toContain('汇总发货')
+      await wrapper.setProps({ inspection: true })
+      await button('汇总发货').trigger('click')
       expect(wrapper.emitted('receipt')).toHaveLength(1)
       expect(wrapper.emitted('dispatch')).toHaveLength(1)
-      expect(wrapper.emitted('scan')).toHaveLength(1)
+      expect(wrapper.emitted('shipment')).toHaveLength(1)
       await wrapper.setProps({ warehouse: false, canReceive: false })
       expect(button('新建出库').classes()).not.toContain('el-button--primary')
       await wrapper.setProps({ section: 'outgoing' })

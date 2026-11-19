@@ -16,17 +16,13 @@ import FilterDialog from './FilterDialog.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
 import TeamInventory from './TeamInventory.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
-import StockSourcePicker from './StockSourcePicker.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { warehouseColumns } from '@/types/teamInventory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
-import type { StockBatch } from '@/types/teamMaterials'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
-import { showToast } from '@/stores/toast'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { inventoryScheduleFixture, scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 
@@ -88,12 +84,7 @@ async function render(
     global: {
       plugins: [router, createPinia()],
       stubs: {
-        StockSourcePicker: true,
         InventoryPendingDialog: true,
-        WarehouseReceiptDialog: {
-          props: ['receipt'],
-          template: '<div data-receipt-edit>{{ receipt.batch_no }} · {{ receipt.version }}</div>',
-        },
       },
     },
   })
@@ -140,9 +131,8 @@ async function showColumns(...keys: string[]) {
 
 describe('warehouse grouped stock', () => {
   it.each([
-    { warehouse: true, processing: false, inspection: false },
-    { warehouse: false, processing: true, inspection: false },
-    { warehouse: false, processing: true, inspection: true },
+    { warehouse: true, processing: false },
+    { warehouse: false, processing: true },
   ])('displays serials as text without row detail navigation in %o', async (mode) => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
       items: [
@@ -228,40 +218,9 @@ describe('warehouse grouped stock', () => {
     },
   )
 
-  it('opens the current receipt from the editable inventory row', async () => {
-    const batchNo = 'TL20261117000001'
-    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
-      items: [
-        warehouseFixture({ batch_no: batchNo, receipt_editable: true }),
-        warehouseFixture({ group_id: 12, batch_no: 'TL20261117000002', receipt_editable: false }),
-      ],
-      total: 2,
-      page: 1,
-      page_size: 10,
-    })
-    const receipt = normalizeMaterialTransfer({
-      id: 51,
-      batch_no: batchNo,
-      entry_kind: 'warehouse_receipt',
-      status: 'received',
-      version: 2,
-      allowed_actions: ['edit_receipt'],
-    })
-    const read = vi.spyOn(materialTransferApi, 'get').mockResolvedValue(receipt)
-    await render(undefined, true, true, false)
-    const actions = wrapper.findAll('button').filter((button) => button.text() === '修改入库')
-    expect(actions).toHaveLength(1)
-    await actions[0]!.trigger('click')
-    await vi.dynamicImportSettled()
-    await flushPromises()
-    expect(read).toHaveBeenCalledWith(batchNo)
-    expect(wrapper.get('[data-receipt-edit]').text()).toBe(`${batchNo} · 2`)
-  })
-
   it.each([
-    { warehouse: true, processing: false, inspection: false },
-    { warehouse: false, processing: true, inspection: false },
-    { warehouse: false, processing: true, inspection: true },
+    { warehouse: true, processing: false },
+    { warehouse: false, processing: true },
   ])('shares the core stock columns across team modes %j', async (mode) => {
     await render(undefined, true, mode.warehouse, false)
     await wrapper.setProps(mode)
@@ -438,7 +397,7 @@ describe('warehouse grouped stock', () => {
     })
     await wrapper.setProps({ overview: overview() })
     await flushPromises()
-    expect(headers()).toEqual(initialHeaders)
+    expect(headers()).toEqual(initialHeaders.filter((header) => header !== '操作'))
     expect(
       settings.props('columns').some((column: { key: string }) => column.key === 'process_route'),
     ).toBe(false)
@@ -551,7 +510,7 @@ describe('warehouse grouped stock', () => {
     })
     await flushPromises()
     expect(wrapper.get('[data-field="on_hand_quantity"]').text()).toBe('999')
-    expect(wrapper.findAll('.inventory-row-actions')).toHaveLength(1)
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(1)
   })
   it('loads schedules once for the visible page and expands assigned batches without merging rows', async () => {
     const first = scheduleSummaryFixture()
@@ -626,7 +585,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.text()).toContain('交货排期加载失败')
     expect(wrapper.text()).toContain('未获取')
     expect(wrapper.text()).not.toContain('未安排')
-    expect(wrapper.findAll('.inventory-row-actions')).toHaveLength(3)
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(3)
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '重试排期')!
@@ -634,185 +593,6 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(wrapper.text()).not.toContain('交货排期加载失败')
     expect(wrapper.text()).toContain('未安排')
-  })
-  describe('single-source row actions', () => {
-    const source = (): StockBatch => ({
-      ...warehouseFixture(),
-      processing_state: undefined,
-      transfer: normalizeMaterialTransfer({
-        id: 11,
-        batch_no: 'TL11',
-        status: 'received',
-        material_type: 'raw_material',
-        next_team: { id: 901, name: '库房' },
-      }),
-      available_quantity: 20,
-      available_weight: 12,
-    })
-    const result = (items = [source()], total = items.length) => ({
-      items,
-      total,
-      page: 1,
-      page_size: 2,
-    })
-    const button = (label = '出库') =>
-      wrapper.findAll('.inventory-row-actions button').find((item) => item.text() === label)!
-    beforeEach(() => {
-      vi.mocked(showToast).mockClear()
-      vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
-        items: [warehouseFixture({ batch_count: 1, current_batch_count: 1 })],
-        total: 1,
-        page: 1,
-        page_size: 10,
-      })
-      vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue(result())
-    })
-    it.each([
-      ['出库', false],
-      ['出库', true],
-      ['转投', false],
-      ['转投', true],
-    ] as const)(
-      'opens %s directly with fresh stock in fullscreen=%s',
-      async (label, fullscreen) => {
-        await render()
-        await wrapper.setProps({ canReallocate: true, fullscreen })
-        await button(label).trigger('click')
-        await flushPromises()
-        expect(teamMaterialApi.inventorySources).toHaveBeenCalledWith(901, 11, {
-          current_only: false,
-          page: 1,
-          page_size: 2,
-        })
-        expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-        expect(wrapper.emitted(label === '出库' ? 'action' : 'reallocate')).toEqual([
-          label === '出库' ? ['dispatch', [source()]] : [source()],
-        ])
-      },
-    )
-    it.each(['出库', '转投'])(
-      'keeps selection for %s when another source has appeared',
-      async (label) => {
-        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(result([source()], 2))
-        await render()
-        await wrapper.setProps({ canReallocate: true })
-        await button(label).trigger('click')
-        await flushPromises()
-        expect(wrapper.getComponent(StockSourcePicker).props()).toMatchObject({
-          groupId: 11,
-          mode: label === '出库' ? 'dispatch' : 'reallocate',
-        })
-        expect(wrapper.emitted('action')).toBeUndefined()
-        expect(wrapper.emitted('reallocate')).toBeUndefined()
-      },
-    )
-    it('still permits direct entry with zero balances and weight-only scrap', async () => {
-      await render()
-      for (const stock of [
-        { ...source(), available_quantity: 0, available_weight: 0 },
-        {
-          ...source(),
-          transfer: { ...source().transfer, material_type: 'scrap_chips' as const },
-          scrap_available_quantity: 0,
-          scrap_available_weight: 4,
-        },
-      ]) {
-        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(result([stock]))
-        await button().trigger('click')
-        await flushPromises()
-        expect(wrapper.emitted('action')?.at(-1)).toEqual(['dispatch', [stock]])
-      }
-      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    })
-    it.each(['missing', 'unknown-balance', 'shared'])(
-      'does not auto-select %s stock',
-      async (state) => {
-        const stock = source()
-        if (state === 'unknown-balance') stock.available_weight = null
-        if (state === 'shared') stock.transfer.shared_unallocated = true
-        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(
-          result(state === 'missing' ? [] : [stock]),
-        )
-        await render()
-        await wrapper.setProps({ canReallocate: true })
-        await button('转投').trigger('click')
-        await flushPromises()
-        expect(wrapper.emitted('reallocate')).toBeUndefined()
-        expect(wrapper.getComponent(StockSourcePicker).props('mode')).toBe('reallocate')
-      },
-    )
-    it('blocks repeat clicks while loading and allows retry after failure', async () => {
-      let reject!: (reason: Error) => void
-      vi.mocked(teamMaterialApi.inventorySources).mockReturnValueOnce(
-        new Promise((_, fail) => {
-          reject = fail
-        }),
-      )
-      await render()
-      await button().trigger('click')
-      await button().trigger('click')
-      expect(teamMaterialApi.inventorySources).toHaveBeenCalledTimes(1)
-      expect(button().classes()).toContain('is-loading')
-      reject(new Error('网络连接失败'))
-      await flushPromises()
-      expect(showToast).toHaveBeenCalledWith('网络连接失败', 'error')
-      expect(wrapper.emitted('action')).toBeUndefined()
-      expect(button().attributes('disabled')).toBeUndefined()
-      await button().trigger('click')
-      await flushPromises()
-      expect(wrapper.emitted('action')).toHaveLength(1)
-    })
-    it.each(['team', 'write', 'reallocate', 'account', 'unmount'])(
-      'ignores late stock responses after changing %s',
-      async (change) => {
-        let finish!: (value: ReturnType<typeof result>) => void
-        vi.mocked(teamMaterialApi.inventorySources).mockReturnValueOnce(
-          new Promise((resolve) => {
-            finish = resolve
-          }),
-        )
-        await render()
-        await wrapper.setProps({ canReallocate: true })
-        await button('转投').trigger('click')
-        if (change === 'team') await wrapper.setProps({ teamId: 902 })
-        if (change === 'write') await wrapper.setProps({ canWrite: false })
-        if (change === 'reallocate') await wrapper.setProps({ canReallocate: false })
-        if (change === 'account') {
-          useAuthStore().session = {
-            user: { id: 42 },
-          } as ReturnType<typeof useAuthStore>['session']
-          await flushPromises()
-        }
-        if (change === 'unmount') wrapper.unmount()
-        finish(result())
-        await flushPromises()
-        expect(wrapper.emitted('action')).toBeUndefined()
-        expect(wrapper.emitted('reallocate')).toBeUndefined()
-      },
-    )
-  })
-  it('exposes reallocation on each stock row in normal and fullscreen modes and enforces write access', async () => {
-    await render('/team-workspaces/901?tab=stock', true, false)
-    await wrapper.setProps({ canReallocate: true })
-    for (const fullscreen of [false, true]) {
-      await wrapper.setProps({ fullscreen })
-      const button = wrapper
-        .findAll('.inventory-row-actions button')
-        .find((item) => item.text() === '转投')!
-      expect(button).toBeDefined()
-      await button.trigger('click')
-      const picker = wrapper.getComponent(StockSourcePicker)
-      expect(picker.props('mode')).toBe('reallocate')
-      const source = { transfer: { id: 11 } } as StockBatch
-      picker.vm.$emit('selected', [source])
-      await flushPromises()
-      expect(wrapper.emitted('reallocate')?.at(-1)).toEqual([source])
-      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    }
-    await wrapper.setProps({ canWrite: false })
-    expect(
-      wrapper.findAll('.inventory-row-actions button').some((item) => item.text() === '转投'),
-    ).toBe(false)
   })
   it('shows waste as a material type without duplicate processing or waste balance columns', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
@@ -943,35 +723,28 @@ describe('warehouse grouped stock', () => {
       }
     },
   )
-  it.each([
-    { fullscreen: true, inspection: false },
-    { fullscreen: false, inspection: false },
-    { fullscreen: true, inspection: true },
-    { fullscreen: false, inspection: true },
-  ])(
-    'uses one processing registration entry and respects permissions in mode %j',
-    async ({ fullscreen, inspection }) => {
-      await render('/team-workspaces/901?tab=stock', true, false)
-      await wrapper.setProps({ processing: true, fullscreen, inspection })
+  it.each([true, false])(
+    'offers a single processing shortcut for the checked batch (fullscreen=%s)',
+    async (fullscreen) => {
+      vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+        items: [warehouseFixture({ batch_no: 'TL11', batch_count: 1 })],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
+      await render(undefined, true, false, false)
+      await wrapper.setProps({ processing: true, fullscreen })
+      expect(wrapper.find('.inventory-process').exists()).toBe(false)
+      await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
       const entry = wrapper.get('.workspace-toolbar .inventory-process')
       expect(entry.isVisible()).toBe(true)
-      expect(entry.classes()).not.toContain('el-button--primary')
-      expect(wrapper.findAll('button').some((button) => button.text() === '检验登记')).toBe(false)
-      const rowButtons = wrapper.findAll('.inventory-row-actions button')
-      expect(rowButtons.some((button) => button.text() === '检验')).toBe(false)
-      expect(rowButtons.some((button) => button.text() === '汇总发货')).toBe(inspection)
       await entry.trigger('click')
-      expect(wrapper.emitted('process')).toBeUndefined()
-      await rowButtons.find((button) => button.text() === '加工登记')!.trigger('click')
-      expect(wrapper.emitted('process')).toEqual([[data()[0]!.group_id]])
+      expect(wrapper.emitted('process')).toEqual([[11]])
+      const rowActions = wrapper.findAll('tbody button').map((button) => button.text())
+      for (const label of ['加工登记', '汇总发货', '修改入库', '出库', '转投']) {
+        expect(rowActions).not.toContain(label)
+      }
       await wrapper.setProps({ canWrite: false })
-      expect(wrapper.find('.inventory-process').exists()).toBe(false)
-      expect(
-        wrapper
-          .findAll('.inventory-row-actions button')
-          .some((button) => ['加工登记', '汇总发货'].includes(button.text())),
-      ).toBe(false)
-      await wrapper.setProps({ canWrite: true, processing: false })
       expect(wrapper.find('.inventory-process').exists()).toBe(false)
     },
   )
@@ -980,6 +753,8 @@ describe('warehouse grouped stock', () => {
       items: [
         warehouseFixture({
           material_type: 'semi_finished',
+          batch_count: 1,
+          batch_no: 'TL11',
           owned_quantity: 12,
           on_hand_quantity: 12,
           processing_registered_batch_count: 1,
@@ -1002,13 +777,11 @@ describe('warehouse grouped stock', () => {
     expect(
       wrapper.getComponent(ProcessingStockStatus).getComponent(ElTooltip).props('disabled'),
     ).toBe(true)
-    await wrapper
-      .findAll('.inventory-row-actions button')
-      .find((button) => button.text() === '加工登记')!
-      .trigger('click')
+    await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
+    await wrapper.get('.inventory-process').trigger('click')
     expect(wrapper.emitted('process')).toEqual([[11]])
   })
-  it('offers only the remaining operations on completed stock from the row and selection', async () => {
+  it('offers only the remaining operations on checked completed stock', async () => {
     const items = [false, true].map((hasNext, index) =>
       warehouseFixture({
         group_id: index + 11,
@@ -1030,10 +803,6 @@ describe('warehouse grouped stock', () => {
     })
     await render(undefined, true, false, false)
     await wrapper.setProps({ processing: true })
-    const [finished, nextStep] = wrapper.findAll('.inventory-row-actions')
-    expect(finished!.text()).not.toContain('登记')
-    expect(finished!.text()).toContain('出库')
-    expect(nextStep!.text()).toContain('登记下一工序')
     const check = (id: number) => wrapper.get(`label[aria-label="勾选批次 TL${id}"] input`)
     await check(11).setValue(true)
     expect(wrapper.find('.inventory-process').exists()).toBe(false)
@@ -1182,9 +951,7 @@ describe('warehouse grouped stock', () => {
       '加工完成',
       '待返工',
     ])
-    expect(
-      wrapper.findAll('.inventory-row-actions').map((row) => row.text().includes('加工登记')),
-    ).toEqual([true, true, false, true])
+    expect(wrapper.find('.inventory-process').exists()).toBe(false)
     expect(headers()).toContain('加工状态')
     const picker = select('库存加工状态筛选')
     expect(
@@ -1415,6 +1182,8 @@ describe('warehouse grouped stock', () => {
     async (warehouse) => {
       const update = async (owned: number, available: number, pending: number) => {
         const row = warehouseFixture({
+          batch_no: 'TL11',
+          batch_count: 1,
           owned_quantity: owned,
           owned_weight: owned,
           on_hand_quantity: available,
@@ -1452,6 +1221,7 @@ describe('warehouse grouped stock', () => {
       await update(100, 80, 20)
       await update(80, 80, 0)
       await update(80, 0, 80)
+      await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
       expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(true)
       expect(wrapper.text()).toContain('全部待签收')
       expect(wrapper.findAll('button').some((button) => button.text() === '在途转出')).toBe(true)
@@ -1543,7 +1313,7 @@ describe('warehouse grouped stock', () => {
         .get('.inventory-row-actions')
         .findAll('button')
         .map((button) => button.text()),
-    ).toEqual(['出库', '在途转出'])
+    ).toEqual(['在途转出'])
     columnSettings().vm.$emit(
       'change',
       warehouseColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
@@ -1723,7 +1493,7 @@ describe('warehouse grouped stock', () => {
     })
     await render('/team-workspaces/901?tab=stock&availability=owned', true, false)
     await showColumns('stock_status', 'on_hand_weight')
-    expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
     expect(wrapper.text()).toContain('全部待签收')
     await wrapper
       .findAll('button')
@@ -1827,6 +1597,8 @@ describe('warehouse grouped stock', () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
       items: [
         warehouseFixture({
+          batch_count: 1,
+          batch_no: 'TL11',
           material_type: 'sludge',
           owned_quantity: 0,
           owned_weight: 10,
@@ -1839,6 +1611,8 @@ describe('warehouse grouped stock', () => {
         }),
         warehouseFixture({
           group_id: 12,
+          batch_count: 1,
+          batch_no: 'TL12',
           owned_quantity: null,
           owned_weight: null,
           on_hand_quantity: null,
@@ -1854,12 +1628,14 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, false)
     await showColumns('stock_status', 'on_hand_weight')
     expect(hints()).toContain('可处理量 5 kg')
+    expect(wrapper.find('label[aria-label="勾选批次 TL12"]').exists()).toBe(false)
+    await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
     const buttons = wrapper.findAll('button').filter((button) => button.text() === '出库')
     expect(buttons[0]!.attributes('disabled')).toBeUndefined()
     expect(buttons).toHaveLength(1)
     expect(hints()).toContain('当前剩余 — 件 / — kg')
   })
-  it('uses upstream team names on workshops and scopes outbound to the chosen classified row', async () => {
+  it('uses upstream team names and scopes filters to the chosen workshop', async () => {
     const workshopRows = [
       warehouseFixture({ receipt_source: 'internal', source_team_id: 1, source_name: '库房' }),
       warehouseFixture({
@@ -1900,15 +1676,6 @@ describe('warehouse grouped stock', () => {
         .findAllComponents(ElOption)
         .map((option) => option.props('label')),
     ).toEqual(['库房', '退火'])
-    await wrapper
-      .findAll('button')
-      .filter((button) => button.text() === '出库')[1]!
-      .trigger('click')
-    expect(wrapper.getComponent(StockSourcePicker).props()).toMatchObject({
-      teamId: 901,
-      groupId: 12,
-      groupLabel: '000128 · 成品 · 退火',
-    })
     select('库存上序班组筛选').vm.$emit('update:modelValue', 1)
     select('库存物料类型筛选').vm.$emit('update:modelValue', 'semi_finished')
     await flushPromises()
@@ -2183,6 +1950,8 @@ describe('warehouse grouped stock', () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
       items: [
         warehouseFixture({
+          batch_count: 1,
+          batch_no: 'TL11',
           purpose_name: '去毛刺',
           on_hand_quantity: 0,
           on_hand_weight: 0.625,
@@ -2210,6 +1979,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['0', '0.625'])
     expect(wrapper.find('.inventory-movement').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('加工完成')
+    await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
     expect(
       wrapper
         .findAll('button')
@@ -2302,22 +2072,6 @@ describe('warehouse grouped stock', () => {
       }),
     )
     expect(headers()[0]).toBe('数量（件）')
-  })
-  it('opens the outbound picker for the selected inventory group', async () => {
-    await render(undefined, true, true, false)
-    await wrapper
-      .findAll('button')
-      .find((item) => item.text() === '出库')!
-      .trigger('click')
-    expect(wrapper.getComponent(StockSourcePicker).props('groupId')).toBe(11)
-    const sources = [{ transfer: { id: 11 } }] as StockBatch[]
-    wrapper.getComponent(StockSourcePicker).vm.$emit('selected', sources)
-    await flushPromises()
-    expect(wrapper.emitted('action')).toEqual([['dispatch', sources]])
-    expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
-    await wrapper.setProps({ canWrite: false })
-    await flushPromises()
-    expect(wrapper.findAll('button').some((item) => item.text() === '出库')).toBe(false)
   })
   it('refreshes the inventory table on pushed overview while preserving drafts', async () => {
     await render(undefined, true, true, false)

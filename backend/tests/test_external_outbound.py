@@ -37,7 +37,7 @@ def test_outbound_requires_formal_team_code_and_classification(code, kind, entry
     from app.material_stock import require_outbound_actor
 
     team = SimpleNamespace(id=1, code=code, kind=kind, active=True)
-    user = SimpleNamespace(role="TEAM", team_id=1, team=team)
+    user = SimpleNamespace(role="TEAM", team_id=1, team=team, active=True)
     if allowed:
         assert require_outbound_actor(user, 1, entry_kind) is team
     else:
@@ -244,17 +244,27 @@ def test_legacy_external_submission_self_confirmation_and_no_phantom_receipt(cli
     )
 
 
+def test_external_dispatch_has_no_warehouse_review(client, outbound):
+    line = legacy_dispatch(client, outbound).json()["items"][0]
+    url = f"/api/material-transfers/{line['batch_no']}"
+    admin_view = client.get(url).json()
+    assert "reject" not in admin_view["allowed_actions"]
+    response = client.post(url + "/reject", json={"expected_version": line["version"]})
+    assert response.status_code == 409
+    assert client.get(url).json() == admin_view
+
+
 def test_external_authorization_no_internal_self_receipt_loophole(client, outbound):
     line = legacy_dispatch(client, outbound).json()["items"][0]
     url = f"/api/material-transfers/{line['batch_no']}"
-    for headers in ({}, outbound["other_headers"]):
+    for headers, expected in (({"Authorization": ""}, 401), (outbound["other_headers"], 403)):
         assert (
             client.post(
                 url + "/confirm-outbound",
                 headers=headers,
                 json={"idempotency_key": "denied"},
             ).status_code
-            == 403
+            == expected
         )
         assert (
             sender_post(
@@ -274,7 +284,7 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
                     ],
                 },
             ).status_code
-            == 403
+            == expected
         )
     assert (
         receipt_post(

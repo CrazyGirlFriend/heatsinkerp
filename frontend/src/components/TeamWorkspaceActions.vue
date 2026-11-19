@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { FullScreen, Plus, Refresh } from '@element-plus/icons-vue'
+import { Plus, Refresh } from '@element-plus/icons-vue'
 import ElButton from '@/components/AppButton.vue'
-import { IconPlus, IconQrcode, IconRefresh } from '@tabler/icons-vue'
+import { IconPlus, IconRefresh } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import { computed } from 'vue'
 import type { TeamWorkspaceSection } from '@/config/teamWorkspaces'
@@ -15,41 +15,29 @@ const props = withDefaults(
     openingReceipt: boolean
     openingDispatch: boolean
     loading: boolean
-    showScan?: boolean
+    inspection?: boolean
     showRefresh?: boolean
     warehouse?: boolean
   }>(),
-  { showScan: true, showRefresh: true },
+  { showRefresh: true },
 )
 const emit = defineEmits<{
   dispatch: []
   receipt: []
-  scan: []
+  shipment: []
   loss: []
   reallocate: []
   refresh: []
 }>()
-const receiptVisible = computed(
-  () => props.canReceive && ['stock', 'receipts'].includes(props.section),
-)
-const dispatchVisible = computed(
-  () => props.canWrite && ['stock', 'outgoing'].includes(props.section),
-)
-const scanVisible = computed(() => props.canWrite && props.showScan && props.section === 'stock')
+const receiptVisible = computed(() => props.canReceive && props.section === 'receipts')
+const dispatchVisible = computed(() => props.canWrite && props.section === 'outgoing')
 const lossVisible = computed(() => props.canWrite && props.section === 'losses')
 const reallocationVisible = computed(() => props.canReallocate && props.section === 'reallocations')
 </script>
 
 <template>
   <div
-    v-if="
-      receiptVisible ||
-      dispatchVisible ||
-      scanVisible ||
-      lossVisible ||
-      reallocationVisible ||
-      showRefresh
-    "
+    v-if="receiptVisible || dispatchVisible || lossVisible || reallocationVisible || showRefresh"
     class="workspace-actions"
     role="group"
     aria-label="班组操作"
@@ -71,12 +59,11 @@ const reallocationVisible = computed(() => props.canReallocate && props.section 
       <IconPlus v-if="watermelon" :size="17" />新建出库
     </ElButton>
     <ElButton
-      v-if="scanVisible"
-      class="action-cool"
-      :icon="watermelon ? undefined : FullScreen"
-      @click="emit('scan')"
+      v-if="dispatchVisible && inspection"
+      :loading="openingDispatch"
+      @click="emit('shipment')"
     >
-      <IconQrcode v-if="watermelon" :size="17" />扫码入库
+      汇总发货
     </ElButton>
     <ElButton
       v-if="lossVisible"

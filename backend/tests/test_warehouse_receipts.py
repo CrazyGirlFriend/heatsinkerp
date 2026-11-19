@@ -90,6 +90,9 @@ def test_manual_intake_is_a_stock_origin_not_a_self_transfer(client, warehouse):
     assert (
         receipt["barcode_payload"] == receipt["batch_no"] and receipt["barcode_type"] == "CODE128"
     )
+    for actor, editable in (("headers", True), ("other_headers", False)):
+        listing = client.get(warehouse["url"], headers=warehouse[actor]).json()
+        assert ("edit_receipt" in listing["items"][0]["allowed_actions"]) == editable
     assert receipt["created_at"] == receipt["received_at"]
     assert [event["action"] for event in receipt["history"]] == ["stocked"]
     assert receipt["history"][0]["changes"]["entry_kind"]["after"] == "warehouse_receipt"
@@ -174,6 +177,8 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
     previous = response.json()["items"][0]
     detail = client.get(f"/api/material-transfers/{origin['batch_no']}").json()
     assert "edit_receipt" not in detail["allowed_actions"]
+    listing = client.get(warehouse["url"], headers=warehouse["headers"]).json()
+    assert "edit_receipt" not in listing["items"][0]["allowed_actions"]
     blocked = client.patch(
         f"{warehouse['url']}/{origin['id']}",
         json={

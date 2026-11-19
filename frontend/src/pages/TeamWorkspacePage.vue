@@ -9,7 +9,7 @@ import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import TeamTransferRecordsTable from '@/components/TeamTransferRecordsTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ElOption, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -20,6 +20,7 @@ import { useTeamWorkspaceFilters } from '@/composables/useTeamWorkspaceFilters'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
+import InventoryShipmentDialog from '@/components/InventoryShipmentDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamDashboard from '@/components/TeamDashboard.vue'
@@ -458,6 +459,7 @@ const losses = ref<MaterialLoss[]>([])
 const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
+const editingReceipt = ref<MaterialTransfer | null>(null)
 const processingGroupId = ref<number>()
 const openingProcessing = ref(0)
 const processingOpen = ref(false),
@@ -530,12 +532,16 @@ const reallocationOpen = ref(false),
   reallocationSource = ref<StockBatch | null>(null)
 const pickerOpen = ref(false)
 const reworkRequestOpen = ref(false)
-const pickerMode = ref<'loss' | 'reallocate'>('loss')
+type StockAction = 'loss' | 'reallocate' | 'shipment'
+const pickerMode = ref<StockAction>('loss')
+const shipmentSource = ref<StockBatch | null>(null)
+const canShip = computed(
+  () => canWrite.value && team.value?.code === 'FACTORY-QC' && team.value.kind === 'production',
+)
 const openingDispatch = ref(false)
 const processingDispatch = ref<{ recordId: number; version: number } | null>(null)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
 const actionSources = ref<StockBatch[]>([])
-const scanner = ref<InstanceType<typeof MaterialReceiptScanner>>()
 const receiptReceiver = ref<TeamEmployee | null>(null)
 watch(
   [teamKey, () => auth.currentUser?.id, canWrite],
@@ -552,15 +558,15 @@ const actionBindings = computed(() => ({
   canReceive: canReceive.value,
   canReallocate: canReallocate.value,
   openingReceipt: openingReceipt.value,
-  openingDispatch: openingDispatch.value || Boolean(inventoryPanel.value?.preparingDispatch),
+  openingDispatch: openingDispatch.value,
   loading: loading.value,
   warehouse: isWarehouse.value,
-  showScan: canWrite.value && tab.value !== 'pending',
+  inspection: canShip.value,
   onDispatch: openNewDispatch,
   onLoss: () => openNewStockAction('loss'),
   onReallocate: () => openNewStockAction('reallocate'),
   onReceipt: openReceipt,
-  onScan: focusScan,
+  onShipment: () => openNewStockAction('shipment'),
   onRefresh: loadView,
 }))
 let version = 0
@@ -664,6 +670,9 @@ function closeDetails() {
   reallocationOpen.value = false
   reallocationSource.value = null
   receiptOpen.value = false
+  openingReceipt.value = false
+  editingReceipt.value = null
+  shipmentSource.value = null
   actionSources.value = []
   initialSchedule.value = undefined
   processingOpen.value = false
@@ -876,38 +885,37 @@ async function savedReallocation(item: MaterialTransfer) {
 }
 function openNewDispatch() {
   if (!canWrite.value || openingDispatch.value) return
-  if (tab.value === 'stock') {
-    void inventoryPanel.value?.dispatchSelected()
-    return
-  }
   void router.push({ path: route.path, query: { tab: 'stock' } })
-  showToast('在库存列表勾选批次后，点「新建出库」', 'info')
+  showToast('在库存列表勾选批次后，点「出库」', 'info')
 }
-async function openNewStockAction(mode: 'loss' | 'reallocate') {
-  if (!canWrite.value || openingDispatch.value || (mode === 'reallocate' && !canReallocate.value))
-    return
+function canStartStockAction(mode: StockAction) {
+  if (mode === 'reallocate') return canReallocate.value
+  if (mode === 'shipment') return canShip.value
+  return canWrite.value
+}
+async function openNewStockAction(mode: StockAction) {
+  if (openingDispatch.value || !canStartStockAction(mode)) return
   closeDetails()
   const current = actionVersion
   pickerMode.value = mode
   openingDispatch.value = true
   try {
     await auth.refreshCurrentUser()
-    if (
-      current === actionVersion &&
-      canWrite.value &&
-      (mode !== 'reallocate' || canReallocate.value)
-    )
-      pickerOpen.value = true
+    if (current === actionVersion && canStartStockAction(mode)) pickerOpen.value = true
   } catch {
     showToast('账号信息刷新失败，请重试', 'error')
   } finally {
     if (current === actionVersion) openingDispatch.value = false
   }
 }
-function selectStockSources(sources: StockBatch[]) {
-  if (pickerMode.value === 'reallocate') {
-    if (sources[0]) void openReallocation(sources[0])
-  } else void openAction(pickerMode.value, sources)
+function selectStockSource(source: StockBatch) {
+  if (!canStartStockAction(pickerMode.value)) return
+  if (pickerMode.value === 'shipment') {
+    pickerOpen.value = false
+    shipmentSource.value = source
+  } else if (pickerMode.value === 'reallocate') {
+    void openReallocation(source)
+  } else void openAction('loss', [source])
 }
 function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
   const first = 'items' in result ? result.items[0] : undefined
@@ -926,17 +934,27 @@ function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
   }
 }
 
-async function openReceipt() {
+async function openReceipt(row?: MaterialTransfer) {
   if (openingReceipt.value || !canReceive.value) return
-  const scope = teamKey.value
+  const current = ++actionVersion
   openingReceipt.value = true
   try {
     await auth.refreshCurrentUser()
-    if (scope === teamKey.value && canReceive.value) receiptOpen.value = true
-  } catch {
-    showToast('账号信息刷新失败，请重试', 'error')
+    if (current !== actionVersion || !canReceive.value) return
+    const receipt = row ? await materialTransferApi.get(row.batch_no) : null
+    if (current !== actionVersion || !canReceive.value) return
+    if (receipt && !receipt.allowed_actions.includes('edit_receipt')) {
+      showToast('该入库单已不能修改', 'info')
+      void loadView()
+      return
+    }
+    editingReceipt.value = receipt
+    receiptOpen.value = true
+  } catch (error) {
+    if (current === actionVersion)
+      showToast(error instanceof Error ? error.message : '入库单打开失败，请重试', 'error')
   } finally {
-    openingReceipt.value = false
+    if (current === actionVersion) openingReceipt.value = false
   }
 }
 function savedReceipt(transfer: MaterialTransfer) {
@@ -946,7 +964,7 @@ function savedReceipt(transfer: MaterialTransfer) {
     ) !== teamKey.value
   )
     return
-  showToast(`入库单 ${transfer.batch_no} 已入库`, 'success')
+  showToast(`入库单 ${transfer.batch_no} ${editingReceipt.value ? '已修改' : '已入库'}`, 'success')
   void loadView(true)
 }
 
@@ -1097,11 +1115,6 @@ watch(
   },
 )
 
-async function focusScan() {
-  if (tab.value !== 'pending') await router.replace({ path: route.path, query: { tab: 'pending' } })
-  await nextTick()
-  scanner.value?.focus()
-}
 onMounted(() => {
   if (!directory.loaded && !directory.loading) void directory.refreshTeamDirectory()
   document.addEventListener('visibilitychange', syncVisibility)
@@ -1279,19 +1292,14 @@ onBeforeUnmount(() => {
             :warehouse="isWarehouse"
             :overview="overview"
             :can-write="canWrite"
-            :can-reallocate="canReallocate"
             :fullscreen="fullscreen"
             :processing="hasProcessing"
             :processing-loading-group-id="openingProcessing ? processingGroupId : undefined"
             @process="openProcessing"
-            :inspection="team?.code === 'FACTORY-QC'"
-            @reallocate="openReallocation"
             @refresh="loadView"
             @changed="loadView"
             @action="openAction"
-            ><template v-if="canWrite || canReceive" #actions
-              ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
-          ></TeamInventory>
+          />
         </template>
         <template v-else>
           <div class="team-list-layout">
@@ -1406,31 +1414,24 @@ onBeforeUnmount(() => {
                       /></label>
                     </div> </FilterDialog
                 ></template>
-                <template
-                  v-if="
-                    !fullscreen &&
-                    tab !== 'pending' &&
-                    (canWrite || canReceive || tab === 'outgoing')
-                  "
-                  #actions
-                >
-                  <div v-show="!fullscreen" class="workspace-toolbar-actions">
-                    <ElButton
-                      v-if="tab === 'outgoing'"
-                      :disabled="!selectedPrintRows.length"
-                      @click="openPrint(selectedPrintRows)"
-                      >合并打印<span v-if="selectedPrintRows.length"
-                        >（{{ selectedPrintRows.length }}）</span
-                      ></ElButton
+                <template v-if="!fullscreen && tab === 'outgoing'" #actions>
+                  <ElButton
+                    :disabled="!selectedPrintRows.length"
+                    @click="openPrint(selectedPrintRows)"
+                  >
+                    合并打印<span v-if="selectedPrintRows.length"
+                      >（{{ selectedPrintRows.length }}）</span
                     >
-                    <TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></div
-                ></template>
+                  </ElButton>
+                </template>
+                <template #primary-actions>
+                  <TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" />
+                </template>
               </WorkspaceDataToolbar>
 
               <MaterialReceiptScanner
                 v-if="tab === 'pending' && canWrite"
                 :key="teamId"
-                ref="scanner"
                 v-model:receiver="receiptReceiver"
                 :team-id="teamId"
                 :paused="
@@ -1466,6 +1467,7 @@ onBeforeUnmount(() => {
                   :column-settings-target="columnSettingsTarget"
                   :column-query="tableQuery.controller.value"
                   @detail="tab === 'pending' ? openIncoming($event) : openDetail($event)"
+                  @edit-receipt="openReceipt"
                   @selection-change="selectedPrintRows = $event"
                 />
                 <WorkspaceTable
@@ -1671,9 +1673,22 @@ onBeforeUnmount(() => {
         :mode="pickerMode"
         :processing="hasProcessing"
         @close="closeDetails"
-        @selected="selectStockSources"
+        @selected="selectStockSource"
       />
-      <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
+      <InventoryShipmentDialog
+        v-if="shipmentSource && canShip"
+        :team-id="teamId"
+        :group-id="Number(shipmentSource.transfer.id)"
+        :serial-no="shipmentSource.transfer.serial_no"
+        @close="shipmentSource = null"
+        @saved="loadView()"
+      />
+      <WarehouseReceiptDialog
+        v-model="receiptOpen"
+        :team-id="teamId"
+        :receipt="editingReceipt"
+        @saved="savedReceipt"
+      />
       <SerialReallocationDialog
         v-if="reallocationSource"
         v-model="reallocationOpen"

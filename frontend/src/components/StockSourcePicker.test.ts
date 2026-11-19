@@ -57,14 +57,12 @@ afterEach(() => {
 })
 async function render() {
   wrapper = mount(StockSourcePicker, {
-    props: { teamId: 914 },
+    props: { teamId: 914, mode: 'loss' },
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
 }
-const nextButton = () =>
-  wrapper.findAll('button').find((button) => button.text() === '下一步：填写出库')!
-describe('stock selection for new outbound', () => {
+describe('stock selection for record actions', () => {
   it('selects one available source for loss registration without outbound controls', async () => {
     const held = { ...source(2), inspection_hold_id: 9 }
     vi.mocked(teamMaterialApi.stock).mockResolvedValue({
@@ -80,7 +78,7 @@ describe('stock selection for new outbound', () => {
     expect(wrapper.find('[aria-label="丢失库存搜索"]').exists()).toBe(true)
     expect(wrapper.get('button[aria-label="登记丢失 TL2"]').attributes('disabled')).toBeDefined()
     await wrapper.get('button[aria-label="登记丢失 TL1"]').trigger('click')
-    expect(wrapper.emitted('selected')).toEqual([[[source(1)]]])
+    expect(wrapper.emitted('selected')).toEqual([[source(1)]])
   })
   it('selects a single batch for reallocation without outbound controls or allowing shared stock', async () => {
     const normal = source(1)
@@ -97,7 +95,31 @@ describe('stock selection for new outbound', () => {
     expect(wrapper.text()).not.toContain('下一步：填写出库')
     expect(wrapper.get('button[aria-label="转投 TL2"]').attributes('disabled')).toBeDefined()
     await wrapper.get('button[aria-label="转投 TL1"]').trigger('click')
-    expect(wrapper.emitted('selected')).toEqual([[[normal]]])
+    expect(wrapper.emitted('selected')).toEqual([[normal]])
+  })
+  it('only selects eligible inspection stock for a summary shipment', async () => {
+    const normal = source(1)
+    const scrap = {
+      ...source(2),
+      transfer: { ...source(2).transfer, material_type: 'sludge' as const },
+      scrap_available_quantity: 0,
+      scrap_available_weight: 2,
+    }
+    const shared = { ...source(3), transfer: { ...source(3).transfer, shared_unallocated: true } }
+    const held = { ...source(4), inspection_hold_id: 9 }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: [normal, scrap, shared, held],
+      total: 4,
+      page: 1,
+      page_size: 20,
+    })
+    await render()
+    await wrapper.setProps({ mode: 'shipment' })
+    for (const id of [2, 3, 4]) {
+      expect(wrapper.get(`button[aria-label="选择 TL${id}"]`).attributes('disabled')).toBeDefined()
+    }
+    await wrapper.get('button[aria-label="选择 TL1"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[normal]])
   })
   it('shows processing role and current dimensions before choosing a physical child batch', async () => {
     const row = {
@@ -136,7 +158,7 @@ describe('stock selection for new outbound', () => {
     expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
     expect(wrapper.get('tbody tr').text()).not.toContain('old')
   })
-  it.each(['dispatch', 'reallocate'] as const)(
+  it.each(['shipment', 'reallocate'] as const)(
     'hides historical processing classification in non-processing teams during %s selection',
     async (mode) => {
       const row = {
@@ -172,7 +194,7 @@ describe('stock selection for new outbound', () => {
     })
     await render()
     expect(wrapper.text()).toContain('暂无已签收来源批次')
-    expect(nextButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.find('button[aria-label^="登记丢失 TL"]').exists()).toBe(false)
     expect(teamMaterialApi.overview).not.toHaveBeenCalled()
   })
   it('does not confuse unmatched filters with the whole team having no dispatchable stock', async () => {
@@ -183,8 +205,8 @@ describe('stock selection for new outbound', () => {
       page: 1,
       page_size: 20,
     })
-    await wrapper.get('input[aria-label="出库库存搜索"]').setValue('不存在的流水号')
-    await wrapper.get('input[aria-label="出库库存搜索"]').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="丢失库存搜索"]').setValue('不存在的流水号')
+    await wrapper.get('input[aria-label="丢失库存搜索"]').trigger('keyup.enter')
     await flushPromises()
     expect(wrapper.text()).toContain('没有符合筛选条件的来源批次')
     expect(wrapper.text()).not.toContain('全部转出')
@@ -237,59 +259,16 @@ describe('stock selection for new outbound', () => {
     expect(cells[headings.indexOf('账面件数')]!.text()).toBe('0')
     expect(cells[headings.indexOf('账面重量 (kg)')]!.text()).toBe('1.234')
     expect(wrapper.find('.material-amount').exists()).toBe(false)
-    await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
-    expect(wrapper.get('.picker-toolbar').text()).toContain('清空勾选')
-    expect(wrapper.find('.batch-selection-bar').exists()).toBe(false)
-    await nextButton().trigger('click')
-    expect(wrapper.emitted('selected')?.[0]?.[0]).toEqual([row])
+    await wrapper.get('button[aria-label="登记丢失 TL1"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[row]])
   })
-  it('restricts a warehouse row to its group across filters and clears selection if the group changes', async () => {
-    vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue({
-      items: [source(31)],
-      total: 1,
-      page: 1,
-      page_size: 20,
-    })
-    wrapper = mount(StockSourcePicker, {
-      props: { teamId: 901, groupId: 11, groupLabel: '000128 · 成品 · 车间转入 · 检验' },
-      global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
-    })
-    await flushPromises()
-    expect(teamMaterialApi.stock).not.toHaveBeenCalled()
-    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(
-      901,
-      11,
-      expect.objectContaining({ current_only: false }),
-    )
-    await wrapper.get('label[aria-label="选择出库 TL31"] input').setValue(true)
-    await wrapper.get('input[aria-label="出库库存搜索"]').setValue('000128')
-    await wrapper.get('input[aria-label="出库库存搜索"]').trigger('keyup.enter')
-    await flushPromises()
-    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(
-      901,
-      11,
-      expect.objectContaining({ query: '000128', current_only: false }),
-    )
-    await wrapper.setProps({ groupId: 12 })
-    await flushPromises()
-    expect(nextButton().attributes('disabled')).toBeDefined()
-    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(
-      901,
-      12,
-      expect.objectContaining({ page: 1 }),
-    )
-  })
-  it('loads only this team’s available stock, supports paging and retains cross-page selections', async () => {
+  it('paginates available stock and selects the batch on the requested page', async () => {
     await render()
-    expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, {
-      availability: 'dispatchable',
-      query: undefined,
-      page: 1,
-      page_size: 20,
-    })
-    expect(nextButton().attributes('disabled')).toBeDefined()
+    expect(teamMaterialApi.stock).toHaveBeenCalledWith(
+      914,
+      expect.objectContaining({ availability: 'dispatchable', page: 1, page_size: 20 }),
+    )
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([20, 50, 100])
-    await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
     vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({
       items: [source(21)],
       total: 40,
@@ -298,11 +277,8 @@ describe('stock selection for new outbound', () => {
     })
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
     await flushPromises()
-    await wrapper.get('label[aria-label="选择出库 TL21"] input').setValue(true)
-    await nextButton().trigger('click')
-    expect(
-      (wrapper.emitted('selected')![0]![0] as StockBatch[]).map((row) => row.transfer.id),
-    ).toEqual([1, 21])
+    await wrapper.get('button[aria-label="登记丢失 TL21"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[source(21)]])
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 50)
     await flushPromises()
     expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(
@@ -318,65 +294,28 @@ describe('stock selection for new outbound', () => {
       page_size: 20,
     })
     await render()
-    expect(
-      wrapper.get('label[aria-label="选择出库 TL1"] input').attributes('disabled'),
-    ).toBeUndefined()
-    await wrapper.get('input[aria-label="出库库存搜索"]').setValue(' 铜 ')
-    await wrapper.get('input[aria-label="出库库存搜索"]').trigger('keyup.enter')
+    expect(wrapper.get('button[aria-label="登记丢失 TL1"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('input[aria-label="丢失库存搜索"]').setValue(' 铜 ')
+    await wrapper.get('input[aria-label="丢失库存搜索"]').trigger('keyup.enter')
     await flushPromises()
     expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(
       914,
       expect.objectContaining({ query: '铜', availability: 'dispatchable', page: 1 }),
     )
-    await wrapper.get('label[aria-label="选择本页出库物料"] input').setValue(true)
-    await nextButton().trigger('click')
-    expect(
-      (wrapper.emitted('selected')![0]![0] as StockBatch[]).map((row) => row.transfer.id),
-    ).toEqual([1, 2])
+    await wrapper.get('button[aria-label="登记丢失 TL2"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[source(2)]])
   })
   it('shows read failures, prevents progression and allows retry', async () => {
     vi.mocked(teamMaterialApi.stock).mockRejectedValueOnce(new Error('库存暂不可用'))
     await render()
     expect(wrapper.text()).toContain('库存暂不可用')
-    expect(nextButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.find('button[aria-label^="登记丢失 TL"]').exists()).toBe(false)
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '重新加载')!
       .trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('TL1')
-  })
-  it('limits a batch to 100 sources across pages and allows clearing selections', async () => {
-    vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({
-      items: Array.from({ length: 100 }, (_, i) => source(i + 1)),
-      total: 101,
-      page: 1,
-      page_size: 100,
-    })
-    await render()
-    await wrapper.get('label[aria-label="选择本页出库物料"] input').setValue(true)
-    vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({
-      items: [source(101)],
-      total: 101,
-      page: 2,
-      page_size: 100,
-    })
-    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
-    await flushPromises()
-    expect(
-      wrapper.get('label[aria-label="选择出库 TL101"] input').attributes('disabled'),
-    ).toBeDefined()
-    await nextButton().trigger('click')
-    expect(wrapper.emitted('selected')?.[0]?.[0]).toHaveLength(100)
-    await wrapper
-      .get('.picker-toolbar')
-      .findAll('button')
-      .find((button) => button.text() === '清空勾选')!
-      .trigger('click')
-    expect(nextButton().attributes('disabled')).toBeDefined()
-    expect(
-      wrapper.get('label[aria-label="选择出库 TL101"] input').attributes('disabled'),
-    ).toBeUndefined()
   })
   it('discards late data and selection when switching team', async () => {
     let finish!: (value: Awaited<ReturnType<typeof teamMaterialApi.stock>>) => void
@@ -392,7 +331,7 @@ describe('stock selection for new outbound', () => {
     await flushPromises()
     expect(wrapper.text()).not.toContain('TL999')
     expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(900, expect.any(Object))
-    expect(nextButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('selected')).toBeUndefined()
   })
 })
 
@@ -405,13 +344,12 @@ it('explains inspection holds and selects only unaffected lots', async () => {
   })
   await render()
   expect(wrapper.text()).toContain('待处理 · 禁止转出')
-  expect(wrapper.get('[aria-label="选择出库 TL1"] input').attributes('disabled')).toBeDefined()
-  await wrapper.get('[aria-label="选择本页出库物料"] input').setValue(true)
-  await nextButton().trigger('click')
-  expect(wrapper.emitted('selected')![0]![0]).toEqual([source(2)])
+  expect(wrapper.get('button[aria-label="登记丢失 TL1"]').attributes('disabled')).toBeDefined()
+  await wrapper.get('button[aria-label="登记丢失 TL2"]').trigger('click')
+  expect(wrapper.emitted('selected')).toEqual([[source(2)]])
 })
 
-it('distinguishes schedule batches of the same serial before selecting outbound stock', async () => {
+it('distinguishes schedule batches of the same serial before choosing a batch', async () => {
   const items = [2, 1, null].map((batch, index) => ({
     ...source(index + 1),
     transfer: { ...source(index + 1).transfer, serial_no: '691236-50', task_batch_number: batch },
@@ -419,8 +357,7 @@ it('distinguishes schedule batches of the same serial before selecting outbound 
   vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items, total: 3, page: 1, page_size: 20 })
   await render()
   const rows = wrapper.findAll('tbody tr')
-  expect(rows.map((row) => row.findAll('td')[2]!.text())).toEqual(['第2批', '第1批', '未关联排期'])
-  await wrapper.get('[aria-label="选择出库 TL2"] input').setValue(true)
-  await nextButton().trigger('click')
-  expect(wrapper.emitted('selected')).toEqual([[[items[1]]]])
+  expect(rows.map((row) => row.findAll('td')[1]!.text())).toEqual(['第2批', '第1批', '未关联排期'])
+  await wrapper.get('button[aria-label="登记丢失 TL2"]').trigger('click')
+  expect(wrapper.emitted('selected')).toEqual([[items[1]]])
 })

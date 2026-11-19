@@ -196,7 +196,10 @@ def test_scrap_is_not_production_stock_and_can_only_be_disposed_externally(clien
 
 
 @pytest.mark.parametrize("reason", [None, "", "   ", "请补充物料说明"])
-def test_warehouse_review_requires_source_correction_before_receipt(client, warehouse, reason):
+@pytest.mark.parametrize("reviewer", ["warehouse", "admin"])
+def test_warehouse_review_requires_source_correction_before_receipt(
+    client, warehouse, reason, reviewer
+):
     s = warehouse
     origin = intake(client, s).json()
     sent = dispatch(
@@ -217,12 +220,19 @@ def test_warehouse_review_requires_source_correction_before_receipt(client, ware
     review = {"expected_version": line["version"]}
     if reason is not None:
         review["reason"] = reason
-    assert client.post(url + "/reject", json=review).status_code == 403
+    reviewer_headers = client.headers if reviewer == "admin" else s["headers"]
+    actor = client.get("/api/auth/me", headers=reviewer_headers).json()["display_name"]
+    assert "reject" in client.get(url, headers=reviewer_headers).json()["allowed_actions"]
+    assert "reject" not in client.get(url, headers=s["other_headers"]).json()["allowed_actions"]
     assert client.post(url + "/reject", headers=s["other_headers"], json=review).status_code == 403
-    rejected = client.post(url + "/reject", headers=s["headers"], json=review)
+    rejected = client.post(url + "/reject", headers=reviewer_headers, json=review)
     assert rejected.status_code == 200, rejected.text
-    assert client.post(url + "/reject", headers=s["headers"], json=review).json() == rejected.json()
-    assert rejected.json()["history"][-1]["action"] == "rejected"
+    assert (
+        client.post(url + "/reject", headers=reviewer_headers, json=review).json()
+        == rejected.json()
+    )
+    event = rejected.json()["history"][-1]
+    assert (event["action"], event["actor"]) == ("rejected", actor)
     assert client.get(base(s, True) + "/overview").json()["totals"]["available_quantity"] == 10
     assert (
         receipt_post(

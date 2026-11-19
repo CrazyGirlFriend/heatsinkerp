@@ -876,7 +876,11 @@ def reject_material_transfer(db, batch_no, payload, user):
     with db.begin():
         transfer = _locked_transfer(db, batch_no)
         _assert_receiver(user, transfer)
-        if transfer.next_team.kind != "warehouse" or transfer.status != "pending":
+        if (
+            transfer.status != "pending"
+            or transfer.next_team is None
+            or transfer.next_team.kind != "warehouse"
+        ):
             raise _conflict("仅库房可退回待接收明细，已接收单据不能修改")
         if (
             transfer.rejection_reason == payload.reason

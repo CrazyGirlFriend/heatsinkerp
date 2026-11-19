@@ -402,7 +402,7 @@ def list_receipts(
     page=1,
     page_size=20,
 ):
-    stock.require_team(db, team_id)
+    team = stock.require_team(db, team_id)
     # Receiving a batch creates its ledger entry; later stock depletion does not remove it.
     filters = [
         MaterialTransfer.next_team_id == team_id,
@@ -455,15 +455,26 @@ def list_receipts(
         .options(*workflow.material_transfer_list_options())
         .where(*filters)
         .order_by(
-            *table_order(columns, MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc())
+            *table_order(columns, MaterialTransfer.received_at.desc(), MaterialTransfer.id.desc())
         )
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
+    rows = [workflow.material_transfer_dict(item, user, include_history=False) for item in items]
+    if (
+        team.active
+        and team.kind == "warehouse"
+        and team.code == WAREHOUSE_TEAM_CODE
+        and can_manage_team(user, team_id)
+    ):
+        receipt_ids = [item.id for item in items if item.entry_kind == "warehouse_receipt"]
+        if receipt_ids:
+            editable = editable_ids(db, receipt_ids)
+            for row in rows:
+                if row["id"] in editable:
+                    row["allowed_actions"] = ["edit_receipt"]
     return {
-        "items": [
-            workflow.material_transfer_dict(item, user, include_history=False) for item in items
-        ],
+        "items": rows,
         "total": total,
         "page": page,
         "page_size": page_size,
