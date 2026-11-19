@@ -36,6 +36,34 @@ function headings() {
 }
 
 describe('shared team transfer records', () => {
+  it.each(['pending', 'receipts', 'outgoing'] as const)(
+    'shows the associated serials directly in the %s list until allocation',
+    async (kind) => {
+      const shared = normalizeMaterialTransfer({
+        ...row(),
+        serial_no: '共投-TL1',
+        shared_group_id: 7,
+        shared_unallocated: true,
+        shared_serials: [{ serial_no: '691236-50' }, { serial_no: '691236-51' }],
+      })
+      const allocated = {
+        ...shared,
+        id: 2,
+        batch_no: 'TL2',
+        shared_unallocated: false,
+        serial_no: '691236-51',
+      }
+      wrapper = mount(TeamTransferRecordsTable, {
+        props: { kind, rows: [shared, allocated, row(3)], emptyTitle: '' },
+      })
+      await flushPromises()
+      const serials = wrapper.findAll('.el-table__body .record-serial > span')
+      const labels = ['共投 · 691236-50 / 691236-51', '691236-51', '691236-50']
+      expect(serials.map((cell) => cell.text())).toEqual(labels)
+      expect(serials.map((cell) => cell.attributes('title'))).toEqual(labels)
+    },
+  )
+
   it.each(['glass', 'watermelon'] as const)(
     'keeps list-specific columns, saved preferences and receiver gating in %s',
     async (appearance) => {

@@ -7,6 +7,7 @@ import BarcodeCard from './BarcodeCard.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import PersonName from './PersonName.vue'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { inventoryAmount } from '@/types/teamInventory'
 import { formatDateTime } from '@/utils/format'
 import { formatScheduleBatch } from '@/utils/scheduleBatch'
@@ -101,7 +102,7 @@ const columnKeys = {
     <ElTableColumn class-name="table-identity" label="流水号" min-width="220" show-overflow-tooltip>
       <template #default="{ row }">
         <span class="record-serial"
-          ><span :title="row.serial_no">{{ row.serial_no }}</span></span
+          ><span :title="sharedSerialLabel(row)">{{ sharedSerialLabel(row) }}</span></span
         >
       </template>
     </ElTableColumn>
