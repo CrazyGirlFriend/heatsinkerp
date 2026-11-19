@@ -5,6 +5,7 @@ import { h } from 'vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import WatermelonFilter from './watermelon/WatermelonFilter.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
 let wrapper: VueWrapper
@@ -52,7 +53,7 @@ function mountShell(options: {
   })
 }
 describe('workspace with in-page navigation', () => {
-  it('switches views from the header dropdown without adding a row or remounting content', async () => {
+  it('switches movement views directly from the header without remounting content', async () => {
     wrapper = mountShell({
       props: {
         title: '库房',
@@ -65,13 +66,10 @@ describe('workspace with in-page navigation', () => {
     })
     const input = wrapper.get('input').element
     expect(wrapper.find('.team-workspace__content--card nav').exists()).toBe(false)
-    const filter = wrapper.getComponent(WatermelonFilter)
-    expect(filter.props('viewSwitch')).toBe(true)
-    expect(
-      wrapper.get('.team-workspace__heading [aria-current=page]').text().replace(/\s+/g, ''),
-    ).toBe('来料待签收23')
-    await filter.get('button').trigger('click')
-    const choices = () => wrapper.findAll('[role=menuitemradio]')
+    expect(wrapper.get('.team-workspace__module').text()).toBe('收发')
+    const views = wrapper.get('nav[aria-label="库房收发视图"]').getComponent(WatermelonSegmented)
+    expect(views.get('[aria-current=page]').text()).toBe('来料待签收23')
+    const choices = () => views.findAll('button')
     expect(choices().map((choice) => choice.text().replace(/\s+/g, ''))).toEqual([
       '来料待签收23',
       '入库记录',
@@ -85,6 +83,7 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.get('[aria-current=page]').text()).toBe('入库记录')
     expect(wrapper.get('input').element).toBe(input)
     await wrapper.setProps({ modelValue: 'delivery-schedule' })
+    expect(wrapper.findComponent(WatermelonSegmented).exists()).toBe(false)
     expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
   })
   it('uses the selected inventory view as the header label and omits retired material inventory', async () => {
@@ -131,13 +130,14 @@ describe('workspace with in-page navigation', () => {
       slots: { default: '<input value="未提交内容" />' },
     })
     const input = wrapper.get('input').element
-    expect(wrapper.get('.team-workspace__pending').text()).toBe('23')
+    const views = wrapper.getComponent(WatermelonSegmented)
+    expect(views.text()).toContain('来料待签收23')
     await wrapper.setProps({ pendingCount: 24, modelValue: 'pending' })
     expect(wrapper.get('nav [aria-current=page]').text()).toBe('来料待签收24')
     expect(wrapper.get('input').element).toBe(input)
     for (const pendingCount of [0, null]) {
       await wrapper.setProps({ pendingCount })
-      expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
+      expect(views.get('[aria-current=page]').text()).toBe('来料待签收')
     }
   })
   it('keeps single-view modules direct and limits the dropdown to related views', async () => {

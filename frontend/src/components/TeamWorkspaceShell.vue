@@ -5,6 +5,7 @@ import ElButton from '@/components/AppButton.vue'
 import { workspaceToolsKey, type WorkspaceExportAction } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
 import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
+import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
@@ -48,6 +49,8 @@ const emit = defineEmits<{
   export: []
   settings: []
 }>()
+const workspaceModule = computed(() => teamWorkspaceModuleFor(props.modelValue))
+const isMovement = computed(() => workspaceModule.value?.value === 'movement')
 const sections = computed(() => {
   if (props.engineering)
     return teamWorkspaceSections.filter((section) => section.value === 'process-routes')
@@ -60,12 +63,12 @@ const sections = computed(() => {
     Boolean(props.manageSettings),
   )
   return (
-    teamWorkspaceModuleFor(props.modelValue)?.sections.flatMap((value) =>
+    workspaceModule.value?.sections.flatMap((value) =>
       available.filter((section) => section.value === value),
     ) || []
   )
 })
-const moduleLabel = computed(() => teamWorkspaceModuleFor(props.modelValue)?.label)
+const moduleLabel = computed(() => workspaceModule.value?.label)
 const navigationOptions = computed(() =>
   sections.value.map((section) => ({
     ...section,
@@ -175,7 +178,6 @@ watch(fullscreen, (value) => emit('fullscreen-change', value), { flush: 'sync' }
 watch([() => props.title, canFullscreen], ([title, supported], [previous]) => {
   if (title !== previous || !supported) exitFullscreen()
 })
-let observer: ResizeObserver | undefined
 function revealSection() {
   const nav = navigation.value
   const current = nav?.querySelector<HTMLElement>('[aria-current=page]')
@@ -188,18 +190,19 @@ function revealSection() {
 watch([() => props.modelValue, () => props.pendingCount, sections], revealSection, {
   flush: 'post',
 })
+watch(navigation, (nav, _, onCleanup) => {
+  if (!nav || typeof ResizeObserver === 'undefined') return
+  const observer = new ResizeObserver(revealSection)
+  observer.observe(nav)
+  onCleanup(() => observer.disconnect())
+})
 onMounted(() => {
   document.addEventListener('fullscreenchange', fullscreenChanged)
   document.addEventListener('keydown', fullscreenShortcut)
   revealSection()
-  if (typeof ResizeObserver !== 'undefined' && navigation.value) {
-    observer = new ResizeObserver(revealSection)
-    observer.observe(navigation.value)
-  }
 })
 onBeforeUnmount(() => {
   disposed = true
-  observer?.disconnect()
   document.removeEventListener('fullscreenchange', fullscreenChanged)
   document.removeEventListener('keydown', fullscreenShortcut)
   exitFullscreen()
@@ -250,7 +253,10 @@ onBeforeUnmount(() => {
     <div
       v-show="!fullscreen"
       class="team-workspace__navigation-bar"
-      :class="{ 'team-workspace__navigation-bar--tools': $slots['heading-tools'] }"
+      :class="{
+        'team-workspace__navigation-bar--tools': $slots['heading-tools'],
+        'team-workspace__navigation-bar--movement': isMovement,
+      }"
     >
       <div class="team-workspace__heading page-heading-start">
         <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
@@ -258,7 +264,7 @@ onBeforeUnmount(() => {
           ><template v-if="moduleLabel"
             ><span class="team-workspace__divider" aria-hidden="true">/</span>
             <nav
-              v-if="appearance === 'watermelon' && sections.length > 1"
+              v-if="!isMovement && appearance === 'watermelon' && sections.length > 1"
               :aria-label="`${title}${moduleLabel}视图`"
             >
               <WatermelonFilter
@@ -278,7 +284,20 @@ onBeforeUnmount(() => {
         <slot name="heading-tools" />
       </div>
       <nav
-        v-if="appearance !== 'watermelon'"
+        v-if="isMovement"
+        class="team-workspace__movement-views"
+        :aria-label="`${title}收发视图`"
+      >
+        <WatermelonSegmented
+          :model-value="modelValue"
+          :options="navigationOptions"
+          label="收发视图"
+          controls="workspace-panel"
+          @change="selectSection"
+        />
+      </nav>
+      <nav
+        v-else-if="appearance !== 'watermelon'"
         v-show="sections.length > 1"
         ref="navigation"
         class="team-workspace__navigation"
@@ -362,6 +381,16 @@ onBeforeUnmount(() => {
 .team-workspace__navigation-bar--tools {
   flex-wrap: wrap;
   column-gap: 24px;
+}
+.team-workspace__navigation-bar--movement {
+  container: movement-header / inline-size;
+  flex-wrap: wrap;
+}
+@container movement-header (max-width: 48rem) {
+  .team-workspace__movement-views {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 .team-workspace__heading-tools {
   flex: 1 1 320px;

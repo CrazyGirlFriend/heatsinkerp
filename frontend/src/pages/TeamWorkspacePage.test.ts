@@ -1741,16 +1741,19 @@ describe('team workspace material ledger', () => {
       )
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(labels.length ? 1 : 0)
     expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
-    await wrapper.get('nav[aria-label$="视图"] button').trigger('click')
-    await flushPromises()
-    const choices = Array.from(document.querySelectorAll('[role=menuitemradio]')).map(
-      (item) => item.textContent,
-    )
+    const navigation = wrapper.get('nav[aria-label$="视图"]')
     if (['outgoing', 'pending', 'receipts', 'reallocations', 'overview', 'history'].includes(tab)) {
+      const choices = navigation.findAll('button').map((button) => button.text())
       expect(choices).toHaveLength(5)
       expect(choices).toContain('转投记录')
-    } else expect(choices).toEqual(['库存明细', '丢失记录'])
-    expect(choices).not.toContain('类型库存')
+    } else {
+      await navigation.get('button').trigger('click')
+      await flushPromises()
+      const choices = Array.from(document.querySelectorAll('[role=menuitemradio]')).map(
+        (item) => item.textContent,
+      )
+      expect(choices).toEqual(['库存明细', '丢失记录'])
+    }
   })
   it.each(['losses', 'reallocations'] as const)(
     'opens %s from its toolbar and refreshes records after saving',
@@ -2546,7 +2549,7 @@ describe('warehouse intake workspace', () => {
     wrapper.getComponent(MaterialTransferDrawer).vm.$emit('changed')
     await flushPromises()
     expect(wrapper.text()).toContain('暂无来料待签收')
-    expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
+    expect(wrapper.get('nav[aria-label$="收发视图"] [aria-current=page]').text()).toBe('来料待签收')
     await wrapper
       .get('nav[aria-label$="视图"]')
       .findAll('button')
