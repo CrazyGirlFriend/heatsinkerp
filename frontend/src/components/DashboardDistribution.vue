@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import { computed } from 'vue'
 import { formatAmount } from '@/utils/format'
 
@@ -31,10 +32,10 @@ const share = (value: number) => (total.value ? (Math.max(0, value) / total.valu
     </div>
     <div class="distribution-legend">
       <component
-        :is="selectable ? 'button' : 'div'"
+        :is="selectable ? AppButton : 'div'"
         v-for="row in rows"
         :key="row.key"
-        :type="selectable ? 'button' : undefined"
+        :unstyled="selectable || undefined"
         class="distribution-row"
         :class="{ 'has-correction': row.value < 0 }"
         @click="selectable && $emit('select', row.key)"
@@ -70,7 +71,7 @@ const share = (value: number) => (total.value ? (Math.max(0, value) / total.valu
 }
 .distribution-total strong {
   font-size: 30px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.8px;
   font-variant-numeric: tabular-nums;
   color: var(--wm-text);
@@ -78,7 +79,7 @@ const share = (value: number) => (total.value ? (Math.max(0, value) / total.valu
 .distribution-total > span,
 p {
   color: var(--wm-muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .distribution-track {
   display: flex;
@@ -119,7 +120,7 @@ p {
   border-bottom: 1px solid var(--wm-table-divider);
   background: transparent;
   color: var(--wm-text);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   text-align: left;
 }
 .distribution-row:last-child {
@@ -142,19 +143,19 @@ button.distribution-row:hover .distribution-label {
   flex: 1;
 }
 .distribution-row strong {
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .distribution-row small {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
   color: var(--wm-muted);
 }
 .distribution-share {
   width: 60px;
   text-align: right;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted);
   font-variant-numeric: tabular-nums;
 }

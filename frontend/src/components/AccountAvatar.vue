@@ -119,7 +119,7 @@ const glasses = computed(() => [2, 6, 10, 14].includes(index.value))
 }
 .account-avatar__initial {
   font-size: 1em;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .account-avatar__initial::before {
   content: attr(data-initial);

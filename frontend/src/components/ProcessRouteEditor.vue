@@ -1239,8 +1239,8 @@ onMounted(async () => {
   border: 1px solid var(--wm-border, #cddbed);
   border-radius: 4px;
   background: var(--wm-info-bg, #eff5fc);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
   line-height: 1;
   color: var(--wm-muted, #52749a);
   margin-left: 5px;
@@ -1257,7 +1257,7 @@ onMounted(async () => {
 }
 .route-schedule-link {
   color: var(--brand-primary, var(--wm-text, #215b49));
-  font-size: 14px;
+  font-size: var(--font-size-body);
   text-decoration: none;
   padding: 8px 12px;
 }
@@ -1286,7 +1286,7 @@ onMounted(async () => {
   border-radius: 12px;
   margin-bottom: 16px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .route-rework-context table {
   width: 100%;
@@ -1314,7 +1314,7 @@ onMounted(async () => {
 .route-rework-context th {
   background: var(--table-header-bg);
   color: var(--muted);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .route-rework-context td {
   background: var(--wm-muted-surface, #ffffffa8);
@@ -1327,13 +1327,13 @@ onMounted(async () => {
   );
   box-shadow: inset 3px 0 var(--accent-red);
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .route-serial-conflict {
   width: 100%;
   margin-top: 4px;
   color: var(--el-color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 18px;
 }
 .route-rework-context .rework-team-cells {
@@ -1396,7 +1396,7 @@ onMounted(async () => {
   border-radius: 7px;
   color: var(--wm-muted, #5f746a);
   background: var(--wm-muted-surface, #ffffffb3);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   line-height: 18px;
   white-space: nowrap;
 }
@@ -1413,15 +1413,15 @@ onMounted(async () => {
 }
 .route-serial-value {
   color: var(--primary);
-  font-size: 18px;
-  font-weight: 650;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.3px;
   overflow-wrap: anywhere;
 }
 .route-person-value {
   color: var(--wm-text, #2c3e36);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   overflow-wrap: anywhere;
 }
 .route-value-missing {
@@ -1430,12 +1430,12 @@ onMounted(async () => {
   border-radius: 6px;
   background: var(--wm-warning-bg, #fbf8ef);
   color: var(--wm-warning-text, #78623c);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 24px;
 }
 .route-time-value {
   color: var(--wm-text, #2c3e36);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   font-variant-numeric: tabular-nums;
 }
 .route-documents {
@@ -1444,7 +1444,7 @@ onMounted(async () => {
   gap: 10px;
 }
 .route-source-error {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .route-source-error {
@@ -1456,7 +1456,7 @@ onMounted(async () => {
 .route-attachment-warning {
   margin: 0 0 12px;
   color: var(--el-color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .route-file-actions .el-button[aria-invalid='true'] {
   border-color: var(--el-color-danger);
@@ -1468,11 +1468,11 @@ onMounted(async () => {
   gap: 6px;
   padding: 5px 8px;
   border: 1px solid #e9d3a9;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: linear-gradient(135deg, var(--wm-warning-bg, #fffcf4), var(--wm-warning-bg, #faf0dd));
   color: var(--wm-warning-text, #8c6120);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-label);
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -1502,12 +1502,12 @@ onMounted(async () => {
   width: 100%;
   padding: 10px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--wm-warning-text, #796039);
   text-align: left;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   cursor: pointer;
 }
 .route-issue-choice :deep(> span) {
@@ -1523,19 +1523,19 @@ onMounted(async () => {
   display: block;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .route-issue-locate {
   margin-left: auto;
   color: var(--accent-blue);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .route-issue-unrecognized {
   display: flex;
   gap: 8px;
   padding: 10px 8px;
   color: var(--wm-warning-text, #8c6120);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .route-issue-summary:focus-visible,
 .route-issue-choice:focus-visible,
@@ -1571,7 +1571,7 @@ onMounted(async () => {
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 1.6;
   color: var(--text);
 }
@@ -1595,8 +1595,8 @@ onMounted(async () => {
   background: var(--wm-muted-surface, #edf3ef);
   border-bottom: 1px solid var(--el-border-color);
   color: var(--wm-muted, #52665b);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-align: center;
 }
 .route-step-table td {
@@ -1618,7 +1618,7 @@ onMounted(async () => {
   outline-offset: -2px;
 }
 .route-edit-step > td[data-column-index='2'] .route-cell-value {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text, #365246);
 }
 .route-edit-step > td[data-column-index='4'] {
@@ -1646,13 +1646,13 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-compact);
   background: var(--wm-danger-bg, #fce9e6);
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #d13b3b26;
   color: var(--el-color-danger);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   vertical-align: middle;
   cursor: pointer;
   justify-content: center;
@@ -1716,12 +1716,12 @@ onMounted(async () => {
   margin: 0;
   white-space: pre-wrap;
   color: var(--wm-muted, #51655a);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.7;
 }
 .route-extra-info {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .route-extra-info :deep(.el-form-item) {
@@ -1732,13 +1732,13 @@ onMounted(async () => {
   gap: 16px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .route-footer-summary {
   margin-right: auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 @media (max-width: 1150px) {
   .route-col-name {

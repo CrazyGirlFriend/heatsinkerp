@@ -1751,7 +1751,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 :global(.workspace-record-filters) {
   max-width: calc(100vw - 32px);

@@ -267,7 +267,7 @@ watchEffect(() => {
   min-height: var(--wm-control-height, 40px);
   display: inline-flex;
   align-items: center;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 </style>

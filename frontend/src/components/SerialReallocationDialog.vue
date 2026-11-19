@@ -335,7 +335,7 @@ async function submit() {
   gap: 12px;
 }
 .reallocation-source header strong {
-  font-size: 18px;
+  font-size: var(--font-size-section);
   color: var(--text);
 }
 .reallocation-source header span {
@@ -345,7 +345,7 @@ async function submit() {
   justify-content: space-between;
   margin-top: 12px;
   color: var(--subtle);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .reallocation-error {
   color: var(--danger);

@@ -33,7 +33,7 @@ const percent = computed(() =>
   min-width: 150px;
   max-width: 220px;
   margin-inline: auto;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .shipment-progress > span {

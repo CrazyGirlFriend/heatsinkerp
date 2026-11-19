@@ -98,7 +98,7 @@ describe('team management directory ordering', () => {
       .trigger('click')
     expect(wrapper.get('textarea[aria-label="班组说明"]').element).toHaveProperty('value', '原说明')
     await wrapper.get('textarea[aria-label="班组说明"]').setValue('修改说明')
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     await flushPromises()
     expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ description: '修改说明' }))
   })
@@ -120,7 +120,7 @@ describe('team management directory ordering', () => {
       .find((button) => button.text().includes('编辑'))!
       .trigger('click')
     await wrapper.get('input[aria-label="班组名称"]').setValue(saved.name)
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     await flushPromises()
     finish([team])
     await reading
@@ -188,7 +188,7 @@ describe('team management directory ordering', () => {
         .some((select) => select.attributes('aria-label') === '班组类型'),
     ).toBe(false)
     wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 5)
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     await flushPromises()
     expect(update).toHaveBeenCalledWith(
       7,
@@ -218,7 +218,7 @@ describe('team management directory ordering', () => {
     expect((wrapper.get('input[aria-label="显示顺序"]').element as HTMLInputElement).value).toBe(
       '30',
     )
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     await flushPromises()
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'NEW', name: '新组', kind: 'production', sort_order: 30 }),
@@ -245,7 +245,7 @@ describe('team management directory ordering', () => {
       .find((button) => button.text().includes('编辑'))!
       .trigger('click')
     expect(wrapper.find('input[aria-label="班组类型"]').exists()).toBe(false)
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     await flushPromises()
     expect(update).toHaveBeenCalledWith(9, expect.objectContaining({ kind: 'production' }))
   })
@@ -259,7 +259,7 @@ describe('team management directory ordering', () => {
       .find((button) => button.text().includes('编辑'))!
       .trigger('click')
     await wrapper.get('input[aria-label="显示顺序"]').setValue('1.5')
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('.editor-modal form').trigger('submit')
     expect(
       wrapper
         .get('input[aria-label="显示顺序"]')

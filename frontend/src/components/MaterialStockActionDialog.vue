@@ -1276,6 +1276,7 @@ watch(
                   <template #reference>
                     <ElButton size="small" :aria-label="`${line.source.transfer.batch_no}更多操作`">
                       更多<ElIcon
+                        :size="11"
                         class="source-action-chevron"
                         :class="{ 'is-open': activeActions === line.key }"
                         ><ArrowDown
@@ -1901,6 +1902,7 @@ watch(
         <div>
           <span>{{ isLoss ? '本次丢失' : '本次合计' }}</span
           ><MaterialAmount
+            prominent
             animate
             :weight-only="
               lines.length > 0 && lines.every((line) => isWeightOnlyType(line.materialType))
@@ -1939,7 +1941,7 @@ watch(
 }
 .stock-dialog-heading > span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   padding: 3px 9px;
   background: var(--wm-muted-surface, #ffffff82);
   border: 1px solid var(--wm-muted-surface, #ffffffcc);
@@ -1956,8 +1958,8 @@ watch(
 .dispatch-context h3 {
   margin: 0 0 10px;
   color: var(--wm-muted, #65786e);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 1px;
 }
 .dispatch-context-fields {
@@ -1978,7 +1980,7 @@ watch(
 .processing-count-notice {
   margin: 8px 0 12px;
   color: var(--action-warm);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.7;
 }
 .source-lines {
@@ -2023,26 +2025,26 @@ watch(
 }
 .source-identity strong {
   color: var(--text);
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1px;
   overflow-wrap: anywhere;
 }
 .source-index {
   color: var(--wm-muted, #99aaa0);
-  font-size: 10px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .source-material {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .source-balance {
   gap: 8px;
 }
 .source-balance > span:first-child {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .source-balance :deep(.material-amount) {
   gap: 10px;
@@ -2052,16 +2054,9 @@ watch(
 }
 .source-actions :deep(.el-button) {
   margin-left: 0;
-  font-size: var(--font-size-label);
-}
-.source-actions :deep(.el-button:not(.is-link)) {
-  height: var(--control-height-small);
-  padding-inline: 10px;
-  border-radius: var(--radius-compact);
 }
 .source-action-chevron {
   margin-left: 4px;
-  font-size: 11px;
   transition: transform var(--motion-fast) var(--motion-ease);
 }
 .source-action-chevron.is-open {
@@ -2086,7 +2081,7 @@ watch(
   flex-wrap: wrap;
   flex-basis: 100%;
   gap: 4px 12px;
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted, #7b8981);
 }
 .source-meta > span,
@@ -2160,11 +2155,11 @@ watch(
 }
 .source-schedule-estimate {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .source-schedule-estimate b {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 .source-inputs :deep(.el-form-item),
@@ -2283,13 +2278,7 @@ watch(
 }
 .action-footer > div:first-child > span {
   color: var(--muted);
-  font-size: 13px;
-}
-.action-footer :deep(.material-amount strong) {
-  font-size: 24px;
-  color: var(--wm-text, #1f3a2c);
-  font-weight: 600;
-  letter-spacing: -0.4px;
+  font-size: var(--font-size-label);
 }
 .action-footer > div:last-child {
   gap: 10px;

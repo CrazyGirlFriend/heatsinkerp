@@ -485,7 +485,7 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   line-height: 1.5;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .warehouse-location-select > .location-countdown {
   color: var(--primary);
@@ -516,7 +516,7 @@ onBeforeUnmount(() => {
 .location-picker-hint,
 .location-materials small {
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .location-picker-tools {
   margin: 16px 0;
@@ -541,7 +541,7 @@ onBeforeUnmount(() => {
   padding: 10px;
   border-radius: 8px;
   background: var(--surface-soft, #f4f8f5);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.5;
 }
 .location-stock > strong,

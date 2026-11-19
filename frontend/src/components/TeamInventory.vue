@@ -1524,15 +1524,15 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .inventory-balance strong {
-  font-size: var(--workspace-number-size, 15px);
-  font-weight: 550;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text);
 }
 .inventory-material:focus-visible,
 .inventory-balance:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
-  border-radius: 3px;
+  border-radius: var(--radius-compact);
 }
 :global(.inventory-balance-tooltip) {
   white-space: pre-line;
@@ -1586,7 +1586,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   padding-block: 8px;
 }
 .inventory-schedule-link--danger {

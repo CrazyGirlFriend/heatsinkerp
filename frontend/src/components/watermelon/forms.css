@@ -144,7 +144,7 @@ html.wm-app
   min-height: 32px;
   line-height: 20px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   background: transparent;
   box-shadow: none;
   color: var(--wm-text);

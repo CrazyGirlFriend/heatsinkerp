@@ -1368,7 +1368,7 @@ defineExpose({ exportSource, openDetail })
 }
 .schedule-task-context__heading > span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .schedule-task-route {
   display: flex;
@@ -1400,7 +1400,7 @@ defineExpose({ exportSource, openDetail })
   text-align: left;
 }
 .schedule-task-route__node > span {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .schedule-task-route__node.is-current {
   border-color: var(--wm-info-text, var(--primary));
@@ -1426,20 +1426,20 @@ defineExpose({ exportSource, openDetail })
 }
 .schedule-task-route__sequence {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .schedule-task-route__heading small {
   margin-left: auto;
   color: var(--primary);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .schedule-task-route button.schedule-task-route__plan {
   min-height: 28px;
   padding: 4px 6px;
   background: var(--wm-muted-surface, var(--primary-soft));
   color: var(--primary);
-  font-size: 12px;
+  font-size: var(--font-size-label);
   transition: background-color 160ms ease;
 }
 .schedule-task-route button.schedule-task-route__plan:hover {
@@ -1493,7 +1493,7 @@ defineExpose({ exportSource, openDetail })
 }
 .schedule-section-heading > span,
 .schedule-section-heading > a {
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .schedule-section-heading > span {
   color: var(--muted);
@@ -1509,7 +1509,7 @@ defineExpose({ exportSource, openDetail })
 .schedule-original-deadline,
 .schedule-dispatch-scope {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   margin: 0 0 16px;
 }
 </style>

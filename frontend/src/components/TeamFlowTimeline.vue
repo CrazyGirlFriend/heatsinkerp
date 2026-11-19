@@ -310,7 +310,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 .node-legend {
   gap: 24px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   white-space: nowrap;
 }
 .node-legend .marker {
@@ -351,7 +351,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
   display: grid;
   grid-template-columns: 206px 1fr 136px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   pointer-events: none;
 }
 .timeline-empty {
@@ -390,7 +390,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 }
 .timeline-controls .zoom-level {
   width: 64px;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   font-variant-numeric: tabular-nums;
 }
 .timeline-controls .el-icon {
@@ -406,7 +406,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
   content: '';
   width: 40px;
   height: 40px;
-  border-radius: 9px;
+  border-radius: var(--radius-compact);
   background: var(--primary-soft);
   transition: transform var(--motion-standard) var(--motion-ease);
 }
@@ -423,7 +423,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
   gap: 6px 18px;
   padding: 0 18px 14px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 20px;
 }
 @media (max-width: 760px) {

@@ -124,7 +124,7 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
 }
 .workspace-pagination :deep(.el-pagination) {
   --el-pagination-button-bg-color: transparent;
-  --el-pagination-font-size: 12px;
+  --el-pagination-font-size: var(--font-size-label);
   flex-wrap: wrap;
   gap: 6px;
   margin-left: auto;
@@ -138,8 +138,8 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
   background: var(--primary-soft);
 }
 .workspace-pagination :deep(.el-select__wrapper) {
-  min-height: 32px;
-  border-radius: 9px;
-  font-size: 12px;
+  min-height: var(--control-height-small);
+  border-radius: var(--radius-compact);
+  font-size: var(--font-size-label);
 }
 </style>

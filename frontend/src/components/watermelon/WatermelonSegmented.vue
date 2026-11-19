@@ -114,7 +114,7 @@ function keyboard(event: KeyboardEvent) {
   border-radius: 5px;
   background: var(--wm-neutral-bg, #e4e4e7);
   color: var(--wm-text, #22262b);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   line-height: 20px;
   font-variant-numeric: tabular-nums;
 }

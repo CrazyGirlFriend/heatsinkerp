@@ -213,7 +213,7 @@ onBeforeUnmount(cancel)
 .export-selected,
 .export-progress {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .export-fields-heading {
   display: flex;

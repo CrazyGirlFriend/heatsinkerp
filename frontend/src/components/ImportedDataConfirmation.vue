@@ -37,12 +37,12 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 }
 .imported-data-confirmation :deep(.el-checkbox__label) {
   white-space: normal;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .imported-data-confirmation p {
   margin: 4px 0 0;
   color: var(--danger);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 18px;
 }
 </style>

@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
   margin-top: 12px;
 }
 .route-drawing-preview p {
-  font-size: 13px;
+  font-size: var(--font-size-label);
   color: var(--muted);
 }
 .drawing-preview-tools {
@@ -160,10 +160,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .drawing-thumbnail-download {
   align-self: flex-start;
-  font-size: 12px;
+  font-size: var(--font-size-label);
 }
 </style>

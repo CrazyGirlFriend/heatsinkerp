@@ -307,7 +307,7 @@ onBeforeUnmount(() => ++generation)
 .processing-route-instructions header > span,
 .processing-route-task,
 .processing-route-instructions small {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .processing-route-task {
@@ -317,7 +317,7 @@ onBeforeUnmount(() => ++generation)
   margin: 8px 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.7;
   color: var(--text);
 }

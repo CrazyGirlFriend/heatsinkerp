@@ -70,11 +70,11 @@ onBeforeUnmount(() => observer?.disconnect())
 }
 .document-card-heading {
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 18px;
 }
 .document-card-heading strong {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .document-card-heading span,
 .document-card-filename {
@@ -97,7 +97,7 @@ onBeforeUnmount(() => observer?.disconnect())
   gap: 6px;
   min-height: 72px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .document-card-empty .el-icon {
   font-size: 22px;

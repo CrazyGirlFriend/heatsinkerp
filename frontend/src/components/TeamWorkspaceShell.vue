@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
 }
 .team-workspace__module {
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--font-size-section);
   white-space: nowrap;
 }
 .team-workspace__title {
@@ -411,14 +411,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: var(--font-size-section);
 }
 .team-workspace__status {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   color: var(--el-color-warning);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .team-workspace--fullscreen .team-workspace__navigation-row {
   min-height: 32px;
@@ -485,8 +485,8 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: var(--action-warm-soft);
   color: var(--action-warm);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-semibold);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
 }

@@ -222,7 +222,7 @@ footer {
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--surface-alt, var(--surface));
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -249,7 +249,7 @@ footer {
   display: block;
 }
 .problem-work-option span {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   white-space: pre-wrap;
 }
 </style>

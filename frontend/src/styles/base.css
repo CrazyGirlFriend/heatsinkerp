@@ -93,6 +93,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+@media screen {
+  :where(.team-workspace, .el-dialog, .el-drawer, .wm-dialog, .wm-control-menu)
+    :where(h2, h3, h4, strong, b) {
+    font-weight: var(--font-weight-semibold);
+  }
+  :where(.team-workspace, .el-dialog, .el-drawer, .wm-dialog, .wm-control-menu) :where(h2, h3, h4) {
+    font-size: var(--font-size-section);
+  }
+}
+
 button,
 input,
 select,
@@ -233,7 +243,7 @@ a {
 .factory-nav-popup .el-menu-item {
   height: 34px;
   line-height: 34px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .factory-nav-popup .el-menu-item.is-active {
   background: var(--primary-soft);
@@ -293,7 +303,7 @@ a {
 .workspace-heading p {
   margin: 7px 0 0;
   color: var(--subtle);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .page-card {
   border: 1px solid var(--panel-line);
@@ -333,7 +343,7 @@ a {
 .form-error {
   margin: 5px 0 0;
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 
 .sr-only {

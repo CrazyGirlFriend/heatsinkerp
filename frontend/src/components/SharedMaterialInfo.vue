@@ -86,7 +86,7 @@ const plannedQuantity = computed(() =>
 <style scoped>
 .shared-serial {
   color: var(--primary);
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
 }
 :deep(.shared-current-serial) {
   --el-table-tr-bg-color: var(--primary-soft);
@@ -99,7 +99,7 @@ const plannedQuantity = computed(() =>
 }
 .shared-plan-total b {
   color: var(--text);
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
 </style>

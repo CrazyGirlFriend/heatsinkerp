@@ -37,8 +37,8 @@ defineProps<{ source: string; kind?: 'document'; modified?: boolean }>()
   border-radius: 5px;
   background: var(--wm-success-bg, #eef8f4);
   color: var(--wm-success-text, #296c5e);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
   line-height: 16px;
   cursor: help;
 }

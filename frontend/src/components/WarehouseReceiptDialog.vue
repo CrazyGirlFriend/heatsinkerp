@@ -1157,11 +1157,11 @@ onBeforeUnmount(() => {
   padding-left: 16px;
   border-left: 1px solid var(--line);
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .receipt-heading strong {
   color: var(--primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .receipt-document-panel {
   min-width: 0;
@@ -1173,7 +1173,7 @@ onBeforeUnmount(() => {
 }
 .receipt-optional-details :deep(.app-disclosure-label > span) {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .receipt-route-choice-content {
   display: flex;
@@ -1196,11 +1196,11 @@ onBeforeUnmount(() => {
 }
 .receipt-identity-field :deep(.el-input__inner) {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 .receipt-identity-field :deep(.el-input__inner) {
-  font-size: 15px;
+  font-size: var(--font-size-body);
 }
 .document-field--imported:not(.is-error) :deep(.el-input__wrapper:not(.is-focus)),
 .document-field--imported:not(.is-error) :deep(.el-textarea__inner:not(:focus)),

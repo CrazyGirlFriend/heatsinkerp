@@ -244,27 +244,27 @@ if (serial.value) search()
 }
 .history-total > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .history-total strong {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 .history-total small {
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-regular);
 }
 .history-total i {
   margin-inline: 10px;
-  font-weight: 300;
+  font-weight: var(--font-weight-regular);
   color: var(--subtle);
   font-style: normal;
 }
 .history-note {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .serial-history > .el-alert {
   margin-bottom: 12px;
@@ -273,7 +273,7 @@ if (serial.value) search()
   padding: 90px 16px;
   text-align: center;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--font-size-body);
 }
 .history-prompt > svg {
   width: 42px;

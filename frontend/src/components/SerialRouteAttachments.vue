@@ -230,12 +230,12 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 .serial-attachments-label {
-  font-size: 13px;
+  font-size: var(--font-size-label);
   overflow-wrap: anywhere;
 }
 .serial-attachments-state {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   padding: 12px 0;
 }
 </style>

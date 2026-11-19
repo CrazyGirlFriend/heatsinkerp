@@ -217,11 +217,11 @@ const defaultTime = new Date(2000, 0, 1, 8)
   align-items: center;
   gap: 16px;
   padding: 4px 0 12px;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .batch-plan-summary strong {
   color: var(--el-color-primary);
-  font-size: 18px;
+  font-size: var(--font-size-section);
 }
 .batch-plan-summary > span:last-child {
   margin-left: auto;
@@ -235,17 +235,17 @@ const defaultTime = new Date(2000, 0, 1, 8)
 }
 .batch-plan-reference :deep(.compact-form-section-actions) {
   color: var(--el-color-primary);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .batch-plan-reference p {
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .batch-plan-reference dl {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .batch-plan-reference dd {
   margin: 0;
@@ -258,6 +258,6 @@ const defaultTime = new Date(2000, 0, 1, 8)
   background: var(--wm-danger-bg, #fff0eb);
   border-left: 3px solid var(--wm-danger-text, #c45b43);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 </style>

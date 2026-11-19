@@ -844,11 +844,11 @@ onBeforeUnmount(() => {
   min-width: 0;
   gap: 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .handoff-preview strong {
   color: var(--primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   overflow-wrap: anywhere;
 }
 .handoff-preview > .el-icon {
@@ -868,7 +868,7 @@ onBeforeUnmount(() => {
 .delivery-origin {
   margin: 0;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 @media (max-width: 560px) {
   .form-heading {

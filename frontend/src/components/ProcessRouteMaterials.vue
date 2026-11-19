@@ -81,7 +81,7 @@ function warningLabel(warning: string) {
               订单表 · 自动填入
             </span>
             <ElButton
-              text
+              link
               v-else
               native-type="button"
               :title="`${field.source_filename || ''} ${field.source_row}`"
@@ -102,7 +102,7 @@ function warningLabel(warning: string) {
     </AppDetailTable>
     <div v-if="data.field_warnings?.length" class="field-warnings">
       <ElButton
-        text
+        link
         v-for="warning in data.field_warnings"
         :key="warning"
         native-type="button"
@@ -125,19 +125,19 @@ header {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   color: var(--wm-text, #202522);
 }
 header > span {
   color: #28664f;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   background: var(--wm-bg, #fff);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 th,
 td {
@@ -146,7 +146,7 @@ td {
   text-align: left;
   color: var(--wm-text, #242824);
   vertical-align: middle;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   overflow-wrap: anywhere;
 }
 thead th {
@@ -162,24 +162,11 @@ th:last-child {
 tbody th {
   background: var(--wm-muted-surface, #fafbf9);
 }
-button {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  font-size: 11px;
-  color: var(--wm-muted, #536859);
-  cursor: pointer;
-  text-align: left;
-}
-button:hover {
-  text-decoration: underline;
-}
 small,
 .edited {
   display: block;
   color: var(--wm-warning-text, #93651e);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   margin-top: 4px;
 }
 .has-difference td:first-of-type {
@@ -192,11 +179,10 @@ small,
   margin-top: 8px;
 }
 .field-warning {
-  font-size: 12px;
   color: var(--wm-warning-text, #93651e);
 }
 .field-warning span {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .route-materials :deep(.el-input__wrapper) {
   min-height: 28px;

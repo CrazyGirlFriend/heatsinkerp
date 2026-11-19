@@ -44,7 +44,7 @@ defineProps<{ percent: number | null; color: string; label: string }>()
 small {
   min-width: 30px;
   text-align: right;
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }

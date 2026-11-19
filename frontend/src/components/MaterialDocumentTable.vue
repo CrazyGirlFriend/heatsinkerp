@@ -63,7 +63,7 @@ const rows = computed(() => {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 15px;
+  font-size: var(--font-size-body);
   line-height: 1.65;
   color: var(--text);
 }
@@ -82,7 +82,7 @@ const rows = computed(() => {
 .document-table th {
   background: var(--table-header-bg);
   color: var(--text);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 @container (max-width: 540px) {
   .document-table colgroup {

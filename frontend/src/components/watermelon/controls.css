@@ -179,7 +179,7 @@ html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
 }
 .wm-date-panel .el-time-spinner__item {
   color: var(--wm-muted);
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
 }
 .wm-date-panel .el-time-spinner__item.active:not(.disabled) {
   color: var(--wm-text);

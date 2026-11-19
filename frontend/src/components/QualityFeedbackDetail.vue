@@ -465,7 +465,7 @@ onBeforeUnmount(() => {
 .quality-note,
 .quality-event span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .quality-detail-section {
   margin-top: 16px;

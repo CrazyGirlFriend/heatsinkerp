@@ -162,12 +162,12 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
 }
 .dimension-name {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   white-space: nowrap;
 }
 .specification-dimensions small {
   color: var(--subtle);
-  font-size: 10px;
+  font-size: var(--font-size-meta);
 }
 .specification-dimensions :deep(.el-input-number) {
   width: 100%;
@@ -178,7 +178,7 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
 .specification-error {
   flex-basis: 100%;
   color: var(--el-color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 @media (max-width: 640px) {
   .specification-input > :deep(.el-select) {

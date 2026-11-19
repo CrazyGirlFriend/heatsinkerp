@@ -67,7 +67,7 @@
   .material-detail-section > header > span,
   .material-detail-section > footer > span {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--font-size-label);
   }
   .material-detail-section > footer {
     padding: 14px 0;
@@ -161,7 +161,7 @@
     :is(.batch-link, .material-amount strong, .ledger-number .cell) {
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
   }
   :is(
       .page.reading-workspace,
@@ -433,8 +433,8 @@
   background: transparent;
   color: var(--workspace-ink, #303133);
   font: inherit;
-  font-size: var(--workspace-body-size, 16px);
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   line-height: 24px;
   text-align: left;
   cursor: pointer;

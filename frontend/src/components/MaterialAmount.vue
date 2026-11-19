@@ -63,16 +63,16 @@ withDefaults(
 }
 .material-amount strong {
   color: var(--text);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .material-amount small {
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .material-amount--prominent strong {
-  font-size: 27px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.7px;
 }
 .material-amount--prominent {

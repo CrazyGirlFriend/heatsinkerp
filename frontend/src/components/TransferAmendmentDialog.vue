@@ -270,7 +270,7 @@ onBeforeUnmount(() => {
 .amendment-document {
   margin: 0 0 10px;
   color: var(--subtle);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   overflow-wrap: anywhere;
 }
 .amendment-balance {
@@ -281,28 +281,28 @@ onBeforeUnmount(() => {
   margin-bottom: 12px;
   border-radius: 8px;
   background: var(--table-header-bg);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .amendment-balance span {
   color: var(--subtle);
 }
 .amendment-balance strong {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
 .original-value {
   display: block;
   width: 100%;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .amendment-help {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--subtle);
 }
 .amendment-error {
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 </style>

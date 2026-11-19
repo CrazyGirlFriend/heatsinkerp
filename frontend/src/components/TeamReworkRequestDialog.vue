@@ -235,6 +235,6 @@ onBeforeUnmount(() => {
 }
 .stock-summary {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 </style>

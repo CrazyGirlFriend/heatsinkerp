@@ -209,12 +209,12 @@ onBeforeUnmount(() => ++generation)
 .execution-route-heading > span,
 .execution-position,
 .execution-requirements header > span {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .execution-route-heading {
   margin: 18px 0 10px;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .execution-nodes {
   list-style: none;
@@ -247,7 +247,7 @@ onBeforeUnmount(() => ++generation)
   color: var(--text);
   text-align: left;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   cursor: pointer;
   transition:
     background 160ms,
@@ -286,15 +286,15 @@ onBeforeUnmount(() => ++generation)
 }
 .execution-node-name {
   flex: 1;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .execution-node-name small {
   margin-left: 8px;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   color: var(--muted);
 }
 .execution-current {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--wm-text, #205e4b);
 }
 .execution-requirements {
@@ -303,7 +303,7 @@ onBeforeUnmount(() => ++generation)
   background: var(--wm-bg, #fff);
   border-radius: 10px;
   padding: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .execution-requirements p {
   white-space: pre-wrap;
@@ -314,7 +314,7 @@ onBeforeUnmount(() => ++generation)
   border-top: 1px solid var(--line);
   margin: 14px 0 0;
   padding-top: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .process-execution-panel > .el-select {
   width: 100%;

@@ -152,7 +152,7 @@ form.workspace-toolbar.workspace-data-toolbar {
 .workspace-toolbar__search :deep(.el-input__wrapper),
 .workspace-toolbar__search :deep(.el-select__wrapper) {
   min-height: 38px;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .workspace-toolbar > :deep(.live-refresh-notice) {
   align-self: center;

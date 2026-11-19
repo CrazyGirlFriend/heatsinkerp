@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 // Watermelon Edit Profile: rounded inset body, muted shell and spring entrance. See NOTICE.md.
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { motion, useReducedMotion } from 'motion-v'
@@ -105,9 +106,15 @@ onBeforeUnmount(() => {
               ><h2>{{ title }}</h2></slot
             >
           </div>
-          <button v-if="showClose" type="button" aria-label="关闭弹窗" @click="open = false">
+          <AppButton
+            v-if="showClose"
+            size="small"
+            circle
+            aria-label="关闭弹窗"
+            @click="open = false"
+          >
             <IconX :size="20" />
-          </button>
+          </AppButton>
         </header>
         <div class="wm-dialog-body"><slot /></div>
         <footer v-if="$slots.footer" class="wm-dialog-footer"><slot name="footer" /></footer>
@@ -170,22 +177,6 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: var(--dialog-title-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--wm-text, #111);
-}
-.wm-dialog-header button {
-  display: grid;
-  place-items: center;
-  flex: 0 0 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--wm-muted, #888);
-  cursor: pointer;
-  border-radius: 50%;
-}
-.wm-dialog-header button:hover {
-  background: var(--wm-hover, #e7e7eb);
   color: var(--wm-text, #111);
 }
 .wm-dialog-body {

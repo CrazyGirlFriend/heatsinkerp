@@ -1,22 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useControlFeedback } from '@/composables/useControlFeedback'
-import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+import AppButton from './AppButton.vue'
 
 defineProps<{ overlay?: boolean }>()
-const trigger = ref<HTMLButtonElement>()
-useControlFeedback(trigger, useWatermelonAppearance())
 </script>
 
 <template>
-  <button
-    ref="trigger"
-    type="button"
+  <AppButton
+    unstyled
     class="document-preview-trigger"
     :class="{ 'document-preview-trigger--overlay': overlay }"
   >
     <slot />
-  </button>
+  </AppButton>
 </template>
 
 <style scoped>
@@ -25,7 +20,7 @@ useControlFeedback(trigger, useWatermelonAppearance())
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--wm-border, var(--line));
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: var(--wm-muted-surface, var(--surface));
   cursor: zoom-in;
   transition: border-color 140ms ease;

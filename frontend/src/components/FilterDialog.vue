@@ -104,7 +104,7 @@ onBeforeUnmount(() => {
     <div ref="panel" class="filter-form-panel" :style="{ maxHeight: `${panelHeight}px` }">
       <header>
         <strong>{{ title }}</strong>
-        <ElButton unstyled class="filter-form-close" aria-label="关闭筛选" @click="cancel"
+        <ElButton size="small" circle aria-label="关闭筛选" @click="cancel"
           ><IconX :size="16"
         /></ElButton>
       </header>
@@ -142,23 +142,8 @@ onBeforeUnmount(() => {
 }
 .filter-form-panel header {
   justify-content: space-between;
-  font-size: 13px;
+  font-size: var(--font-size-section);
   border-bottom: 1px solid var(--wm-border, var(--el-border-color));
-}
-.filter-form-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--wm-muted, var(--el-text-color-regular));
-  cursor: pointer;
-}
-.filter-form-close:hover {
-  background: var(--wm-hover, var(--el-fill-color));
 }
 .filter-form-body {
   min-height: 0;
@@ -185,7 +170,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .filter-dialog-fields,
@@ -204,7 +189,7 @@ onBeforeUnmount(() => {
   gap: 7px;
   min-width: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .filter-dialog-fields :is(.el-select, .el-input, .el-date-editor, .record-date-trigger) {
   width: 100%;

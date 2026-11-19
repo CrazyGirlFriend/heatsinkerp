@@ -44,7 +44,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: number | undefined] }>()
   width: 26px;
   height: 26px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--wm-muted);
   transition:

@@ -34,7 +34,7 @@ withDefaults(defineProps<{ state?: 'loading' | 'success' | 'error'; label: strin
   padding: 10px 12px;
   overflow: hidden;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .async-status span {
   flex: 1;

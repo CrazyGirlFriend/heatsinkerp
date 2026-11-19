@@ -165,7 +165,7 @@
 .el-card__header {
   border-bottom-color: var(--el-border-color-lighter);
   color: var(--text);
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
 }
 
 .el-dialog {
@@ -222,7 +222,7 @@
   background: var(--primary-soft);
 }
 .el-dialog__headerbtn .el-dialog__close {
-  font-size: 16px;
+  font-size: var(--font-size-section);
   color: var(--muted);
 }
 .el-dialog__title {
@@ -388,7 +388,7 @@
 }
 .dialog-input-unit {
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   white-space: nowrap;
 }
 .el-dialog .autofill-badge {
@@ -398,7 +398,7 @@
   flex-basis: 100%;
   margin: 6px 0 0;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -431,7 +431,7 @@
   padding-left: 10px;
   border-left: 3px solid var(--primary);
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .dialog-form-compact :is(.dialog-section-details, .dialog-section-quantities) > .dialog-form-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -464,7 +464,7 @@
 .dialog-form-compact .sludge-result {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 @media (max-width: 900px) {
   .dialog-form-compact .dialog-form-grid,
@@ -654,7 +654,7 @@
   line-height: var(--line-height-meta);
 }
 .el-table .el-button.is-link {
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
 }
 .el-table__empty-text {
   color: var(--el-text-color-secondary);
@@ -671,14 +671,14 @@
 .el-tag {
   height: 24px;
   border-radius: 4px;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
 }
 .el-tag--small {
   height: 22px;
 }
 .el-tabs__item {
   height: 42px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .el-tabs__nav-wrap::after {
   height: 1px;
@@ -700,7 +700,7 @@
 
 .factory-account-menu .el-dropdown-menu__item {
   min-height: 38px;
-  border-radius: 10px;
+  border-radius: var(--radius-compact);
   gap: 8px;
 }
 
@@ -811,7 +811,7 @@
   outline-offset: 2px;
 }
 .el-dialog details > summary {
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   transition:
     color var(--motion-fast) ease,
     background-color var(--motion-fast) ease;

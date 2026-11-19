@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   pointer-events: none;
 }
 </style>

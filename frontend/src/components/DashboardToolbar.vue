@@ -54,7 +54,7 @@ defineProps<{
   margin-left: auto;
 }
 .dashboard-toolbar__updated {
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted);
   white-space: nowrap;
 }

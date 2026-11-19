@@ -269,7 +269,7 @@
   }
   :is(.app-glass-surface, .stock-action-dialog)
     :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner) {
-    border-radius: 10px;
+    border-radius: var(--radius-control);
   }
   :is(.app-glass-surface, .stock-action-dialog) :is(.el-table, .el-descriptions__body) {
     background: var(--surface);
@@ -312,7 +312,7 @@
     background: transparent;
   }
   .el-dropdown__popper .el-dropdown-menu__item {
-    border-radius: 10px;
+    border-radius: var(--radius-compact);
     transition:
       background-color var(--motion-fast),
       box-shadow var(--motion-fast),
@@ -320,7 +320,7 @@
   }
   .el-select-dropdown__item {
     margin-inline: 6px;
-    border-radius: 10px;
+    border-radius: var(--radius-compact);
     transition:
       background-color var(--motion-fast),
       box-shadow var(--motion-fast),

@@ -161,13 +161,13 @@ const batches = (value: unknown) => {
 }
 .inventory-schedule-detail > header strong {
   color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .inventory-schedule-detail > header span,
 .inventory-schedule-detail > footer {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .inventory-schedule-detail > footer {
   display: flex;

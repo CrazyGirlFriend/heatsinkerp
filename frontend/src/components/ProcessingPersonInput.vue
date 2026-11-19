@@ -217,12 +217,12 @@ function confirm() {
   min-height: 24px;
 }
 .person-panel-header strong {
-  font-size: 14px;
+  font-size: var(--font-size-section);
 }
 .person-count {
   flex: 1;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .person-grid {
   display: grid;
@@ -255,7 +255,7 @@ function confirm() {
   color: var(--primary);
 }
 .person-choice.is-selected {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .person-choice .el-icon {
   flex-shrink: 0;

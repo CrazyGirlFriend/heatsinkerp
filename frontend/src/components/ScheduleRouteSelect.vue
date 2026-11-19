@@ -66,7 +66,7 @@ const serialLabel = (route: RouteChoice) => route.serial_nos?.join(' / ') || `å·
 .schedule-route-option > small {
   flex-shrink: 0;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
 }
 </style>

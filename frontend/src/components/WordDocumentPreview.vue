@@ -241,7 +241,7 @@ async function download() {
   gap: 12px;
   padding: 2px 0 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .word-preview-filename {
   display: flex;
@@ -285,7 +285,7 @@ async function download() {
   padding: 20px 8px;
   line-height: 1.6;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .word-document-preview--thumbnail {
   position: relative;

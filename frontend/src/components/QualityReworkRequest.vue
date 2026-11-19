@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
 }
 .rework-selected-batch {
   margin-bottom: 0;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .el-pagination {
   justify-content: flex-end;

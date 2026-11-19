@@ -1377,7 +1377,7 @@ onBeforeUnmount(() => {
   border-left: 3px solid #36725b;
   border-radius: 8px;
   background: var(--wm-muted-surface, #ffffffb8);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .processing-current-step header {
   display: flex;
@@ -1386,7 +1386,7 @@ onBeforeUnmount(() => {
 }
 .processing-current-step header span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .processing-current-step p {
   margin: 8px 0 0;
@@ -1399,12 +1399,12 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .processing-plan-summary b {
   color: var(--text);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .processing-workspace .quantity-summary {
   margin: 0;
@@ -1473,13 +1473,13 @@ onBeforeUnmount(() => {
   gap: 8px 20px;
 }
 .processing-history-requirements header span {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .processing-history-requirements h4 {
   margin: 12px 0 6px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--muted);
 }
 .processing-history-requirements p {
@@ -1496,7 +1496,7 @@ onBeforeUnmount(() => {
 .quantity-note {
   color: var(--muted);
   line-height: 1.7;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .quantity-history-title {
   margin: 16px 0 10px;
@@ -1518,7 +1518,7 @@ onBeforeUnmount(() => {
 .processing-mode > span,
 .processing-outputs > footer > span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .processing-mode .el-switch {
   flex-shrink: 0;
@@ -1540,12 +1540,12 @@ onBeforeUnmount(() => {
   min-width: 1208px;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-size-body);
 }
 .processing-output-table th {
   padding: 8px;
   text-align: center;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   background: var(--surface-soft);
   color: var(--muted);
 }
@@ -1651,16 +1651,16 @@ onBeforeUnmount(() => {
 }
 .processing-weight-notice {
   color: var(--action-warm);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .processing-history-output {
   display: grid;
   gap: 3px;
   padding-block: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .processing-history-output strong {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 @media (max-width: 760px) {
   .processing-mode {

@@ -258,7 +258,7 @@ watch(compact, (value) => {
   color: var(--text);
   background: transparent;
   box-shadow: none;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .workspace-more-menu :deep(.el-button:hover:not(:disabled)),
 .workspace-more-menu :deep(.el-button.el-button--primary:not(.is-plain):hover:not(:disabled)) {

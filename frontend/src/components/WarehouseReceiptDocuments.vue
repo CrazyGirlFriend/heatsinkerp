@@ -409,7 +409,7 @@ onBeforeUnmount(() => {
 }
 .receipt-document-state {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .receipt-document-card :deep(.word-document-preview--thumbnail) {
   height: 160px;

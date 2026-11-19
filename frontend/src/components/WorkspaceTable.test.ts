@@ -36,7 +36,7 @@ describe('WorkspaceTable', () => {
     expect(wrapper.find('.el-table__expanded-cell').text()).toContain('工艺详情 901030-07')
     await wrapper.get('.sort-caret.ascending').trigger('click')
     expect(wrapper.vm.order).toBe('ascending')
-    await wrapper.getComponent(ElButton).trigger('click')
+    await wrapper.get('.el-table__body .el-button.is-link').trigger('click')
     expect(wrapper.vm.opened).toBe(1)
     expect(wrapper.attributes('aria-label')).toBe('加工记录')
   })

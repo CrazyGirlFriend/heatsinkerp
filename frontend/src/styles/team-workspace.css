@@ -1,13 +1,10 @@
 /* Workbench uses the same density and typography as the inventory overview. */
 .team-workspace {
-  --workspace-body-size: var(--font-size-body);
-  --workspace-meta-size: var(--font-size-meta);
-  --workspace-number-size: 15px;
   --workspace-gutter: 12px;
   --workspace-ink: var(--text);
   --workspace-muted: var(--muted);
   color: var(--workspace-ink);
-  font-size: var(--workspace-body-size);
+  font-size: var(--font-size-body);
   line-height: 1.5;
 }
 
@@ -22,15 +19,15 @@
   :is(.workspace-data-toolbar, .serial-extra-filters)
   :is(.el-input__wrapper, .el-select__wrapper) {
   min-height: var(--workspace-control-height);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .team-workspace .workspace-data-toolbar .el-checkbox {
   height: var(--workspace-control-height);
   margin-right: 0;
 }
 .team-workspace .workspace-data-toolbar .el-checkbox__label {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   color: var(--workspace-muted);
 }
 .team-workspace .workspace-actions > .workspace-refresh {
@@ -39,7 +36,7 @@
 }
 
 .team-workspace :is(.serial-table, .team-table, .ledger-table, .processing-records-table) {
-  font-size: var(--workspace-body-size);
+  font-size: var(--font-size-body);
   font-variant-numeric: tabular-nums;
   --el-table-text-color: var(--workspace-ink);
   --el-table-header-bg-color: var(--table-header-bg);
@@ -68,15 +65,15 @@
   :is(.serial-table, .team-table, .ledger-table, .processing-records-table)
   .material-amount
   strong {
-  font-size: var(--workspace-number-size);
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   color: var(--workspace-ink);
 }
 .team-workspace
   :is(.serial-table, .team-table, .ledger-table, .processing-records-table)
   .material-amount
   small {
-  font-size: var(--workspace-meta-size);
+  font-size: var(--font-size-meta);
   color: var(--workspace-muted);
 }
 .team-workspace .ledger-table .material-amount {
@@ -96,8 +93,8 @@
   td.ledger-number
   .cell {
   color: var(--workspace-ink);
-  font-size: var(--workspace-number-size);
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
 }
 .page.team-workspace.team-workspace--reading {
   overflow: hidden;
@@ -211,7 +208,7 @@
 }
 .team-workspace.team-workspace--reading.team-workspace--fullscreen
   :is(.warehouse-table, .team-table, .ledger-table, .processing-records-table) {
-  --business-table-font: var(--workspace-body-size);
+  --business-table-font: var(--font-size-body);
 }
 .team-workspace.team-workspace--reading.team-workspace--fullscreen
   :is(.warehouse-table, .team-table, .ledger-table, .processing-records-table)
@@ -241,8 +238,6 @@
 }
 @media (max-width: 760px) {
   .team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen {
-    --workspace-body-size: var(--font-size-body);
-    --workspace-number-size: 15px;
     padding: 12px;
   }
 }
@@ -301,23 +296,20 @@
   .el-table.business-table
   .processing-stock-status
   small {
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   line-height: 16px;
 }
 .team-workspace.team-workspace--reading .warehouse-table .inventory-number-cell {
   font-variant-numeric: tabular-nums;
 }
 .team-workspace.team-workspace--reading .warehouse-table .inventory-number-cell strong {
-  font-size: var(--workspace-number-size);
-  font-weight: 550;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .team-workspace .workspace-data-panel :is(.action-cool.is-link, .action-warm.is-link) {
   color: var(--primary);
 }
 @media (max-width: 1320px) {
-  .team-workspace .workspace-data-toolbar :is(.el-button, .el-input__inner, .el-select__wrapper) {
-    font-size: 12px;
-  }
   .team-workspace .workspace-data-toolbar .el-button {
     padding-inline: 9px;
   }

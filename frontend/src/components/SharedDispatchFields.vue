@@ -302,8 +302,8 @@ watch(
 }
 .shared-dispatch-heading h4 {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .shared-dispatch-table :deep(.el-table__cell) {
   padding-block: 5px;

@@ -133,7 +133,7 @@ onBeforeUnmount(() => ++generation)
   display: block;
   margin-bottom: 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .schedule-document-skeleton {
   display: grid;

@@ -928,7 +928,7 @@ onBeforeUnmount(() => {
 }
 .warehouse-pending {
   color: var(--wm-info-text, #356d9f);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .warehouse-detail-title,
 .warehouse-detail-controls {
@@ -944,12 +944,12 @@ onBeforeUnmount(() => {
 .warehouse-detail-totals {
   display: flex;
   gap: 20px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   color: var(--wm-muted, #71717a);
 }
 .warehouse-detail-totals strong {
   color: var(--wm-text, #18181b);
-  font-size: 14px;
+  font-size: var(--font-size-body);
   margin-left: 8px;
   font-variant-numeric: tabular-nums;
 }
@@ -966,7 +966,7 @@ onBeforeUnmount(() => {
 }
 .warehouse-hint {
   color: var(--wm-muted, #71717a);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   margin: 8px 0 0;
 }
 </style>

@@ -77,9 +77,9 @@ watch(weight, (value) => emit('update:weight', value), { immediate: true })
 }
 .sludge-result strong {
   color: var(--text);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .sludge-result small {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 </style>

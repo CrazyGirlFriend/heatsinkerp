@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 // Vue adaptation of Watermelon Filter Disclosure. See NOTICE.md.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, type Component } from 'vue'
 import { AnimatePresence, motion, useReducedMotion } from 'motion-v'
@@ -175,9 +176,9 @@ onBeforeUnmount(() => {
         >
           <header v-if="!viewSwitch">
             <span>{{ title }}</span>
-            <button type="button" :aria-label="`关闭${label}`" @click="close()">
+            <AppButton size="small" circle :aria-label="`关闭${label}`" @click="close()">
               <IconX :size="16" />
-            </button>
+            </AppButton>
           </header>
           <motion.button
             v-for="(option, index) in options"
@@ -244,7 +245,7 @@ onBeforeUnmount(() => {
   padding: 0 8px;
   border-color: transparent;
   background: transparent;
-  font-size: 15px;
+  font-size: var(--font-size-section);
   font-weight: var(--font-weight-medium);
 }
 .wm-filter-trigger.wm-view-switch:hover {
@@ -305,17 +306,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 7px 10px 10px;
   color: var(--wm-muted, #91959d);
-  font-size: 11px;
-}
-.wm-filter-panel header button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px;
-  border: 0;
-  background: transparent;
-  color: var(--wm-muted, #9298a1);
-  cursor: pointer;
+  font-size: var(--font-size-meta);
 }
 .wm-filter-panel [role='menuitemradio'] {
   display: flex;
@@ -325,7 +316,7 @@ onBeforeUnmount(() => {
   min-height: 42px;
   padding: 8px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   font: inherit;
   font-size: var(--font-size-body);

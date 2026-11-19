@@ -48,7 +48,7 @@ defineProps<{ title: string; subtitle?: string; help?: string }>()
 }
 .dashboard-card p {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted);
 }
 .dashboard-card__body {

@@ -61,7 +61,7 @@ withDefaults(defineProps<{ documents?: boolean }>(), { documents: true })
   min-height: 32px;
 }
 .form-workspace :deep(.el-textarea__inner) {
-  font-size: 14px;
+  font-size: var(--font-size-body);
   line-height: 1.5;
 }
 .form-workspace :deep(.el-input-number) {

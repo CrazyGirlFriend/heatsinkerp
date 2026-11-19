@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
 .picker-toolbar > span,
 .picker-pagination > span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .picker-table {
   height: min(52vh, 520px);
@@ -332,13 +332,13 @@ onBeforeUnmount(() => {
 }
 .picker-empty strong {
   color: var(--text);
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .picker-empty p {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .picker-pagination {
   justify-content: space-between;

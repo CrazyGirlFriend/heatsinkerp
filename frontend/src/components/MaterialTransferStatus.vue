@@ -44,7 +44,7 @@ const label = computed(() =>
 
 <style scoped>
 .transfer-status {
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .transfer-status :deep(.el-tag__content) {
   display: inline-flex;
@@ -55,8 +55,8 @@ const label = computed(() =>
   font-size: 15px;
 }
 .transfer-status-text {
-  font-size: 15px;
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   color: var(--subtle);
 }
 .transfer-status-text--pending {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import { computed, type Component } from 'vue'
 import AnimatedMetric from './AnimatedMetric.vue'
 import StatisticHelp from './StatisticHelp.vue'
@@ -37,9 +38,9 @@ const sparkline = computed(() => {
     </div>
     <div class="dashboard-metric__reading">
       <component
-        :is="static ? 'div' : 'button'"
+        :is="static ? 'div' : AppButton"
         class="dashboard-metric__value"
-        :type="static ? undefined : 'button'"
+        :unstyled="static ? undefined : true"
         :aria-label="static ? label : `查看${label}`"
         @click="!static && $emit('open')"
       >
@@ -82,7 +83,7 @@ const sparkline = computed(() => {
   align-items: center;
   gap: 8px;
   color: var(--wm-muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .dashboard-metric__heading > svg {
   color: var(--wm-info-text);
@@ -148,7 +149,7 @@ button.dashboard-metric__value:hover strong {
 }
 .dashboard-metric strong {
   font-size: clamp(24px, 2.3vw, 32px);
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
   letter-spacing: -1px;
@@ -156,7 +157,7 @@ button.dashboard-metric__value:hover strong {
 .dashboard-metric__value > span,
 .dashboard-metric p {
   color: var(--wm-muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .dashboard-metric p {
   margin: 2px 0 0;

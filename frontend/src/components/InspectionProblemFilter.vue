@@ -66,6 +66,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 </style>

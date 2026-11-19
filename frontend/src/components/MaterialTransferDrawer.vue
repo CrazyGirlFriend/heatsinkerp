@@ -1109,8 +1109,8 @@ watch(
 }
 .drawer-heading h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-regular);
   overflow-wrap: anywhere;
 }
 .drawer-content {
@@ -1141,7 +1141,7 @@ watch(
   width: 100%;
   min-width: 480px;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .amendment-list th,
 .amendment-list td {
@@ -1151,14 +1151,14 @@ watch(
 }
 .amendment-list th {
   background: var(--table-header-bg);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .loss-record-table {
   width: 100%;
   min-width: 620px;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   line-height: 1.7;
 }
 .loss-record-table th,
@@ -1171,7 +1171,7 @@ watch(
 }
 .loss-record-table th {
   background: var(--table-header-bg);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .drawer-footer {
   display: flex;
@@ -1190,7 +1190,7 @@ watch(
   gap: 7px;
   margin: 10px 0 0;
   color: var(--subtle);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.6;
 }
 .permission-note .el-icon {

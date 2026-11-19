@@ -52,7 +52,7 @@ defineEmits<{ retry: [] }>()
       </template>
     </template>
     <template v-else-if="state === 'loading'">
-      <ElIcon class="state-loading" aria-hidden="true"><Loading /></ElIcon>
+      <ElIcon :size="34" class="state-loading" aria-hidden="true"><Loading /></ElIcon>
       <strong>{{ title || '正在加载' }}</strong>
       <span v-if="description">{{ description }}</span>
     </template>
@@ -107,17 +107,16 @@ defineEmits<{ retry: [] }>()
 }
 .state-loading {
   color: var(--orange);
-  font-size: 34px;
   animation: rotating 1.1s linear infinite;
 }
 .state-panel > strong {
   margin-top: 13px;
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--font-size-section);
 }
 .state-panel > span {
   margin-top: 5px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .state-result {
   width: 100%;
@@ -128,10 +127,10 @@ defineEmits<{ retry: [] }>()
   height: 54px;
 }
 .state-result :deep(.el-result__title p) {
-  font-size: 16px;
+  font-size: var(--font-size-section);
 }
 .state-result :deep(.el-result__subtitle p) {
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .state-empty {
   padding: 0;
@@ -139,7 +138,7 @@ defineEmits<{ retry: [] }>()
 .state-description {
   margin: -10px 0 14px;
   color: var(--wm-muted, #718094);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 @keyframes rotating {
   to {

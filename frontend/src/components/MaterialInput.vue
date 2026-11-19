@@ -118,17 +118,17 @@ onBeforeUnmount(() => {
 }
 .material-suggestion strong {
   color: var(--text);
-  font-size: 14px;
-  font-weight: 550;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .material-suggestion span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   white-space: normal;
   overflow-wrap: anywhere;
 }
 .input-assist-error {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 </style>

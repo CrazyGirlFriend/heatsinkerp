@@ -75,7 +75,8 @@ onBeforeUnmount(() => observer?.disconnect())
           @release-requested="emit('close')"
         >
           <AppButton
-            text
+            size="small"
+            circle
             native-type="button"
             class="document-viewer__close"
             aria-label="关闭放大预览"
@@ -94,7 +95,7 @@ onBeforeUnmount(() => observer?.disconnect())
           />
           <nav class="document-viewer__tools" aria-label="文件缩放">
             <AppButton
-              text
+              size="small"
               native-type="button"
               aria-label="缩小文件"
               :disabled="zoom !== 'fit' && zoom <= 25"
@@ -104,7 +105,7 @@ onBeforeUnmount(() => observer?.disconnect())
             </AppButton>
             <span aria-live="polite">{{ zoom === 'fit' ? '适合窗口' : `${zoom}%` }}</span>
             <AppButton
-              text
+              size="small"
               native-type="button"
               aria-label="放大文件"
               :disabled="zoom !== 'fit' && zoom >= 300"
@@ -112,7 +113,7 @@ onBeforeUnmount(() => observer?.disconnect())
             >
               <ElIcon><ZoomIn /></ElIcon>
             </AppButton>
-            <AppButton text native-type="button" aria-label="适合窗口" @click="fit">
+            <AppButton size="small" native-type="button" aria-label="适合窗口" @click="fit">
               <ElIcon><FullScreen /></ElIcon>
             </AppButton>
           </nav>
@@ -139,14 +140,7 @@ onBeforeUnmount(() => observer?.disconnect())
   background: var(--wm-muted-surface, #eef1f0);
 }
 .document-viewer .app-button {
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
   margin: 0;
-  padding: 0;
-  border-radius: var(--radius-control);
-  color: var(--wm-text, var(--text));
-  font-size: 20px;
 }
 .document-viewer__close {
   position: absolute;
@@ -171,7 +165,7 @@ onBeforeUnmount(() => observer?.disconnect())
   min-width: 64px;
   text-align: center;
   color: var(--wm-muted, var(--muted));
-  font-size: 13px;
+  font-size: var(--font-size-label);
   font-variant-numeric: tabular-nums;
 }
 .document-viewer-enter-active,

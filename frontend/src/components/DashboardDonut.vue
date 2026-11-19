@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import { computed } from 'vue'
 import LedgerChart from './LedgerChart.vue'
 import { useDashboardChart } from '@/composables/useDashboardChart'
@@ -73,10 +74,10 @@ function select(index: number) {
     </div>
     <div class="donut-legend">
       <component
-        :is="selectable ? 'button' : 'div'"
+        :is="selectable ? AppButton : 'div'"
         v-for="row in rows"
         :key="row.key"
-        :type="selectable ? 'button' : undefined"
+        :unstyled="selectable || undefined"
         class="donut-row"
         @click="selectable && emit('select', row.key)"
       >
@@ -125,13 +126,13 @@ function select(index: number) {
 .donut-center strong {
   font-size: clamp(25px, 4.5cqw, 32px);
   letter-spacing: -0.6px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text);
   font-variant-numeric: tabular-nums;
 }
 .donut-center span,
 .donut-legend p {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted);
 }
 .donut-legend {
@@ -149,7 +150,7 @@ function select(index: number) {
   background: transparent;
   text-align: left;
   color: var(--wm-text);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .donut-row:last-child {
   border-bottom: 0;
@@ -164,17 +165,17 @@ function select(index: number) {
   flex: 1;
 }
 .donut-row strong {
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .donut-row small {
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   color: var(--wm-muted);
 }
 button.donut-row {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-compact);
   transition: background-color 160ms;
 }
 button.donut-row:hover,

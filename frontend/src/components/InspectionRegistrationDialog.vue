@@ -544,7 +544,7 @@ onBeforeUnmount(() => {
 }
 .inspection-selected span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .inspection-check-options .is-error :deep(.el-checkbox-button__inner) {
   border-color: var(--el-color-danger);
@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
   padding: 12px 0 18px;
 }
 .inspection-result span {
-  font-size: 13px;
+  font-size: var(--font-size-label);
   color: var(--muted);
 }
 .inspection-result--failed strong {
@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 @media (max-width: 620px) {
   .inspection-pick-toolbar {

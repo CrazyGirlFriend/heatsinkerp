@@ -217,7 +217,8 @@ defineExpose({
         v-if="showTrigger"
         class="inventory-columns-trigger"
         :class="{ 'inventory-columns-trigger--compact': compact }"
-        :unstyled="compact"
+        :text="compact"
+        :size="compact ? 'small' : undefined"
         aria-label="显示列"
         title="显示列"
         :aria-expanded="opened"
@@ -309,12 +310,12 @@ defineExpose({
   gap: 12px;
 }
 .column-settings header strong {
-  font-size: 16px;
+  font-size: var(--font-size-section);
 }
 .column-settings p {
   margin: 12px 0;
   color: var(--el-text-color-regular);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.5;
 }
 .column-choices {
@@ -346,7 +347,7 @@ defineExpose({
   margin-right: 4px;
 }
 .column-choice :deep(.el-checkbox__label) {
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .column-choice > .el-button {
   padding: 7px;
@@ -360,20 +361,6 @@ defineExpose({
   margin-left: auto;
   flex-shrink: 0;
 }
-.inventory-columns-trigger--compact {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-compact);
-  background: transparent;
-  color: var(--el-text-color-regular, var(--wm-muted));
-  cursor: pointer;
-}
-.inventory-columns-trigger--compact:hover,
 .inventory-columns-trigger--compact[aria-expanded='true'] {
   background: var(--wm-hover, var(--el-fill-color));
   color: var(--el-text-color-primary, var(--wm-text));

@@ -101,7 +101,7 @@ onBeforeUnmount(() => {
 .person-error {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .person-status {
   color: var(--muted);

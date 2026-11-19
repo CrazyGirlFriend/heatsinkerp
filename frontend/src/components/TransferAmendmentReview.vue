@@ -263,7 +263,7 @@ onBeforeUnmount(() => {
 .review-heading p {
   margin: 6px 0 0;
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   overflow-wrap: anywhere;
 }
 .review-meta {
@@ -279,17 +279,17 @@ onBeforeUnmount(() => {
 .review-meta dt,
 .review-hint {
   color: var(--subtle);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .review-meta dd {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .review-reason h4 {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--font-size-label);
   color: var(--subtle);
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
 }
 .review-reason p,
 .review-resolution p {
@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .amendment-diff th,
 .amendment-diff td {
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
 }
 .amendment-diff th {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .amendment-diff thead {
   background: var(--table-header-bg);
@@ -330,10 +330,10 @@ onBeforeUnmount(() => {
 }
 .review-error {
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .review-resolution {
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.8;
 }
 .rejection-field {

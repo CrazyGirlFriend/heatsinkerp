@@ -275,8 +275,8 @@ onBeforeUnmount(() => {
 .flow-canvas :deep(.chain-flow-tooltip strong) {
   display: block;
   margin-bottom: 2px;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .flow-canvas :deep(.chain-flow-tooltip .tooltip-route) {
   color: var(--primary);
@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
 .flow-canvas :deep(.chain-flow-tooltip b) {
   display: block;
   margin: 4px 0 8px;
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 </style>

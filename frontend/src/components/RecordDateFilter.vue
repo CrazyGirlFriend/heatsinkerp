@@ -186,7 +186,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 .record-date-trigger {
   white-space: nowrap;
   margin-left: 0 !important;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .date-chevron {
   margin-left: 10px;
@@ -208,7 +208,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
   padding: 0 0 8px;
   align-items: center;
   border: 0;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .record-calendar :deep(.el-calendar__body) {
   padding: 0;
@@ -223,7 +223,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 }
 .record-calendar :deep(.el-calendar-table th) {
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .calendar-day {
@@ -231,11 +231,11 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
   height: 100%;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   cursor: pointer;
 }
 .calendar-day:hover,
@@ -266,7 +266,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 }
 .date-footer span {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .date-footer .el-button {

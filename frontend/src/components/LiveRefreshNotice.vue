@@ -7,7 +7,7 @@ defineEmits<{ retry: [] }>()
 </script>
 <template>
   <div v-if="message" class="live-refresh-notice" role="status" :title="message">
-    <ElIcon><WarningFilled /></ElIcon>
+    <ElIcon :size="14"><WarningFilled /></ElIcon>
     <span class="live-refresh-notice__message">{{ message }}</span>
     <ElButton link type="primary" @click="$emit('retry')">重试同步</ElButton>
   </div>
@@ -30,12 +30,11 @@ defineEmits<{ retry: [] }>()
   border-radius: 6px;
   background: var(--el-color-warning-light-9);
   color: var(--el-color-warning-dark-2);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 20px;
 }
 .live-refresh-notice > .el-icon {
   flex-shrink: 0;
-  font-size: 14px;
 }
 .live-refresh-notice__message {
   overflow: hidden;

@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
 }
 .order-document-preview p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.5;
 }
 .order-document-placeholder {

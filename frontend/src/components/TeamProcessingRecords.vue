@@ -912,7 +912,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .inspection-failed {
   color: var(--el-color-danger);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .processing-record-detail {
   margin: 8px 16px 12px;

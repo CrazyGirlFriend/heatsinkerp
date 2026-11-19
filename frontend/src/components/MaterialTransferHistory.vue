@@ -357,7 +357,7 @@ function valueText(field: string, value: unknown): string {
   table-layout: fixed;
   border-collapse: collapse;
   color: var(--wm-text, #303133);
-  font-size: 14px;
+  font-size: var(--font-size-body);
   line-height: 1.7;
 }
 .document-history th,
@@ -370,7 +370,7 @@ function valueText(field: string, value: unknown): string {
 }
 .document-history th {
   background: var(--table-header-bg);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .document-history th[data-column-index='1'] {
   width: 24%;
@@ -388,7 +388,7 @@ function valueText(field: string, value: unknown): string {
   margin-top: 10px;
 }
 .document-history dt {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .document-history dd {
   margin: 0;
@@ -401,6 +401,6 @@ function valueText(field: string, value: unknown): string {
   margin: 0;
   padding: 12px 0;
   color: var(--subtle);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 </style>

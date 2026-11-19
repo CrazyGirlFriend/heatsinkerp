@@ -817,7 +817,7 @@ async function submitOpening() {
 
 .settings-note {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.6;
 }
 .settings-note a {

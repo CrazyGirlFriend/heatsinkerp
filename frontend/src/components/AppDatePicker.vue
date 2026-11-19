@@ -69,8 +69,8 @@ defineExpose({
   margin: 16px 14px 10px;
 }
 .wm-date-panel .el-date-picker__header-label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text);
 }
 .wm-date-panel .el-date-picker .el-picker-panel__content {
@@ -92,7 +92,7 @@ defineExpose({
   width: 32px;
   height: 32px;
   margin: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-compact);
 }
 .wm-date-panel td.available:hover .wm-date-cell {
   background: var(--wm-hover);
@@ -100,13 +100,13 @@ defineExpose({
 .wm-date-selected {
   position: absolute;
   inset: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-compact);
   background: var(--wm-primary);
 }
 .wm-date-day {
   position: relative;
   z-index: 1;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .wm-date-cell.is-selected .wm-date-day {
   color: var(--wm-primary-text);

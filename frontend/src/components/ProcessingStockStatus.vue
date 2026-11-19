@@ -88,7 +88,7 @@ const weightWarning = computed(() =>
 }
 .processing-stock-status small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
 }
 .processing-stock-status--compact {

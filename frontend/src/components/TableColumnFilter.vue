@@ -463,11 +463,11 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .table-column-filter-form > strong {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .table-column-filter-choices {
   display: flex;
@@ -530,7 +530,7 @@ watch(
   min-height: 34px;
   padding: 4px 8px;
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   background: var(--el-bg-color);
   color: var(--el-text-color-primary);
 }

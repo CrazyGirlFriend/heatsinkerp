@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
 .pending-context span,
 .pending-footer > span {
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .pending-footer {
   display: flex;
