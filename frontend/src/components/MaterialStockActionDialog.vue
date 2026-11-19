@@ -53,7 +53,7 @@ import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
-import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
+import { teamExternalDispatchKind, teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import {
   externalActionLabel,
@@ -246,11 +246,7 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
     (team) => team.active && team.kind !== 'engineering' && Number(team.id) === props.teamId,
   )
   if (!team || directory.error) return null
-  return team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
-    ? 'warehouse_outbound'
-    : team.code === 'FACTORY-QC' && team.kind === 'production'
-      ? 'inspection_shipment'
-      : null
+  return teamExternalDispatchKind(team)
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
 const actionLabel = computed(() => externalActionLabel(form.entryKind))

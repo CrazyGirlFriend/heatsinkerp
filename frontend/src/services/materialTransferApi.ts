@@ -392,6 +392,15 @@ export const materialTransferApi = {
     return { all: pending + received + voided + dispatched, pending, received, voided, dispatched }
   },
 
+  pendingFilterOptions(
+    teamId: number,
+    params: MaterialTransferListParams & { table_query: string },
+  ) {
+    return request<import('@/types/tableQuery').TableOptionPage>(
+      `/material-transfers${queryString({ ...params, team_id: teamId, direction: 'incoming', status: 'pending' })}`,
+    )
+  },
+
   async list(params: MaterialTransferListParams = {}): Promise<MaterialTransferListResponse> {
     const result = await request<unknown>(`/material-transfers${queryString(params)}`)
     const raw = objectValue(result)

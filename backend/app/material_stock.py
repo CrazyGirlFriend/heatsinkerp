@@ -86,8 +86,8 @@ from .schemas import (
 from .team_constants import (
     EXTERNAL_DESTINATIONS,
     EXTERNAL_ENTRY_KINDS,
-    INSPECTION_TEAM_CODE,
     WAREHOUSE_TEAM_CODE,
+    outbound_kinds,
 )
 
 
@@ -225,18 +225,7 @@ def actor_team(db, user, team_id):
 def require_outbound_actor(user, team_id, entry_kind, *, team=None):
     require_actor(user, team_id)
     source = team if team is not None else user.team
-    valid = (
-        source is not None
-        and entry_kind == "warehouse_outbound"
-        and source.code == WAREHOUSE_TEAM_CODE
-        and source.kind == "warehouse"
-    ) or (
-        source is not None
-        and entry_kind == "inspection_shipment"
-        and source.code == INSPECTION_TEAM_CODE
-        and source.kind == "production"
-    )
-    if not valid:
+    if entry_kind not in EXTERNAL_ENTRY_KINDS or entry_kind not in outbound_kinds(source):
         raise HTTPException(
             403, "only the bound warehouse or inspection team may confirm its own outbound kind"
         )

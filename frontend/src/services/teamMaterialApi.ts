@@ -436,6 +436,13 @@ export const teamMaterialApi = {
   stock(teamId: number, params: StockParams = {}) {
     return page(path(teamId, 'stock', params), stock)
   },
+  transferRecordFilterOptions(
+    teamId: number,
+    resource: 'receipts' | 'outbound-batches',
+    params: MaterialPageParams & { table_query: string },
+  ) {
+    return request<import('@/types/tableQuery').TableOptionPage>(path(teamId, resource, params))
+  },
   receipts(teamId: number, params: WarehouseReceiptParams = {}) {
     return page(path(teamId, 'receipts', params), normalizeMaterialTransfer)
   },

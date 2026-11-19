@@ -185,7 +185,7 @@ def test_options_available_in_shared_list_adapters(client):
     prefix = f"/api/team-materials/{team['id']}"
     endpoints = [
         ("/api/production-schedules/business-people", "name", {}),
-        ("/api/production-schedules/tasks", "locked", {}),
+        ("/api/production-schedules/tasks", "serial_no", {}),
         ("/api/production-schedules", "handover_status", {}),
         ("/api/process-routes", "serial_nos", {}),
         ("/api/quality-feedback", "feedback_status", {}),

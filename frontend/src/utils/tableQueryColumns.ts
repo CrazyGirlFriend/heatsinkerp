@@ -3,6 +3,7 @@ import { inspectionStatusLabels, feedbackStates } from '@/types/qualityStatus'
 import type { TableQueryColumn } from '@/types/tableQuery'
 import { materialTypeOptions } from '@/types/materialTransfer'
 import { warehouseColumns } from '@/types/teamInventory'
+import { formatAmount } from '@/utils/format'
 import { formatScheduleBatch, scheduleBatchSearch } from '@/utils/scheduleBatch'
 import {
   inventoryProcessingStateOptions,
@@ -116,6 +117,38 @@ export const transferQueryColumns = queryColumns([
   ['来源批次号', 'source_batch_no'],
   ['转投批次号', 'batch_no'],
 ])
+// A record header uses the same business value as its rendered cell.
+export const teamRecordQueryColumns = queryColumns([
+  ['批次号', 'batch_no'],
+  ['流水号', 'serial_no'],
+  ['材质', 'material_name'],
+  ['物料类型', 'record_material_type'],
+  ['件数', 'quantity', 'number'],
+  ['重量 (kg)', 'weight', 'number'],
+  ['转出时间', 'created_at', 'date'],
+  ['登记时间', 'created_at', 'date'],
+  ['入库时间', 'received_at', 'date'],
+  ['上序', 'source_team_name'],
+  ['转出人', 'record_sender'],
+  ['转料 / 登记人', 'record_sender'],
+  ['接收 / 登记人', 'record_receiver'],
+  ['状态', 'record_status'],
+  ['仓位', 'record_location'],
+  ['来源类别', 'record_source_kind'],
+  ['来源', 'record_source'],
+  ['出库方式', 'record_entry_kind'],
+  ['下序 / 去向', 'record_destination'],
+  ['排期批次', 'task_batch_number', 'number'],
+])
+for (const key of ['quantity', 'weight']) {
+  teamRecordQueryColumns[key].valueLabel = (value) =>
+    formatAmount(value == null ? null : Number(value))
+  teamRecordQueryColumns[key].optionSearch = (search) => search.replaceAll(',', '')
+}
+teamRecordQueryColumns.task_batch_number.valueLabel = (value) =>
+  formatScheduleBatch({ task_batch_number: Number(value) })
+teamRecordQueryColumns.task_batch_number.optionSearch = scheduleBatchSearch
+
 export const processingQueryColumns = queryColumns([
   ['流水号', 'serial_no'],
   ['排期批次', 'task_batch_number', 'number'],

@@ -14,7 +14,6 @@ import { formatScheduleBatch } from '@/utils/scheduleBatch'
 import {
   isExternalEntryKind,
   materialEntryLabel,
-  materialPurposeLabel,
   materialSenderName,
   materialSourceLabel,
   materialTypeLabel,
@@ -144,9 +143,6 @@ const columnKeys = {
         }}</template>
       </ElTableColumn>
     </template>
-    <ElTableColumn prop="purpose_name" label="接收任务" min-width="120" show-overflow-tooltip>
-      <template #default="{ row }">{{ materialPurposeLabel(row) }}</template>
-    </ElTableColumn>
     <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip>
       <template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template>
     </ElTableColumn>

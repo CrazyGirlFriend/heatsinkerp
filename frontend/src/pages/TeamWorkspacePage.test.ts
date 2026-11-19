@@ -1216,9 +1216,11 @@ describe('team workspace material ledger', () => {
       expect(headings).not.toContain('类型 / 业务')
       if (tab !== 'losses') {
         expect(cells[headings.indexOf('物料类型')]!.text()).toBe('半成品')
-        expect(cells[headings.indexOf('接收任务')]!.text()).toBe('去毛刺')
-        if (tab === 'outgoing')
-          expect(headings.indexOf('接收任务')).toBe(headings.indexOf('下序 / 去向') + 1)
+        expect(headings).not.toContain('接收任务')
+        for (const header of table.findAll('.el-table__header > thead > tr > th')) {
+          if (header.text() && header.text() !== '操作')
+            expect(header.find('.table-column-filter').exists(), header.text()).toBe(true)
+        }
       }
       const instance = wrapper.getComponent({ name: 'ElTable' }).element
       if (tab === 'receipts')
@@ -1851,7 +1853,7 @@ describe('team workspace material ledger', () => {
       page_size: 10,
     })
     await render('/team-workspaces/914?tab=pending')
-    expect(wrapper.get('.team-table').text()).toContain('去毛刺')
+    expect(wrapper.get('.team-table').text()).not.toContain('去毛刺')
     expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
     const toolbar = wrapper.get('.workspace-toolbar')
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
@@ -2320,6 +2322,54 @@ describe('warehouse intake workspace', () => {
     expect(wrapper.findComponent(WarehouseManagement).exists()).toBe(false)
     expect(wrapper.get('nav[aria-label$="视图"]').text()).not.toContain('仓库管理')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
+  })
+  it.each([
+    ['pending', '/material-transfers'],
+    ['receipts', '/team-materials/914/receipts'],
+    ['outgoing', '/team-materials/914/outbound-batches'],
+  ])('loads %s filter choices from its own scoped records', async (tab, path) => {
+    await render(`/team-workspaces/914?tab=${tab}&query=Cu`)
+    const values = { values: ['A', 'B'], has_more: false, next_offset: 2 }
+    const request = vi.mocked(httpClient.request).mockResolvedValue({ status: 200, data: values })
+    const header = wrapper
+      .findAllComponents(TableColumnFilter)
+      .find((item) => item.props('label') === '流水号')!
+    expect(await header.props('loadOptions')!('B', 0)).toEqual(values)
+    expect(request).toHaveBeenCalledTimes(1)
+    const url = new URL(request.mock.lastCall![0].url!, 'http://localhost')
+    expect(url.pathname).toBe(path)
+    expect(url.searchParams.get('query')).toBe('Cu')
+    expect(JSON.parse(url.searchParams.get('table_query')!).options).toMatchObject({
+      field: 'serial_no',
+      search: 'B',
+      offset: 0,
+    })
+    if (tab === 'pending') {
+      expect(Object.fromEntries(url.searchParams)).toMatchObject({
+        team_id: '914',
+        direction: 'incoming',
+        status: 'pending',
+      })
+    }
+    request.mockClear()
+  })
+
+  it.each([
+    [914, ['内部转料']],
+    [900, ['内部转料', '检验发货']],
+    [901, ['内部转料', '对外出库']],
+  ] as const)('limits dispatch modes to team %i', async (id, labels) => {
+    await render(`/team-workspaces/${id}?tab=outgoing`)
+    const filters = wrapper.getComponent(FilterDialog)
+    filters.vm.$emit('open')
+    filters.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    const select = filters
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('input[aria-label="出库方式筛选"]').exists())!
+    expect(
+      select.findAllComponents({ name: 'ElOption' }).map((option) => option.props('label')),
+    ).toEqual(labels)
   })
   it('filters external batches and opens only the selected batch', async () => {
     state.auth.currentUser.team_id = 901

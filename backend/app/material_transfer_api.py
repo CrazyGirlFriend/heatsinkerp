@@ -221,8 +221,13 @@ def list_material_transfers(
 
     columns = dict(MaterialTransfer.__table__.columns.items())
     columns["task_batch_number"] = transfer_batch_number_column()
-    filters.extend(table_predicates(columns))
-    table_options(db, select(MaterialTransfer).where(*filters), columns)
+    if direction == "incoming" and status_filter == "pending":
+        from .transfer_record_filters import apply_record_headers
+
+        apply_record_headers(db, columns, filters, "pending")
+    else:
+        filters.extend(table_predicates(columns))
+        table_options(db, select(MaterialTransfer).where(*filters), columns)
     summary = None
     if include_summary:
         # Aggregate the same filtered set before pagination, in the existing count query.

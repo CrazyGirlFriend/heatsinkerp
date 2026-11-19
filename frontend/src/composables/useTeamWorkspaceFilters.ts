@@ -1,6 +1,7 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { TeamWorkspaceSection } from '@/config/teamWorkspaces'
+import { teamExternalDispatchKind, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
+import type { Team } from '@/services/adminApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { CalendarRange } from '@/types/recordFilters'
 import {
@@ -12,7 +13,10 @@ import {
 } from '@/types/materialTransfer'
 import { dispatchStatusLabels, type DispatchKind, type DispatchStatus } from '@/types/teamMaterials'
 
-export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) {
+export function useTeamWorkspaceFilters(
+  tab: ComputedRef<TeamWorkspaceSection>,
+  team: ComputedRef<Team | undefined>,
+) {
   const route = useRoute()
   const router = useRouter()
   const directory = useTeamDirectoryStore()
@@ -42,7 +46,13 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
   const statusDraft = ref<BatchStatus | ''>('')
   const nextTeamDraft = ref<string | number>('')
   const kindDraft = ref<DispatchKind | ''>('')
-  const dispatchKinds = ['transfer', 'warehouse_outbound', 'inspection_shipment'] as const
+  const dispatchKinds = computed<DispatchKind[]>(() => {
+    const external = teamExternalDispatchKind(team.value)
+    return external ? ['transfer', external] : ['transfer']
+  })
+  const appliedKind = computed(() =>
+    dispatchKinds.value.find((kind) => kind === queryText('entry_kind')),
+  )
   const listFiltersOpen = ref(false)
   const listFilterCount = computed(
     () =>
@@ -62,7 +72,7 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
     dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }
     materialDraft.value = queryText('material_type') as MaterialType | ''
     receiptSourceDraft.value = queryText('receipt_source') as typeof receiptSourceDraft.value
-    kindDraft.value = queryText('entry_kind') as typeof kindDraft.value
+    kindDraft.value = appliedKind.value || ''
     statusDraft.value = queryText('status') as typeof statusDraft.value
     nextTeamDraft.value = queryText('next_team_id')
   }
@@ -90,14 +100,14 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
       },
       {
         key: 'entry_kind',
-        label: materialEntryLabel(dispatchKinds.find((kind) => kind === queryText('entry_kind'))),
+        label: materialEntryLabel(appliedKind.value),
       },
       { key: 'status', label: batchStatusLabels[queryText('status') as BatchStatus] },
       {
         key: 'next_team_id',
         label: directory.items.find((item) => String(item.id) === queryText('next_team_id'))?.name,
       },
-    ].filter((item) => queryText(item.key)),
+    ].filter((item) => (item.key === 'entry_kind' ? appliedKind.value : queryText(item.key))),
   )
 
   function resetListFilters() {
@@ -159,13 +169,13 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
   function dispatchParams() {
     return {
       material_type: receiptParams().material_type,
-      next_team_id: isExternalEntryKind(queryText('entry_kind'))
+      next_team_id: isExternalEntryKind(appliedKind.value)
         ? undefined
         : queryText('next_team_id') || undefined,
       status: Object.keys(batchStatusLabels).includes(queryText('status'))
         ? (queryText('status') as BatchStatus)
         : undefined,
-      entry_kind: dispatchKinds.find((kind) => kind === queryText('entry_kind')),
+      entry_kind: appliedKind.value,
     }
   }
   function resetFiltersFromRoute() {
@@ -182,7 +192,7 @@ export function useTeamWorkspaceFilters(tab: ComputedRef<TeamWorkspaceSection>) 
       ? (queryText('status') as BatchStatus)
       : ''
     nextTeamDraft.value = queryText('next_team_id')
-    kindDraft.value = dispatchKinds.find((kind) => kind === queryText('entry_kind')) || ''
+    kindDraft.value = appliedKind.value || ''
   }
 
   return {

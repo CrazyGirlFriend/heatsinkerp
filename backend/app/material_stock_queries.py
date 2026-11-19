@@ -539,8 +539,9 @@ def list_outbound_batches(
     page_size=20,
 ):
     from .schedule_task_identity import transfer_batch_number_column
+    from .transfer_record_filters import apply_record_headers, destination
 
-    require_team(db, team_id)
+    team = require_team(db, team_id)
     mt = MaterialTransfer
     filters = [
         mt.source_team_id == team_id,
@@ -563,17 +564,16 @@ def list_outbound_batches(
                     mt.batch_no,
                     mt.serial_no,
                     mt.material_name,
-                    mt.external_destination,
+                    destination(),
                     mt.purpose_name,
                 ],
             )
         )
-    from .table_query import table_options, table_order, table_predicates
+    from .table_query import table_order
 
     columns = dict(mt.__table__.columns.items())
     columns["task_batch_number"] = transfer_batch_number_column()
-    filters.extend(table_predicates(columns))
-    table_options(db, select(mt).where(*filters), columns)
+    apply_record_headers(db, columns, filters, "outgoing", source_team=team)
     total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
     items = db.execute(
         select(mt, columns["task_batch_number"])

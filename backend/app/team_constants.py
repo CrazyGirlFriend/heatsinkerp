@@ -18,3 +18,12 @@ PROCESSING_TEAM_CODES = (
     "FACTORY-PLATE",
     "FACTORY-QC",
 )
+
+
+def outbound_kinds(team):
+    if team is not None:
+        if team.code == WAREHOUSE_TEAM_CODE and team.kind == "warehouse":
+            return ("transfer", "warehouse_outbound")
+        if team.code == INSPECTION_TEAM_CODE and team.kind == "production":
+            return ("transfer", "inspection_shipment")
+    return ("transfer",)

@@ -132,6 +132,12 @@ export function teamWorkspaceProfile(code: string | null | undefined) {
   return teamWorkspaceProfiles.find((profile) => profile.code === code)
 }
 
+export function teamExternalDispatchKind(team?: Pick<Team, 'code' | 'kind'>) {
+  if (team?.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse') return 'warehouse_outbound'
+  if (team?.code === 'FACTORY-QC' && team.kind === 'production') return 'inspection_shipment'
+  return null
+}
+
 export function teamCanReallocate(team?: Pick<Team, 'code' | 'kind'>) {
   return team?.kind === 'warehouse' || team?.kind === 'production'
 }

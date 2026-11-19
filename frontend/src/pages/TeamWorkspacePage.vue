@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
-import { transferQueryColumns, queryColumns } from '@/utils/tableQueryColumns'
+import {
+  teamRecordQueryColumns,
+  transferQueryColumns,
+  queryColumns,
+} from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import PersonName from '@/components/PersonName.vue'
@@ -221,7 +225,10 @@ const {
   receiptParams,
   dispatchParams,
   resetFiltersFromRoute,
-} = useTeamWorkspaceFilters(tab)
+} = useTeamWorkspaceFilters(tab, team)
+const recordDateLabel = computed(() =>
+  tab.value === 'receipts' ? '入库日期' : tab.value === 'pending' ? '转出日期' : '登记日期',
+)
 const recordColumns = computed(() =>
   tab.value === 'losses'
     ? queryColumns([
@@ -234,16 +241,8 @@ const recordColumns = computed(() =>
         ['登记人', 'created_by'],
         ['登记时间', 'created_at', 'date'],
       ])
-    : tab.value === 'outgoing'
-      ? queryColumns([
-          ['批次号', 'dispatch_no'],
-          ['流水号', 'serial_no'],
-          ['材质', 'material_name'],
-          ['件数', 'quantity', 'number'],
-          ['重量 (kg)', 'weight', 'number'],
-          ['转料 / 登记人', 'created_by'],
-          ['登记时间', 'created_at', 'date'],
-        ])
+    : ['pending', 'receipts', 'outgoing'].includes(tab.value)
+      ? teamRecordQueryColumns
       : transferQueryColumns,
 )
 const tableQuery = useTableQuery(
@@ -256,22 +255,22 @@ const tableQuery = useTableQuery(
   (table_query) => {
     const params = { ...listParams(), table_query },
       id = teamId.value
-    if (tab.value === 'pending')
-      return materialTransferApi.list({
-        ...params,
-        team_id: id,
-        direction: 'incoming',
-        status: 'pending',
-      })
+    if (tab.value === 'pending') return materialTransferApi.pendingFilterOptions(id, params)
     if (tab.value === 'outgoing')
-      return teamMaterialApi.dispatches(id, { ...params, ...dispatchParams() })
+      return teamMaterialApi.transferRecordFilterOptions(id, 'outbound-batches', {
+        ...params,
+        ...dispatchParams(),
+      })
     if (tab.value === 'reallocations')
       return teamMaterialApi.reallocations(id, {
         ...params,
         material_type: receiptParams().material_type,
       })
     if (tab.value === 'losses') return teamMaterialApi.losses(id, params)
-    return teamMaterialApi.receipts(id, { ...params, ...receiptParams() })
+    return teamMaterialApi.transferRecordFilterOptions(id, 'receipts', {
+      ...params,
+      ...receiptParams(),
+    })
   },
 )
 function listParams() {
@@ -1406,11 +1405,11 @@ onBeforeUnmount(() => {
                         ></label>
                       </template>
                       <label
-                        >{{ tab === 'receipts' ? '入库日期' : '登记日期'
+                        >{{ recordDateLabel
                         }}<RecordDateFilter
                           :append-to="appendTo"
                           v-model="dateDraft"
-                          :label="tab === 'receipts' ? '入库日期' : '登记日期'"
+                          :label="recordDateLabel"
                       /></label>
                     </div> </FilterDialog
                 ></template>
