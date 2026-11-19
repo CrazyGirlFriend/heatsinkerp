@@ -1,11 +1,15 @@
 import { httpRequest } from './httpClient'
 
 type Contract = import('@/types/generated/api').components['schemas']
-export type InspectionSource = Contract['InspectionSourceResponse']
+export type InspectionSource = Omit<Contract['InspectionSourceResponse'], 'is_outsourced'> & {
+  is_outsourced?: boolean
+}
 export type InspectionRecord = Omit<
   Contract['InspectionRecordResponse'],
-  'process_step' | 'problems'
+  'process_step' | 'problems' | 'is_outsourced' | 'failure_lines'
 > & {
+  is_outsourced?: boolean
+  failure_lines?: Contract['RecordedFailureLine'][]
   process_step?: import('@/types/processRoute').ProcessRouteContext | null
   problems?: Contract['InspectionRecordResponse']['problems']
 }
@@ -16,8 +20,9 @@ export interface InspectionCreate {
   items: InspectionRecord['items']
   dimension_result: string
   weight_result: string
-  involved_team_ids: number[]
-  problem_type_ids: number[]
+  failure_lines?: Contract['FailureLine'][]
+  involved_team_ids?: number[]
+  problem_type_ids?: number[]
   source_transfer_id: number
   expected_revision: number
   inspector_employee_id: number
@@ -75,9 +80,15 @@ export { inspectionStatusLabels } from '@/types/qualityStatus'
 export const inspectionMethodLabels = { visual: '目视', microscope: '显微镜' }
 export const inspectionItemLabels = { appearance: '外观', dimension: '尺寸', weight: '重量' }
 export function inspectionProblemLabel(
-  row: Pick<InspectionRecord, 'problems' | 'failed_quantity'>,
+  row: Pick<InspectionRecord, 'problems' | 'failed_quantity' | 'failure_lines'>,
 ) {
   return (
+    row.failure_lines
+      ?.map(
+        (l) =>
+          `${l.category} ${l.quantity}件 · ${l.disposition === 'rework' ? l.repair_team_name + '返修' : '判废'}`,
+      )
+      .join('、') ||
     row.problems?.map((problem) => problem.name).join('、') ||
     (row.failed_quantity > 0 ? '历史未分类' : '—')
   )

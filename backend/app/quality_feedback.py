@@ -69,9 +69,11 @@ def issue(db, issue_id, user, *, lock=False):
 
 def require_rework_issue(db, issue_id, user, *, lock=False):
     if not is_qc(user):
-        raise HTTPException(403, "仅检验班组长可将质量问题提交工艺")
-    row = issue(db, issue_id, user, lock=lock)
-    if row.feedback_status == "closed":
+        raise HTTPException(403, "仅检验班组可指定返修班组")
+    check = db.get(Inspection, issue_id)
+    root = issue(db, check.parent_id if check and check.parent_id else issue_id, user, lock=lock)
+    row = check if check and check.parent_id else root
+    if root.feedback_status == "closed":
         raise HTTPException(409, "已结束的问题须重新打开后再提交返工")
     if row.disposition != "rework":
         raise HTTPException(409, "请先由检验班组长确认需要返工并保存处理意见")
@@ -292,10 +294,24 @@ def list_records(
 
 
 def detail(db, issue_id, user):
+    from .models import ProcessRoute
+
     row = issue(db, issue_id, user)
     result = summaries(
         db, [(row, db.get(MaterialTransfer, row.source_transfer_id), db.get(Team, row.team_id))]
     )[0]
+    result["pending_repairs"] = [
+        {"id": route_id, "batch_no": batch_no}
+        for route_id, batch_no in db.execute(
+            select(ProcessRoute.id, MaterialTransfer.batch_no)
+            .join(MaterialTransfer, MaterialTransfer.id == ProcessRoute.rework_source_transfer_id)
+            .where(
+                ProcessRoute.rework_inspection_id == row.id,
+                ProcessRoute.state == "draft",
+                MaterialTransfer.rework_route_id == ProcessRoute.id,
+            )
+        )
+    ]
     result["events"] = [
         dict(
             id=e.id,
@@ -362,6 +378,17 @@ def write(db, issue_id, payload, user, *, decision=False):
                     raise HTTPException(409, "质量反馈已更新，请刷新后重试")
                 details = {}
                 if decision:
+                    if row.failure_lines and payload.disposition != row.disposition:
+                        raise HTTPException(422, "处理方式已按检验分类登记")
+                    assigned = {
+                        line["repair_team_id"]
+                        for line in row.failure_lines or []
+                        if line["disposition"] == "rework"
+                    }
+                    if not assigned.issubset(payload.involved_team_ids) or (
+                        not row.failure_lines and not payload.involved_team_ids
+                    ):
+                        raise HTTPException(422, "请选择涉及班组，并保留检验已指定的返修班组")
                     if len(set(payload.involved_team_ids)) != len(payload.involved_team_ids):
                         raise HTTPException(422, "问题涉及班组不能重复")
                     if payload.status == "closed" and payload.disposition == "pending":

@@ -26,6 +26,7 @@ export type WarehouseSource =
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   has_next_processing_task?: boolean
   process_route?: import('./processRoute').ProcessRouteContext | null
+  is_outsourced?: boolean
   group_id: number
   task_batch_number?: number | null
   batch_no?: string | null
@@ -206,7 +207,7 @@ export const warehouseColumns = [
     defaultVisible: false,
     format: (row: TeamInventoryRow) =>
       row.rework_route_id && row.rework_route_ready === false
-        ? '待制定返工工艺'
+        ? '待检验指定班组'
         : row.process_route
           ? `${row.process_route.sequence_no} · ${row.process_route.step_name}`
           : '—',

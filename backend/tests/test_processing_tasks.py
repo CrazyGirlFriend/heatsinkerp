@@ -7,7 +7,7 @@ import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
-from app.models import MaterialInspection, MaterialStockBalance, TeamProcessingTask
+from app.models import MaterialStockBalance, TeamProcessingTask
 from engineered_rework_helpers import approve_rework, resume_rework
 from sqlalchemy import create_engine
 from test_engineered_rework import approved_quality_issue, save_plan
@@ -123,6 +123,9 @@ def test_partial_task_remaining_keeps_only_previous_completed_tasks(client, ware
     task1, task2 = tasks(client, s)
     first = work(client, s, lot, employee, processing_task_id=task1["id"]).json()
     first_child = first["outputs"][0]
+    inspection_id, qc_headers = approved_quality_issue(
+        client, s, first_child, ctx(client, s, first_child)
+    )
     second = work(
         client,
         s,
@@ -149,16 +152,13 @@ def test_partial_task_remaining_keeps_only_previous_completed_tasks(client, ware
         work_kind="rework",
         idempotency_key="not-completed-task",
     )
-    assert denied.status_code == 422 and "工艺" in denied.text
-    inspection_id, qc_headers = approved_quality_issue(client, s, done, ctx(client, s, done))
-    # This approved inspection predates the later split; preserve its original source.
-    with SessionLocal.begin() as db:
-        db.get(MaterialInspection, inspection_id).source_transfer_id = first_child["id"]
+    assert denied.status_code == 422 and "检验" in denied.text
     invalid_request = client.post(
         "/api/process-routes/rework-requests",
         headers=qc_headers,
         json={
             "inspection_id": inspection_id,
+            "repair_team_id": s["other"]["id"],
             "source_transfer_id": remaining["id"],
             "rework_of_id": second.json()["id"],
             "expected_revision": context["revision"],
@@ -244,6 +244,9 @@ def test_remaining_of_later_task_can_rework_an_earlier_completed_task(client, wa
     lot, employee = setup_lot(client, s)
     task1, task2 = tasks(client, s)
     first = work(client, s, lot, employee, processing_task_id=task1["id"]).json()
+    inspection_id, qc_headers = approved_quality_issue(
+        client, s, first["outputs"][0], ctx(client, s, first["outputs"][0])
+    )
     second = work(
         client,
         s,
@@ -269,17 +272,12 @@ def test_remaining_of_later_task_can_rework_an_earlier_completed_task(client, wa
         second["outputs"][0]["id"]
     ]
     context = ctx(client, s, remaining)
-    inspection_id, qc_headers = approved_quality_issue(
-        client, s, second["outputs"][0], ctx(client, s, second["outputs"][0])
-    )
-    # Historical inspection belongs to the completed earlier operation, before splitting.
-    with SessionLocal.begin() as db:
-        db.get(MaterialInspection, inspection_id).source_transfer_id = first["outputs"][0]["id"]
     requested = client.post(
         "/api/process-routes/rework-requests",
         headers=qc_headers,
         json={
             "inspection_id": inspection_id,
+            "repair_team_id": s["other"]["id"],
             "source_transfer_id": remaining["id"],
             "rework_of_id": first["id"],
             "expected_revision": context["revision"],
@@ -341,7 +339,7 @@ def test_engineered_rework_preserves_disabled_and_legacy_original_history(client
     assert retry.status_code == 201, retry.text
     assert (retry.json()["processing_task_name"], retry.json()["purpose_name"]) == (
         "返工精磨",
-        "返工处理",
+        "返工精磨",
     )
     current = retry.json()["outputs"][0]
     resume_rework(client, s, current)

@@ -493,7 +493,7 @@ async function openProcessing(groupId: number) {
       return
     }
     if (batch.transfer.rework_pending && !batch.transfer.rework_route_ready) {
-      showToast('请等待返工工艺制定后再登记加工', 'info')
+      showToast('待检验指定返修班组后再登记加工', 'info')
       return
     }
     processingSourceId.value = groupId
@@ -1651,7 +1651,7 @@ onBeforeUnmount(() => {
         @close="reworkRequestOpen = false"
         @saved="
           () => {
-            showToast('问题已提交工艺班组')
+            showToast('问题已提交检验班组')
             void loadView()
           }
         "

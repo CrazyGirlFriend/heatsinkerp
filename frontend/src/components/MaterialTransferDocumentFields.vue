@@ -46,6 +46,9 @@ const fields = computed<DocumentField[]>(() => {
       label: '应发成品件数',
       value: t.delivery_quantity == null ? '—' : `${t.delivery_quantity} 件`,
     },
+    ...(props.group !== 'extra' && t.is_outsourced
+      ? [{ label: '产品来源', value: '外委产品' }]
+      : []),
     ...materialDocumentTextFields
       .filter(
         (field) =>

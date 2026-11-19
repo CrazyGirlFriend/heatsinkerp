@@ -22,7 +22,7 @@ const options = ref<ScheduleReworkOption[]>([]),
 const selected = ref<number>(),
   planId = ref<number>(),
   route = ref<ProcessRoute>()
-const states = { awaiting_route: '待制定工艺', processing: '返工中', processed: '已完成返工' }
+const states = { awaiting_route: '待检验指定班组', processing: '返工中', processed: '已完成返工' }
 function plans() {
   return options.value.find((o) => o.route_id === selected.value)?.plans || []
 }

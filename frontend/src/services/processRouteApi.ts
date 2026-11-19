@@ -84,7 +84,8 @@ export const processRouteApi = {
     ),
   requestRework: (body: {
     source_transfer_id: number
-    rework_of_id: number
+    rework_of_id?: number
+    repair_team_id?: number
     problem_team_id?: number
     inspection_id?: number
     expected_revision: number

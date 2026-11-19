@@ -1,6 +1,7 @@
 import { assertExportSize, type ExportValue } from './tableExport'
 import { sharedSerialLabel } from '../types/sharedMaterial'
 import type { ProcessingRecord } from '../types/materialProcessing'
+import headers from '../config/productionTemplateColumns.json'
 import definitions from '../config/productionTemplates.json'
 
 type ExportRow = Record<string, ExportValue>
@@ -10,8 +11,11 @@ const templates = import.meta.glob('../assets/productionTemplates/*.xlsx', {
   import: 'default',
 })
 export function productionTemplates(code?: string) {
-  const definition = definitions[code as keyof typeof definitions]
-  return definition ? [{ key: code!, label: definition.label }] : []
+  const keys = code === 'FACTORY-QC' ? ['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'] : [code]
+  return keys.flatMap((key) => {
+    const definition = definitions[key as keyof typeof definitions]
+    return definition && key ? [{ key, label: definition.label }] : []
+  })
 }
 
 function values(
@@ -114,6 +118,32 @@ function values(
       X: hours,
     }
   const qualityNote = [note, inspection?.notes].filter(Boolean).join('；')
+  if (key === 'QC-SANDBLAST' || key === 'QC-DEBURR') {
+    return {
+      A: r.processing_date,
+      B: r.serial_no,
+      C: r.material_name,
+      G: continuation ? null : r.completed_quantity,
+      H: inspection?.passed_quantity,
+      I: hours,
+      J: r.processing_task_name,
+      K: inspection?.inspector_name,
+      [key === 'QC-SANDBLAST' ? 'P' : 'N']: qualityNote,
+    }
+  }
+  const counts: Record<string, number> = {}
+  for (const line of inspection?.failure_lines || []) {
+    const scrap = line.disposition === 'scrap'
+    const total = scrap ? 'K' : 'AF'
+    counts[total] = (counts[total] || 0) + line.quantity
+    const group = headers['FACTORY-QC'].columns.find(
+      (c) => c.label === (scrap ? '废品' : '返修数量明细'),
+    )
+    const column = group?.children?.find(
+      (c) => c.label === (scrap ? line.category : line.repair_column),
+    )
+    if (column) counts[column.key] = (counts[column.key] || 0) + line.quantity
+  }
   return {
     A: r.processing_date,
     B: r.serial_no,
@@ -133,6 +163,7 @@ function values(
         : inspection?.failed_quantity === 0
           ? 0
           : null,
+    ...(inspection?.failure_lines?.length ? { K: 0, AF: 0, ...counts } : {}),
     AP: r.processing_task_name,
     AQ: hours,
     AS: qualityNote,
@@ -161,13 +192,29 @@ export function productionRecordData(record: ProcessingRecord): ExportRow {
 
 export function productionReportRows(key: string, rows: ExportRow[]) {
   return rows.flatMap((record) => {
-    const inspections: Inspection[] =
-      key === 'FACTORY-QC' ? JSON.parse(String(record.report_inspections || '[]')) : []
+    const inspections: Inspection[] = ['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'].includes(key)
+      ? JSON.parse(String(record.report_inspections || '[]'))
+      : []
     // Rechecks describe the same pieces; do not count them as new production.
     return inspections.length
       ? inspections.map((inspection, index) => values(key, record, inspection, index > 0))
       : [values(key, record)]
   })
+}
+
+export function productionReportTitle(title: string, dates: ExportValue[]) {
+  const months = [...new Set(dates.map((date) => String(date || '').slice(0, 7)))]
+    .filter((month) => /^\d{4}-\d{2}$/.test(month))
+    .sort()
+  if (!months.length) return title
+  const first = months[0]!,
+    last = months.at(-1)!
+  const period = first === last ? `${Number(first.slice(5))}月` : `${first} 至 ${last}`
+  const year =
+    first.slice(0, 4) === last.slice(0, 4)
+      ? first.slice(0, 4)
+      : `${first.slice(0, 4)}—${last.slice(0, 4)}`
+  return title.replace(/\d+月/, period).replace(/\d{4}(\s*年)/, `${year}$1`)
 }
 
 export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
@@ -189,20 +236,12 @@ export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
   const first = definition.firstDataRow
   if (data.length > 1) sheet.duplicateRow(first, data.length - 1, true)
   // Month/year in the supplied report title are report values, not fixed labels.
-  const months = [
-    ...new Set(sorted.map((row) => String(row.processing_date || '').slice(0, 7))),
-  ].filter((month) => /^\d{4}-\d{2}$/.test(month))
   const title = sheet.getCell('A1')
-  if (months.length && typeof title.value === 'string') {
-    const start = months[0]!,
-      end = months.at(-1)!
-    const period = start === end ? `${Number(start.slice(5))}月` : `${start} 至 ${end}`
-    title.value = title.value.replace(/\d+月/, period)
-    const year =
-      start.slice(0, 4) === end.slice(0, 4)
-        ? start.slice(0, 4)
-        : `${start.slice(0, 4)}—${end.slice(0, 4)}`
-    title.value = title.value.replace(/\d{4}(\s*年)/, `${year}$1`)
+  if (typeof title.value === 'string') {
+    title.value = productionReportTitle(
+      title.value,
+      sorted.map((row) => row.processing_date),
+    )
   }
   data.forEach((record, index) => {
     for (const [column, value] of Object.entries(record)) {
@@ -218,6 +257,8 @@ export async function createProductionWorkbook(key: string, rows: ExportRow[]) {
       'FACTORY-WIRE': 'T',
       'FACTORY-ENGRAVE': 'X',
       'FACTORY-QC': 'AQ',
+      'QC-SANDBLAST': 'I',
+      'QC-DEBURR': 'I',
     }
     const durationCell = sheet.getCell(`${durationColumn[key]}${first + index}`)
     durationCell.style = {

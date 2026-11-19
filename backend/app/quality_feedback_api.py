@@ -57,6 +57,51 @@ def records(
     )
 
 
+@router.post("/team-problems/{route_id}/assign", response_model=TeamProblemResponse)
+def assign_team_problem(
+    route_id: int,
+    repair_team_id: int = Query(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .process_routes import require_route
+    from .quality_team_problems import detail
+    from .rework_routes import assign_repair
+
+    with db.begin():
+        detail(db, route_id, user)
+        route = require_route(db, route_id, True)
+        assign_repair(db, route, repair_team_id, user)
+        return detail(db, route_id, user)
+
+
+@router.post(
+    "/{issue_id}/pending-repairs/{route_id}/assign",
+    response_model=QualityFeedbackDetailResponse,
+    response_model_exclude_unset=True,
+)
+def assign_pending_repair(
+    issue_id: int,
+    route_id: int,
+    repair_team_id: int = Query(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+
+    from . import quality_feedback
+    from .process_routes import require_route
+    from .rework_routes import assign_repair
+
+    with db.begin():
+        quality_feedback.require_rework_issue(db, issue_id, user, lock=True)
+        route = require_route(db, route_id, True)
+        if route.rework_inspection_id != issue_id:
+            raise HTTPException(404, "未找到该检验记录的返修批次")
+        assign_repair(db, route, repair_team_id, user)
+        return quality_feedback.detail(db, issue_id, user)
+
+
 @router.get("/team-problems/{route_id}", response_model=TeamProblemResponse)
 def team_problem(
     route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)

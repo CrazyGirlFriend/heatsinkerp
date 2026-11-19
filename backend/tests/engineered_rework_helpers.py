@@ -1,8 +1,8 @@
-"""Explicit engineering preparation shared by rework ledger regression scenarios."""
+"""Inspection-directed assignment shared by rework ledger regression scenarios."""
 
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment
-from test_engineered_rework import request_plan, save_plan
+from test_engineered_rework import request_plan
 from test_warehouse_classification import base
 
 
@@ -14,8 +14,7 @@ def approve_rework(client, setup, lot, original=None, *, team=None):
         with SessionLocal() as db:
             record = db.get(MaterialQuantityAdjustment, context["rework_of_id"])
             original = {"id": record.id}
-    plan = request_plan(client, setup, lot, original)
-    save_plan(client, setup, plan, team=team)
+    plan = request_plan(client, setup, lot, original, team=team)
     return {"id": plan["rework_request"]["source_transfer_id"]}
 
 

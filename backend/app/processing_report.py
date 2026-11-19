@@ -33,6 +33,7 @@ def inspections_by_record(db, team_id, record_ids):
                 scope=row.scope,
                 parent_id=row.parent_id,
                 disposition=row.disposition,
+                failure_lines=row.failure_lines or [],
                 problem_names=[problem.name for problem in row.problems],
                 notes=row.notes,
             )

@@ -49,6 +49,21 @@ def work(client, s, lot, employee, **extra):
         "machine_no": "测试机台1",
     }
     body.update({key: parameters[key] for key in context.get("parameter_fields", [])})
+    # The operator selects a local task when QC specifies only the destination team.
+    if (
+        extra.get("work_kind") == "rework"
+        and context["rework_route_ready"]
+        and context.get("task_required")
+        and "processing_task_id" not in extra
+        and not (context.get("process_route") or {}).get("processing_task_id")
+    ):
+        tasks = client.get(url + "/processing-tasks").json()
+        task = next((row for row in tasks if row["name"] == "返工精磨" and row["active"]), None)
+        if task is None:
+            result = client.post(url + "/processing-tasks", json={"name": "返工精磨"})
+            assert result.status_code == 201, result.text
+            task = result.json()
+        body["processing_task_id"] = task["id"]
     body.update(extra)
     key = next(
         (key for key in context.get("parameter_fields", []) if key in ("machine_no", "furnace_no")),

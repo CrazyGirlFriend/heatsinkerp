@@ -1,16 +1,28 @@
-// Read column labels from the supplied headers, including merged group headings.
+// At 100% the supplied sheets' default width of 9.230769 characters measures 75 CSS pixels.
+const pixelsPerWidthUnit = 75 / 9.23076923076923
+
 export function productionTemplateColumns(sheet, definition) {
   const last = sheet.getColumn(definition.lastColumn).number
-  const firstHeader = definition.firstDataRow === 3 ? 1 : 2
-  return Array.from({ length: last }, (_, index) => {
-    const labels = []
-    for (let row = firstHeader; row < definition.firstDataRow; row++) {
-      const value = sheet.getCell(row, index + 1).master.value
-      const text =
-        typeof value === 'string' ? value : value?.richText?.map((part) => part.text).join('') || ''
-      const label = text.trim().replace(/\s+/g, ' ')
-      if (label && !labels.includes(label)) labels.push(label)
+  const bottomRow = definition.firstDataRow - 1
+  const columns = []
+  for (let index = 1; index <= last; index++) {
+    const column = sheet.getColumn(index)
+    const upper = sheet.getCell(bottomRow - 1, index).master
+    const lower = sheet.getCell(bottomRow, index).master
+    const width = column.width ?? sheet.properties.defaultColWidth
+    const leaf = {
+      key: column.letter,
+      label: lower.text.trim(),
+      widthPx: Math.round(width * pixelsPerWidthUnit),
     }
-    return { key: sheet.getColumn(index + 1).letter, label: labels.join(' / ') }
-  }).filter((column) => column.label)
+    if (upper.address === lower.address) {
+      columns.push(leaf)
+    } else {
+      if (columns.at(-1)?.key !== upper.address) {
+        columns.push({ key: upper.address, label: upper.text.trim(), children: [] })
+      }
+      columns.at(-1).children.push(leaf)
+    }
+  }
+  return { title: bottomRow > 2 ? sheet.getCell('A1').text.trim() : '', columns }
 }

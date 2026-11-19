@@ -49,7 +49,8 @@ def validate(db, lot, payload, latest):
 
     prior = original_work(db, lot, payload)
     if (
-        payload.processing_date
+        prior is not None
+        and payload.processing_date
         and prior.processing_date
         and payload.processing_date < prior.processing_date
     ):

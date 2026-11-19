@@ -650,7 +650,7 @@ it('directs an unapproved rework request to team submission', async () => {
   await render()
   await wrapper.setProps({ processing: true, rework: true })
   await flushPromises()
-  expect(wrapper.text()).toContain('请联系检验班组确认返工，并由工艺人员制定返工工艺')
+  expect(wrapper.text()).toContain('请联系检验班组确认返修去向')
   expect(wrapper.find('section[aria-label="登记返工事项"]').exists()).toBe(false)
   expect(
     wrapper

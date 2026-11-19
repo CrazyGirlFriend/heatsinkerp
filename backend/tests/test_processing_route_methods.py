@@ -107,7 +107,7 @@ def test_same_task_operations_keep_distinct_snapshots_and_rework_selected_earlie
     )
     assert result["rework_of_id"] == first["id"]
     assert result["process_route_id"] != first["process_route_id"]
-    assert result["process_step_instructions"] == "返工精磨至2.50±0.01mm"
+    assert result["process_step_instructions"] == "尺寸偏差，重新精磨"
     assert result["processing_task_name"] == "返工精磨"
     child = result["outputs"][0]
     with SessionLocal() as db:
@@ -246,8 +246,8 @@ def test_old_missing_requirements_need_new_engineering_instruction_for_rework(cl
     ctx = client.get(base(s, True) + f"/stock/{child['id']}/quantity-adjustments").json()
     assert ctx["rework_task_records"][0]["process_step_instructions"] is None
     retry = processed(client, s, child, worker, work_kind="rework", rework_of_id=first["id"])
-    assert retry["process_step_name"] == "1 · 返工精磨"
-    assert retry["process_step_instructions"] == "返工精磨至2.50±0.01mm"
+    assert retry["process_step_name"] == f"1 · {s['other']['name']}返修"
+    assert retry["process_step_instructions"] == "尺寸偏差，重新精磨"
 
 
 def test_inline_outbound_completion_uses_same_requirement_snapshot(client, warehouse):

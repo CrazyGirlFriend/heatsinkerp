@@ -277,7 +277,11 @@ const busy = ref(false),
 const directory = useTeamDirectoryStore()
 const auth = useAuthStore()
 const canMaintain = computed(
-  () => !props.viewOnly && !auth.currentUserError && canMaintainProcessRoute(auth.currentUser),
+  () =>
+    draft.value.route_kind !== 'rework' &&
+    !props.viewOnly &&
+    !auth.currentUserError &&
+    canMaintainProcessRoute(auth.currentUser),
 )
 const readonly = computed(() => !canMaintain.value || !editingSaved.value)
 watch(
@@ -292,9 +296,7 @@ watch(
 )
 const dialogTitle = computed(() =>
   draft.value.route_kind === 'rework'
-    ? readonly.value
-      ? '返工工艺'
-      : '制定返工工艺'
+    ? '返修记录'
     : readonly.value
       ? '工艺详情'
       : draft.value.id
@@ -1210,20 +1212,11 @@ onMounted(async () => {
         @click="visible = false"
         >{{ draft.rework_request?.original_task_id ? '查看交货排期' : '关联交货排期' }}</RouterLink
       >
-      <template v-if="readonly && canMaintain && draft.route_kind !== 'rework'">
-        <ElButton type="primary" :disabled="busy" @click="revise">修改工艺</ElButton>
-      </template>
-      <ElButton
-        v-else-if="readonly && canMaintain && draft.rework_request?.can_modify"
-        type="primary"
-        :disabled="busy"
-        @click="revise"
-        >修改返工工艺</ElButton
+      <ElButton v-if="readonly && canMaintain" type="primary" :disabled="busy" @click="revise"
+        >修改工艺</ElButton
       >
-      <template v-else-if="!readonly"
-        ><ElButton type="primary" :loading="busy" @click="save()">{{
-          draft.route_kind === 'rework' ? '提交工艺' : '保存工艺'
-        }}</ElButton></template
+      <ElButton v-else-if="!readonly" type="primary" :loading="busy" @click="save()"
+        >保存工艺</ElButton
       >
     </template>
   </AppDialog>

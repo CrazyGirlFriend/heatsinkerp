@@ -1,4 +1,4 @@
-"""A rework request isolates physical stock; engineering supplies its execution route."""
+"""Isolate physical stock and execute the repair assignment selected by inspection."""
 
 from decimal import Decimal
 
@@ -32,7 +32,8 @@ from .team_constants import PROCESSING_TEAM_CODES
 class ReworkRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
-    rework_of_id: int = Field(ge=1)
+    rework_of_id: int | None = Field(default=None, ge=1)
+    repair_team_id: int | None = Field(default=None, ge=1)
     problem_team_id: int | None = Field(default=None, ge=1)
     inspection_id: int | None = Field(default=None, ge=1)
     expected_revision: int = Field(ge=0)
@@ -209,7 +210,7 @@ def request_document(db, route):
     resume = db.get(ProcessRoute, route.resume_route_id) if route.resume_route_id else None
     return {
         **request_documents(db, [route])[route.id],
-        "can_modify": route.state == "published" and can_revise(db, route),
+        "can_modify": False,
         "resume_step_name": f"{resume.steps[route.resume_step_index]['sequence_no']} · {resume.steps[route.resume_step_index]['name']}（{resume.steps[route.resume_step_index].get('team_name', '')}）"
         if resume
         else None,
@@ -336,6 +337,64 @@ def source_stock(db, user, query="", page=1, lot_id=None, problem_team_id=None, 
     )
 
 
+def assign_repair(db, route, team_id, user):
+    from .process_route_schemas import StepWrite
+    from .process_routes import publish_route
+    from .quality_feedback import is_qc
+
+    if not is_qc(user):
+        raise HTTPException(403, "仅检验可指定返修班组")
+    team = db.get(Team, team_id) if team_id else None
+    if (
+        not team
+        or not team.active
+        or team.kind != "production"
+        or team.code not in PROCESSING_TEAM_CODES
+    ):
+        raise HTTPException(422, "请选择启用的返修班组")
+    if route.route_kind != "rework":
+        raise HTTPException(422, "请选择返修事项")
+    if route.state != "draft":
+        if len(route.steps) == 1 and route.steps[0]["team_id"] == team.id:
+            return
+        raise HTTPException(409, "返修班组已确定，请刷新后核对")
+    route.steps = [
+        StepWrite(
+            sequence_no=1,
+            name=f"{team.name}返修",
+            instructions=route.request_reason or "按检验记录返修",
+            team_id=team.id,
+        ).model_dump()
+    ]
+    route.source_data = {**route.source_data, "assigned_by_inspection": actor_name(user)}
+    publish_route(db, route)
+    route.version += 1
+    db.flush()
+
+
+def check_repair_quantity(db, inspection, team_id, quantity):
+    planned = sum(
+        line["quantity"]
+        for line in inspection.failure_lines or []
+        if line["disposition"] == "rework" and line["repair_team_id"] == team_id
+    )
+    if not inspection.failure_lines:
+        planned = inspection.failed_quantity
+    issued = db.execute(
+        select(ProcessRoute.steps, MaterialTransfer.quantity)
+        .join(MaterialTransfer, MaterialTransfer.id == ProcessRoute.rework_source_transfer_id)
+        .where(ProcessRoute.rework_inspection_id == inspection.id, ProcessRoute.parent_id.is_(None))
+        .with_for_update()
+    )
+    used = sum(
+        count
+        for steps, count in issued
+        if not inspection.failure_lines or not steps or steps[0]["team_id"] == team_id
+    )
+    if quantity > planned - used:
+        raise HTTPException(422, "数量超过检验分给该班组的剩余返修件数")
+
+
 def request_rework(db, payload, user):
     from .process_route_documents import document
     from .quality_feedback import is_qc, require_rework_issue
@@ -371,7 +430,12 @@ def request_rework(db, payload, user):
             if prior:
                 return replay(prior)
             if payload.inspection_id is not None:
-                require_rework_issue(db, payload.inspection_id, user, lock=True)
+                issue = require_rework_issue(db, payload.inspection_id, user, lock=True)
+                if not payload.repair_team_id:
+                    raise HTTPException(422, "请选择返修班组")
+                check_repair_quantity(db, issue, payload.repair_team_id, payload.quantity)
+            elif payload.repair_team_id is not None:
+                raise HTTPException(422, "班组反馈由检验判定返修去向")
             from .inspections import lock_hold
 
             lot = stock.lock_lot(db, payload.source_transfer_id)
@@ -419,13 +483,15 @@ def request_rework(db, payload, user):
                     Work.processing_status.is_not(None),
                 )
             )
-            if work is None:
+            if work is None and (payload.rework_of_id or not payload.inspection_id):
                 raise HTTPException(422, "原加工记录不属于本批物料")
-            if payload.problem_team_id is not None and work.team_id != payload.problem_team_id:
+            if payload.problem_team_id is not None and (
+                not work or work.team_id != payload.problem_team_id
+            ):
                 raise HTTPException(422, "工艺记录与疑似涉及班组不一致")
             if not is_qc(user) and work.team_id != team.id and payload.problem_team_id is None:
                 raise HTTPException(403, "默认只能反馈本班组记录，请先选择疑似涉及班组")
-            if work.outputs:
+            if work and work.outputs:
                 descendants = set(db.scalars(select(path.c.id)))
                 if not any(
                     item["id"] in descendants and item["role"] == "produced"
@@ -461,7 +527,8 @@ def request_rework(db, payload, user):
                 stock_tracked=True,
                 processing_role=lot.processing_role,
                 rework_pending=True,
-                processing_schedule_id=lot.processing_schedule_id or work.production_schedule_id,
+                processing_schedule_id=lot.processing_schedule_id
+                or (work.production_schedule_id if work else None),
                 rework_count=lot.rework_count,
                 process_route_id=lot.process_route_id,
                 process_step_index=lot.process_step_index,
@@ -499,8 +566,9 @@ def request_rework(db, payload, user):
                 else [lot.serial_no],
                 steps=[],
                 rework_source_transfer_id=child.id,
-                rework_of_id=work.id,
-                original_schedule_id=lot.processing_schedule_id or work.production_schedule_id,
+                rework_of_id=work.id if work else None,
+                original_schedule_id=lot.processing_schedule_id
+                or (work.production_schedule_id if work else None),
                 rework_inspection_id=payload.inspection_id,
                 resume_route_id=lot.process_route_id,
                 resume_step_index=lot.process_step_index,
@@ -520,7 +588,9 @@ def request_rework(db, payload, user):
             db.flush()
             from .process_route_drawings import copy_drawings
 
-            copy_drawings(db, lot.process_route_id or work.process_route_id, route.id)
+            copy_drawings(
+                db, lot.process_route_id or (work.process_route_id if work else None), route.id
+            )
             child.rework_route_id = route.id
             db.add(
                 MaterialTransferEvent(
@@ -534,7 +604,7 @@ def request_rework(db, payload, user):
                             "before": None,
                             "after": {
                                 "id": route.id,
-                                "rework_of_id": work.id,
+                                "rework_of_id": route.rework_of_id,
                                 "reason": payload.reason,
                                 "quantity": payload.quantity,
                                 "weight": float(payload.weight),
@@ -545,6 +615,8 @@ def request_rework(db, payload, user):
             )
             workflow._record_event(db, child, user, "created")
             db.flush()
+            if payload.inspection_id:
+                assign_repair(db, route, payload.repair_team_id, user)
             return document(route, db=db)
     except IntegrityError:
         db.rollback()
@@ -559,8 +631,8 @@ def request_rework(db, payload, user):
 def activate(db, route):
     if route.route_kind != "rework":
         return
-    if not route.engineering_employee_id:
-        raise HTTPException(422, "返工工艺必须选择工艺人员")
+    if not route.source_data.get("assigned_by_inspection"):
+        raise HTTPException(422, "返修须由检验指定班组")
     lot = stock.lock_lot(db, route.rework_source_transfer_id)
     balance = db.scalar(select(Balance).where(Balance.transfer_id == lot.id).with_for_update())
     if (
@@ -597,11 +669,11 @@ def activate(db, route):
 
 def original_work(db, lot, payload):
     if pending(lot) or not active(lot):
-        raise HTTPException(422, "请先登记返工事项，由工艺人员制定返工工艺后再加工")
+        raise HTTPException(422, "请先登记返工事项，由检验指定返修班组后再加工")
     route = lot.process_route
     if payload.rework_of_id not in (None, route.rework_of_id):
         raise HTTPException(422, "返工原加工记录与工艺不一致")
-    return db.get(Work, route.rework_of_id)
+    return db.get(Work, route.rework_of_id) if route.rework_of_id else None
 
 
 def resume_fields(route):
@@ -617,10 +689,10 @@ def dispatch_fields(lot, target, rework_return):
     from .process_routes import next_index
 
     if pending(lot):
-        raise HTTPException(422, "返工工艺尚未制定，不能转出")
+        raise HTTPException(422, "检验尚未指定返修班组，不能转出")
     if not active(lot):
         if rework_return:
-            raise HTTPException(422, "请先登记返工事项，由工艺人员确定返工工序和班组")
+            raise HTTPException(422, "请先登记返工事项，由检验指定返修班组")
         return None
     route = lot.process_route
     index = lot.process_step_index
@@ -631,7 +703,7 @@ def dispatch_fields(lot, target, rework_return):
         index = next_index(route, index, lot.serial_no, lot.shared_unallocated)
     if index is None:
         if not target or target.id != route.resume_team_id:
-            raise HTTPException(422, "返工完成后须转回工艺人员指定的正常工序班组")
+            raise HTTPException(422, "返工完成后须转回指定的正常工序班组")
         return resume_fields(route)
     step = route.steps[index]
     if not target or target.id != step["team_id"]:
@@ -672,7 +744,7 @@ def resume(db, lot, user, expected_revision):
         raise HTTPException(422, "返工工序尚未全部完成")
     route = lot.process_route
     if lot.next_team_id != route.resume_team_id:
-        raise HTTPException(422, "请先转回工艺人员指定的正常工序班组")
+        raise HTTPException(422, "请先转回指定的正常工序班组")
     for key, value in resume_fields(route).items():
         setattr(lot, key, value)
     lot.process_route = (

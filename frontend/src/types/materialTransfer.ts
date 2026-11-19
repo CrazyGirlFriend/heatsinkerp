@@ -154,6 +154,7 @@ export const materialDocumentFormSections = [
   },
 ]
 export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, string | null> & {
+  is_outsourced?: boolean
   material_type: MaterialType | null
   finished_quantity: number | null
   delivery_date: string | null

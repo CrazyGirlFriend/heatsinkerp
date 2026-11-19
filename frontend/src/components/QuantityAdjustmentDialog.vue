@@ -149,6 +149,7 @@ const processingDate = ref(factoryToday())
 const editingProcessingDate = ref(false)
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
+const reportTemplate = ref<'FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR'>()
 const inspection = ref<CreateQuantityAdjustment['inspection'] | null>(null)
 const inspectionEnabled = computed(
   () => unitProcessing.value && snapshot.value?.inspection_enabled === true,
@@ -399,7 +400,7 @@ async function save() {
       (!employees.value.length ||
         !processingDate.value ||
         processingDate.value > factoryToday())) ||
-    (inspectionEnabled.value && !inspection.value) ||
+    (inspectionEnabled.value && (!reportTemplate.value || !inspection.value)) ||
     !processingMinutesValid.value ||
     (structured.value && Object.keys(parameterErrors.value).length > 0) ||
     (structured.value &&
@@ -447,7 +448,9 @@ async function save() {
       : {}),
   }))
   const body = {
-    ...(inspectionEnabled.value && inspection.value ? { inspection: inspection.value } : {}),
+    ...(inspectionEnabled.value && inspection.value
+      ? { inspection: inspection.value, report_template: reportTemplate.value }
+      : {}),
     ...(isRework.value
       ? { work_kind: 'rework' as const, rework_of_id: originalRecordId.value || undefined }
       : {}),
@@ -512,6 +515,7 @@ watch(
     closeRoute()
     ++generation
     snapshot.value = null
+    reportTemplate.value = undefined
     inspection.value = null
     scheduleId.value = null
     records.value = []
@@ -576,9 +580,11 @@ onBeforeUnmount(() => {
     @close="close"
   >
     <p v-if="isRework && snapshot" class="quantity-rework-note">
-      返工第 {{ snapshot.rework_round || (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{
-        originalRecordId
-      }}
+      返工第 {{ snapshot.rework_round || (snapshot.rework_count || 0) + 1 }} 次<template
+        v-if="originalRecordId"
+      >
+        · 关联加工记录 #{{ originalRecordId }}</template
+      >
       · 本次完成量单独计为返工工作量
     </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
@@ -602,7 +608,7 @@ onBeforeUnmount(() => {
         <section class="processing-work-order">
           <ElAlert
             v-if="isRework && snapshot.rework_route_id && !snapshot.rework_route_ready"
-            title="待工艺人员制定返工工艺"
+            title="待检验指定返修班组"
             type="warning"
             :closable="false"
           />
@@ -615,7 +621,7 @@ onBeforeUnmount(() => {
           >
           <ElAlert
             v-if="editable && hasStock && isRework && !snapshot.rework_route_id"
-            title="请联系检验班组确认返工，并由工艺人员制定返工工艺"
+            title="请联系检验班组确认返修去向"
             type="warning"
             :closable="false"
           />
@@ -768,6 +774,19 @@ onBeforeUnmount(() => {
                   label="加工后尺寸"
                   @validity-change="specificationValid = $event"
               /></ElFormItem>
+              <ElFormItem
+                v-if="inspectionEnabled"
+                label="日产表"
+                required
+                :class="{ 'is-error': submitted && !reportTemplate }"
+              >
+                <ElSelect v-model="reportTemplate" placeholder="选择日产表" aria-label="日产表">
+                  <ElOption value="FACTORY-QC" label="检验产量表" /><ElOption
+                    value="QC-SANDBLAST"
+                    label="喷砂产量表"
+                  /><ElOption value="QC-DEBURR" label="去毛刺产量表" />
+                </ElSelect>
+              </ElFormItem>
               <ProcessingInspectionFields
                 v-if="inspectionEnabled"
                 :key="`${teamId}:${sourceId}`"

@@ -28,6 +28,7 @@ def prepare(client, warehouse):
     issue_id, _ = approved_quality_issue(client, warehouse, lot, context)
     body = dict(
         inspection_id=issue_id,
+        repair_team_id=warehouse["other"]["id"],
         source_transfer_id=lot["id"],
         rework_of_id=result.json()["id"],
         expected_revision=context["revision"],
@@ -51,7 +52,7 @@ def test_qc_problem_and_published_rework_remain_visible_without_messages(client,
     assert route["rework_request"]["requesting_team_id"] == team_id
     assert route["rework_request"]["requesting_team_name"] == "检验"
     assert route["rework_request"]["inspection_id"] == body["inspection_id"]
-    assert route["state"] == "draft"
+    assert route["state"] == "published"
     retry = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert retry.status_code == 201 and retry.json()["id"] == route["id"]
     drafts = client.get(
@@ -59,19 +60,12 @@ def test_qc_problem_and_published_rework_remain_visible_without_messages(client,
         headers=engineering_headers,
         params={"kind": "rework", "state": "draft"},
     ).json()
-    assert drafts["pending_rework_count"] == 1
-    assert drafts["items"][0]["id"] == route["id"]
+    assert drafts["pending_rework_count"] == 0
+    assert drafts["items"] == []
     with SessionLocal() as db:
-        assert db.get(ProcessRoute, route["id"]).state == "draft"
+        assert db.get(ProcessRoute, route["id"]).state == "published"
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
     saved = save_plan(client, warehouse, route)
-    # Publishing/retrying exposes instructions without physically transferring material.
-    repeat = client.post(
-        f"/api/process-routes/{saved['id']}/publish",
-        headers=author(client)[0],
-        json={"version": saved["version"]},
-    )
-    assert repeat.status_code == 200, repeat.text
     ready = client.get(f"/api/process-routes/{saved['id']}", headers=headers)
     assert ready.status_code == 200
     assert ready.json()["state"] == "published"
@@ -114,14 +108,17 @@ def test_team_rework_list_opens_the_current_engineered_revision(client, warehous
     )
     assert result.status_code == 201
     saved = save_plan(client, warehouse, result.json())
-    revision = client.post(
-        f"/api/process-routes/{saved['id']}/revise", headers=author(client)[0]
-    ).json()
-    latest = save_plan(client, warehouse, revision, instructions="最新修订的要求")
+    assert (
+        client.post(
+            f"/api/process-routes/{saved['id']}/revise", headers=author(client)[0]
+        ).status_code
+        == 403
+    )
+    latest = saved
     rows = client.get("/api/process-routes", params={"kind": "rework"}, headers=headers).json()
     assert [row["id"] for row in rows["items"]] == [latest["id"]]
     opened = client.get(f"/api/process-routes/{latest['id']}", headers=headers)
     assert opened.status_code == 200, opened.text
     assert opened.json()["id"] == latest["id"]
-    assert opened.json()["steps"][0]["instructions"] == "最新修订的要求"
+    assert opened.json()["steps"][0]["instructions"] == body["reason"]
     assert opened.json()["rework_request"]["requesting_team_name"] == "检验"

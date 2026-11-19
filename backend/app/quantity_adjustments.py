@@ -339,8 +339,8 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     if payload.inspection is not None:
         if team.code != INSPECTION_TEAM_CODE or payload.processing_mode != "unit":
             raise HTTPException(422, "仅检验班组的加工登记可附带检验结果")
-        if payload.inspection.failed_quantity and not payload.inspection.notes.strip():
-            raise HTTPException(422, "请填写不合格问题说明")
+    if payload.report_template and team.code != INSPECTION_TEAM_CODE:
+        raise HTTPException(422, "仅检验班组可选择检验日产表")
     from .processing_parameters import recorded_parameters
 
     parameters = recorded_parameters(payload, team.code, db=db, team_id=team.id)
@@ -453,6 +453,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             )
         }
     row = Adjustment(
+        report_template=payload.report_template,
         production_schedule_id=schedule_id,
         **route_fields,
         source_transfer_id=lot.id,
@@ -472,7 +473,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         work_kind=payload.work_kind,
         rework_of_id=prior_work.id if prior_work else None,
         rework_round=lot.process_route.rework_round
-        if prior_work and route_index is not None
+        if payload.work_kind == "rework" and route_index is not None
         else lot.rework_count + 1
         if prior_work
         else 0,
@@ -553,7 +554,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             },
         )
     )
-    if prior_work and not items:
+    if payload.work_kind == "rework" and not items:
         lot.rework_count += 1
         lot.rework_pending = False
     db.flush()

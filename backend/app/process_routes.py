@@ -61,6 +61,8 @@ def require_route_reader(row, user):
 
 
 def require_draft_owner(db, row, user):
+    if row.route_kind == "rework":
+        raise HTTPException(403, "返修班组由检验在质量反馈中指定")
     assert_route_importer(user)
     if db.get(ProcessRouteArchive, row.id):
         raise HTTPException(409, "该工艺已归入历史，请打开当前工艺")
@@ -192,7 +194,7 @@ def publish_route(db, row):
             route_id=row.id, serial_no=serial, step_index=index, team_id=step["team_id"]
         )
         for index, step in enumerate(row.steps)
-        for serial in (step["serial_nos"] or ["", *row.serial_nos])
+        for serial in (step["serial_nos"] or dict.fromkeys(["", *row.serial_nos]))
     )
 
 
@@ -298,7 +300,7 @@ def prepare_processing(lot, payload):
     from .shared_material import execution_step
 
     if pending(lot):
-        raise HTTPException(422, "返工工艺尚未制定，请联系工艺人员")
+        raise HTTPException(422, "待检验指定返修班组")
     if active(lot) and payload.work_kind != "rework":
         raise HTTPException(422, "本批按返工工艺执行，不能登记为正常产量")
     if not lot.process_route_id or (payload.work_kind == "rework" and not active(lot)):

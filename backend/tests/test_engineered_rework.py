@@ -1,4 +1,4 @@
-"""Rework requires engineering instructions and preserves normal physical inventory."""
+"""Inspection assigns rework and preserves normal physical inventory."""
 
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -18,7 +18,13 @@ URL = "/api/process-routes"
 
 def approved_quality_issue(client, setup, lot, context):
     from app.material_lineage import relatives
-    from app.models import InspectionProblemType, MaterialInspection, Team, TeamEmployee
+    from app.models import (
+        InspectionProblemType,
+        MaterialInspection,
+        ProcessRoute,
+        Team,
+        TeamEmployee,
+    )
     from sqlalchemy import select
     from test_material_transfers import _leader, _team
 
@@ -50,6 +56,9 @@ def approved_quality_issue(client, setup, lot, context):
                 MaterialInspection.source_transfer_id.in_(select(ancestors.c.id)),
                 MaterialInspection.parent_id.is_(None),
                 MaterialInspection.failed_quantity > 0,
+                ~select(ProcessRoute.id)
+                .where(ProcessRoute.rework_inspection_id == MaterialInspection.id)
+                .exists(),
             )
             .order_by(MaterialInspection.id.desc())
         )
@@ -63,8 +72,8 @@ def approved_quality_issue(client, setup, lot, context):
                 expected_revision=context["revision"],
                 inspector_employee_id=person_id,
                 checked_at=datetime.now(timezone.utc).isoformat(),
-                sample_quantity=1,
-                failed_quantity=1,
+                sample_quantity=context["quantity"],
+                failed_quantity=context["quantity"],
                 methods=["visual"],
                 items=["appearance"],
                 involved_team_ids=[setup["other"]["id"]],
@@ -83,7 +92,7 @@ def approved_quality_issue(client, setup, lot, context):
             disposition="rework",
             status="processing",
             involved_team_ids=[setup["other"]["id"]],
-            notes="确认需要返工，由工艺制定要求",
+            notes="检验确认返修",
             idempotency_key=uuid4().hex,
         ),
     )
@@ -91,13 +100,14 @@ def approved_quality_issue(client, setup, lot, context):
     return issue_id, headers
 
 
-def request_plan(client, s, lot, original, quantity=None, weight=None):
+def request_plan(client, s, lot, original, quantity=None, weight=None, team=None):
     ctx = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     issue_id, headers = approved_quality_issue(client, s, lot, ctx)
     body = dict(
         source_transfer_id=lot["id"],
         rework_of_id=original["id"],
         inspection_id=issue_id,
+        repair_team_id=team or s["other"]["id"],
         expected_revision=ctx["revision"],
         quantity=quantity or ctx["quantity"],
         weight=weight or ctx["weight"],
@@ -111,75 +121,43 @@ def request_plan(client, s, lot, original, quantity=None, weight=None):
     return response.json()
 
 
-def save_plan(client, s, route, *, instructions="返工精磨至2.50±0.01mm", team=None, repeated=False):
-    from app.models import Team, TeamEmployee
-
-    with SessionLocal() as db:
-        engineering = db.query(Team).filter_by(code="FACTORY-PROCESS").first()
-        if not engineering:
-            engineering = Team(code="FACTORY-PROCESS", name="工艺", kind="engineering", active=True)
-            db.add(engineering)
-            db.flush()
-        person = db.query(TeamEmployee).filter_by(team_id=engineering.id, name="工艺张工").first()
-        if not person:
-            person = TeamEmployee(team_id=engineering.id, name="工艺张工", active=True)
-            db.add(person)
-        db.commit()
-        person_id = person.id
-    headers, _ = author(client)
+def save_plan(client, s, route, *, team=None):
+    """Assign a reported batch through quality management as the QC administrator."""
     team = team or s["other"]["id"]
-    task_base = f"/api/team-materials/{team}"
-    task = next(
-        (
-            row
-            for row in client.get(task_base + "/processing-tasks").json()
-            if row["name"] == "返工精磨"
-        ),
-        None,
-    )
-    if not task:
-        task = client.post(task_base + "/processing-tasks", json={"name": "返工精磨"}).json()
-    purpose = next(
-        (row for row in client.get(task_base + "/purposes").json() if row["name"] == "返工处理"),
-        None,
-    )
-    if not purpose:
-        purpose = client.post(task_base + "/purposes", json={"name": "返工处理"}).json()
-    body = {key: route[key] for key in ("title", "serial_nos", "version")}
-    body.update(
-        engineering_employee_id=person_id,
-        modified_employee_id=person_id,
-        review_note="",
-        steps=[
-            dict(
-                sequence_no=1,
-                name="返工精磨",
-                instructions=instructions,
-                team_id=team,
-                processing_task_id=task["id"],
-                purpose_id=purpose["id"],
-            )
-        ],
-    )
-    if repeated:
-        body["steps"].append(
-            {
-                **body["steps"][0],
-                "sequence_no": 2,
-                "name": "返工复磨",
-                "instructions": "复磨后检查表面，不得叠放",
-            }
+    if route["state"] == "draft":
+        result = client.post(
+            f"/api/quality-feedback/team-problems/{route['id']}/assign",
+            params={"repair_team_id": team},
         )
-    result = client.put(URL + f"/{route['id']}", json=body, headers=headers)
-    assert result.status_code == 200, result.text
-    published = client.post(
-        URL + f"/{route['id']}/publish", json={"version": result.json()["version"]}, headers=headers
-    )
-    assert published.status_code == 200, published.text
-    return published.json()
+        assert result.status_code == 200, result.text
+    saved = client.get(URL + f"/{route['id']}").json()
+    assert saved["state"] == "published" and saved["steps"][0]["team_id"] == team
+    return saved
 
 
-def test_rework_is_blocked_without_engineering_and_partial_request_isolates_stock(
+def historical_two_steps(route):
+    # Previously published multi-step plans must still execute and resume normally.
+    from app.models import ProcessRoute, ProcessRoutePath
+
+    with SessionLocal.begin() as db:
+        row = db.get(ProcessRoute, route["id"])
+        first = row.steps[0]
+        second = {
+            **first,
+            "sequence_no": 2,
+            "name": "复磨",
+            "instructions": "复磨后检查表面，不得叠放",
+        }
+        row.steps = [first, second]
+        for serial in dict.fromkeys(["", *row.serial_nos]):
+            db.add(
+                ProcessRoutePath(
+                    route_id=row.id, serial_no=serial, step_index=1, team_id=first["team_id"]
+                )
+            )
+
+
+def test_rework_is_blocked_without_inspection_assignment_and_partial_request_isolates_stock(
     client, warehouse
 ):
     s = warehouse
@@ -195,18 +173,11 @@ def test_rework_is_blocked_without_engineering_and_partial_request_isolates_stoc
         rework_of_id=original["id"],
         idempotency_key=uuid4().hex,
     )
-    assert denied.status_code == 422 and "工艺" in denied.text
+    assert denied.status_code == 422 and "检验" in denied.text
     plan = request_plan(client, s, current, original, quantity=4, weight=40)
     scope = plan["rework_request"]
     assert (scope["quantity"], scope["weight"]) == (4, 40)
     child = {"id": scope["source_transfer_id"]}
-    assert (
-        work(
-            client, s, child, employee, work_kind="rework", idempotency_key=uuid4().hex
-        ).status_code
-        == 422
-    )
-    plan = save_plan(client, s, plan)
     result = work(
         client,
         s,
@@ -221,8 +192,8 @@ def test_rework_is_blocked_without_engineering_and_partial_request_isolates_stoc
     assert result.status_code == 201, result.text
     row = result.json()
     assert row["process_route_id"] == plan["id"]
-    assert row["process_step_instructions"] == "返工精磨至2.50±0.01mm"
-    assert row["processing_task_name"] == "返工精磨"
+    assert row["process_step_instructions"] == "尺寸偏差，重新精磨"
+    assert plan["steps"][0]["team_id"] == s["other"]["id"]
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert (totals["on_hand_quantity"], totals["on_hand_weight"]) == (10, 100)
     summary = client.get(base(s, True) + "/processing-records").json()["summary"]
@@ -280,10 +251,11 @@ def test_two_rework_steps_keep_one_round_and_require_manual_return_to_normal_rou
             "resume_step_index": 2,
         },
     )
-    assert skipped.status_code == 422, skipped.text
-    plan = save_plan(client, s, request, repeated=True)
+    assert skipped.status_code in (403, 422), skipped.text
+    plan = request
+    historical_two_steps(plan)
     current = {"id": request["rework_request"]["source_transfer_id"]}
-    for index, instruction in enumerate(("返工精磨至2.50±0.01mm", "复磨后检查表面，不得叠放")):
+    for index, instruction in enumerate(("尺寸偏差，重新精磨", "复磨后检查表面，不得叠放")):
         result = work(client, s, current, employee, work_kind="rework", idempotency_key=uuid4().hex)
         assert result.status_code == 201, result.text
         assert result.json()["process_step_index"] == index
@@ -324,6 +296,7 @@ def test_rework_request_permissions_stale_stock_and_foreign_history(client, ware
         source_transfer_id=current["id"],
         rework_of_id=original["id"],
         inspection_id=issue_id,
+        repair_team_id=s["other"]["id"],
         expected_revision=context["revision"],
         quantity=10,
         weight=100,
@@ -376,55 +349,22 @@ def test_route_main_list_combines_types_and_filters_pending_scopes_without_expos
     batch = request["rework_request"]["batch_no"]
     assert combined[request["id"]]["rework_batch_no"] == batch
     pending = client.get(URL, params={"kind": "rework", "state": "draft", "query": batch})
-    assert [row["id"] for row in pending.json()["items"]] == [request["id"]]
+    assert pending.json()["items"] == []
     assert request["id"] not in {row["id"] for row in client.get(URL).json()["items"]}
-    visible = client.get(URL, params={"kind": "all"}, headers=s["other_headers"])
-    assert request["id"] not in {row["id"] for row in visible.json()["items"]}
-    save_plan(client, s, request)
     visible = client.get(URL, params={"kind": "all"}, headers=s["other_headers"])
     assert request["id"] in {row["id"] for row in visible.json()["items"]}
 
 
-def test_rework_instruction_can_be_revised_only_before_any_execution(client, warehouse):
-    s = warehouse
-    lot, employee = setup_lot(client, s)
-    original = work(client, s, lot, employee).json()
-    request = request_plan(client, s, original["outputs"][0], original)
-    saved = save_plan(client, s, request)
+def test_engineering_cannot_revise_an_inspection_assignment(client, warehouse):
+    lot, employee = setup_lot(client, warehouse)
+    original = work(client, warehouse, lot, employee).json()
+    plan = request_plan(client, warehouse, original["outputs"][0], original)
     headers, _ = author(client)
-    revision = client.post(URL + f"/{saved['id']}/revise", headers=headers)
-    assert revision.status_code == 201, revision.text
-    revision = revision.json()
-    assert revision["route_kind"] == "rework"
-    assert (
-        revision["rework_request"]["source_transfer_id"]
-        == request["rework_request"]["source_transfer_id"]
-    )
-    steps = [{**saved["steps"][0], "instructions": "修订要求：厚度2.48±0.01mm"}]
-    payload = {
-        key: revision[key] for key in ("title", "serial_nos", "version", "engineering_employee_id")
-    }
-    payload.update(steps=steps, modified_employee_id=saved["engineering_employee_id"])
-    changed = client.put(URL + f"/{revision['id']}", json=payload, headers=headers)
-    assert changed.status_code == 200, changed.text
-    changed = client.post(
-        URL + f"/{revision['id']}/publish",
-        json={"version": changed.json()["version"]},
-        headers=headers,
-    )
-    assert changed.status_code == 200, changed.text
-    current = {"id": request["rework_request"]["source_transfer_id"]}
-    processed = work(client, s, current, employee, work_kind="rework", idempotency_key=uuid4().hex)
-    assert processed.status_code == 201, processed.text
-    assert processed.json()["process_step_instructions"] == "修订要求：厚度2.48±0.01mm"
-    assert (
-        client.get(URL + f"/{saved['id']}").json()["steps"][0]["instructions"]
-        == "返工精磨至2.50±0.01mm"
-    )
-    assert client.post(URL + f"/{revision['id']}/revise", headers=headers).status_code == 409
+    assert client.post(URL + f"/{plan['id']}/revise", headers=headers).status_code == 403
+    assert client.get(URL + f"/{plan['id']}").json()["steps"] == plan["steps"]
 
 
-def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(client, warehouse):
+def test_rework_keeps_inherited_drawing_and_blocks_engineering_uploads(client, warehouse):
     from test_process_route_creation import pdf
     from test_process_route_import import HEADERS, docx
     from test_processing_route_methods import routed_lot
@@ -436,7 +376,7 @@ def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(cl
     original_pdf = client.get(f"{URL}/{normal['id']}/drawings/{original_id}").content
     original = work(client, s, lot, employee).json()
     route = request_plan(client, s, original["outputs"][0], original)
-    assert route["filename"] == "" and route["source_data"] == {"tables": [], "issues": []}
+    assert route["filename"] == "" and route["source_data"]["assigned_by_inspection"]
     copied = route["drawings"][0]
     assert copied["id"] != original_id and copied["filename"] == drawing["filename"]
     assert client.get(f"{URL}/{route['id']}").json()["drawings"] == route["drawings"]
@@ -449,20 +389,12 @@ def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(cl
         data={"version": route["version"]},
         files={"file": ("返工.docx", word)},
     )
-    assert rejected.status_code == 422 and "手工填写" in rejected.text
+    assert rejected.status_code in (403, 422), rejected.text
     uploaded = client.post(
         f"{URL}/{route['id']}/drawings",
         headers=headers,
         data={"version": route["version"]},
         files={"file": ("补充图纸.pdf", pdf(2))},
     )
-    assert uploaded.status_code == 201, uploaded.text
-    route = uploaded.json()
-    assert len(route["drawings"]) == 2
-    saved = save_plan(client, s, route)
-    revision = client.post(f"{URL}/{saved['id']}/revise", headers=headers).json()
-    assert len(revision["drawings"]) == 2
-    assert {drawing["id"] for drawing in revision["drawings"]}.isdisjoint(
-        drawing["id"] for drawing in saved["drawings"]
-    )
+    assert uploaded.status_code == 403, uploaded.text
     assert client.get(f"{URL}/{normal['id']}/drawings/{original_id}").content == original_pdf

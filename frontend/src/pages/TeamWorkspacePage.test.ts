@@ -699,7 +699,7 @@ describe('team workspace material ledger', () => {
       await registerCheckedBatch()
       await flushPromises()
       expect(activeDialog()).toBeUndefined()
-      expect(showToast).toHaveBeenCalledWith('请等待返工工艺制定后再登记加工', 'info')
+      expect(showToast).toHaveBeenCalledWith('待检验指定返修班组后再登记加工', 'info')
     })
     it('does not open an empty second picker when the batch is no longer eligible', async () => {
       vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(sources([]))

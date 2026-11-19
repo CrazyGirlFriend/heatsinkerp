@@ -146,9 +146,7 @@ def revise(db, route_id, user):
         if db.get(ProcessRouteArchive, previous.id):
             raise HTTPException(409, "该工艺已归入历史，请打开当前工艺")
         if previous.route_kind == "rework":
-            from .rework_routes import require_unstarted
-
-            require_unstarted(db, previous)
+            raise HTTPException(403, "返修班组由检验在质量反馈中指定")
         if previous.state != "published":
             raise HTTPException(409, "请重新打开已保存的工艺后修改")
         if db.scalar(

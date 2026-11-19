@@ -238,6 +238,7 @@ export const teamMaterialApi = {
   processingRecords(
     teamId: number,
     params: MaterialPageParams & {
+      report_template?: string
       include_summary?: boolean
       processor_id?: number
       work_date?: string

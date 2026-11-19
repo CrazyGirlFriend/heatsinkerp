@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
                 type="primary"
                 :disabled="!row.transfer.rework_route_ready || routeLoading"
                 @click="viewRoute(row.transfer.rework_route_id)"
-                >{{ row.transfer.rework_route_ready ? '返工工艺' : '待制定返工工艺' }}</ElButton
+                >{{ row.transfer.rework_route_ready ? '返修安排' : '待检验指定班组' }}</ElButton
               ><ElButton v-else link type="primary" @click="routeLot = Number(row.transfer.id)">{{
                 row.transfer.process_route
                   ? `${row.transfer.process_route.sequence_no} · ${row.transfer.process_route.step_name}`

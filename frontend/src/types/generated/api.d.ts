@@ -1381,6 +1381,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/quality-feedback/{issue_id}/pending-repairs/{route_id}/assign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Assign Pending Repair */
+    post: operations['assign_pending_repair_api_quality_feedback__issue_id__pending_repairs__route_id__assign_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/quality-feedback/{issue_id}/reply': {
     parameters: {
       query?: never
@@ -1426,6 +1443,23 @@ export interface paths {
     get: operations['team_problem_api_quality_feedback_team_problems__route_id__get']
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/quality-feedback/team-problems/{route_id}/assign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Assign Team Problem */
+    post: operations['assign_team_problem_api_quality_feedback_team_problems__route_id__assign_post']
     delete?: never
     options?: never
     head?: never
@@ -2450,6 +2484,8 @@ export interface components {
        * @default
        */
       reason: string
+      /** Report Template */
+      report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
       /** Rework Of Id */
       rework_of_id?: number | null
       /** Source Transfer Id */
@@ -2939,6 +2975,11 @@ export interface components {
       in_transit_weight: number
       /** Inspection Hold Count */
       inspection_hold_count: number
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Last Activity At */
       last_activity_at: string | null
       /** Lost Quantity */
@@ -3278,6 +3319,46 @@ export interface components {
       /** Label */
       label: string
     }
+    /** FailureLine */
+    FailureLine: {
+      /**
+       * Category
+       * @enum {string}
+       */
+      category:
+        | '坑'
+        | '划伤'
+        | '磕伤'
+        | '塌'
+        | '雕坏'
+        | '切坏'
+        | '磨坏'
+        | '修毛刺'
+        | '异物'
+        | '缺肉'
+        | '崩边'
+        | '打标坏'
+        | '露钼'
+        | '分层'
+        | '露铜'
+        | '喷砂'
+        | '料不平'
+        | '凸起'
+        | '轧坏'
+        | '外委'
+      /**
+       * Disposition
+       * @enum {string}
+       */
+      disposition: 'scrap' | 'rework'
+      /** Quantity */
+      quantity: number
+      /** Repair Column */
+      repair_column?:
+        ('研磨' | '退火' | '雕刻' | '轧板' | '线切割' | '喷砂' | '脏' | '外委' | '修毛刺') | null
+      /** Repair Team Id */
+      repair_team_id?: number | null
+    }
     /** FeedbackDecisionResponse */
     FeedbackDecisionResponse: {
       /** Disposition */
@@ -3398,6 +3479,8 @@ export interface components {
       expected_revision: number
       /** Failed Quantity */
       failed_quantity: number
+      /** Failure Lines */
+      failure_lines?: components['schemas']['FailureLine'][]
       /** Idempotency Key */
       idempotency_key: string
       /** Inspector Employee Id */
@@ -3469,6 +3552,8 @@ export interface components {
       disposition: 'pending' | 'rework' | 'shipment' | 'transfer' | 'reallocate' | 'scrap' | 'other'
       /** Failed Quantity */
       failed_quantity: number
+      /** Failure Lines */
+      failure_lines?: components['schemas']['RecordedFailureLine'][]
       /**
        * Feedback Status
        * @enum {string}
@@ -3482,6 +3567,11 @@ export interface components {
       inspector_employee_id: number
       /** Inspector Name */
       inspector_name: string
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Items */
       items: ('appearance' | 'dimension' | 'weight')[]
       /**
@@ -3544,6 +3634,8 @@ export interface components {
       dimension_result: string
       /** Failed Quantity */
       failed_quantity: number
+      /** Failure Lines */
+      failure_lines?: components['schemas']['FailureLine'][]
       /** Involved Team Ids */
       involved_team_ids?: number[]
       /** Items */
@@ -3579,6 +3671,11 @@ export interface components {
       batch_no: string
       /** Hold Id */
       hold_id: number | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Name */
       material_name: string | null
       /** Processing Status */
@@ -3649,6 +3746,11 @@ export interface components {
       in_transit_weight: number
       /** Inspection Hold Count */
       inspection_hold_count: number
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Last Activity At */
       last_activity_at: string | null
       /** Lost Quantity */
@@ -4485,6 +4587,11 @@ export interface components {
       finished_specification?: string | null
       /** Idempotency Key */
       idempotency_key?: string | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Description */
       material_description?: string | null
       /** Material Name */
@@ -4637,6 +4744,11 @@ export interface components {
       history?: components['schemas']['MaterialTransferEventResponse'][]
       /** Id */
       id: number
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Locked */
       locked: boolean
       /** Locked At */
@@ -4829,6 +4941,11 @@ export interface components {
       finished_quantity?: number | null
       /** Finished Specification */
       finished_specification?: string | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Description */
       material_description?: string | null
       /** Material Name */
@@ -4986,6 +5103,11 @@ export interface components {
       finished_quantity?: number | null
       /** Finished Specification */
       finished_specification?: string | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Description */
       material_description?: string | null
       /** Material Name */
@@ -5280,6 +5402,8 @@ export interface components {
     }
     /** ParsedReceiptProcessResponse */
     ParsedReceiptProcessResponse: {
+      /** Assigned By Inspection */
+      assigned_by_inspection?: string | null
       /** Field Warnings */
       field_warnings?: string[] | null
       /** Issues */
@@ -5341,6 +5465,13 @@ export interface components {
       source_team_name: string | null
       /** Weight */
       weight: number
+    }
+    /** PendingRepairResponse */
+    PendingRepairResponse: {
+      /** Batch No */
+      batch_no: string
+      /** Id */
+      id: number
     }
     /** PerformanceTeamResponse */
     PerformanceTeamResponse: {
@@ -5462,6 +5593,11 @@ export interface components {
       disposition: 'pending' | 'rework' | 'shipment' | 'transfer' | 'reallocate' | 'scrap' | 'other'
       /** Failed Quantity */
       failed_quantity: number
+      /**
+       * Failure Lines
+       * @default []
+       */
+      failure_lines: components['schemas']['RecordedFailureLine'][]
       /** Id */
       id: number
       /** Inspector Name */
@@ -5611,6 +5747,8 @@ export interface components {
        * @default
        */
       reason: string
+      /** Report Template */
+      report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
       /** Rework Of Id */
       rework_of_id?: number | null
       /** Source Transfer Id */
@@ -6138,6 +6276,8 @@ export interface components {
       events: components['schemas']['FeedbackEventResponse'][]
       /** Failed Quantity */
       failed_quantity: number
+      /** Failure Lines */
+      failure_lines?: components['schemas']['RecordedFailureLine'][]
       /**
        * Feedback Status
        * @enum {string}
@@ -6153,6 +6293,11 @@ export interface components {
       inspector_name: string
       /** Involved Teams */
       involved_teams: components['schemas']['FeedbackTeamResponse'][]
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Items */
       items: ('appearance' | 'dimension' | 'weight')[]
       /**
@@ -6170,6 +6315,8 @@ export interface components {
       parent_id: number | null
       /** Passed Quantity */
       passed_quantity: number
+      /** Pending Repairs */
+      pending_repairs?: components['schemas']['PendingRepairResponse'][]
       /** Problems */
       problems: components['schemas']['InspectionProblemResponse'][]
       process_step: components['schemas']['RouteExecutionContextResponse'] | null
@@ -6247,6 +6394,8 @@ export interface components {
       disposition: 'pending' | 'rework' | 'shipment' | 'transfer' | 'reallocate' | 'scrap' | 'other'
       /** Failed Quantity */
       failed_quantity: number
+      /** Failure Lines */
+      failure_lines?: components['schemas']['RecordedFailureLine'][]
       /**
        * Feedback Status
        * @enum {string}
@@ -6262,6 +6411,11 @@ export interface components {
       inspector_name: string
       /** Involved Teams */
       involved_teams: components['schemas']['FeedbackTeamResponse'][]
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Items */
       items: ('appearance' | 'dimension' | 'weight')[]
       /**
@@ -6635,6 +6789,48 @@ export interface components {
       /** Items */
       items: components['schemas']['ReceiptDocumentResponse'][]
     }
+    /** RecordedFailureLine */
+    RecordedFailureLine: {
+      /**
+       * Category
+       * @enum {string}
+       */
+      category:
+        | '坑'
+        | '划伤'
+        | '磕伤'
+        | '塌'
+        | '雕坏'
+        | '切坏'
+        | '磨坏'
+        | '修毛刺'
+        | '异物'
+        | '缺肉'
+        | '崩边'
+        | '打标坏'
+        | '露钼'
+        | '分层'
+        | '露铜'
+        | '喷砂'
+        | '料不平'
+        | '凸起'
+        | '轧坏'
+        | '外委'
+      /**
+       * Disposition
+       * @enum {string}
+       */
+      disposition: 'scrap' | 'rework'
+      /** Quantity */
+      quantity: number
+      /** Repair Column */
+      repair_column?:
+        ('研磨' | '退火' | '雕刻' | '轧板' | '线切割' | '喷砂' | '脏' | '外委' | '修毛刺') | null
+      /** Repair Team Id */
+      repair_team_id?: number | null
+      /** Repair Team Name */
+      repair_team_name?: string | null
+    }
     /** ResumeWrite */
     ResumeWrite: {
       /** Expected Revision */
@@ -6733,8 +6929,10 @@ export interface components {
       quantity: number
       /** Reason */
       reason: string
+      /** Repair Team Id */
+      repair_team_id?: number | null
       /** Rework Of Id */
-      rework_of_id: number
+      rework_of_id?: number | null
       /** Source Transfer Id */
       source_transfer_id: number
       /** Weight */
@@ -6787,7 +6985,7 @@ export interface components {
       /** Resume Team Id */
       resume_team_id: number
       /** Rework Of Id */
-      rework_of_id: number
+      rework_of_id: number | null
       /** Round */
       round: number
       /** Source Transfer Id */
@@ -7039,6 +7237,8 @@ export interface components {
     }
     /** RouteSourceDataResponse */
     RouteSourceDataResponse: {
+      /** Assigned By Inspection */
+      assigned_by_inspection?: string | null
       /** Field Warnings */
       field_warnings?: string[] | null
       /** Issues */
@@ -9194,6 +9394,11 @@ export interface components {
       inspection_source_batch_no: string | null
       /** Inspection Status */
       inspection_status: ('held' | 'failed' | 'passed') | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Locked */
       locked: boolean
       /** Locked At */
@@ -9777,6 +9982,11 @@ export interface components {
       finished_specification?: string | null
       /** Idempotency Key */
       idempotency_key: string
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Description */
       material_description?: string | null
       /** Material Name */
@@ -9851,6 +10061,11 @@ export interface components {
       finished_quantity?: number | null
       /** Finished Specification */
       finished_specification?: string | null
+      /**
+       * Is Outsourced
+       * @default false
+       */
+      is_outsourced: boolean
       /** Material Description */
       material_description?: string | null
       /** Material Name */
@@ -13183,6 +13398,40 @@ export interface operations {
       }
     }
   }
+  assign_pending_repair_api_quality_feedback__issue_id__pending_repairs__route_id__assign_post: {
+    parameters: {
+      query: {
+        repair_team_id: number
+      }
+      header?: never
+      path: {
+        issue_id: number
+        route_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['QualityFeedbackDetailResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   reply_api_quality_feedback__issue_id__reply_post: {
     parameters: {
       query?: never
@@ -13258,6 +13507,39 @@ export interface operations {
   team_problem_api_quality_feedback_team_problems__route_id__get: {
     parameters: {
       query?: never
+      header?: never
+      path: {
+        route_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamProblemResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  assign_team_problem_api_quality_feedback_team_problems__route_id__assign_post: {
+    parameters: {
+      query: {
+        repair_team_id: number
+      }
       header?: never
       path: {
         route_id: number
@@ -14630,6 +14912,7 @@ export interface operations {
         processor_id?: number | null
         purpose_id?: number | null
         query?: string | null
+        report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
         work_date?: string | null
         work_kind?: ('initial' | 'rework') | null
       }

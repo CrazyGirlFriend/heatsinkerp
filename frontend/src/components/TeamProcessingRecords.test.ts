@@ -145,6 +145,7 @@ it('shows the latest QC counts and leaves unrecorded quality results blank', asy
             source_transfer_id: 11,
             checked_at: '2026-11-16T08:00:00Z',
             inspector_name: '张师傅',
+            failure_lines: [],
             batch_quantity: 100,
             sample_quantity: 60,
             passed_quantity: 57,
@@ -719,51 +720,25 @@ it('shows team parameters and preserves them in detail exports without adding un
   expect(nextHeaders).not.toContain('炉号')
 })
 
-it('exports all inspection tasks through one original template without exposing internal JSON as a column', async () => {
-  const result = await teamMaterialApi.processingRecords(5)
-  const inspections: NonNullable<ProcessingRecord['report_inspections']> = [
-    {
-      id: 71,
-      source_transfer_id: 10,
-      checked_at: '2026-11-13T01:30:00Z',
-      inspector_name: '检验员甲',
-      batch_quantity: 123,
-      sample_quantity: 12,
-      passed_quantity: 10,
-      failed_quantity: 2,
-      kind: 'inspection',
-      scope: 'sample',
-      parent_id: null,
-      disposition: 'pending',
-      problem_names: ['划伤'],
-      notes: '',
-    },
-  ]
-  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
-    ...result,
-    total: 3,
-    items: ['检验', '喷砂', '去毛刺'].map((processing_task_name, index) => ({
-      ...record(index + 1),
-      processing_task_name,
-      finished_quantity: 4008,
-      completed_quantity: 123 + index,
-      report_inspections: index === 0 ? inspections : [],
-    })),
-  })
+it('requests each inspection report separately for export', async () => {
   await render()
   await wrapper.setProps({ teamCode: 'FACTORY-QC' })
   const button = wrapper.getComponent(TableExportButton)
-  const detail = button.props('source')()!
-  expect(detail.fields.some((field) => field.key === 'report_inspections')).toBe(false)
-  const templates = button.props('variants')!().filter((source) => source.workbook)
-  expect(templates.map((source) => source.title)).toEqual(['检验产量表'])
-  const rows = await templates[0]!.load(new AbortController().signal, () => {})
-  expect(rows).toHaveLength(3)
-  expect(rows.map((row) => row.processing_task_name)).toEqual(['检验', '喷砂', '去毛刺'])
-  expect(rows.map((row) => row.completed_quantity)).toEqual([123, 124, 125])
-  expect(rows[0]).toMatchObject({ finished_quantity: 4008, completed_quantity: 123 })
-  expect(JSON.parse(String(rows[0]!.report_inspections))).toEqual(inspections)
-  for (const row of rows.slice(1)) expect(JSON.parse(String(row.report_inspections))).toEqual([])
+  const variants = button.props('variants')!().filter((source) => source.workbook)
+  expect(variants.map((source) => source.title)).toEqual([
+    '检验产量表',
+    '喷砂产量表',
+    '去毛刺产量表',
+  ])
+  for (const [index, variant] of variants.entries()) {
+    await variant.load(new AbortController().signal, () => {})
+    expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
+      5,
+      expect.objectContaining({
+        report_template: ['FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'][index],
+      }),
+    )
+  }
 })
 
 it.each([
@@ -776,6 +751,7 @@ it.each([
 ])('defaults production registration to the original %s template', async (teamCode, title) => {
   await render(true, '/team-workspaces/5?tab=processing&processing_view=production')
   await wrapper.setProps({ teamCode })
+  await flushPromises()
   const button = wrapper.getComponent(TableExportButton)
   await button.get('button').trigger('click')
   const dialog = wrapper.getComponent(TableExportDialog)
@@ -830,13 +806,47 @@ it('uses only original columns in daily registration and leaves unrecorded roles
   await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
   await flushPromises()
   const headers = wrapper.findAll('thead th').map((cell) => cell.text())
-  for (const label of ['日期', '流水号', '主操', '副操', '加工成品 / 件数', '备注']) {
+  for (const label of ['日期', '流水号', '主操', '副操', '加工成品', '件数', '备注']) {
     expect(headers.some((text) => text.includes(label))).toBe(true)
   }
   for (const label of ['当前状态', '工艺工序', '当前未转出件数', '登记时进度', '操作']) {
     expect(headers.some((text) => text.includes(label))).toBe(false)
   }
+  const merged = wrapper.findAll('thead th').find((cell) => cell.text() === '加工成品')
+  expect(merged?.attributes('colspan')).toBe('2')
+  expect(headers).not.toContain('加工成品 / 件数')
   expect(wrapper.text()).not.toContain('筛选结果合计')
   expect(wrapper.text()).not.toContain('加工人员：')
   expect(wrapper.find('.el-table__expand-icon').exists()).toBe(false)
+})
+
+it('switches between all three original inspection tables and restarts pagination', async () => {
+  const router = await render(
+    true,
+    '/team-workspaces/5?tab=processing&processing_view=production&page=2',
+  )
+  await wrapper.setProps({ teamCode: 'FACTORY-QC' })
+  await vi.waitFor(() =>
+    expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
+      5,
+      expect.objectContaining({ report_template: 'FACTORY-QC', page: 2 }),
+    ),
+  )
+  for (const [label, sheet] of [
+    ['喷砂产量表', 'QC-SANDBLAST'],
+    ['去毛刺产量表', 'QC-DEBURR'],
+    ['检验产量表', 'FACTORY-QC'],
+  ]) {
+    await wrapper
+      .get('[aria-label="日产表"]')
+      .findAll('button')
+      .find((b) => b.text() === label)!
+      .trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.query.report_template).toBe(sheet))
+    expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
+      5,
+      expect.objectContaining({ report_template: sheet, page: 1 }),
+    )
+    expect(wrapper.getComponent(TableExportButton).props('source')()!.title).toBe(label)
+  }
 })

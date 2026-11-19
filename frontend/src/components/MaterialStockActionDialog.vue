@@ -1205,6 +1205,7 @@ watch(
                   :material-type="line.source.transfer.material_type"
                 />
                 <div class="source-meta">
+                  <span v-if="line.source.transfer.is_outsourced">外委产品</span>
                   <span
                     >排期批次
                     {{

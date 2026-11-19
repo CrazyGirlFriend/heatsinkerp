@@ -244,7 +244,14 @@ def test_outbound_uses_confirmed_matching_receipt_order_without_changing_route(
         }
     order = upload(client, warehouse, content=order_bytes(serial)).json()
     receipt = intake(
-        client, warehouse, serial_no="", document_ids=[order["id"]], confirmed_imports=True
+        client,
+        warehouse,
+        serial_no="",
+        document_ids=[order["id"]],
+        confirmed_imports=True,
+        is_outsourced=True,
+        delivery_date="2026-12-01",
+        delivery_quantity=10,
     ).json()
     response = sender_post(
         client,
@@ -266,5 +273,6 @@ def test_outbound_uses_confirmed_matching_receipt_order_without_changing_route(
     if serial == "WAREHOUSE-001":
         assert response.status_code == 201, response.text
         assert response.json()["items"][0]["process_route"]["id"] == route["id"]
+        assert response.json()["items"][0]["is_outsourced"] is True
     else:
         assert response.status_code == 422 and "订单表" in response.text

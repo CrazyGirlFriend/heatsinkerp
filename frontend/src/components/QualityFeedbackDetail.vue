@@ -26,6 +26,7 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
 import QualityReworkRequest from './QualityReworkRequest.vue'
+import { teamCanProcess } from '@/config/teamWorkspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import {
@@ -52,7 +53,22 @@ const detail = ref<QualityFeedbackDetail>(),
   busy = ref(false),
   loading = ref(false),
   rechecking = ref(false)
+const pendingTeams = ref<Record<number, number>>({})
+async function assignPending(routeId: number) {
+  const team = pendingTeams.value[routeId]
+  if (!team || busy.value) return
+  busy.value = true
+  try {
+    assign(await qualityFeedbackApi.assignPendingRepair(props.issueId, routeId, team))
+    emit('changed')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '返修班组保存失败'
+  } finally {
+    busy.value = false
+  }
+}
 const reworkOpen = ref(false)
+const recheckAssignmentId = ref<number>()
 const reworkContext = ref<QuantityAdjustmentContext>()
 const replyTeamId = ref<number>()
 const reply = ref(''),
@@ -115,7 +131,8 @@ async function save(decision: boolean) {
   submitted.value = decision ? 'decision' : 'reply'
   if (
     decision
-      ? !involved.value.length || (status.value === 'closed' && disposition.value === 'pending')
+      ? (!detail.value.failure_lines?.length && !involved.value.length) ||
+        (status.value === 'closed' && disposition.value === 'pending')
       : !reply.value.trim()
   )
     return
@@ -275,7 +292,9 @@ onBeforeUnmount(() => {
             :key="team.team_id"
             :type="team.replied ? 'success' : 'warning'"
             >{{ team.name }} · {{ team.replied ? '已反馈' : '未反馈' }}</ElTag
-          ><span v-if="!detail.involved_teams.length">历史记录待检验班组长指定涉及班组</span>
+          ><span v-if="!detail.involved_teams.length && !detail.failure_lines?.length"
+            >历史记录待检验班组长指定涉及班组</span
+          >
         </div>
         <div v-for="event in detail.events" :key="event.id" class="quality-event">
           <div>
@@ -319,7 +338,10 @@ onBeforeUnmount(() => {
         <ElForm v-if="canDecide" label-position="top" :disabled="busy">
           <ElFormItem
             label="问题涉及班组（可多选）"
-            :class="{ 'is-error': submitted === 'decision' && !involved.length }"
+            :class="{
+              'is-error':
+                submitted === 'decision' && !detail.failure_lines?.length && !involved.length,
+            }"
             ><ElCheckboxGroup v-model="involved"
               ><ElCheckboxButton
                 v-for="team in directory.items.filter((t) => t.active)"
@@ -337,7 +359,7 @@ onBeforeUnmount(() => {
                 'is-error':
                   submitted === 'decision' && status === 'closed' && disposition === 'pending',
               }"
-              ><ElSelect v-model="disposition"
+              ><ElSelect v-model="disposition" :disabled="!!detail.failure_lines?.length"
                 ><ElOption
                   v-for="(name, key) in dispositions"
                   :key="key"
@@ -378,10 +400,28 @@ onBeforeUnmount(() => {
         class="quality-detail-section"
       >
         <div class="quality-detail-heading">
-          <h3>返工工艺</h3>
+          <h3>返修批次</h3>
           <ElButton :disabled="busy || loading" @click="reworkOpen = !reworkOpen">{{
-            reworkOpen ? '收起' : '提交工艺'
+            reworkOpen ? '收起' : '分配返修批次'
           }}</ElButton>
+        </div>
+        <div v-for="route in detail.pending_repairs" :key="route.id">
+          {{ route.batch_no }}
+          <ElSelect
+            v-model="pendingTeams[route.id]"
+            aria-label="返修班组"
+            placeholder="选择返修班组"
+          >
+            <ElOption
+              v-for="t in directory.items.filter((t) => t.active && teamCanProcess(t))"
+              :key="t.id"
+              :value="Number(t.id)"
+              :label="t.name"
+            />
+          </ElSelect>
+          <ElButton :disabled="busy || !pendingTeams[route.id]" @click="assignPending(route.id)"
+            >确认分配</ElButton
+          >
         </div>
         <QualityReworkRequest
           v-if="reworkOpen"
@@ -391,6 +431,25 @@ onBeforeUnmount(() => {
           @changed="emit('changed')"
         />
       </section>
+      <template v-if="canDecide && detail.feedback_status !== 'closed'">
+        <div
+          v-for="check in detail.rechecks.filter((r) =>
+            r.failure_lines?.some((l) => l.disposition === 'rework'),
+          )"
+          :key="check.id"
+        >
+          <ElButton
+            @click="recheckAssignmentId = recheckAssignmentId === check.id ? undefined : check.id"
+            >分配复检 #{{ check.id }} 返修批次</ElButton
+          >
+          <QualityReworkRequest
+            v-if="recheckAssignmentId === check.id"
+            :issue="check"
+            @busy="busy = $event"
+            @changed="emit('changed')"
+          />
+        </div>
+      </template>
       <section class="quality-detail-section">
         <div class="quality-detail-heading">
           <h3>关联复检记录</h3>

@@ -74,7 +74,8 @@ const text = (key: string) => (typeof route.query[key] === 'string' ? String(rou
 const canViewProduction = computed(() => props.canWrite && reportTemplates.value.length > 0)
 const reportTemplate = computed(() =>
   canViewProduction.value && text('processing_view') === 'production'
-    ? reportTemplates.value[0]
+    ? reportTemplates.value.find((t) => t.key === text('report_template')) ||
+      reportTemplates.value[0]
     : undefined,
 )
 const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
@@ -145,6 +146,7 @@ const tableQuery = useTableQuery(
 function filters() {
   return {
     ...tableQuery.params.value,
+    report_template: isInspectionTeam.value ? reportTemplate.value?.key : undefined,
     query: text('query') || undefined,
     processing_task_id: Number(text('processing_task_id')) || undefined,
     purpose_id: Number(text('purpose_id')) || undefined,
@@ -162,6 +164,7 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
     query: {
       tab: 'processing',
       processing_view: reportTemplate.value ? 'production' : undefined,
+      report_template: reportTemplate.value?.key,
       work_kind: (applyFilters ? workKind.value : text('work_kind')) || undefined,
       processing_task_id: applyFilters
         ? taskId.value || undefined
@@ -184,6 +187,7 @@ function selectProcessingView(view: string) {
     path: route.path,
     query: {
       ...route.query,
+      page: undefined,
       processing_view: view === 'production' ? 'production' : undefined,
     },
   })
@@ -462,22 +466,29 @@ const dailyColumns = [
 function exportSources() {
   const id = props.teamId,
     params = filters()
-  const templates = reportTemplates.value.map((template) => ({
-    title: template.label,
-    total: total.value,
-    fields: [],
-    load: async (signal: AbortSignal, progress: (loaded: number, total: number) => void) =>
-      (
-        await loadExportPages(
-          (page, pageSize) =>
-            teamMaterialApi.processingRecords(id, { ...params, page, page_size: pageSize }),
-          signal,
-          progress,
-        )
-      ).map(productionRecordData),
-    workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
-      createProductionWorkbook(template.key, rows),
-  }))
+  const templates = (reportTemplate.value ? [reportTemplate.value] : reportTemplates.value).map(
+    (template) => ({
+      title: template.label,
+      total: total.value,
+      fields: [],
+      load: async (signal: AbortSignal, progress: (loaded: number, total: number) => void) =>
+        (
+          await loadExportPages(
+            (page, pageSize) =>
+              teamMaterialApi.processingRecords(id, {
+                ...params,
+                report_template: isInspectionTeam.value ? template.key : undefined,
+                page,
+                page_size: pageSize,
+              }),
+            signal,
+            progress,
+          )
+        ).map(productionRecordData),
+      workbook: (rows: Record<string, import('@/utils/tableExport').ExportValue>[]) =>
+        createProductionWorkbook(template.key, rows),
+    }),
+  )
   if (reportTemplate.value) return templates
   const sources = [exportSource(), ...templates]
   return [
@@ -501,7 +512,7 @@ function detail(row: unknown) {
   detailOpen.value = true
 }
 watch(
-  () => [props.teamId, route.fullPath],
+  () => [props.teamId, route.fullPath, reportTemplate.value?.key],
   (values, previous) => {
     closeRoute()
     if (previous && values[0] !== previous[0]) {
@@ -606,7 +617,7 @@ onBeforeUnmount(() => {
           /></label>
         </FilterDialog>
       </template>
-      <template #query-actions><div ref="columnSettingsTarget" /></template>
+      <template v-if="!reportTemplate" #query-actions><div ref="columnSettingsTarget" /></template>
       <template #tools>
         <WatermelonSegmented
           v-if="canViewProduction"
@@ -617,6 +628,18 @@ onBeforeUnmount(() => {
             { value: 'production', label: '产量登记' },
           ]"
           @change="selectProcessingView" />
+        <WatermelonSegmented
+          v-if="reportTemplate && isInspectionTeam"
+          label="日产表"
+          :model-value="reportTemplate.key"
+          :options="reportTemplates.map((t) => ({ value: t.key, label: t.label }))"
+          @change="
+            (value) =>
+              router.replace({
+                path: route.path,
+                query: { ...route.query, report_template: value, page: undefined },
+              })
+          " />
         <TableExportButton
           :source="() => exportSources()[0]!"
           :variants="() => exportSources().slice(1)"
@@ -636,7 +659,6 @@ onBeforeUnmount(() => {
       :template-key="reportTemplate.key"
       :records="rows"
       :loading="loading"
-      :column-settings-target="columnSettingsTarget"
     />
     <WorkspaceTable
       columns-key="TeamProcessingRecords-1"

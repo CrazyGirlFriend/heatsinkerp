@@ -166,6 +166,7 @@ def origin_columns(include_team=False, registered=None, task_bindings=None):
         "process_step_index": mt.process_step_index,
         "process_step_complete": mt.process_step_complete,
         "material_name": func.coalesce(mt.material_name, ""),
+        "is_outsourced": mt.is_outsourced,
         "material_type": func.coalesce(mt.material_type, ""),
         "processing_role": mt.processing_role,
         "processing_group": processing_group,

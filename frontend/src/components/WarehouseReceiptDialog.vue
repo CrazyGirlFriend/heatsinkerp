@@ -126,6 +126,7 @@ const form = reactive({
   percent: undefined as number | undefined,
   receiptKind: 'external' as 'external' | 'return',
   externalSource: '',
+  isOutsourced: false,
   returnDispatchNo: '',
   warehouseLocation: '',
   warehouseLocationKey: '',
@@ -367,6 +368,7 @@ function fill(
   form.warehouseLocation = payload?.warehouse_location || ''
   form.warehouseLocationKey = payload?.warehouse_location_reservation_key || ''
   form.receiptKind = payload?.receipt_kind || 'external'
+  form.isOutsourced = payload?.is_outsourced ?? false
   form.externalSource = payload?.external_source || ''
   form.returnDispatchNo = payload?.return_dispatch_no || ''
   form.serialNo = payload?.serial_no || ''
@@ -548,6 +550,7 @@ function receiptFields(): Omit<UpdateWarehouseReceipt, 'expected_version'> {
     serial_no: form.serialNo.trim(),
     material_name: form.document.material_name.trim(),
     material_type: form.materialType as MaterialType,
+    is_outsourced: form.isOutsourced,
     external_source: form.externalSource.trim() || null,
     warehouse_location: form.warehouseLocation.trim() || null,
     ...(form.warehouseLocationKey
@@ -810,6 +813,15 @@ onBeforeUnmount(() => {
           "
         />
         <CompactFormSection title="入库信息" class="receipt-primary-section">
+          <ElFormItem label="外委产品">
+            <ElSelect
+              v-model="form.isOutsourced"
+              aria-label="外委产品"
+              :disabled="readonly || !!original?.return_dispatch_no"
+            >
+              <ElOption :value="false" label="否" /><ElOption :value="true" label="是" />
+            </ElSelect>
+          </ElFormItem>
           <ElFormItem v-if="!editing" label="入库来源" :error="fieldErrors.receiptKind" required
             ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
               ><ElOption value="external" label="外部来料" /><ElOption

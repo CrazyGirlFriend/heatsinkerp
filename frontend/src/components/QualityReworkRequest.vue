@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import ElAlert from '@/components/AppAlert.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { ElTableColumn } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
+import { useTeamDirectoryStore } from '@/stores/teamDirectory'
+import { teamCanProcess } from '@/config/teamWorkspaces'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import {
   qualityFeedbackApi,
@@ -12,12 +14,34 @@ import {
   type QualityReworkStock,
 } from '@/services/qualityFeedbackApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
-const props = defineProps<{ issue: QualityFeedbackDetail }>()
+const props = defineProps<{
+  issue: Pick<
+    QualityFeedbackDetail,
+    'id' | 'failure_lines' | 'notes' | 'decision_notes' | 'problems'
+  >
+}>()
 const emit = defineEmits<{
   changed: []
   busy: [boolean]
   contextChange: [QuantityAdjustmentContext | undefined]
 }>()
+const directory = useTeamDirectoryStore()
+onMounted(() => {
+  if (!directory.loaded && !directory.loading) void directory.refreshTeamDirectory()
+})
+const repairTeams = computed(() =>
+  directory.items
+    .filter(
+      (t) =>
+        t.active &&
+        teamCanProcess(t) &&
+        (!props.issue.failure_lines?.length ||
+          props.issue.failure_lines.some(
+            (l) => l.disposition === 'rework' && l.repair_team_id === Number(t.id),
+          )),
+    )
+    .map((t) => ({ id: Number(t.id), name: t.name })),
+)
 const items = ref<QualityReworkStock[]>([]),
   total = ref(0),
   page = ref(1)
@@ -87,9 +111,9 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section class="quality-rework-request" aria-label="提交返工工艺">
+  <section class="quality-rework-request" aria-label="分配返修批次">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <ElAlert v-if="submitted" title="已提交工艺" type="success" :closable="false" />
+    <ElAlert v-if="submitted" title="已分配返修班组" type="success" :closable="false" />
     <div class="rework-batch-heading">
       <h3>选择返工批次</h3>
       <ElButton :disabled="loading || busy" @click="load">刷新</ElButton>
@@ -128,6 +152,7 @@ onBeforeUnmount(() => {
         :key="context.source_transfer_id"
         :context="context"
         :inspection-id="issue.id"
+        :repair-teams="repairTeams"
         :initial-reason="
           issue.decision_notes ||
           issue.notes ||

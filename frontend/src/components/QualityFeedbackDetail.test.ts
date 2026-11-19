@@ -104,7 +104,7 @@ it('lets an involved team reply but does not expose QC decisions', async () => {
   await render()
   expect(button('保存处理意见')).toBeUndefined()
   expect(button('登记复检')).toBeUndefined()
-  expect(button('提交工艺')).toBeUndefined()
+  expect(button('分配返修批次')).toBeUndefined()
   await button('提交反馈')!.trigger('click')
   expect(qualityFeedbackApi.reply).not.toHaveBeenCalled()
   wrapper.getComponent(ElInput).vm.$emit('update:modelValue', '已核查，请检验班组长决定处理')
@@ -177,16 +177,16 @@ it('only exposes submission after QC saves the rework decision', async () => {
     feedback_version: 1,
   })
   await render()
-  expect(button('提交工艺')).toBeUndefined()
+  expect(button('分配返修批次')).toBeUndefined()
   const disposition = wrapper
     .findAllComponents(ElSelect)
     .find((select) => select.props('modelValue') === 'pending')!
   disposition.vm.$emit('update:modelValue', 'rework')
   await flushPromises()
-  expect(button('提交工艺')).toBeUndefined()
+  expect(button('分配返修批次')).toBeUndefined()
   await button('保存处理意见')!.trigger('click')
   await flushPromises()
-  await button('提交工艺')!.trigger('click')
+  await button('分配返修批次')!.trigger('click')
   await flushPromises()
   expect(wrapper.find('quality-rework-request-stub').exists()).toBe(true)
   expect(qualityFeedbackApi.decide).toHaveBeenCalled()
@@ -200,7 +200,7 @@ it('does not expose engineering submission for a closed issue', async () => {
     feedback_status: 'closed',
   })
   await render()
-  expect(button('提交工艺')).toBeUndefined()
+  expect(button('分配返修批次')).toBeUndefined()
 })
 
 it('shows historical problem snapshots for the original check and every recheck', async () => {
@@ -228,7 +228,7 @@ it('shows issue originals and follows the explicitly selected rework batch', asy
   await render()
   const rail = wrapper.getComponent(SerialRouteAttachments)
   expect(rail.props('batchNo')).toBe('TL42')
-  await button('提交工艺')!.trigger('click')
+  await button('分配返修批次')!.trigger('click')
   wrapper.getComponent(QualityReworkRequest).vm.$emit('contextChange', {
     batch_no: 'TL-REWORK',
     serial_no: 'REWORK-01',
@@ -239,6 +239,6 @@ it('shows issue originals and follows the explicitly selected rework batch', asy
   expect(rail.props('items')).toEqual([{ serialNo: 'REWORK-01', routeId: 51 }])
   await button('收起')!.trigger('click')
   expect(rail.props('batchNo')).toBe('TL42')
-  await button('提交工艺')!.trigger('click')
+  await button('分配返修批次')!.trigger('click')
   expect(rail.props('batchNo')).toBe('TL42')
 })

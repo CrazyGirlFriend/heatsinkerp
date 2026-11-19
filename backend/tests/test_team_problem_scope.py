@@ -22,6 +22,7 @@ URL = "/api/process-routes"
 def history(client, warehouse):
     lot, body, _, _ = prepare(client, warehouse)
     body.pop("inspection_id")
+    body.pop("repair_team_id")
     with SessionLocal.begin() as db:
         original = db.get(Work, body["rework_of_id"])
         upstream = Team(code="FACTORY-WIRE", name="线切割", kind="production", active=True)
@@ -182,7 +183,7 @@ def test_explicit_upstream_report_links_quality_and_engineering_then_transfers_b
         next_team_id=upstream_id,
         idempotency_key=uuid4().hex,
     )
-    assert blocked.status_code == 422 and "工艺" in blocked.text
+    assert blocked.status_code == 422 and "检验" in blocked.text
     save_plan(client, warehouse, route, team=upstream_id)
     assert client.get(detail_url, headers=headers).json()["route_state"] == "published"
     wrong_team = dispatch(client, warehouse, lines, workshop=True, idempotency_key=uuid4().hex)
@@ -211,7 +212,7 @@ def test_explicit_upstream_report_links_quality_and_engineering_then_transfers_b
     ).json()
     assert context["rework_route_ready"] is True
     assert context["process_route"]["id"] == route["id"]
-    assert "2.50" in context["process_route"]["instructions"]
+    assert context["process_route"]["instructions"] == payload["reason"]
     with SessionLocal() as db:
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 8
 

@@ -13,7 +13,6 @@ import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import '@/components/ProcessRouteEditor.vue'
 
 import DocumentViewer from '@/components/DocumentViewer.vue'
-import PublishedProcessRoutePicker from '@/components/PublishedProcessRoutePicker.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
@@ -183,7 +182,7 @@ it.each(['administrator', 'engineering', 'other-team', 'inactive', 'permission-e
       await flushPromises()
       expect(router.currentRoute.value.query).toEqual({ kind: 'rework' })
       expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
-      expect(wrapper.get('[aria-label="工艺类型"]').text()).toContain('返工工艺')
+      expect(wrapper.get('[aria-label="工艺类型"]').text()).toContain('返修记录')
     } else {
       expect(wrapper.find('[aria-label="工艺记录搜索"]').exists()).toBe(true)
       expect(wrapper.findAll('button').some((button) => button.text() === '班组管理')).toBe(false)
@@ -210,10 +209,11 @@ it.each(['normal', 'rework'] as const)(
     const create = buttons.find(
       (button) => button.text() === (kind === 'normal' ? '新建工艺' : '制定返工工艺'),
     )!
-    expect(create.classes()).not.toContain('el-button--primary')
+    if (kind === 'normal') expect(create.classes()).not.toContain('el-button--primary')
+    else expect(create).toBeUndefined()
     await wrapper.get('button.route-serial').trigger('click')
     expect((await openedEditor()).props()).toMatchObject({
-      viewOnly: false,
+      viewOnly: kind === 'rework',
       startEditing: false,
     })
   },
@@ -242,7 +242,7 @@ it('lets the reporting team open a pending problem without opening unpublished e
   })
   const detail = vi.spyOn(processRouteApi, 'detail')
   await render({ kind: 'rework' })
-  expect(wrapper.text()).toContain('未填写')
+  expect(wrapper.text()).toContain('待指定')
   expect(wrapper.getComponent(WatermelonFilter).props('options')[1].count).toBe(1)
   expect(wrapper.findAll('button').some((button) => button.text() === '制定工艺')).toBe(false)
   await wrapper.get('button.route-serial').trigger('click')
@@ -265,7 +265,7 @@ it('lets the reporting team open a pending problem without opening unpublished e
   wrapper.getComponent({ name: 'TeamProblemDetail' }).vm.$emit('close')
   await flushPromises()
   expect(wrapper.findComponent({ name: 'TeamProblemDetail' }).exists()).toBe(false)
-  expect(wrapper.text()).toContain('已制定')
+  expect(wrapper.text()).toContain('已指定')
   await wrapper.get('button.route-serial').trigger('click')
   expect((await openedEditor()).props()).toMatchObject({ viewOnly: true, startEditing: false })
 })
@@ -671,7 +671,7 @@ it('applies rework toolbar filters together across pages and resets them without
     .vm.$emit('update:modelValue', 'all')
   wrapper
     .findAllComponents(AppSelect)
-    .find((select) => select.vm.$attrs['aria-label'] === '工艺状态筛选')!
+    .find((select) => select.vm.$attrs['aria-label'] === '班组安排筛选')!
     .vm.$emit('update:modelValue', 'published')
   await wrapper.get('[aria-label="提交班组筛选"]').setValue('研磨')
   await wrapper.get('[aria-label="工艺人员筛选"]').setValue('张工')
@@ -756,11 +756,11 @@ it('shares header filters with the toolbar, discards cancelled edits, and clears
   expect(dialog.props()).toMatchObject({ modelValue: false, count: 0 })
   await dialog.get('.filter-dialog-trigger').trigger('click')
   expect(wrapper.find('[aria-label="提交班组筛选"]').exists()).toBe(false)
-  expect(wrapper.find('[aria-label="工艺状态筛选"]').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="班组安排筛选"]').exists()).toBe(false)
   expect(wrapper.find('[aria-label="材质筛选"]').exists()).toBe(true)
 })
 
-it('separates pending rework with visible problems and teams, and opens manual authoring directly', async () => {
+it('separates pending rework with visible problems and teams, and opens read-only details', async () => {
   const pending = {
     ...reworkRouteFixture,
     state: 'draft' as const,
@@ -802,10 +802,10 @@ it('separates pending rework with visible problems and teams, and opens manual a
     'open',
     undefined,
   )
-  for (const text of ['尺寸超差', '未填写', '待指定']) expect(wrapper.text()).toContain(text)
+  for (const text of ['尺寸超差', '待指定']) expect(wrapper.text()).toContain(text)
   expect(wrapper.text()).not.toContain('巡检')
   expect(wrapper.get('.route-list .el-table__body tbody tr td').text()).toBe(pending.serial_nos[0])
-  expect(wrapper.get('.route-list .el-table__body tbody tr td:nth-child(4)').text()).toBe('未填写')
+  expect(wrapper.get('.route-list .el-table__body tbody tr td:nth-child(4)').text()).toBe('待指定')
   expect(wrapper.find('.route-step-node').exists()).toBe(false)
   expect(wrapper.get('.rework-problem').text()).toBe('尺寸超差')
   expect(wrapper.get('.rework-problem').attributes('title')).toBe('实测厚度偏大')
@@ -823,7 +823,7 @@ it('separates pending rework with visible problems and teams, and opens manual a
   ).toEqual([
     '流水号',
     '问题',
-    '工艺状态',
+    '班组安排',
     '返工概要',
     '轮次',
     '提交班组',
@@ -833,15 +833,16 @@ it('separates pending rework with visible problems and teams, and opens manual a
     '更新时间',
     '操作',
   ])
-  expect(wrapper.text()).toContain('制定返工工艺')
+  expect(wrapper.text()).not.toContain('制定返工工艺')
   await wrapper
     .findAll('button')
-    .find((button) => button.text() === '制定工艺')!
+    .find((b) => b.text() === '查看返修安排')!
     .trigger('click')
   await flushPromises()
   expect((await openedEditor()).props()).toMatchObject({
     route: pending,
-    startEditing: true,
+    startEditing: false,
+    viewOnly: true,
   })
 })
 
@@ -875,7 +876,7 @@ it('shows authored rework execution teams without claiming work has finished', a
   })
   wrapper.getComponent(WatermelonFilter).vm.$emit('change', 'rework')
   await flushPromises()
-  expect(wrapper.text()).toContain('已制定')
+  expect(wrapper.text()).toContain('已指定')
   expect(
     wrapper.findAll('[aria-label="执行班组"] [role="listitem"]').map((item) => item.text()),
   ).toEqual(['研磨', '检验'])
@@ -1051,76 +1052,6 @@ it('invalidates cached lists when an engineering record is saved', async () => {
   expect(wrapper.find('.wm-skeleton').exists()).toBe(true)
 })
 
-it('opens a pending-problem picker and edits the selected rework with its original context', async () => {
-  const pending = {
-    ...reworkRouteFixture,
-    state: 'draft' as const,
-    rework_request: {
-      ...reworkRouteFixture.rework_request!,
-      requesting_team_name: '研磨',
-      problem_names: ['尺寸偏差'],
-    },
-  }
-  await render({ kind: 'rework' }, 'watermelon')
-  vi.mocked(processRouteApi.list).mockResolvedValueOnce({
-    items: [pending],
-    total: 1,
-    page: 1,
-    page_size: 20,
-    enforced_after: null,
-  })
-  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(pending)
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text() === '制定返工工艺')!
-    .trigger('click')
-  await vi.waitFor(() =>
-    expect(wrapper.findComponent(PublishedProcessRoutePicker).exists()).toBe(true),
-  )
-  await flushPromises()
-  const picker = wrapper.getComponent(PublishedProcessRoutePicker)
-  expect(picker.props('pendingRework')).toBe(true)
-  expect(processRouteApi.list).toHaveBeenLastCalledWith(
-    '',
-    1,
-    'draft',
-    'desc',
-    20,
-    'rework',
-    'open',
-    undefined,
-  )
-  expect(document.body.textContent).toContain('选择返工问题')
-  expect(wrapper.find('process-route-editor-stub').exists()).toBe(false)
-  picker.vm.$emit('selected', pending)
-  await flushPromises()
-  const editor = await openedEditor()
-  expect(editor.props('startEditing')).toBe(true)
-  expect(editor.props('route')).toMatchObject({
-    id: pending.id,
-    route_kind: 'rework',
-    rework_request: { batch_no: 'TL-REWORK-1', quantity: 4, reason: '尺寸偏差，重新精磨' },
-  })
-  expect(wrapper.findComponent(PublishedProcessRoutePicker).exists()).toBe(false)
-  expect(processRouteApi.detail).not.toHaveBeenCalled()
-})
-
-it('cancels rework selection without opening an editor or changing list filters', async () => {
-  await render({ kind: 'rework' }, 'watermelon')
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text() === '制定返工工艺')!
-    .trigger('click')
-  await vi.waitFor(() =>
-    expect(wrapper.findComponent(PublishedProcessRoutePicker).exists()).toBe(true),
-  )
-  wrapper.getComponent(PublishedProcessRoutePicker).vm.$emit('close')
-  await flushPromises()
-  expect(wrapper.findComponent(PublishedProcessRoutePicker).exists()).toBe(false)
-  expect(wrapper.find('process-route-editor-stub').exists()).toBe(false)
-  expect(wrapper.getComponent(FilterDialog).props('count')).toBe(1)
-})
-
 it('marks incomplete historical routes beside the serial without hiding their details', async () => {
   const row = {
     ...routeFixture,
@@ -1164,7 +1095,7 @@ it('opens the requested process type and follows navigation between normal and r
     'open',
     undefined,
   )
-  expect(wrapper.get('[aria-label="工艺类型"] .wm-view-switch').text()).toBe('返工工艺')
+  expect(wrapper.get('[aria-label="工艺类型"] .wm-view-switch').text()).toBe('返修记录')
   await router.push('/process-routes')
   await flushPromises()
   expect(processRouteApi.list).toHaveBeenLastCalledWith(
@@ -1180,7 +1111,7 @@ it('opens the requested process type and follows navigation between normal and r
   expect(wrapper.get('[aria-label="工艺类型"] .wm-view-switch').text()).toBe('正常工艺')
   await router.back()
   await flushPromises()
-  expect(wrapper.get('[aria-label="工艺类型"] .wm-view-switch').text()).toBe('返工工艺')
+  expect(wrapper.get('[aria-label="工艺类型"] .wm-view-switch').text()).toBe('返修记录')
   wrapper.getComponent(WatermelonFilter).vm.$emit('change', 'normal')
   await flushPromises()
   expect(router.currentRoute.value.query.kind).toBeUndefined()

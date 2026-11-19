@@ -144,6 +144,7 @@ export interface QuantityAdjustmentContext
   rework_count?: number
 }
 export interface CreateQuantityAdjustment extends ProcessingParameters {
+  report_template?: 'FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR'
   inspection?: components['schemas']['InspectionResults']
   production_schedule_id?: number | null
   processing_task_id?: number | null

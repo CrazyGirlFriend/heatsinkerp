@@ -13,6 +13,7 @@ const check = (overrides: Partial<Inspection> = {}): Inspection => ({
   source_transfer_id: 10,
   checked_at: '2026-11-13T01:30:00Z',
   inspector_name: '检验员甲',
+  failure_lines: [],
   batch_quantity: 123,
   sample_quantity: 12,
   passed_quantity: 10,
@@ -73,6 +74,7 @@ it.each(Object.keys(definitions))(
     expect(after.model.merges).toEqual(before.model.merges)
     expect(after.pageSetup.orientation).toEqual(before.pageSetup.orientation)
     expect(after.pageSetup.margins).toEqual(before.pageSetup.margins)
+    expect(after.properties.defaultColWidth).toBe(before.properties.defaultColWidth)
     expect(after.columns.map((column) => column.width)).toEqual(
       before.columns.map((column) => column.width),
     )
@@ -93,7 +95,7 @@ it.each(Object.keys(definitions))(
       .map(([, bytes]) => strFromU8(bytes))
       .join('')
     for (const text of ['000123-1', '=1+1']) expect(strings).toContain(text)
-    if (!['FACTORY-ROLL', 'FACTORY-QC'].includes(key)) {
+    if (!['FACTORY-ROLL', 'FACTORY-QC', 'QC-SANDBLAST', 'QC-DEBURR'].includes(key)) {
       for (const text of ['张三', '李四', '王五']) expect(strings).toContain(text)
     }
     expect(strings).not.toContain('<f>')
@@ -181,16 +183,17 @@ it('extends the original data row without duplicating crew output or retaining h
   expect(sheet.getCell('T3').numFmt).toContain('分钟')
   expect(sheet.getCell('I4').style).toEqual(sheet.getCell('I3').style)
   expect(sheet.model.merges).not.toContain('B3:B4')
-  expect(sheet.pageSetup.printArea).toBe('A1:Z4')
+  expect(sheet.pageSetup.printArea).toBe('A1:AA4')
 })
 
-it('offers one inspection template and rejects removed standalone categories', async () => {
-  expect(productionTemplates('FACTORY-QC')).toEqual([{ key: 'FACTORY-QC', label: '检验产量表' }])
+it('offers the three original QC reports and rejects unknown templates', async () => {
+  expect(productionTemplates('FACTORY-QC').map((t) => t.key)).toEqual([
+    'FACTORY-QC',
+    'QC-SANDBLAST',
+    'QC-DEBURR',
+  ])
   expect(productionTemplates('FACTORY-WAREHOUSE')).toEqual([])
-  for (const key of ['unknown', 'QC-SANDBLAST', 'QC-DEBURR']) {
-    expect(productionTemplates(key)).toEqual([])
-    await expect(createProductionWorkbook(key, [])).rejects.toThrow('尚未配置')
-  }
+  await expect(createProductionWorkbook('unknown', [])).rejects.toThrow('尚未配置')
 })
 
 it('reports template loading errors', async () => {
@@ -201,39 +204,46 @@ it('reports template loading errors', async () => {
   await expect(createProductionWorkbook('FACTORY-ROLL', [])).rejects.toThrow('读取失败')
 })
 
-it('keeps all inspection categories in one original sheet with their own quantities and hours', async () => {
-  const tasks = ['检验', '喷砂', '去毛刺', '显微镜修毛刺']
-  const blob = await createProductionWorkbook(
-    'FACTORY-QC',
-    tasks.map((processing_task_name, index) => ({
-      serial_no: '691236-50',
-      processing_date: '2026-11-13',
-      processing_task_name,
-      completed_quantity: 123 + index,
-      processing_minutes: 60 + index * 30,
-      processor_name: `人员${index + 1}、共同加工人`,
-      reason: `任务备注${index + 1}`,
-      report_inspections: JSON.stringify(index === 0 ? [check({ disposition: 'scrap' })] : []),
-    })),
-  )
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(await blob.arrayBuffer())
-  expect(workbook.worksheets).toHaveLength(1)
-  const sheet = workbook.worksheets[0]!
-  expect(sheet.getCell('AP2').text.trim()).toBe('加工类别')
-  expect(sheet.rowCount).toBe(7)
-  for (const [index, task] of tasks.entries()) {
-    const row = index + 4
-    expect(sheet.getCell(`B${row}`).text).toBe('691236-50')
-    expect(sheet.getCell(`AP${row}`).text).toBe(task)
-    expect(sheet.getCell(`G${row}`).value).toBe(123 + index)
-    expect(sheet.getCell(`AQ${row}`).value).toBe(1 + index * 0.5)
-    expect(sheet.getCell(`AR${row}`).value).toBeNull()
-    expect(sheet.getCell(`AS${row}`).text).toContain(`任务备注${index + 1}`)
-    expect(sheet.getCell(`H${row}`).value).toBe(index === 0 ? 12 : null)
-    expect(sheet.getCell(`I${row}`).value).toBe(index === 0 ? 10 : null)
-    expect(sheet.getCell(`K${row}`).value).toBe(index === 0 ? 2 : null)
-  }
+it.each([
+  ['QC-SANDBLAST', '喷砂', 'P'],
+  ['QC-DEBURR', '去毛刺', 'N'],
+])('writes the %s original columns', async (key, task, note) => {
+  const sheet = await exported(key, {
+    serial_no: '691236-50',
+    processing_task_name: task,
+    completed_quantity: 12,
+    processing_minutes: 90,
+    reason: '核对',
+    report_inspections: JSON.stringify([check()]),
+  })
+  expect(sheet.getCell('B4').text).toBe('691236-50')
+  expect(sheet.getCell('G4').value).toBe(12)
+  expect(sheet.getCell('H4').value).toBe(10)
+  expect(sheet.getCell('I4').value).toBe(1.5)
+  expect(sheet.getCell('J4').text).toBe(task)
+  expect(sheet.getCell('K4').text).toBe('检验员甲')
+  expect(sheet.getCell(note + '4').text).toBe('核对')
+})
+it('splits a single defect between scrap and the assigned repair team', async () => {
+  const sheet = await exported('FACTORY-QC', {
+    report_inspections: JSON.stringify([
+      check({
+        failed_quantity: 5,
+        disposition: 'rework',
+        failure_lines: [
+          { category: '划伤', disposition: 'scrap', quantity: 2 },
+          {
+            category: '划伤',
+            disposition: 'rework',
+            quantity: 3,
+            repair_team_id: 3,
+            repair_column: '研磨',
+          },
+        ],
+      }),
+    ]),
+  })
+  expect(['K4', 'M4', 'AF4', 'AG4'].map((c) => sheet.getCell(c).value)).toEqual([2, 2, 3, 3])
 })
 
 it('updates the report month without retaining the original November heading', async () => {
@@ -354,27 +364,30 @@ it('limits the number of exported rows after adding inspection rows', async () =
   ).rejects.toThrow('10,000')
 })
 
-it.each(Object.keys(definitions))('uses only original headers in the %s list', async (key) => {
+it.each(Object.keys(definitions))('matches the %s template headers and widths', async (key) => {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(await original(key))
   const sheet = workbook.worksheets[0]!
   const definition = definitions[key as keyof typeof definitions]
-  const columns = reportColumns[key as keyof typeof reportColumns]
-  for (const column of columns) {
-    const labels: string[] = []
-    for (let row = definition.firstDataRow === 3 ? 1 : 2; row < definition.firstDataRow; row++) {
-      const cell = sheet.getCell(`${column.key}${row}`).master
-      const value = cell.value
-      const text =
-        typeof value === 'string'
-          ? value
-          : value && typeof value === 'object' && 'richText' in value
-            ? value.richText.map((part) => part.text).join('')
-            : ''
-      const label = text.trim().replace(/\s+/g, ' ')
-      if (label && !labels.includes(label)) labels.push(label)
+  const layout = reportColumns[key as keyof typeof reportColumns]
+  const bottom = definition.firstDataRow - 1
+  expect(layout.title).toBe(bottom > 2 ? sheet.getCell('A1').text.trim() : '')
+  let index = 0
+  for (const header of layout.columns) {
+    const upper = sheet.getCell(bottom - 1, index + 1).master
+    expect(header.label).toBe(upper.text.trim())
+    const grouped = 'children' in header
+    if (grouped) expect(header.key).toBe(upper.address)
+    for (const leaf of grouped && header.children ? header.children : [header]) {
+      const source = sheet.getColumn(++index)
+      const lower = sheet.getCell(bottom, index).master
+      expect(sheet.getCell(bottom - 1, index).master.address).toBe(upper.address)
+      expect(grouped).toBe(lower.address !== upper.address)
+      expect(leaf.key).toBe(source.letter)
+      expect(leaf.label).toBe(lower.text.trim())
+      expect(source.width ?? sheet.properties.defaultColWidth).toBeCloseTo(9.230769)
+      expect(leaf.widthPx).toBe(75)
     }
-    expect(column.label).toBe(labels.join(' / '))
   }
-  expect(columns.some((column) => column.label.includes('登记时进度'))).toBe(false)
+  expect(index).toBe(sheet.getColumn(definition.lastColumn).number)
 })

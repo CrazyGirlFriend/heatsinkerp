@@ -1283,6 +1283,7 @@ onBeforeUnmount(() => {
             ></ElTooltip
           >
           <div v-else-if="column.key === 'material_type'" class="inventory-material-kind">
+            <ElTag v-if="row.is_outsourced" effect="plain">外委</ElTag>
             <ElTag
               effect="light"
               :type="

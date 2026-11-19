@@ -25,7 +25,8 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
-import { useInspectionProblems } from '@/composables/useInspectionProblems'
+import InspectionFailureLines from './InspectionFailureLines.vue'
+import type { components } from '@/types/generated/api'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { createMaterialSubmissionKey } from '@/utils/materialStock'
@@ -58,22 +59,9 @@ const teamId = ref(
 const scope = ref<InspectionRecord['scope']>('sample')
 const methods = ref<InspectionRecord['methods']>([])
 const items = ref<InspectionRecord['items']>([])
-const involved = ref<number[]>([])
-const {
-  problems,
-  loading: problemsLoading,
-  error: problemsError,
-  load: fetchProblems,
-} = useInspectionProblems(() => props.inspectionTeamId, '检验问题选项读取失败')
-const problemIds = ref<number[]>([])
-const validProblems = computed(
-  () =>
-    problemIds.value.length > 0 &&
-    problemIds.value.every((id) => problems.value.some((problem) => problem.id === id)),
-)
+const failureLines = ref<components['schemas']['FailureLine'][] | null>(null)
 const dimension = ref(''),
   weight = ref('')
-const involvedTeams = computed(() => directory.items.filter((t) => t.active))
 const source = ref<InspectionSource | null>(null),
   rows = ref<InspectionSource[]>([])
 const search = ref(''),
@@ -99,10 +87,6 @@ const writable = computed(
 )
 let generation = 0
 const submission = createMaterialSubmissionKey()
-function loadProblems() {
-  problems.value = []
-  return fetchProblems()
-}
 async function load() {
   const token = ++generation
   rows.value = []
@@ -156,8 +140,7 @@ async function submit() {
     !checkedAt.value ||
     !methods.value.length ||
     !items.value.length ||
-    (failed.value > 0 && (problemsLoading.value || problemsError.value || !validProblems.value)) ||
-    (failed.value > 0 && !props.recheck && !involved.value.length) ||
+    (failed.value > 0 && !failureLines.value) ||
     !sample.value ||
     sample.value > source.value.quantity ||
     failed.value == null ||
@@ -173,8 +156,7 @@ async function submit() {
     scope: scope.value,
     methods: methods.value,
     items: items.value,
-    involved_team_ids: failed.value > 0 && !props.recheck ? involved.value : [],
-    problem_type_ids: failed.value > 0 ? problemIds.value : [],
+    failure_lines: failed.value > 0 ? failureLines.value! : [],
     dimension_result: items.value.includes('dimension') ? dimension.value.trim() : '',
     weight_result: items.value.includes('weight') ? weight.value.trim() : '',
     source_transfer_id: source.value.source_transfer_id,
@@ -201,16 +183,12 @@ async function submit() {
 watch(scope, (value) => {
   if (value === 'full' && source.value) sample.value = source.value.quantity
 })
-watch(failed, (value) => {
-  if (value === 0) problemIds.value = []
-})
 watch(
-  () => props.inspectionTeamId,
+  failed,
   () => {
-    problemIds.value = []
-    void loadProblems()
+    failureLines.value = null
   },
-  { immediate: true },
+  { flush: 'sync' },
 )
 watch(
   teamId,
@@ -308,7 +286,7 @@ onBeforeUnmount(() => {
         <div v-else class="inspection-selected">
           <div>
             <strong>{{ source.serial_no }}</strong
-            ><span>{{ source.material_name }}</span
+            ><span>{{ source.material_name }}{{ source.is_outsourced ? ' · 外委产品' : '' }}</span
             ><span>{{ source.batch_no }}</span>
           </div>
           <div>
@@ -443,56 +421,12 @@ onBeforeUnmount(() => {
               maxlength="2000"
               placeholder="填写要求、实测重量及单位"
           /></ElFormItem>
-          <ElFormItem
+          <InspectionFailureLines
             v-if="failed > 0"
-            class="form-field--long"
-            label="检出问题（可多选）"
-            required
-            :class="{ 'is-error': submitted && !validProblems }"
-          >
-            <ElSelect
-              v-model="problemIds"
-              multiple
-              filterable
-              collapse-tags
-              collapse-tags-tooltip
-              :max-collapse-tags="3"
-              :loading="problemsLoading"
-              :disabled="problemsLoading || !!problemsError || !problems.length"
-              aria-label="检出问题"
-              placeholder="选择检验问题"
-            >
-              <ElOption
-                v-for="problem in problems"
-                :key="problem.id"
-                :value="problem.id"
-                :label="problem.name"
-              />
-            </ElSelect>
-            <div v-if="problemsError" class="inspection-problem-note">
-              <span>{{ problemsError }}</span>
-              <ElButton link type="primary" @click="loadProblems">重新读取</ElButton>
-            </div>
-            <p v-else-if="!problemsLoading && !problems.length" class="inspection-problem-note">
-              暂无启用的检验问题，请检验班组长在“班组管理 → 检验问题”中配置。
-            </p>
-          </ElFormItem>
-          <ElFormItem
-            v-if="failed > 0 && !recheck"
-            class="form-field--full"
-            label="问题涉及班组（可多选）"
-            required
-            :class="{ 'is-error': submitted && !involved.length }"
-          >
-            <ElCheckboxGroup v-model="involved"
-              ><ElCheckboxButton
-                v-for="team in involvedTeams"
-                :key="team.id"
-                :value="Number(team.id)"
-                >{{ team.name }}</ElCheckboxButton
-              ></ElCheckboxGroup
-            >
-          </ElFormItem>
+            :failed="failed"
+            :submitted="submitted"
+            @change="failureLines = $event"
+          />
           <ElFormItem
             class="form-field--full"
             :label="recheck ? '处理与复检说明（选填）' : '补充说明（选填）'"

@@ -141,7 +141,7 @@ describe('warehouse source detail', () => {
     await render(false, false)
     const pendingButton = wrapper
       .findAll('button')
-      .find((button) => button.text() === '待制定返工工艺')!
+      .find((button) => button.text() === '待检验指定班组')!
     expect(pendingButton.attributes('disabled')).toBeDefined()
     await wrapper
       .findAll('button')

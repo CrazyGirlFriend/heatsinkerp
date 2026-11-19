@@ -19,6 +19,7 @@ pytestmark = pytest.mark.usefixtures("legacy_stock")
 def request(client, setup):
     lot, body, engineering_id, headers = prepare(client, setup)
     body.pop("inspection_id")
+    body.pop("repair_team_id")
     with SessionLocal.begin() as db:
         team = db.get(Team, setup["other"]["id"])
         team.code, team.name = "FACTORY-ROLL", "轧制"
@@ -30,34 +31,12 @@ def request(client, setup):
 
 
 def publish(client, setup, route, engineering_id, headers):
-    employee = client.post(
-        f"/api/team-materials/{engineering_id}/employees",
-        headers=headers,
-        json={"name": "返工工艺员"},
-    ).json()
-    task = client.post(base(setup, True) + "/processing-tasks", json={"name": "精轧返修"}).json()
-    payload = {key: route[key] for key in ("title", "serial_nos", "version")}
-    payload.update(
-        engineering_employee_id=employee["id"],
-        modified_employee_id=employee["id"],
-        steps=[
-            dict(
-                sequence_no=1,
-                name="精轧返修",
-                instructions="精轧至2.50±0.01mm，按原图检查",
-                team_id=setup["other"]["id"],
-                processing_task_id=task["id"],
-            )
-        ],
-        review_note="已核对",
-    )
-    saved = client.put(URL + f"/{route['id']}", json=payload, headers=headers)
-    assert saved.status_code == 200, saved.text
-    published = client.post(
-        URL + f"/{route['id']}/publish", headers=headers, json={"version": saved.json()["version"]}
-    )
-    assert published.status_code == 200, published.text
-    return published.json()
+    path = QUALITY + f"/team-problems/{route['id']}/assign"
+    team = {"repair_team_id": setup["other"]["id"]}
+    assert client.post(path, params=team, headers=headers).status_code == 403
+    assigned = client.post(path, params=team, headers=setup["rework_qc_headers"])
+    assert assigned.status_code == 200, assigned.text
+    return client.get(URL + f"/{route['id']}").json()
 
 
 def test_rolling_report_is_visible_to_quality_and_engineering_then_selectable_for_rework(
@@ -116,7 +95,7 @@ def test_rolling_report_is_visible_to_quality_and_engineering_then_selectable_fo
     context = client.get(context_path, headers=team_headers).json()
     assert context["rework_route_ready"] is True
     assert context["process_route"]["id"] == route_id
-    assert context["process_route"]["instructions"] == "精轧至2.50±0.01mm，按原图检查"
+    assert context["process_route"]["instructions"] == route["rework_request"]["reason"]
     sources = client.get(base(warehouse, True) + "/processing-stock", headers=team_headers)
     assert sources.status_code == 200, sources.text
     source = next(r for r in sources.json()["items"] if r["transfer"]["id"] == source_id)
@@ -146,7 +125,7 @@ def test_rolling_report_is_visible_to_quality_and_engineering_then_selectable_fo
     )
     assert completed.status_code == 201, completed.text
     assert completed.json()["process_route_id"] == route_id
-    assert completed.json()["process_step_instructions"] == "精轧至2.50±0.01mm，按原图检查"
+    assert completed.json()["process_step_instructions"] == route["rework_request"]["reason"]
     progress = client.get(detail_url, headers=team_headers).json()["rework_progress"]
     assert progress["completed_quantity"] == 2 and progress["state"] == "awaiting_inspection"
     with SessionLocal() as db:
@@ -242,28 +221,7 @@ def test_quality_shows_one_report_with_the_latest_published_rework_revision(clie
     _, route, engineering_id, headers = request(client, warehouse)
     published = publish(client, warehouse, route, engineering_id, headers)
     response = client.post(URL + f"/{route['id']}/revise", headers=headers)
-    assert response.status_code == 201, response.text
-    revision = response.json()
-    rows = client.get(QUALITY, params={"kind": "team_report"}).json()
-    assert rows["total"] == 1 and rows["items"][0]["id"] == route["id"]
-    assert rows["items"][0]["route_state"] == "published"
-    saved = client.put(
-        URL + f"/{revision['id']}",
-        headers=headers,
-        json={
-            **{key: revision[key] for key in ("title", "serial_nos", "steps", "version")},
-            "engineering_employee_id": published["engineering_employee_id"],
-            "modified_employee_id": published["engineering_employee_id"],
-            "review_note": "已复核返工要求",
-        },
-    )
-    assert saved.status_code == 200, saved.text
-    result = client.post(
-        URL + f"/{revision['id']}/publish",
-        headers=headers,
-        json={"version": saved.json()["version"]},
-    )
-    assert result.status_code == 200, result.text
+    assert response.status_code == 403, response.text
     rows = client.get(QUALITY, params={"kind": "team_report", "status": "processing"}).json()
-    assert rows["total"] == 1 and rows["items"][0]["id"] == revision["id"]
+    assert rows["total"] == 1 and rows["items"][0]["id"] == published["id"]
     assert rows["items"][0]["rework_round"] == 1

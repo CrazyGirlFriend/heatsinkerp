@@ -8,6 +8,12 @@ import { processRouteApi } from '@/services/processRouteApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { reworkRouteFixture } from '@/testFixtures/processRoute'
 
+vi.mock('@/stores/teamDirectory', () => ({
+  useTeamDirectoryStore: () => ({
+    loaded: true,
+    items: [{ id: 3, code: 'FACTORY-GRIND', name: '研磨', kind: 'production', active: true }],
+  }),
+}))
 const issue = {
   id: 19,
   decision_notes: '划伤，需要返工',
@@ -68,6 +74,7 @@ it('binds the quality issue and real lot while requiring explicit rework amounts
   expect(request).toHaveBeenCalledWith(
     expect.objectContaining({
       inspection_id: 19,
+      repair_team_id: 3,
       source_transfer_id: 12,
       rework_of_id: 8,
       expected_revision: 9,
@@ -75,7 +82,7 @@ it('binds the quality issue and real lot while requiring explicit rework amounts
       weight: 40,
     }),
   )
-  expect(wrapper.text()).toContain('已提交工艺')
+  expect(wrapper.text()).toContain('已分配')
   expect(wrapper.emitted('changed')).toHaveLength(1)
   expect(wrapper.findComponent(ReworkRouteRequest).exists()).toBe(false)
 })

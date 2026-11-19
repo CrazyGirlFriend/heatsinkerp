@@ -74,7 +74,7 @@ export interface ProcessRoute {
 }
 export type ReworkProgress = Contract['ReworkProgressResponse']
 export const reworkProgressLabels: Record<ReworkProgress['state'], string> = {
-  awaiting_route: '待制定',
+  awaiting_route: '待检验指定班组',
   processing: '待加工完成',
   awaiting_inspection: '待复检确认',
   passed: '复检合格',

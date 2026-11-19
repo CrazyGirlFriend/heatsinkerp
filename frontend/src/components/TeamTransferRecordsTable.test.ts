@@ -42,6 +42,7 @@ describe('shared team transfer records', () => {
       const shared = normalizeMaterialTransfer({
         ...row(),
         serial_no: '共投-TL1',
+        is_outsourced: true,
         shared_group_id: 7,
         shared_unallocated: true,
         shared_serials: [{ serial_no: '691236-50' }, { serial_no: '691236-51' }],
@@ -57,6 +58,8 @@ describe('shared team transfer records', () => {
         props: { kind, rows: [shared, allocated, row(3)], emptyTitle: '' },
       })
       await flushPromises()
+      const body = wrapper.findAll('.el-table__body tbody tr')
+      expect(body.map((r) => r.text().includes('外委产品'))).toEqual([true, true, false])
       const serials = wrapper.findAll('.el-table__body .record-serial > span')
       const labels = ['共投 · 691236-50 / 691236-51', '691236-51', '691236-50']
       expect(serials.map((cell) => cell.text())).toEqual(labels)

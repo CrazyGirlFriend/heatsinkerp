@@ -211,7 +211,7 @@ def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
     problem = client.post(
         f"/api/team-materials/{s['other']['id']}/inspection-problems",
         headers=acting_headers,
-        json={"name": "尺寸超差"},
+        json={"name": "划伤"},
     )
     assert problem.status_code == 201, problem.text
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
@@ -240,6 +240,7 @@ def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
         checked_at=datetime.now(timezone.utc).isoformat(),
         sample_quantity=10,
         failed_quantity=2,
+        failure_lines=[dict(category="划伤", disposition="scrap", quantity=2)],
         problem_type_ids=[problem.json()["id"]],
         kind="inspection",
         scope="full",

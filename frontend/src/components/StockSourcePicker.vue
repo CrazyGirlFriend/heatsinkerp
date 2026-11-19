@@ -188,7 +188,10 @@ onBeforeUnmount(() => {
           }}</template>
         </ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip
-          ><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn
+          ><template #default="{ row }"
+            >{{ row.transfer.batch_no
+            }}<span v-if="row.transfer.is_outsourced"> · 外委</span></template
+          ></ElTableColumn
         >
         <ElTableColumn
           v-if="rows.some((item) => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')"

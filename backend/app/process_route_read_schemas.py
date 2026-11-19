@@ -60,6 +60,7 @@ class MaterialConfirmationResponse(ReadResponse):
 
 
 class RouteSourceDataResponse(ReadResponse):
+    assigned_by_inspection: str | None = None
     tables: list[list[list[str]]]
     issues: list[str]
     original_steps: list[RouteStepResponse] | None = None
@@ -88,7 +89,7 @@ class ReworkRequestResponse(ReadResponse):
     requesting_team_id: int | None
     requesting_team_name: str | None
     requested_by: str | None
-    rework_of_id: int
+    rework_of_id: int | None
     original_schedule_id: int | None
     original_task_id: int | None
     inspection_id: int | None

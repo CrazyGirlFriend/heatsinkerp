@@ -146,6 +146,7 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
     { label: '上一批次', value: value(item.source_transfer_batch_no) },
     { label: '原单批号', value: value(item.source_batch_no) },
   ]
+  if (item.is_outsourced) fields.push({ label: '产品来源', value: '外委产品' })
   if (!item.shared_unallocated)
     fields.push(
       { label: '客户代码', value: value(item.customer_code) },

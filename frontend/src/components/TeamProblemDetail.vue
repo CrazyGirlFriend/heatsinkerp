@@ -8,7 +8,10 @@ import { qualityFeedbackApi, type TeamProblem } from '@/services/qualityFeedback
 import { processRouteApi } from '@/services/processRouteApi'
 import { reworkProgressLabels, type ProcessRoute } from '@/types/processRoute'
 import { useAuthStore } from '@/stores/auth'
-import { canMaintainProcessRoute } from '@/utils/processRoutePermissions'
+import { useTeamDirectoryStore } from '@/stores/teamDirectory'
+import { teamCanProcess } from '@/config/teamWorkspaces'
+import AppSelect from './AppSelect.vue'
+import { ElOption } from 'element-plus'
 import { formatDateTime } from '@/utils/format'
 
 const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
@@ -20,9 +23,25 @@ const visible = ref(true),
   error = ref('')
 const detail = ref<TeamProblem>(),
   route = ref<ProcessRoute>()
-const canEdit = computed(() => canMaintainProcessRoute(auth.currentUser))
+const directory = useTeamDirectoryStore()
+const repairTeamId = ref<number>()
+const canAssign = computed(() => auth.isAdmin || auth.currentUser?.team?.code === 'FACTORY-QC')
+async function assign() {
+  if (!repairTeamId.value || loading.value) return
+  loading.value = true
+  try {
+    detail.value = await qualityFeedbackApi.assignTeamProblem(props.routeId, repairTeamId.value)
+    emit('changed')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '返修班组保存失败'
+  } finally {
+    loading.value = false
+  }
+}
 let generation = 0
 async function load() {
+  if (canAssign.value && !directory.loaded && !directory.loading)
+    void directory.refreshTeamDirectory()
   const token = ++generation
   loading.value = true
   error.value = ''
@@ -85,7 +104,7 @@ onBeforeUnmount(() => {
       <div class="team-problem-heading">
         <strong>{{ detail.serial_no }}</strong
         ><ElTag :type="detail.route_state === 'published' ? 'success' : 'info'">{{
-          detail.route_state === 'published' ? '返工工艺已制定' : '返工工艺未填写'
+          detail.route_state === 'published' ? '已指定返修班组' : '待检验判定'
         }}</ElTag>
       </div>
       <p class="team-problem-description">{{ detail.notes }}</p>
@@ -103,32 +122,45 @@ onBeforeUnmount(() => {
         }}</ElDescriptionsItem>
         <ElDescriptionsItem label="返工进度">{{
           detail.route_state === 'draft'
-            ? '等待工艺填写'
+            ? '待检验指定班组'
             : reworkProgressLabels[detail.rework_progress.state]
         }}</ElDescriptionsItem>
         <ElDescriptionsItem label="已返工"
           >{{ detail.rework_progress.completed_quantity }} /
           {{ detail.failed_quantity }} 件</ElDescriptionsItem
         >
+        <ElDescriptionsItem v-if="canAssign && detail.route_state === 'draft'" label="返修班组">
+          <AppSelect v-model="repairTeamId" aria-label="返修班组"
+            ><ElOption
+              v-for="t in directory.items.filter((t) => t.active && teamCanProcess(t))"
+              :key="t.id"
+              :value="Number(t.id)"
+              :label="t.name"
+          /></AppSelect>
+        </ElDescriptionsItem>
       </ElDescriptions>
     </template>
     <template #footer>
       <AppButton @click="visible = false">关闭</AppButton>
       <AppButton
-        v-if="detail && (canEdit || detail.route_state === 'published')"
+        v-if="detail?.route_state === 'draft' && canAssign"
+        :disabled="!repairTeamId"
+        :loading="loading"
+        @click="assign"
+        >确定返修班组</AppButton
+      >
+      <AppButton
+        v-if="detail?.route_state === 'published'"
         type="primary"
         :loading="loading"
         @click="openRoute"
-        >{{
-          canEdit && detail.route_state === 'draft' ? '填写返工工艺' : '查看返工工艺'
-        }}</AppButton
+        >{{ '查看返修安排' }}</AppButton
       >
     </template>
     <ProcessRouteEditor
       v-if="route"
       :route="route"
-      :view-only="!canEdit"
-      :start-editing="canEdit && route.state === 'draft'"
+      :view-only="true"
       @close="closeRoute"
       @saved="routeSaved"
     />

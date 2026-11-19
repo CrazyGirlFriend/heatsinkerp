@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({ auth: {} as Record<string, unknown> }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
+    loaded: true,
     items: [
       { id: 2, name: '轧制', code: 'FACTORY-ROLL', active: true },
       { id: 8, name: '检验', code: 'FACTORY-QC', active: true },
@@ -94,11 +95,16 @@ function choosePerson() {
     .getComponent(TeamEmployeeInput)
     .vm.$emit('update:modelValue', { id: 9, name: '王检验', team_id: 8 })
 }
-function chooseProblems(ids = [11, 12]) {
-  wrapper
-    .findAllComponents(ElSelect)
-    .find((select) => select.find('input[aria-label="检出问题"]').exists())!
-    .vm.$emit('update:modelValue', ids)
+function chooseProblems(category = '划伤') {
+  for (const [label, value] of [
+    ['问题类别', category],
+    ['处理方式', 'scrap'],
+  ]) {
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((select) => select.find(`input[aria-label="${label}"]`).exists())!
+      .vm.$emit('update:modelValue', value)
+  }
 }
 it('requires the QC employee and counts, showing invalid fields without sending a request', async () => {
   await render()
@@ -127,7 +133,7 @@ it('submits selected lot, real inspector, revision, and samples while preserving
     inspector_employee_id: 9,
     sample_quantity: 5,
     failed_quantity: 1,
-    problem_type_ids: [11, 12],
+    failure_lines: [{ category: '划伤', disposition: 'scrap', quantity: 1 }],
   })
   expect(first.checked_at).toMatch(/Z$/)
   expect(wrapper.text()).toContain('连接中断')
@@ -163,12 +169,12 @@ it('loads the only descendant lot for recheck without requesting automatic relea
       kind: 'patrol',
       source_transfer_id: 42,
       failed_quantity: 0,
-      problem_type_ids: [],
+      failure_lines: [],
     }),
   )
 })
 
-it('requires catalog choices for failed checks; remarks cannot replace them', async () => {
+it('requires a classified quantity even with written remarks', async () => {
   await render()
   fillCounts()
   await flushPromises()
@@ -179,57 +185,20 @@ it('requires catalog choices for failed checks; remarks cannot replace them', as
   expect(inspectionApi.create).not.toHaveBeenCalled()
   expect(
     wrapper
-      .get('[aria-label="检出问题"]')
-      .element.closest('.el-form-item')!
-      .classList.contains('is-error'),
+      .get('[aria-label="问题类别"]')
+      .element.closest('.el-form-item')
+      ?.classList.contains('is-error'),
   ).toBe(true)
-  const select = wrapper
-    .findAllComponents(ElSelect)
-    .find((item) => item.find('input[aria-label="检出问题"]').exists())!
-  expect(select.props('multiple')).toBe(true)
-  expect(select.props('filterable')).toBe(true)
-  expect(select.props('allowCreate')).toBe(false)
-  chooseProblems([13])
-  await button('保存检验').trigger('click')
-  expect(inspectionApi.create).not.toHaveBeenCalled()
-  chooseProblems([11])
-  await button('保存检验').trigger('click')
-  await flushPromises()
-  expect(inspectionApi.create).toHaveBeenCalledWith(
-    expect.objectContaining({ problem_type_ids: [11] }),
-  )
-})
-
-it('explains missing problem setup and does not accept a failed check without configured choices', async () => {
-  vi.mocked(teamMaterialApi.inspectionProblems).mockResolvedValue([])
-  await render()
-  fillCounts()
-  await flushPromises()
-  choosePerson()
-  await button('保存检验').trigger('click')
-  expect(wrapper.text()).toContain('请检验班组长在“班组管理 → 检验问题”中配置')
-  expect(inspectionApi.create).not.toHaveBeenCalled()
-})
-
-it('recovers a catalog read failure and clears previous problem choices when the result becomes passed', async () => {
-  vi.mocked(teamMaterialApi.inspectionProblems).mockRejectedValueOnce(new Error('选项读取失败'))
-  await render()
-  fillCounts()
-  await flushPromises()
-  choosePerson()
-  expect(wrapper.text()).toContain('选项读取失败')
-  await button('重新读取').trigger('click')
-  await flushPromises()
-  chooseProblems([11])
-  wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 0)
+  chooseProblems()
   await flushPromises()
   await button('保存检验').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
-    expect.objectContaining({ failed_quantity: 0, problem_type_ids: [], involved_team_ids: [] }),
+    expect.objectContaining({
+      failure_lines: [{ category: '划伤', quantity: 1, disposition: 'scrap' }],
+    }),
   )
 })
-
 it('requires current problem choices for a failed recheck while keeping its original issue link', async () => {
   await render({
     id: 13,
@@ -243,7 +212,8 @@ it('requires current problem choices for a failed recheck while keeping its orig
   choosePerson()
   await button('保存复检结果').trigger('click')
   expect(inspectionApi.create).not.toHaveBeenCalled()
-  chooseProblems([12])
+  chooseProblems('磕伤')
+  await flushPromises()
   await button('保存复检结果').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
@@ -251,8 +221,7 @@ it('requires current problem choices for a failed recheck while keeping its orig
       parent_id: 13,
       kind: 'patrol',
       failed_quantity: 1,
-      problem_type_ids: [12],
-      involved_team_ids: [],
+      failure_lines: [{ category: '磕伤', quantity: 1, disposition: 'scrap' }],
     }),
   )
 })

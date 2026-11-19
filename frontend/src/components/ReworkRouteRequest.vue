@@ -15,9 +15,20 @@ const props = defineProps<{
   context?: QuantityAdjustmentContext
   loading?: boolean
   inspectionId?: number
+  repairTeams?: { id: number; name: string }[]
   initialReason?: string
 }>()
 const emit = defineEmits<{ changed: []; busy: [boolean] }>()
+const repairTeam = ref<number | undefined>(
+  props.repairTeams?.length === 1 ? props.repairTeams[0]?.id : undefined,
+)
+watch(
+  () => props.repairTeams,
+  (teams) => {
+    if (!teams?.some((t) => t.id === repairTeam.value))
+      repairTeam.value = teams?.length === 1 ? teams[0]?.id : undefined
+  },
+)
 const original = ref(props.context?.rework_of_id || null)
 type WorkRecord = NonNullable<QuantityAdjustmentContext['rework_task_records']>[number]
 const selectedRecord = computed(() =>
@@ -70,7 +81,7 @@ async function save() {
     busy.value ||
     props.loading ||
     !props.context ||
-    !original.value ||
+    (props.inspectionId ? !repairTeam.value : !original.value) ||
     quantity.value == null ||
     weight.value == null ||
     !Number.isInteger(quantity.value) ||
@@ -87,7 +98,8 @@ async function save() {
     const body = {
       inspection_id: props.inspectionId,
       source_transfer_id: props.context.source_transfer_id,
-      rework_of_id: original.value,
+      rework_of_id: original.value || undefined,
+      repair_team_id: props.inspectionId ? repairTeam.value : undefined,
       problem_team_id: props.context.rework_problem_team_id || undefined,
       expected_revision: props.context.revision,
       quantity: quantity.value,
@@ -110,11 +122,20 @@ async function save() {
     <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
       <CompactFormSection title="问题信息">
         <slot name="source" :submitted="submitted" />
+        <ElFormItem v-if="inspectionId" class="form-field--medium" label="返修班组" required>
+          <ElSelect v-model="repairTeam" aria-label="返修班组"
+            ><ElOption
+              v-for="team in repairTeams"
+              :key="team.id"
+              :value="team.id"
+              :label="team.name"
+          /></ElSelect>
+        </ElFormItem>
         <ElFormItem
           class="form-field--long"
           label="工艺记录"
-          required
-          :error="submitted && context && !original ? '请选择工艺记录' : ''"
+          :required="!inspectionId"
+          :error="submitted && context && !inspectionId && !original ? '请选择工艺记录' : ''"
         >
           <ElSelect
             v-model="original"

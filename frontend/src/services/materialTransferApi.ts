@@ -151,6 +151,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   ) as Pick<MaterialTransferDocumentFields, (typeof materialDocumentTextFields)[number]['key']>
   return {
     ...documentText,
+    is_outsourced: raw.is_outsourced === true,
     schedule_task_id: optionalInteger(raw.schedule_task_id, 1),
     schedule_due_at: textValue(raw.schedule_due_at) || null,
     task_batch_number: optionalInteger(raw.task_batch_number, 1),

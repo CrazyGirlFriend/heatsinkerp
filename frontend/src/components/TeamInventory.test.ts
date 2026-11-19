@@ -1012,7 +1012,7 @@ describe('warehouse grouped stock', () => {
       ['7', '第 1 次返工', '待返工'],
       ['5', '第 2 次返工', '待返工'],
     ])
-    expect(wrapper.text()).toContain('待制定返工工艺')
+    expect(wrapper.text()).toContain('待检验指定班组')
   })
   it.each(['waste', 'sludge', 'scrap_chips'])(
     'filters %s by material type and clears incompatible processing filters',

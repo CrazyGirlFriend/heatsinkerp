@@ -614,6 +614,7 @@ def list_records(
     work_kind=None,
     processing_task_id=None,
     purpose_id=None,
+    report_template=None,
     include_summary=True,
     page=1,
     page_size=20,
@@ -631,6 +632,51 @@ def list_records(
         processing_task_id,
         purpose_id,
     )
+    if report_template:
+        if team.code != "FACTORY-QC":
+            raise HTTPException(422, "请选择本班组的产量表")
+        task = func.coalesce(Adjustment.processing_task_name, "")
+        # Historical rows only have a task snapshot. Tasks shared by original
+        # sheets (打标、洗料、显微镜修毛刺) have no unambiguous report assignment.
+        original_sheet = case(
+            (task.in_(("喷砂", "喷边", "摆料")), "QC-SANDBLAST"),
+            (
+                task.in_(
+                    (
+                        "去毛刺",
+                        "工序③蹭面",
+                        "工序②修孔",
+                        "工序①修4边",
+                        "量尺寸",
+                        "工序①修2边",
+                        "工序③修2头（小条）",
+                    )
+                ),
+                "QC-DEBURR",
+            ),
+            (
+                task.in_(
+                    (
+                        "检验",
+                        "大板检验",
+                        "显微镜检验修毛刺",
+                        "显微镜检验",
+                        "目视检验",
+                        "检边",
+                        "装盒",
+                        "外委检验",
+                        "基恩士测产品",
+                        "酒精擦料",
+                        "天准测产品",
+                        "尺寸检验",
+                    )
+                ),
+                "FACTORY-QC",
+            ),
+        )
+        conditions.append(
+            func.coalesce(Adjustment.report_template, original_sheet) == report_template
+        )
     from .table_query import table_options, table_order, table_predicates
 
     columns = record_table_columns()

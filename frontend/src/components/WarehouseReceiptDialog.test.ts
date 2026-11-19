@@ -409,6 +409,10 @@ describe('warehouse manual receipt', () => {
     expect(wrapper.find('button[aria-label="入库仓位"]').exists()).toBe(true)
     expect(wrapper.find('input[aria-label="入库重量单位"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('接收班组')
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('input[aria-label="外委产品"]').exists())!
+      .vm.$emit('update:modelValue', true)
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-91')
     await submit()
     const [id, body] = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]!
@@ -426,6 +430,7 @@ describe('warehouse manual receipt', () => {
       weight: 0.005,
       notes: '实物到货登记',
       source_batch_no: 'RAW-91',
+      is_outsourced: true,
       idempotency_key: expect.any(String),
     })
     expect(body).not.toHaveProperty('next_team_id')

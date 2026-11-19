@@ -98,6 +98,7 @@ def recheck_context(db, inspection_id):
     lot = db.get(MaterialTransfer, row.source_transfer_id)
     balance = db.get(MaterialStockBalance, lot.id)
     return dict(
+        is_outsourced=lot.is_outsourced,
         source_transfer_id=lot.id,
         team_id=lot.next_team_id,
         serial_no=lot.serial_no,
@@ -156,6 +157,8 @@ def record_dict(row, lot, team):
     )
     return dict(
         id=row.id,
+        failure_lines=row.failure_lines or [],
+        is_outsourced=lot.is_outsourced,
         process_step=row.process_step,
         source_transfer_id=row.source_transfer_id,
         team_id=row.team_id,
@@ -258,23 +261,65 @@ def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
     if lot.received_at and payload.checked_at.replace(tzinfo=None) < lot.received_at:
         raise HTTPException(422, "检查时间不能早于本批入库时间")
     employee = require_team_employee(db, actor_team.id, payload.inspector_employee_id, "检验人")
-    problems = (
-        list(
-            db.scalars(
+    team_columns = {
+        "FACTORY-ROLL": "轧板",
+        "FACTORY-GRIND": "研磨",
+        "FACTORY-ANNEAL": "退火",
+        "FACTORY-ENGRAVE": "雕刻",
+        "FACTORY-WIRE": "线切割",
+    }
+    failure_lines = []
+    involved_ids = set(payload.involved_team_ids)
+    categories = sorted({line.category for line in payload.failure_lines})
+    problems = []
+    if categories:
+        # Serialize creation of canonical filter options, including on fresh installations.
+        db.scalar(select(Team.id).where(Team.id == actor_team.id).with_for_update())
+        existing = {
+            p.name: p
+            for p in db.scalars(
                 select(InspectionProblemType)
-                .where(InspectionProblemType.id.in_(payload.problem_type_ids))
-                .order_by(InspectionProblemType.id)
+                .where(
+                    InspectionProblemType.team_id == actor_team.id,
+                    InspectionProblemType.name.in_(categories),
+                )
                 .with_for_update()
-                .execution_options(populate_existing=True)
+            )
+        }
+        for name in categories:
+            problem = existing.get(name)
+            if problem is None:
+                problem = InspectionProblemType(team_id=actor_team.id, name=name)
+                db.add(problem)
+            problems.append(problem)
+        db.flush()
+    elif payload.kind == "patrol" and not payload.parent_id:
+        problems = list(
+            db.scalars(
+                select(InspectionProblemType).where(
+                    InspectionProblemType.team_id == actor_team.id,
+                    InspectionProblemType.active.is_(True),
+                    InspectionProblemType.id.in_(payload.problem_type_ids),
+                )
             )
         )
-        if payload.problem_type_ids
-        else []
-    )
-    if len(problems) != len(payload.problem_type_ids) or any(
-        p.team_id != actor_team.id or not p.active for p in problems
-    ):
-        raise HTTPException(422, "请选择启用的检验问题；无可用选项时请联系检验班组长")
+    if payload.problem_type_ids and set(payload.problem_type_ids) != {p.id for p in problems}:
+        raise HTTPException(422, "检验问题与分类明细不一致")
+    for line in payload.failure_lines:
+        item = line.model_dump()
+        if line.repair_team_id:
+            repair = db.get(Team, line.repair_team_id)
+            if (
+                not repair
+                or not repair.active
+                or repair.kind != "production"
+                or repair.code not in PROCESSING_TEAM_CODES
+            ):
+                raise HTTPException(422, "请选择启用的返修班组")
+            item["repair_team_name"] = repair.name
+            item["repair_column"] = team_columns.get(repair.code) or line.repair_column
+            involved_ids.add(repair.id)
+        failure_lines.append(item)
     if parent and payload.checked_at.replace(tzinfo=None) < parent.checked_at:
         raise HTTPException(422, "复检时间不能早于原检查")
     work = work or (
@@ -303,6 +348,14 @@ def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
         items=payload.items,
         dimension_result=payload.dimension_result.strip(),
         weight_result=payload.weight_result.strip(),
+        failure_lines=failure_lines or None,
+        disposition=(
+            "rework"
+            if any(line.disposition == "rework" for line in payload.failure_lines)
+            else "scrap"
+            if failure_lines
+            else "pending"
+        ),
         blocks_outbound=False,
         notes=payload.notes.strip(),
         parent_id=payload.parent_id,
@@ -318,10 +371,7 @@ def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
     # A recheck belongs to the original issue; it does not create another defect count.
     if payload.failed_quantity and not parent:
         db.add_all(
-            [
-                InspectionFeedbackTeam(inspection_id=row.id, team_id=i)
-                for i in payload.involved_team_ids
-            ]
+            [InspectionFeedbackTeam(inspection_id=row.id, team_id=i) for i in sorted(involved_ids)]
         )
     db.flush()
     db.add(
@@ -346,7 +396,8 @@ def record_inspection(db, lot, payload, user, actor_team, digest, *, work=None):
                         scope=payload.scope,
                         methods=payload.methods,
                         items=payload.items,
-                        involved_team_ids=payload.involved_team_ids,
+                        involved_team_ids=sorted(involved_ids),
+                        failure_lines=failure_lines,
                         problems=[dict(id=p.id, name=p.name) for p in problems],
                     ),
                 }
@@ -552,6 +603,7 @@ def list_sources(
     return dict(
         items=[
             dict(
+                is_outsourced=lot.is_outsourced,
                 source_transfer_id=lot.id,
                 team_id=team_id,
                 serial_no=lot.serial_no,

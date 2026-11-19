@@ -11,7 +11,7 @@ vi.mock('@/stores/teamDirectory', () => ({
     loaded: true,
     items: [
       { id: 2, name: '轧制', active: true },
-      { id: 3, name: '研磨', active: true },
+      { id: 3, name: '研磨', kind: 'production', code: 'FACTORY-GRIND', active: true },
     ],
   }),
 }))
@@ -73,50 +73,41 @@ it('tracks full-inspection count, computes passes, and limits samples to complet
   expect(latest()).toBeNull()
 })
 
-it('requires defect details and manual involved teams, then removes stale defects when all pass', async () => {
+it('requires a repair team and conserves quantities across defect lines', async () => {
   await render()
-  count('不合格件数', 2)
+  count('不合格件数', 5)
+  await flushPromises()
+  choose('问题类别', '划伤')
+  choose('处理方式', 'rework')
   await flushPromises()
   expect(latest()).toBeNull()
-  expect(wrapper.get('[aria-label="合格件数"]').text()).toBe('8 件')
-  choose('不合格问题', [11])
-  choose('涉及班组', [2, 3])
-  await wrapper.get('textarea[aria-label="问题说明"]').setValue('两件边缘划伤')
-  expect(latest()).toMatchObject({
-    failed_quantity: 2,
-    problem_type_ids: [11],
-    involved_team_ids: [2, 3],
-  })
-  choose('不合格问题', [12])
+  choose('返修班组', 3)
+  count('分类件数', 3)
   await flushPromises()
   expect(latest()).toBeNull()
-  count('不合格件数', 0)
-  await flushPromises()
-  expect(latest()).toMatchObject({
-    failed_quantity: 0,
-    problem_type_ids: [],
-    involved_team_ids: [],
-    notes: '',
-  })
-  expect(wrapper.find('textarea[aria-label="问题说明"]').exists()).toBe(false)
-})
-
-it('allows a passing check when the problem catalog fails, but requires recovery for defects', async () => {
-  vi.mocked(teamMaterialApi.inspectionProblems).mockRejectedValueOnce(new Error('读取失败'))
-  await render()
-  expect(latest()).toMatchObject({ failed_quantity: 0 })
-  count('不合格件数', 1)
-  await flushPromises()
-  expect(latest()).toBeNull()
-  expect(wrapper.text()).toContain('读取失败')
   await wrapper
     .findAll('button')
-    .find((b) => b.text() === '重试')!
+    .find((b) => b.text() === '增加分类')!
     .trigger('click')
+  const selects = wrapper.findAllComponents(AppSelect)
+  for (const [label, value] of [
+    ['问题类别', '划伤'],
+    ['处理方式', 'scrap'],
+  ]) {
+    selects
+      .filter((s) => s.find(`input[aria-label="${label}"]`).exists())
+      .at(-1)!
+      .vm.$emit('update:modelValue', value)
+  }
   await flushPromises()
-  expect(teamMaterialApi.inspectionProblems).toHaveBeenCalledTimes(2)
-  choose('不合格问题', [11])
-  choose('涉及班组', [2])
-  await wrapper.get('textarea[aria-label="问题说明"]').setValue('划伤')
-  expect(latest()).toMatchObject({ failed_quantity: 1 })
+  expect(latest()).toMatchObject({
+    failed_quantity: 5,
+    failure_lines: [
+      { category: '划伤', quantity: 3, disposition: 'rework', repair_team_id: 3 },
+      { category: '划伤', quantity: 2, disposition: 'scrap' },
+    ],
+  })
+  count('不合格件数', 0)
+  await flushPromises()
+  expect(latest()).toMatchObject({ failed_quantity: 0, failure_lines: [] })
 })

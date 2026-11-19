@@ -7,6 +7,9 @@ import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
 
 const auth = vi.hoisted(() => ({
+  get isAdmin() {
+    return this.currentUser.role === 'ADMIN'
+  },
   currentUser: {
     active: true,
     role: 'ADMIN',
@@ -19,6 +22,12 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => auth,
+}))
+vi.mock('@/stores/teamDirectory', () => ({
+  useTeamDirectoryStore: () => ({
+    loaded: true,
+    items: [{ id: 2, name: '轧制', code: 'FACTORY-ROLL', kind: 'production', active: true }],
+  }),
 }))
 const report: TeamProblem = {
   id: 12,
@@ -79,13 +88,13 @@ afterEach(() => {
 it('shows the reporting team and lets administrators author the unfilled route', async () => {
   await render(report)
   expect(wrapper.text()).toContain('轧制')
-  expect(wrapper.text()).toContain('返工工艺未填写')
+  expect(wrapper.text()).toContain('待检验判定')
   expect(wrapper.text()).toContain('精轧后厚度偏大')
-  expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['关闭', '填写返工工艺'])
+  expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['关闭', '确定返修班组'])
   expect(processRouteApi.detail).not.toHaveBeenCalled()
 })
 it.each([
-  ['ADMIN', false],
+  ['ADMIN', true],
   ['TEAM', true],
 ] as const)(
   'opens the exact linked route with the correct permissions for %s',
@@ -99,11 +108,11 @@ it.each([
       feedback_status: 'processing',
       rework_progress: { ...report.rework_progress, state: 'processing', completed_quantity: 8 },
     })
-    expect(wrapper.text()).toContain('返工工艺已制定')
+    expect(wrapper.text()).toContain('已指定返修班组')
     expect(wrapper.text()).toContain('8 / 20 件')
     await wrapper
       .findAll('button')
-      .find((b) => b.text() === '查看返工工艺')!
+      .find((b) => b.text() === '查看返修安排')!
       .trigger('click')
     await flushPromises()
     expect(processRouteApi.detail).toHaveBeenCalledWith(12)
@@ -116,24 +125,24 @@ it('distinguishes the reporting team from the suspected upstream team', async ()
   expect(wrapper.text()).toContain('疑似涉及班组')
   expect(wrapper.text()).toContain('线切割')
 })
-it('lets engineering fill the linked draft and refreshes the quality status after saving', async () => {
+it('engineering can read an issue while QC assigns its repair team', async () => {
   auth.currentUser.role = 'TEAM'
   await render(report)
-  vi.mocked(processRouteApi.detail).mockResolvedValue({ id: 12, state: 'draft' } as ProcessRoute)
+  expect(wrapper.findAll('button').map((b) => b.text())).not.toContain('确定返修班组')
+  wrapper.unmount()
+  auth.currentUser.team.code = 'FACTORY-QC'
+  await render(report)
+  const select = wrapper.getComponent((await import('./AppSelect.vue')).default)
+  select.vm.$emit('update:modelValue', 2)
+  const assign = vi
+    .spyOn(qualityFeedbackApi, 'assignTeamProblem')
+    .mockResolvedValue({ ...report, route_state: 'published' })
+  await flushPromises()
   await wrapper
     .findAll('button')
-    .find((b) => b.text() === '填写返工工艺')!
+    .find((b) => b.text() === '确定返修班组')!
     .trigger('click')
   await flushPromises()
-  const editor = wrapper.getComponent({ name: 'ProcessRouteEditor' })
-  expect(editor.props('viewOnly')).toBe(false)
-  vi.mocked(qualityFeedbackApi.teamProblem).mockResolvedValue({
-    ...report,
-    route_state: 'published',
-    feedback_status: 'processing',
-  })
-  editor.vm.$emit('saved')
-  await flushPromises()
-  expect(wrapper.text()).toContain('返工工艺已制定')
-  expect(wrapper.emitted('changed')).toHaveLength(1)
+  expect(assign).toHaveBeenCalledWith(12, 2)
+  expect(wrapper.text()).toContain('已指定返修班组')
 })

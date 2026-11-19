@@ -343,7 +343,10 @@ watch(canWrite, (value) => {
         min-width="110"
         align="center"
         show-overflow-tooltip
-      />
+        ><template #default="{ row }"
+          >{{ row.material_name }}<span v-if="row.is_outsourced"> · 外委</span></template
+        ></ElTableColumn
+      >
       <ElTableColumn prop="inspector_name" label="检验人" min-width="110" align="center"
         ><template #default="{ row }"><PersonName :name="row.inspector_name" /></template
       ></ElTableColumn>
@@ -426,7 +429,8 @@ watch(canWrite, (value) => {
         ><ElDescriptionsItem label="批次号">{{ detail.batch_no }}</ElDescriptionsItem>
         <ElDescriptionsItem label="被检班组">{{ detail.team_name }}</ElDescriptionsItem
         ><ElDescriptionsItem label="材质 / 尺寸"
-          >{{ detail.material_name }} / {{ detail.specification || '—' }}</ElDescriptionsItem
+          >{{ detail.is_outsourced ? '外委产品 · ' : '' }}{{ detail.material_name }} /
+          {{ detail.specification || '—' }}</ElDescriptionsItem
         >
         <ElDescriptionsItem label="检验人"
           ><PersonName :name="detail.inspector_name" /></ElDescriptionsItem

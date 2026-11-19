@@ -455,6 +455,7 @@ class MaterialTransfer(Base):
     part_no: Mapped[str | None] = mapped_column(String(80))
     material_shape: Mapped[str | None] = mapped_column(String(80))
     material_description: Mapped[str | None] = mapped_column(Text)
+    is_outsourced: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     outsourced_unit: Mapped[str | None] = mapped_column(String(160))
     purpose_category: Mapped[str | None] = mapped_column(String(80))
     category_level3: Mapped[str | None] = mapped_column(String(80))
@@ -682,6 +683,7 @@ class MaterialQuantityAdjustment(Base):
     """Processing changes the pieces in stock, never the signed receipt or mass."""
 
     __tablename__ = "material_quantity_adjustments"
+    report_template: Mapped[str | None] = mapped_column(String(24))
     __table_args__ = (
         CheckConstraint("after_quantity >= 0", name="ck_mqa_quantities"),
         CheckConstraint(
@@ -1156,6 +1158,7 @@ class MaterialInspection(Base):
     sample_quantity: Mapped[int] = mapped_column(Integer)
     failed_quantity: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(16), default="patrol", server_default="patrol")
+    failure_lines: Mapped[list[dict] | None] = mapped_column(JSON)
     scope: Mapped[str] = mapped_column(String(16), default="sample", server_default="sample")
     methods: Mapped[list | None] = mapped_column(JSON)
     items: Mapped[list | None] = mapped_column(JSON)

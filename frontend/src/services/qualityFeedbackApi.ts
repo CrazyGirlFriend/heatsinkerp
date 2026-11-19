@@ -19,7 +19,7 @@ export const dispositions = {
 export type QualityFeedback = InspectionRecord &
   Pick<Contract['QualityFeedbackResponse'], 'involved_teams'>
 export type QualityFeedbackDetail = QualityFeedback &
-  Pick<Contract['QualityFeedbackDetailResponse'], 'events'> & {
+  Pick<Contract['QualityFeedbackDetailResponse'], 'events' | 'pending_repairs'> & {
     rechecks: InspectionRecord[]
   }
 export type TeamProblem = Contract['TeamProblemResponse']
@@ -66,6 +66,16 @@ export const qualityFeedbackApi = {
     ),
   detail: (id: number) => httpRequest<QualityFeedbackDetail>(`/quality-feedback/${id}`),
   teamProblem: (id: number) => httpRequest<TeamProblem>(`/quality-feedback/team-problems/${id}`),
+  assignTeamProblem: (id: number, team: number) =>
+    httpRequest<TeamProblem>(
+      `/quality-feedback/team-problems/${id}/assign?repair_team_id=${team}`,
+      { method: 'POST' },
+    ),
+  assignPendingRepair: (issueId: number, id: number, team: number) =>
+    httpRequest<QualityFeedbackDetail>(
+      `/quality-feedback/${issueId}/pending-repairs/${id}/assign?repair_team_id=${team}`,
+      { method: 'POST' },
+    ),
   reworkStock: (id: number, page = 1) =>
     httpRequest<{ items: QualityReworkStock[]; total: number }>(
       `/quality-feedback/${id}/rework-stock?page=${page}`,

@@ -41,8 +41,8 @@ def test_upgrade_is_repeatable_preserves_legacy_hold_and_all_schema_columns():
             for model in (MaterialInspection, InspectionFeedbackTeam, InspectionFeedbackEvent):
                 expected = set(model.__table__.columns.keys())
                 if model is MaterialInspection:
-                    # The executed-process snapshot is introduced later, in 0047.
-                    expected.remove("process_step")
+                    # Added after 0041, by migrations 0047 and 0076 respectively.
+                    expected.difference_update({"process_step", "failure_lines"})
                 assert {c["name"] for c in schema.get_columns(model.__tablename__)} == expected
             assert conn.exec_driver_sql(
                 "SELECT failed_quantity, blocks_outbound, released_at, scope, kind FROM material_inspections"

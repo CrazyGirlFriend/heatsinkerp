@@ -113,6 +113,7 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
 ):
     s = warehouse
     lot, body, engineering_id, engineering_headers = prepare(client, s)
+    body.pop("repair_team_id")
     body.pop("inspection_id")
     for actor in (s["headers"], s["rework_qc_headers"]):
         denied = client.post(URL + "/rework-requests", json=body, headers=actor)
@@ -134,11 +135,11 @@ def test_team_submits_own_stock_without_qc_and_cannot_execute_before_instruction
     employee = client.get(base(s, True) + "/employees").json()[0]
     for kind in ("initial", "rework"):
         denied = work(client, s, child, employee, work_kind=kind, idempotency_key=uuid4().hex)
-        assert denied.status_code == 422 and "工艺" in denied.text
+        assert denied.status_code == 422 and "检验" in denied.text
     denied = dispatch(
         client, s, [dict(source_transfer_id=child["id"], quantity=2, weight=20)], workshop=True
     )
-    assert denied.status_code == 422 and "工艺" in denied.text
+    assert denied.status_code == 422 and "检验" in denied.text
     assert (
         client.put(
             URL + f"/{route['id']}",
@@ -191,7 +192,7 @@ def test_rounds_follow_selected_material_not_other_portions_of_same_serial(clien
     assert progress_document(client, first)["state"] == "failed"
     assert progress_document(client, second)["state"] == "awaiting_route"
     detail = client.get(URL + f"/{first['id']}").json()
-    assert detail["steps"][0]["instructions"] == "返工精磨至2.50±0.01mm"
+    assert detail["steps"][0]["instructions"] == detail["rework_request"]["reason"]
     assert sibling["rework_request"]["round"] == 1
     assert progress_document(client, sibling)["quantity"] == 2
     assert (
@@ -233,6 +234,7 @@ def test_direct_request_respects_stock_revision_and_legacy_quality_hold(client, 
     s = warehouse
     lot, body, _, _ = prepare(client, s)
     issue_id = body.pop("inspection_id")
+    body.pop("repair_team_id")
     stale = client.post(
         URL + "/rework-requests",
         headers=s["other_headers"],
@@ -253,12 +255,9 @@ def test_revision_is_not_a_new_round_and_partial_work_remains_open(client, wareh
     s = warehouse
     lot, body, _, _ = prepare(client, s)
     route = save_plan(client, s, direct(client, s, lot, body["rework_of_id"]))
-    revision = client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).json()
-    revised = save_plan(client, s, revision, instructions="精磨至2.40mm")
-    rows = client.get(URL, params={"kind": "rework"}).json()["items"]
-    assert [row["id"] for row in rows] == [revised["id"]]
+    assert client.post(URL + f"/{route['id']}/revise", headers=author(client)[0]).status_code == 403
+    revised = route
     assert revised["rework_request"]["round"] == 1
-    assert revised["steps"][0]["instructions"] == "精磨至2.40mm"
     employee = client.get(base(s, True) + "/employees").json()[0]
     processed = work(
         client,

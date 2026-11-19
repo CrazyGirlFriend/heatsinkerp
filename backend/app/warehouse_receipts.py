@@ -139,6 +139,12 @@ def update_receipt(db, team_id, lot_id, payload, user):
                 else lot.external_source
             ):
                 raise HTTPException(422, "外部返料须填写来源单位")
+            if (
+                lot.return_dispatch_no
+                and "is_outsourced" in payload.model_fields_set
+                and payload.is_outsourced != lot.is_outsourced
+            ):
+                raise HTTPException(422, "已关联出库单的返料须沿用原批次外委标记")
             if serial != lot.serial_no:
                 if lot.return_dispatch_no:
                     raise HTTPException(422, "已关联原出库批次的返料须沿用原流水号")
@@ -276,13 +282,18 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 )
             route = intake_route(db, team, payload, user)
             delivery_origin_id = None
+            outsourced = payload.is_outsourced
             if payload.return_dispatch_no:
                 # New returns reference the actual batch; old CK references remain readable.
                 historical = select(MaterialDispatch.id).where(
                     MaterialDispatch.dispatch_no == payload.return_dispatch_no
                 )
                 matching = db.execute(
-                    select(MaterialTransfer.id, MaterialTransfer.delivery_origin_id).where(
+                    select(
+                        MaterialTransfer.id,
+                        MaterialTransfer.delivery_origin_id,
+                        MaterialTransfer.is_outsourced,
+                    ).where(
                         (MaterialTransfer.batch_no == payload.return_dispatch_no)
                         | MaterialTransfer.dispatch_id.in_(historical),
                         MaterialTransfer.entry_kind.in_(
@@ -294,6 +305,10 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 ).all()
                 if not matching:
                     raise HTTPException(422, "关联批次没有该流水号的已确认出库记录")
+                sources = {row.is_outsourced for row in matching}
+                if len(sources) > 1:
+                    raise HTTPException(422, "原出库单同时含外委和普通产品，请按实物批次退回")
+                outsourced = outsourced or sources.pop()
                 origins = {row.delivery_origin_id or row.id for row in matching}
                 # An old combined dispatch can span several requirements; do not guess one.
                 if len(origins) == 1:
@@ -330,7 +345,12 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 warehouse_location=location_name,
                 serial_no=serial_no,
                 delivery_origin_id=delivery_origin_id,
-                **{field: getattr(payload, field) for field in workflow.DOCUMENT_FIELDS},
+                is_outsourced=outsourced,
+                **{
+                    field: getattr(payload, field)
+                    for field in workflow.DOCUMENT_FIELDS
+                    if field != "is_outsourced"
+                },
                 source_team_id=None,
                 source_team_code=None,
                 source_team_name=None,
@@ -439,15 +459,15 @@ def list_receipts(
                     MaterialTransfer.external_source,
                     MaterialTransfer.source_team_name,
                     MaterialTransfer.return_dispatch_no,
-                    MaterialTransfer.purpose_name,
                     MaterialTransfer.warehouse_location,
                 ],
             )
         )
+    from .material_transfer_query import transfer_table_columns
     from .table_query import table_order
     from .transfer_record_filters import apply_record_headers
 
-    columns = dict(MaterialTransfer.__table__.columns.items())
+    columns = transfer_table_columns()
     apply_record_headers(db, columns, filters, "receipts")
     total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
     items = db.scalars(

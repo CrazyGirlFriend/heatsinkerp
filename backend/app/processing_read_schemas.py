@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from .process_route_read_schemas import RouteExecutionContextResponse
-from .quality_schemas import Disposition
+from .quality_schemas import Disposition, RecordedFailureLine
 from .read_schemas import PageResponse, ReadResponse, SharedMaterialResponse
 from .schedule_read_schemas import ScheduleResponse
 from .stock_read_schemas import ProcessingState
@@ -157,6 +157,7 @@ class QuantityAdjustmentContextResponse(
 
 
 class ProcessingInspectionResponse(ReadResponse):
+    failure_lines: list[RecordedFailureLine] = []
     id: int
     source_transfer_id: int
     checked_at: datetime

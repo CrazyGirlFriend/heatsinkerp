@@ -16,7 +16,7 @@ from pydantic import (
 )
 
 from .process_route_schemas import RouteIntakeWrite
-from .quality_schemas import InspectionResults
+from .quality_schemas import InspectionResults, ReportTemplate
 
 DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
@@ -50,6 +50,7 @@ class ProcessingOutput(BaseModel):
 
 
 class ProcessingQuantity(BaseModel):
+    report_template: ReportTemplate | None = None
     inspection: InspectionResults | None = None
     production_schedule_id: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
@@ -180,6 +181,7 @@ class MaterialDocumentFields(APIModel):
 class MaterialTransferDocumentFields(MaterialDocumentFields):
     """Local batch delivery requirements do not alter the company-system v1 contract."""
 
+    is_outsourced: bool = False
     delivery_date: date | None = None
     delivery_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
 
@@ -331,6 +333,7 @@ class MaterialTransferUpdate(
 
 
 class WarehouseReceiptFields(MaterialDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
+    is_outsourced: bool = False
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
     serial_no: str = Field(default="", max_length=80)
     material_name: str = Field(min_length=1, max_length=160)

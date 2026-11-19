@@ -5,7 +5,6 @@ from uuid import uuid4
 from app.database import SessionLocal
 from app.models import MaterialTransfer, ProcessRoute
 from sqlalchemy import func, select
-from test_engineered_rework import save_plan
 from test_inspections import create_check
 from test_inspections import inspection as inspection  # noqa: F401
 from test_processing_daily import work
@@ -33,6 +32,7 @@ def request_body(context, issue_id):
         source_transfer_id=context["source_transfer_id"],
         rework_of_id=context["rework_of_id"],
         inspection_id=issue_id,
+        repair_team_id=context["repair_team_id"] if issue_id else None,
         expected_revision=context["revision"],
         quantity=1,
         weight=10,
@@ -65,13 +65,14 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
     assert stock["total"] == 1 and stock["items"][0]["id"] == lot["id"]
     context = client.get(path, params={"source_transfer_id": lot["id"]}, headers=headers).json()
     assert context["rework_of_id"] == issue["processing_record_id"]
+    context["repair_team_id"] = s["other"]["id"]
     body = request_body(context, issue["id"])
     result = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert result.status_code == 201, result.text
     route = result.json()
     retry = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert retry.status_code == 201 and retry.json()["id"] == route["id"]
-    assert route["state"] == "draft" and route["steps"] == [] and route["filename"] == ""
+    assert route["state"] == "published" and len(route["steps"]) == 1 and route["filename"] == ""
     unchanged = client.get(f"/api/quality-feedback/{issue['id']}", headers=headers).json()
     assert unchanged["disposition"] == issue["disposition"] == "rework"
     assert unchanged["feedback_status"] == issue["feedback_status"]
@@ -86,13 +87,13 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
     assert scope["problem_names"] == ["表面划伤"]
     assert scope["problem_notes"] == "表面划伤明显"
     assert scope["problem_teams"] == [{"id": s["other"]["id"], "name": s["other"]["name"]}]
-    assert scope["execution_team_names"] == []
+    assert scope["execution_team_names"] == [s["other"]["name"]]
     for query in ("表面划伤", "划伤，需研磨处理", scope["batch_no"]):
         rows = client.get("/api/process-routes", params={"kind": "rework", "query": query}).json()
         assert [row["id"] for row in rows["items"]] == [route["id"]]
         assert rows["items"][0]["rework_request"]["problem_names"] == ["表面划伤"]
         assert rows["items"][0]["rework_request"]["material_name"] == material_name
-    saved = save_plan(client, s, route, instructions="轻磨除划伤，不得减薄超过0.01mm")
+    saved = route
     for actor in (headers, s["other_headers"]):
         opened = client.get(f"/api/process-routes/{saved['id']}", headers=actor)
         assert opened.status_code == 200 and opened.json()["id"] == saved["id"]
@@ -111,7 +112,7 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
     )
     assert processed.status_code == 201, processed.text
     assert processed.json()["process_route_id"] == saved["id"]
-    assert processed.json()["process_step_instructions"] == "轻磨除划伤，不得减薄超过0.01mm"
+    assert processed.json()["process_step_instructions"] == body["reason"]
     assert client.get(base(s, True) + "/overview").json()["totals"]["on_hand_quantity"] == 10
 
 
@@ -127,6 +128,7 @@ def test_qc_cannot_submit_unrelated_stock_or_closed_issue(client, inspection):
         == 409
     )
     context = client.get(path, params={"source_transfer_id": lot["id"]}, headers=headers).json()
+    context["repair_team_id"] = s["other"]["id"]
     body = request_body(context, issue["id"])
     changed = decide(client, headers, decision, disposition="other", status="closed")
     assert changed.status_code == 200
@@ -145,6 +147,7 @@ def test_only_qc_team_can_submit_an_inspection_issue_but_owner_can_submit_own_pr
     assert decide(client, headers, issue).status_code == 200
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     before = client.get(base(s, True) + "/overview").json()["totals"]
+    context["repair_team_id"] = s["other"]["id"]
     for actor in (s["headers"], s["other_headers"]):
         for issue_id in (issue["id"],) if actor == s["other_headers"] else (None, issue["id"]):
             denied = client.post(
@@ -173,8 +176,9 @@ def test_qc_requires_a_confirmed_issue_and_rechecks_changed_decisions(client, in
     issue = create_check(client, inspection).json()
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     path = f"/api/quality-feedback/{issue['id']}/rework-stock"
+    context["repair_team_id"] = s["other"]["id"]
     body = request_body(context, issue["id"])
-    for missing in ({"inspection_id": None},):
+    for missing in ({"inspection_id": None, "repair_team_id": None},):
         result = client.post(
             "/api/process-routes/rework-requests", headers=headers, json={**body, **missing}
         )

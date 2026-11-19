@@ -36,10 +36,6 @@ const loadEditor = () => import('@/components/ProcessRouteEditor.vue')
 const ProcessRouteEditor = defineAsyncComponent(loadEditor)
 const TeamProblemDetail = defineAsyncComponent(() => import('@/components/TeamProblemDetail.vue'))
 const pendingProblemId = ref<number | null>(null)
-const PendingReworkPicker = defineAsyncComponent(
-  () => import('@/components/PublishedProcessRoutePicker.vue'),
-)
-const selectingRework = ref(false)
 const location = useRoute()
 const router = useRouter()
 const auth = useAuthStore(),
@@ -83,7 +79,6 @@ function showPendingRework() {
 }
 function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
-  selectingRework.value = false
   pendingProblemId.value = null
   if (openingId.value !== null || preparingEditor.value) closeEditor()
   filtersOpen.value = false
@@ -118,33 +113,13 @@ const hasLoadedView = ref(false)
 const initialLoading = computed(() => loading.value && !hasLoadedView.value)
 async function create() {
   if (!canEdit.value) return
-  if (routeKind.value === 'rework') {
-    selectingRework.value = true
-    return
-  }
+  if (routeKind.value !== 'normal') return
   const request = ++detailGeneration
   preparingEditor.value = true
   error.value = ''
   try {
     await loadEditor()
     if (request === detailGeneration) creating.value = true
-  } catch {
-    if (request === detailGeneration) error.value = '表单加载失败，请重试'
-  } finally {
-    if (request === detailGeneration) preparingEditor.value = false
-  }
-}
-async function designRework(route: ProcessRoute) {
-  selectingRework.value = false
-  if (!canEdit.value || routeKind.value !== 'rework') return
-  const request = ++detailGeneration
-  preparingEditor.value = true
-  error.value = ''
-  try {
-    await loadEditor()
-    if (request !== detailGeneration) return
-    editing.value = true
-    selected.value = route
   } catch {
     if (request === detailGeneration) error.value = '表单加载失败，请重试'
   } finally {
@@ -372,7 +347,7 @@ async function open(id: number, startEditing = false) {
   try {
     const [result] = await Promise.all([processRouteApi.detail(id), loadEditor()])
     if (request === detailGeneration) {
-      editing.value = startEditing && canEdit.value
+      editing.value = result.route_kind !== 'rework' && startEditing && canEdit.value
       selected.value = result
     }
   } catch (e) {
@@ -386,7 +361,6 @@ watch(
   (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
 )
 watch(managingTeam, (managing) => {
-  selectingRework.value = false
   closeEditor()
   closeDrawing()
   if (managing) {
@@ -402,7 +376,6 @@ useLiveRefresh(load, {
     loading.value ||
     openingId.value !== null ||
     preparingEditor.value ||
-    selectingRework.value ||
     pendingProblemId.value !== null ||
     !!selected.value ||
     creating.value,
@@ -435,7 +408,7 @@ onBeforeUnmount(() => {
           title="工艺类型"
           :options="[
             { value: 'normal', label: '正常工艺' },
-            { value: 'rework', label: '返工工艺', count: pendingRework },
+            { value: 'rework', label: '返修记录', count: pendingRework },
           ]"
           @change="changeKind($event as 'normal' | 'rework')"
         />
@@ -485,16 +458,16 @@ onBeforeUnmount(() => {
                 </ElSelect>
               </label>
               <label>
-                工艺状态
+                班组安排
                 <ElSelect
                   v-model="draftState"
                   :append-to="appendTo"
                   clearable
                   placeholder="全部"
-                  aria-label="工艺状态筛选"
+                  aria-label="班组安排筛选"
                 >
-                  <ElOption value="draft" label="未填写" />
-                  <ElOption value="published" label="已制定" />
+                  <ElOption value="draft" label="待指定" />
+                  <ElOption value="published" label="已指定" />
                 </ElSelect>
               </label>
             </template>
@@ -510,12 +483,12 @@ onBeforeUnmount(() => {
           <AsyncStatus v-if="openingId !== null" label="正在打开工艺…">
             <ElButton link @click="closeEditor">取消</ElButton>
           </AsyncStatus>
-          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">未填写</ElTag>
+          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待指定</ElTag>
           <ElButton
             v-else-if="routeKind === 'rework' && pendingRework"
             class="route-pending-filter"
             @click="showPendingRework"
-            >仅看未填写</ElButton
+            >仅看待指定</ElButton
           >
         </template>
         <template #actions>
@@ -528,12 +501,12 @@ onBeforeUnmount(() => {
         </template>
         <template #primary-actions>
           <ElButton
-            v-if="canEdit"
+            v-if="canEdit && routeKind === 'normal'"
             :icon="Plus"
             :loading="preparingEditor"
             :disabled="initialLoading"
             @click="create"
-            >{{ routeKind === 'rework' ? '制定返工工艺' : '新建工艺' }}</ElButton
+            >新建工艺</ElButton
           >
         </template>
       </WorkspaceDataToolbar>
@@ -595,13 +568,13 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="工艺状态" width="82" align="center">
+        <ElTableColumn v-if="routeKind === 'rework'" label="班组安排" width="82" align="center">
           <template #default="{ row }"
             ><ElTag
               :type="row.state === 'published' ? 'success' : 'warning'"
               class="route-rework-status"
               :class="{ 'route-rework-ready': row.state === 'published' }"
-              >{{ row.state === 'published' ? '已制定' : '未填写' }}</ElTag
+              >{{ row.state === 'published' ? '已指定' : '待指定' }}</ElTag
             ></template
           >
         </ElTableColumn>
@@ -717,7 +690,7 @@ onBeforeUnmount(() => {
               </template>
             </div>
             <span v-else class="route-empty">{{
-              routeKind === 'rework' && row.state !== 'published' ? '未填写' : '—'
+              routeKind === 'rework' && row.state !== 'published' ? '待指定' : '—'
             }}</span>
           </template>
         </ElTableColumn>
@@ -863,14 +836,8 @@ onBeforeUnmount(() => {
               size="small"
               class="route-record-action"
               :loading="openingId === row.id"
-              @click="open(row.id, row.route_kind !== 'rework' || row.state !== 'published')"
-              >{{
-                row.route_kind === 'rework'
-                  ? row.state === 'published'
-                    ? '查看返工工艺'
-                    : '制定工艺'
-                  : '修改工艺'
-              }}</ElButton
+              @click="open(row.id, row.route_kind !== 'rework')"
+              >{{ row.route_kind === 'rework' ? '查看返修安排' : '修改工艺' }}</ElButton
             ></template
           ></ElTableColumn
         >
@@ -891,12 +858,6 @@ onBeforeUnmount(() => {
         :route-id="pendingProblemId"
         @close="closeProblem"
       />
-      <PendingReworkPicker
-        v-if="selectingRework && canEdit"
-        pending-rework
-        @selected="designRework"
-        @close="selectingRework = false"
-      />
       <DocumentViewer
         v-if="drawingUrl"
         :title="drawingTitle"
@@ -908,7 +869,7 @@ onBeforeUnmount(() => {
         :key="selected?.id || 'new'"
         :route="selected || undefined"
         :start-editing="editing"
-        :view-only="!canEdit"
+        :view-only="!canEdit || routeKind === 'rework'"
         @close="closeEditor"
         @saved="saved"
       />

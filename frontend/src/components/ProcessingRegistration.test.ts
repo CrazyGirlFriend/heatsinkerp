@@ -26,7 +26,7 @@ vi.mock('@/stores/auth', () => ({
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
     loaded: true,
-    items: [{ id: 5, name: '研磨', code: 'FACTORY-GRIND', active: true }],
+    items: [{ id: 5, name: '研磨', code: 'FACTORY-GRIND', kind: 'production', active: true }],
   }),
 }))
 const employee = { id: 71, name: '张师傅', team_id: 2, active: true, version: 1 }
@@ -200,14 +200,21 @@ it('saves QC results with the work and blocks an incomplete defect report', asyn
   fields.getComponent(ElInputNumber).vm.$emit('update:modelValue', 2)
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-  choose('不合格问题', [12])
-  choose('涉及班组', [5])
-  await fields.get('textarea[aria-label="问题说明"]').setValue('两件厚度超差')
+  wrapper
+    .findAllComponents(AppSelect)
+    .find((s) => s.find('input[aria-label="日产表"]').exists())!
+    .vm.$emit('update:modelValue', 'QC-DEBURR')
+  choose('问题类别', '划伤')
+  choose('处理方式', 'rework')
+  await flushPromises()
+  choose('返修班组', 5)
+  await fields.get('textarea[aria-label="问题说明"]').setValue('两件划伤')
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledOnce()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
     expect.objectContaining({
+      report_template: 'QC-DEBURR',
       completed_quantity: 10,
       inspection: expect.objectContaining({
         scope: 'full',
@@ -215,9 +222,10 @@ it('saves QC results with the work and blocks an incomplete defect report', asyn
         failed_quantity: 2,
         methods: ['visual'],
         items: ['dimension'],
-        problem_type_ids: [12],
-        involved_team_ids: [5],
-        notes: '两件厚度超差',
+        failure_lines: [
+          { category: '划伤', quantity: 2, disposition: 'rework', repair_team_id: 5 },
+        ],
+        notes: '两件划伤',
       }),
     }),
   )
@@ -482,7 +490,7 @@ it('blocks legacy rework without engineering instead of bypassing the problem su
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
-  expect(wrapper.text()).toContain('请联系检验班组确认返工，并由工艺人员制定返工工艺')
+  expect(wrapper.text()).toContain('请联系检验班组确认返修去向')
   expect(wrapper.findComponent(TeamEmployeeInput).exists()).toBe(false)
   expect(wrapper.findComponent(ProcessingTaskFields).exists()).toBe(false)
   expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()

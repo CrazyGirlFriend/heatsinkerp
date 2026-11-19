@@ -1,638 +1,1107 @@
 {
-  "FACTORY-ROLL": [
-    {
-      "key": "A",
-      "label": "日期"
-    },
-    {
-      "key": "B",
-      "label": "流水号"
-    },
-    {
-      "key": "C",
-      "label": "成品尺寸"
-    },
-    {
-      "key": "D",
-      "label": "材质"
-    },
-    {
-      "key": "E",
-      "label": "订单数量"
-    },
-    {
-      "key": "F",
-      "label": "加工类别"
-    },
-    {
-      "key": "G",
-      "label": "成品厚度"
-    },
-    {
-      "key": "H",
-      "label": "加工厚度/尺寸"
-    },
-    {
-      "key": "I",
-      "label": "加工成品 / 件数"
-    },
-    {
-      "key": "J",
-      "label": "加工成品 / 重量"
-    },
-    {
-      "key": "K",
-      "label": "余料 / 重量(kg)"
-    },
-    {
-      "key": "L",
-      "label": "废料 / 重量(kg)"
-    },
-    {
-      "key": "M",
-      "label": "加工用时"
-    },
-    {
-      "key": "N",
-      "label": "主操"
-    },
-    {
-      "key": "O",
-      "label": "副操"
-    },
-    {
-      "key": "P",
-      "label": "上一工序"
-    },
-    {
-      "key": "Q",
-      "label": "下一工序"
-    },
-    {
-      "key": "R",
-      "label": "估算"
-    },
-    {
-      "key": "S",
-      "label": "备注"
-    }
-  ],
-  "FACTORY-ANNEAL": [
-    {
-      "key": "A",
-      "label": "日期"
-    },
-    {
-      "key": "B",
-      "label": "流水号"
-    },
-    {
-      "key": "C",
-      "label": "材质"
-    },
-    {
-      "key": "D",
-      "label": "产品尺寸"
-    },
-    {
-      "key": "E",
-      "label": "加工类别"
-    },
-    {
-      "key": "F",
-      "label": "加工成品 / 数量"
-    },
-    {
-      "key": "G",
-      "label": "加工成品 / 重量"
-    },
-    {
-      "key": "H",
-      "label": "次品 / 数量"
-    },
-    {
-      "key": "I",
-      "label": "次品 / 重量"
-    },
-    {
-      "key": "J",
-      "label": "次品 / 次品原因"
-    },
-    {
-      "key": "K",
-      "label": "操作工"
-    },
-    {
-      "key": "L",
-      "label": "温度"
-    },
-    {
-      "key": "M",
-      "label": "时间"
-    },
-    {
-      "key": "N",
-      "label": "炉号"
-    },
-    {
-      "key": "O",
-      "label": "上道序"
-    },
-    {
-      "key": "P",
-      "label": "下道序"
-    },
-    {
-      "key": "Q",
-      "label": "是否完工"
-    },
-    {
-      "key": "R",
-      "label": "备注"
-    }
-  ],
-  "FACTORY-GRIND": [
-    {
-      "key": "A",
-      "label": "所属月份"
-    },
-    {
-      "key": "B",
-      "label": "日期"
-    },
-    {
-      "key": "C",
-      "label": "流水号"
-    },
-    {
-      "key": "D",
-      "label": "材质"
-    },
-    {
-      "key": "E",
-      "label": "材质"
-    },
-    {
-      "key": "F",
-      "label": "尺寸"
-    },
-    {
-      "key": "G",
-      "label": "规格 / 长"
-    },
-    {
-      "key": "H",
-      "label": "规格 / 宽"
-    },
-    {
-      "key": "I",
-      "label": "规格 / 厚"
-    },
-    {
-      "key": "J",
-      "label": "加工类别"
-    },
-    {
-      "key": "K",
-      "label": "订单数量"
-    },
-    {
-      "key": "L",
-      "label": "成品 / 件数"
-    },
-    {
-      "key": "M",
-      "label": "成品 / 重量"
-    },
-    {
-      "key": "N",
-      "label": "次品 / 数量"
-    },
-    {
-      "key": "O",
-      "label": "次品 / 重量"
-    },
-    {
-      "key": "P",
-      "label": "次品 / 原因"
-    },
-    {
-      "key": "Q",
-      "label": "加工用时"
-    },
-    {
-      "key": "R",
-      "label": "姓名"
-    },
-    {
-      "key": "S",
-      "label": "机床编号"
-    },
-    {
-      "key": "T",
-      "label": "上道序"
-    },
-    {
-      "key": "U",
-      "label": "下道序"
-    },
-    {
-      "key": "V",
-      "label": "是否完工"
-    },
-    {
-      "key": "W",
-      "label": "备注"
-    },
-    {
-      "key": "X",
-      "label": "批号"
-    },
-    {
-      "key": "Y",
-      "label": "总平方/mm²"
-    }
-  ],
-  "FACTORY-WIRE": [
-    {
-      "key": "A",
-      "label": "日期"
-    },
-    {
-      "key": "B",
-      "label": "流水号"
-    },
-    {
-      "key": "C",
-      "label": "材质"
-    },
-    {
-      "key": "D",
-      "label": "尺寸 / 厚度"
-    },
-    {
-      "key": "E",
-      "label": "尺寸 / 宽"
-    },
-    {
-      "key": "F",
-      "label": "尺寸 / 长"
-    },
-    {
-      "key": "G",
-      "label": "计划数量"
-    },
-    {
-      "key": "H",
-      "label": "订单数量"
-    },
-    {
-      "key": "I",
-      "label": "数量"
-    },
-    {
-      "key": "J",
-      "label": "重量"
-    },
-    {
-      "key": "K",
-      "label": "次品"
-    },
-    {
-      "key": "L",
-      "label": "重量"
-    },
-    {
-      "key": "M",
-      "label": "余料"
-    },
-    {
-      "key": "N",
-      "label": "废料"
-    },
-    {
-      "key": "O",
-      "label": "平方"
-    },
-    {
-      "key": "P",
-      "label": "加工类别"
-    },
-    {
-      "key": "Q",
-      "label": "上道序"
-    },
-    {
-      "key": "R",
-      "label": "下道序"
-    },
-    {
-      "key": "S",
-      "label": "机床编号"
-    },
-    {
-      "key": "T",
-      "label": "时间"
-    },
-    {
-      "key": "U",
-      "label": "操作工"
-    },
-    {
-      "key": "V",
-      "label": "操作工"
-    },
-    {
-      "key": "W",
-      "label": "操作工"
-    },
-    {
-      "key": "X",
-      "label": "是否完工"
-    },
-    {
-      "key": "Y",
-      "label": "备注"
-    },
-    {
-      "key": "Z",
-      "label": "总平方"
-    }
-  ],
-  "FACTORY-ENGRAVE": [
-    {
-      "key": "A",
-      "label": "日期"
-    },
-    {
-      "key": "B",
-      "label": "流水号"
-    },
-    {
-      "key": "C",
-      "label": "材质"
-    },
-    {
-      "key": "D",
-      "label": "尺寸"
-    },
-    {
-      "key": "E",
-      "label": "订单数量"
-    },
-    {
-      "key": "F",
-      "label": "每班次数量"
-    },
-    {
-      "key": "G",
-      "label": "单重"
-    },
-    {
-      "key": "H",
-      "label": "加工成品 / 数量"
-    },
-    {
-      "key": "I",
-      "label": "加工成品 / 重量"
-    },
-    {
-      "key": "J",
-      "label": "废品 / 数量"
-    },
-    {
-      "key": "K",
-      "label": "废品 / 重量"
-    },
-    {
-      "key": "L",
-      "label": "废品 / 原因"
-    },
-    {
-      "key": "M",
-      "label": "余料 / 数量"
-    },
-    {
-      "key": "N",
-      "label": "余料 / 重量"
-    },
-    {
-      "key": "O",
-      "label": "单件时间"
-    },
-    {
-      "key": "P",
-      "label": "工序"
-    },
-    {
-      "key": "Q",
-      "label": "操作员"
-    },
-    {
-      "key": "R",
-      "label": "机床号"
-    },
-    {
-      "key": "S",
-      "label": "上道工序"
-    },
-    {
-      "key": "T",
-      "label": "下道工序"
-    },
-    {
-      "key": "U",
-      "label": "是否完成"
-    },
-    {
-      "key": "V",
-      "label": "调机时间"
-    },
-    {
-      "key": "W",
-      "label": "备注"
-    },
-    {
-      "key": "X",
-      "label": "工时"
-    }
-  ],
-  "FACTORY-QC": [
-    {
-      "key": "A",
-      "label": "日期"
-    },
-    {
-      "key": "B",
-      "label": "流水号"
-    },
-    {
-      "key": "C",
-      "label": "材质"
-    },
-    {
-      "key": "D",
-      "label": "尺寸 / 长"
-    },
-    {
-      "key": "E",
-      "label": "尺寸 / 宽"
-    },
-    {
-      "key": "F",
-      "label": "尺寸 / 厚"
-    },
-    {
-      "key": "G",
-      "label": "总数"
-    },
-    {
-      "key": "H",
-      "label": "检验总数"
-    },
-    {
-      "key": "I",
-      "label": "合格数"
-    },
-    {
-      "key": "J",
-      "label": "重量/KG"
-    },
-    {
-      "key": "K",
-      "label": "废品总数"
-    },
-    {
-      "key": "L",
-      "label": "废品 / 坑"
-    },
-    {
-      "key": "M",
-      "label": "废品 / 划伤"
-    },
-    {
-      "key": "N",
-      "label": "废品 / 磕伤"
-    },
-    {
-      "key": "O",
-      "label": "废品 / 塌"
-    },
-    {
-      "key": "P",
-      "label": "废品 / 雕坏"
-    },
-    {
-      "key": "Q",
-      "label": "废品 / 切坏"
-    },
-    {
-      "key": "R",
-      "label": "废品 / 磨坏"
-    },
-    {
-      "key": "S",
-      "label": "废品 / 修毛刺"
-    },
-    {
-      "key": "T",
-      "label": "废品 / 异物"
-    },
-    {
-      "key": "U",
-      "label": "废品 / 缺肉"
-    },
-    {
-      "key": "V",
-      "label": "废品 / 崩边"
-    },
-    {
-      "key": "W",
-      "label": "废品 / 打标坏"
-    },
-    {
-      "key": "X",
-      "label": "废品 / 露钼"
-    },
-    {
-      "key": "Y",
-      "label": "废品 / 分层"
-    },
-    {
-      "key": "Z",
-      "label": "废品 / 露铜"
-    },
-    {
-      "key": "AA",
-      "label": "废品 / 喷砂"
-    },
-    {
-      "key": "AB",
-      "label": "废品 / 料不平"
-    },
-    {
-      "key": "AC",
-      "label": "废品 / 凸起"
-    },
-    {
-      "key": "AD",
-      "label": "废品 / 轧坏"
-    },
-    {
-      "key": "AE",
-      "label": "废品 / 外委"
-    },
-    {
-      "key": "AF",
-      "label": "返修总数"
-    },
-    {
-      "key": "AG",
-      "label": "返修数量明细 / 研磨"
-    },
-    {
-      "key": "AH",
-      "label": "返修数量明细 / 退火"
-    },
-    {
-      "key": "AI",
-      "label": "返修数量明细 / 雕刻"
-    },
-    {
-      "key": "AJ",
-      "label": "返修数量明细 / 轧板"
-    },
-    {
-      "key": "AK",
-      "label": "返修数量明细 / 线切割"
-    },
-    {
-      "key": "AL",
-      "label": "返修数量明细 / 喷砂"
-    },
-    {
-      "key": "AM",
-      "label": "返修数量明细 / 脏"
-    },
-    {
-      "key": "AN",
-      "label": "返修数量明细 / 外委"
-    },
-    {
-      "key": "AO",
-      "label": "返修数量明细 / 修毛刺"
-    },
-    {
-      "key": "AP",
-      "label": "加工类别"
-    },
-    {
-      "key": "AQ",
-      "label": "工时"
-    },
-    {
-      "key": "AS",
-      "label": "备注"
-    }
-  ]
+  "FACTORY-ROLL": {
+    "title": "轧制班组每日产量记录表",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "成品尺寸",
+        "widthPx": 75
+      },
+      {
+        "key": "D",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "E",
+        "label": "订单数量",
+        "widthPx": 75
+      },
+      {
+        "key": "F",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "G",
+        "label": "成品厚度",
+        "widthPx": 75
+      },
+      {
+        "key": "H",
+        "label": "加工厚度/尺寸",
+        "widthPx": 75
+      },
+      {
+        "key": "I2",
+        "label": "加工成品",
+        "children": [
+          {
+            "key": "I",
+            "label": "件数",
+            "widthPx": 75
+          },
+          {
+            "key": "J",
+            "label": "重量",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "K2",
+        "label": "余料",
+        "children": [
+          {
+            "key": "K",
+            "label": "重量(kg)",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "L2",
+        "label": "废料",
+        "children": [
+          {
+            "key": "L",
+            "label": "重量(kg)",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "M",
+        "label": "加工用时",
+        "widthPx": 75
+      },
+      {
+        "key": "N",
+        "label": "主操",
+        "widthPx": 75
+      },
+      {
+        "key": "O",
+        "label": "副操",
+        "widthPx": 75
+      },
+      {
+        "key": "P",
+        "label": "上一工序",
+        "widthPx": 75
+      },
+      {
+        "key": "Q",
+        "label": "下一工序",
+        "widthPx": 75
+      },
+      {
+        "key": "R",
+        "label": "估算",
+        "widthPx": 75
+      },
+      {
+        "key": "S",
+        "label": "备注",
+        "widthPx": 75
+      }
+    ]
+  },
+  "FACTORY-ANNEAL": {
+    "title": "",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D",
+        "label": "产品尺寸",
+        "widthPx": 75
+      },
+      {
+        "key": "E",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "F1",
+        "label": "加工成品",
+        "children": [
+          {
+            "key": "F",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "G",
+            "label": "重量",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "H1",
+        "label": "次品",
+        "children": [
+          {
+            "key": "H",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "I",
+            "label": "重量",
+            "widthPx": 75
+          },
+          {
+            "key": "J",
+            "label": "次品原因",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "K",
+        "label": "操作工",
+        "widthPx": 75
+      },
+      {
+        "key": "L",
+        "label": "温度",
+        "widthPx": 75
+      },
+      {
+        "key": "M",
+        "label": "时间",
+        "widthPx": 75
+      },
+      {
+        "key": "N",
+        "label": "炉号",
+        "widthPx": 75
+      },
+      {
+        "key": "O",
+        "label": "上道序",
+        "widthPx": 75
+      },
+      {
+        "key": "P",
+        "label": "下道序",
+        "widthPx": 75
+      },
+      {
+        "key": "Q",
+        "label": "是否完工",
+        "widthPx": 75
+      },
+      {
+        "key": "R",
+        "label": "备注",
+        "widthPx": 75
+      }
+    ]
+  },
+  "FACTORY-GRIND": {
+    "title": "2026 年 研 磨 日 产",
+    "columns": [
+      {
+        "key": "A",
+        "label": "所属月份",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "C2",
+        "label": "流水号",
+        "children": [
+          {
+            "key": "C",
+            "label": "",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "D",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "E",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "F",
+        "label": "尺寸",
+        "widthPx": 75
+      },
+      {
+        "key": "G2",
+        "label": "规格",
+        "children": [
+          {
+            "key": "G",
+            "label": "长",
+            "widthPx": 75
+          },
+          {
+            "key": "H",
+            "label": "宽",
+            "widthPx": 75
+          },
+          {
+            "key": "I",
+            "label": "厚",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "J",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "K",
+        "label": "订单数量",
+        "widthPx": 75
+      },
+      {
+        "key": "L2",
+        "label": "成品",
+        "children": [
+          {
+            "key": "L",
+            "label": "件数",
+            "widthPx": 75
+          },
+          {
+            "key": "M",
+            "label": "重量",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "N2",
+        "label": "次品",
+        "children": [
+          {
+            "key": "N",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "O",
+            "label": "重量",
+            "widthPx": 75
+          },
+          {
+            "key": "P",
+            "label": "原因",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "Q",
+        "label": "加工用时",
+        "widthPx": 75
+      },
+      {
+        "key": "R",
+        "label": "姓名",
+        "widthPx": 75
+      },
+      {
+        "key": "S",
+        "label": "机床编号",
+        "widthPx": 75
+      },
+      {
+        "key": "T",
+        "label": "上道序",
+        "widthPx": 75
+      },
+      {
+        "key": "U",
+        "label": "下道序",
+        "widthPx": 75
+      },
+      {
+        "key": "V",
+        "label": "是否完工",
+        "widthPx": 75
+      },
+      {
+        "key": "W",
+        "label": "备注",
+        "widthPx": 75
+      },
+      {
+        "key": "X",
+        "label": "批号",
+        "widthPx": 75
+      },
+      {
+        "key": "Y",
+        "label": "总平方/mm²",
+        "widthPx": 75
+      }
+    ]
+  },
+  "FACTORY-WIRE": {
+    "title": "",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D1",
+        "label": "尺寸",
+        "children": [
+          {
+            "key": "D",
+            "label": "厚度",
+            "widthPx": 75
+          },
+          {
+            "key": "E",
+            "label": "宽",
+            "widthPx": 75
+          },
+          {
+            "key": "F",
+            "label": "长",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "G",
+        "label": "计划数量",
+        "widthPx": 75
+      },
+      {
+        "key": "H",
+        "label": "订单数量",
+        "widthPx": 75
+      },
+      {
+        "key": "I",
+        "label": "数量",
+        "widthPx": 75
+      },
+      {
+        "key": "J",
+        "label": "重量",
+        "widthPx": 75
+      },
+      {
+        "key": "K",
+        "label": "次品",
+        "widthPx": 75
+      },
+      {
+        "key": "L",
+        "label": "重量",
+        "widthPx": 75
+      },
+      {
+        "key": "M",
+        "label": "余料",
+        "widthPx": 75
+      },
+      {
+        "key": "N",
+        "label": "废料",
+        "widthPx": 75
+      },
+      {
+        "key": "O",
+        "label": "平方",
+        "widthPx": 75
+      },
+      {
+        "key": "P",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "Q",
+        "label": "上道序",
+        "widthPx": 75
+      },
+      {
+        "key": "R",
+        "label": "下道序",
+        "widthPx": 75
+      },
+      {
+        "key": "S",
+        "label": "机床编号",
+        "widthPx": 75
+      },
+      {
+        "key": "T",
+        "label": "时间",
+        "widthPx": 75
+      },
+      {
+        "key": "U",
+        "label": "操作工",
+        "widthPx": 75
+      },
+      {
+        "key": "V",
+        "label": "操作工",
+        "widthPx": 75
+      },
+      {
+        "key": "W",
+        "label": "操作工",
+        "widthPx": 75
+      },
+      {
+        "key": "X",
+        "label": "是否完工",
+        "widthPx": 75
+      },
+      {
+        "key": "Y",
+        "label": "备注",
+        "widthPx": 75
+      },
+      {
+        "key": "Z",
+        "label": "总平方",
+        "widthPx": 75
+      },
+      {
+        "key": "AA1",
+        "label": "",
+        "children": [
+          {
+            "key": "AA",
+            "label": "算式平方",
+            "widthPx": 75
+          }
+        ]
+      }
+    ]
+  },
+  "FACTORY-ENGRAVE": {
+    "title": "雕刻",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D",
+        "label": "尺寸",
+        "widthPx": 75
+      },
+      {
+        "key": "E",
+        "label": "订单数量",
+        "widthPx": 75
+      },
+      {
+        "key": "F",
+        "label": "每班次数量",
+        "widthPx": 75
+      },
+      {
+        "key": "G",
+        "label": "单重",
+        "widthPx": 75
+      },
+      {
+        "key": "H2",
+        "label": "加工成品",
+        "children": [
+          {
+            "key": "H",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "I",
+            "label": "重量",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "J2",
+        "label": "废品",
+        "children": [
+          {
+            "key": "J",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "K",
+            "label": "重量",
+            "widthPx": 75
+          },
+          {
+            "key": "L",
+            "label": "原因",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "M2",
+        "label": "余料",
+        "children": [
+          {
+            "key": "M",
+            "label": "数量",
+            "widthPx": 75
+          },
+          {
+            "key": "N",
+            "label": "重量",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "O",
+        "label": "单件时间",
+        "widthPx": 75
+      },
+      {
+        "key": "P",
+        "label": "工序",
+        "widthPx": 75
+      },
+      {
+        "key": "Q",
+        "label": "操作员",
+        "widthPx": 75
+      },
+      {
+        "key": "R",
+        "label": "机床号",
+        "widthPx": 75
+      },
+      {
+        "key": "S",
+        "label": "上道工序",
+        "widthPx": 75
+      },
+      {
+        "key": "T",
+        "label": "下道工序",
+        "widthPx": 75
+      },
+      {
+        "key": "U",
+        "label": "是否完成",
+        "widthPx": 75
+      },
+      {
+        "key": "V2",
+        "label": "调机时间",
+        "children": [
+          {
+            "key": "V",
+            "label": "",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "W",
+        "label": "备注",
+        "widthPx": 75
+      },
+      {
+        "key": "X",
+        "label": "工时",
+        "widthPx": 75
+      }
+    ]
+  },
+  "FACTORY-QC": {
+    "title": "检验11月产量",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D2",
+        "label": "尺寸",
+        "children": [
+          {
+            "key": "D",
+            "label": "长",
+            "widthPx": 75
+          },
+          {
+            "key": "E",
+            "label": "宽",
+            "widthPx": 75
+          },
+          {
+            "key": "F",
+            "label": "厚",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "G",
+        "label": "总数",
+        "widthPx": 75
+      },
+      {
+        "key": "H",
+        "label": "检验总数",
+        "widthPx": 75
+      },
+      {
+        "key": "I",
+        "label": "合格数",
+        "widthPx": 75
+      },
+      {
+        "key": "J",
+        "label": "重量/KG",
+        "widthPx": 75
+      },
+      {
+        "key": "K",
+        "label": "废品总数",
+        "widthPx": 75
+      },
+      {
+        "key": "L2",
+        "label": "废品",
+        "children": [
+          {
+            "key": "L",
+            "label": "坑",
+            "widthPx": 75
+          },
+          {
+            "key": "M",
+            "label": "划伤",
+            "widthPx": 75
+          },
+          {
+            "key": "N",
+            "label": "磕伤",
+            "widthPx": 75
+          },
+          {
+            "key": "O",
+            "label": "塌",
+            "widthPx": 75
+          },
+          {
+            "key": "P",
+            "label": "雕坏",
+            "widthPx": 75
+          },
+          {
+            "key": "Q",
+            "label": "切坏",
+            "widthPx": 75
+          },
+          {
+            "key": "R",
+            "label": "磨坏",
+            "widthPx": 75
+          },
+          {
+            "key": "S",
+            "label": "修毛刺",
+            "widthPx": 75
+          },
+          {
+            "key": "T",
+            "label": "异物",
+            "widthPx": 75
+          },
+          {
+            "key": "U",
+            "label": "缺肉",
+            "widthPx": 75
+          },
+          {
+            "key": "V",
+            "label": "崩边",
+            "widthPx": 75
+          },
+          {
+            "key": "W",
+            "label": "打标坏",
+            "widthPx": 75
+          },
+          {
+            "key": "X",
+            "label": "露钼",
+            "widthPx": 75
+          },
+          {
+            "key": "Y",
+            "label": "分层",
+            "widthPx": 75
+          },
+          {
+            "key": "Z",
+            "label": "露铜",
+            "widthPx": 75
+          },
+          {
+            "key": "AA",
+            "label": "喷砂",
+            "widthPx": 75
+          },
+          {
+            "key": "AB",
+            "label": "料不平",
+            "widthPx": 75
+          },
+          {
+            "key": "AC",
+            "label": "凸起",
+            "widthPx": 75
+          },
+          {
+            "key": "AD",
+            "label": "轧坏",
+            "widthPx": 75
+          },
+          {
+            "key": "AE",
+            "label": "外委",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "AF",
+        "label": "返修总数",
+        "widthPx": 75
+      },
+      {
+        "key": "AG2",
+        "label": "返修数量明细",
+        "children": [
+          {
+            "key": "AG",
+            "label": "研磨",
+            "widthPx": 75
+          },
+          {
+            "key": "AH",
+            "label": "退火",
+            "widthPx": 75
+          },
+          {
+            "key": "AI",
+            "label": "雕刻",
+            "widthPx": 75
+          },
+          {
+            "key": "AJ",
+            "label": "轧板",
+            "widthPx": 75
+          },
+          {
+            "key": "AK",
+            "label": "线切割",
+            "widthPx": 75
+          },
+          {
+            "key": "AL",
+            "label": "喷砂",
+            "widthPx": 75
+          },
+          {
+            "key": "AM",
+            "label": "脏",
+            "widthPx": 75
+          },
+          {
+            "key": "AN",
+            "label": "外委",
+            "widthPx": 75
+          },
+          {
+            "key": "AO",
+            "label": "修毛刺",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "AP",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "AQ",
+        "label": "工时",
+        "widthPx": 75
+      },
+      {
+        "key": "AR",
+        "label": "",
+        "widthPx": 75
+      },
+      {
+        "key": "AS",
+        "label": "备注",
+        "widthPx": 75
+      }
+    ]
+  },
+  "QC-SANDBLAST": {
+    "title": "喷砂11月产量",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D2",
+        "label": "尺寸",
+        "children": [
+          {
+            "key": "D",
+            "label": "长",
+            "widthPx": 75
+          },
+          {
+            "key": "E",
+            "label": "宽",
+            "widthPx": 75
+          },
+          {
+            "key": "F",
+            "label": "厚",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "G",
+        "label": "总数",
+        "widthPx": 75
+      },
+      {
+        "key": "H",
+        "label": "合格数",
+        "widthPx": 75
+      },
+      {
+        "key": "I",
+        "label": "工时",
+        "widthPx": 75
+      },
+      {
+        "key": "J",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "K",
+        "label": "检验员",
+        "widthPx": 75
+      },
+      {
+        "key": "L",
+        "label": "上道序",
+        "widthPx": 75
+      },
+      {
+        "key": "M",
+        "label": "下道序",
+        "widthPx": 75
+      },
+      {
+        "key": "N",
+        "label": "是否完工",
+        "widthPx": 75
+      },
+      {
+        "key": "O",
+        "label": "是否协作",
+        "widthPx": 75
+      },
+      {
+        "key": "P",
+        "label": "备注",
+        "widthPx": 75
+      }
+    ]
+  },
+  "QC-DEBURR": {
+    "title": "修毛刺11月份产量",
+    "columns": [
+      {
+        "key": "A",
+        "label": "日期",
+        "widthPx": 75
+      },
+      {
+        "key": "B",
+        "label": "流水号",
+        "widthPx": 75
+      },
+      {
+        "key": "C",
+        "label": "材质",
+        "widthPx": 75
+      },
+      {
+        "key": "D2",
+        "label": "尺寸",
+        "children": [
+          {
+            "key": "D",
+            "label": "长",
+            "widthPx": 75
+          },
+          {
+            "key": "E",
+            "label": "宽",
+            "widthPx": 75
+          },
+          {
+            "key": "F",
+            "label": "厚",
+            "widthPx": 75
+          }
+        ]
+      },
+      {
+        "key": "G",
+        "label": "总数",
+        "widthPx": 75
+      },
+      {
+        "key": "H",
+        "label": "合格数",
+        "widthPx": 75
+      },
+      {
+        "key": "I",
+        "label": "工时",
+        "widthPx": 75
+      },
+      {
+        "key": "J",
+        "label": "加工类别",
+        "widthPx": 75
+      },
+      {
+        "key": "K",
+        "label": "检验员",
+        "widthPx": 75
+      },
+      {
+        "key": "L",
+        "label": "上道序",
+        "widthPx": 75
+      },
+      {
+        "key": "M",
+        "label": "下道序",
+        "widthPx": 75
+      },
+      {
+        "key": "N",
+        "label": "备注",
+        "widthPx": 75
+      },
+      {
+        "key": "O",
+        "label": "完成",
+        "widthPx": 75
+      }
+    ]
+  }
 }

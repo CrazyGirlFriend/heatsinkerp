@@ -21,6 +21,9 @@ def results(s, problem_id=None, **overrides):
             items=["appearance"],
             involved_team_ids=[s["team"]["id"]] if problem_id else [],
             problem_type_ids=[problem_id] if problem_id else [],
+            failure_lines=[dict(category="划伤", disposition="scrap", quantity=1)]
+            if problem_id
+            else [],
             notes="表面划伤" if problem_id else "",
         )
         | overrides
@@ -29,7 +32,7 @@ def results(s, problem_id=None, **overrides):
 
 def problem(s):
     with SessionLocal() as db:
-        row = InspectionProblemType(team_id=s["other"]["id"], name="表面划伤")
+        row = InspectionProblemType(team_id=s["other"]["id"], name="划伤")
         db.add(row)
         db.commit()
         return row.id
@@ -78,7 +81,8 @@ def test_partial_qc_work_links_results_quality_and_daily_report_once(client, war
         {"failed_quantity": 7},
         {"problem_type_ids": [999999]},
         {"involved_team_ids": [999999]},
-        {"notes": " "},
+        {"failure_lines": []},
+        {"failure_lines": [dict(category="划伤", disposition="rework", quantity=1)]},
     ],
 )
 def test_invalid_results_do_not_leave_work_or_consumed_stock(client, warehouse, overrides):

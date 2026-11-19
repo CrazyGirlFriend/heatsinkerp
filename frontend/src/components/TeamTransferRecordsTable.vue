@@ -129,7 +129,10 @@ const columnKeys = {
       <template #default="{ row }">{{ row.material_name || '—' }}</template>
     </ElTableColumn>
     <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip>
-      <template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template>
+      <template #default="{ row }"
+        >{{ materialTypeLabel(row.material_type)
+        }}{{ row.is_outsourced ? ' · 外委产品' : '' }}</template
+      >
     </ElTableColumn>
     <template v-if="kind === 'outgoing'">
       <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip>

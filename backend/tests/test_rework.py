@@ -111,7 +111,7 @@ def test_historical_hold_survives_rework_and_recheck_until_manual_release(client
     s, lot, headers, body = inspection
     from test_inspections import create_check
 
-    hold = create_check(client, inspection).json()
+    hold = create_check(client, inspection, sample_quantity=10, failed_quantity=10).json()
     from app.database import SessionLocal
     from app.models import MaterialInspection
 

@@ -108,6 +108,8 @@ def _creation_fingerprint(payload) -> str:
     ):
         if field not in payload.model_fields_set:
             value.pop(field, None)
+    if not value.get("is_outsourced"):
+        value.pop("is_outsourced", None)
     if value.get("source_team_id") is None:
         value.pop("source_team_id", None)
     if value.get("process_route") is None:
@@ -631,6 +633,8 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 and payload.material_type != transfer.stock_source.material_type
             ):
                 raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
+            if "is_outsourced" in supplied and payload.is_outsourced != transfer.is_outsourced:
+                raise HTTPException(422, "转料须沿用来源批次的外委标记")
             for field in ("serial_no", "material_name"):
                 if field in supplied and getattr(payload, field) != getattr(transfer, field):
                     raise HTTPException(

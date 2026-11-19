@@ -137,13 +137,13 @@ it.each([
   { kind: 'rework', published: false },
   { kind: 'rework', published: true },
 ])(
-  'lets an administrator edit $kind ($published) with direct-edit flags',
+  'allows direct engineering edits only for normal routes ($kind, $published)',
   async ({ kind, published }) => {
     authState.role = 'ADMIN'
     await render(published, kind === 'normal' ? routeFixture : reworkRouteFixture, false, true)
-    expect(wrapper.find('input[type="file"]').exists()).toBe(true)
-    expect(wrapper.findAll('button').map((button) => button.text())).toContain(
-      kind === 'rework' ? '提交工艺' : '保存工艺',
+    expect(wrapper.find('input[type="file"]').exists()).toBe(kind === 'normal')
+    expect(wrapper.findAll('button').some((b) => ['提交工艺', '保存工艺'].includes(b.text()))).toBe(
+      kind === 'normal',
     )
     expect(processRouteApi.save).not.toHaveBeenCalled()
     expect(processRouteApi.publish).not.toHaveBeenCalled()
@@ -301,13 +301,8 @@ it('shows the rework lot material before its original route finishes loading', a
   expect(processRouteApi.save).not.toHaveBeenCalled()
   wrapper.unmount()
   await render(false, route, false, true)
-  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe(
-    '铜钼 CuMo70',
-  )
-  await wrapper.get('input[aria-label="材质"]').setValue('CuMo80')
-  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe('CuMo80')
-  await wrapper.get('input[aria-label="材质"]').setValue('')
-  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe('')
+  expect(wrapper.get('.route-material-field').text()).toContain('铜钼 CuMo70')
+  expect(wrapper.find('input[aria-label="材质"]').exists()).toBe(false)
 })
 it('preserves explicitly entered rework material ahead of the lot material', async () => {
   await render(
@@ -333,7 +328,7 @@ it('preserves explicitly entered rework material ahead of the lot material', asy
   expect(wrapper.get('.route-material-field').text()).toContain('CuMo80')
   expect(wrapper.get('.route-material-field').text()).not.toContain('CuMo70')
 })
-it('carries quality problems and teams into manual rework engineering with inherited drawings', async () => {
+it('carries quality problems and teams into the read-only repair record with inherited drawings', async () => {
   const drawing = { id: 91, filename: 'S-001图纸.pdf', size_bytes: 100 }
   await render(
     false,
@@ -370,18 +365,18 @@ it('carries quality problems and teams into manual rework engineering with inher
   )
   expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
   expect(wrapper.find('input[accept=".docx"]').exists()).toBe(false)
-  expect(wrapper.find('input[aria-label="上传图纸文件"]').exists()).toBe(true)
+  expect(wrapper.find('input[aria-label="上传图纸文件"]').exists()).toBe(false)
   expect(wrapper.getComponent(ProcessRouteDrawingPreview).props()).toMatchObject({
     routeId: reworkRouteFixture.id,
     drawing,
   })
-  expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
   expect(wrapper.find('.route-execution-toggle').exists()).toBe(false)
   expect(wrapper.text()).not.toContain('具体任务')
   expect(wrapper.text()).not.toContain('参考天数')
   expect(wrapper.text()).not.toContain('适用流水号')
   expect(wrapper.text()).not.toContain('手工录入')
-  expect(wrapper.text()).toContain('补充图纸')
+  expect(wrapper.text()).not.toContain('补充图纸')
   await wrapper.get('button[aria-label="放大图纸"]').trigger('click')
   expect(openDrawing).toHaveBeenCalledOnce()
   expect(openWord).not.toHaveBeenCalled()
@@ -480,19 +475,11 @@ it('keeps step deletion available without execution settings', async () => {
   ])
 })
 
-it('names a new rework step from its assigned team without a hidden name field', async () => {
+it('keeps unassigned repair steps read-only even when opened with editing requested', async () => {
   await render(false, { ...reworkRouteFixture, steps: [] }, false, true)
-  await wrapper.get('textarea[aria-label="工序 1 工艺要求"]').setValue('返工精磨至图纸要求')
-  await click('提交工艺')
-  expect(processRouteApi.publish).toHaveBeenCalledOnce()
-  expect(vi.mocked(processRouteApi.save).mock.calls[0]![0].steps[0]).toMatchObject({
-    name: '研磨',
-    team_id: 2,
-    processing_task_id: null,
-    purpose_id: null,
-  })
-  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
-  expect(wrapper.emitted('saved')).toHaveLength(1)
+  expect(wrapper.find('textarea[aria-label="工序 1 工艺要求"]').exists()).toBe(false)
+  expect(wrapper.findAll('button').some((b) => b.text() === '提交工艺')).toBe(false)
+  expect(processRouteApi.publish).not.toHaveBeenCalled()
 })
 
 async function renderNew() {
@@ -957,11 +944,9 @@ it('retries a failed original-route read without replacing the rework instructio
   await render(false, reworkRouteFixture, false, true)
   expect(wrapper.text()).toContain('原工艺暂时不可用')
   expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
-  const instructions = wrapper.get('textarea[aria-label="工序 1 工艺要求"]')
-  await instructions.setValue('返工后逐件测厚')
   await click('重新读取')
   expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
-  expect((instructions.element as HTMLTextAreaElement).value).toBe('返工后逐件测厚')
+  expect(wrapper.text()).toContain(reworkRouteFixture.steps[0]!.instructions)
   expect(processRouteApi.save).not.toHaveBeenCalled()
 })
 

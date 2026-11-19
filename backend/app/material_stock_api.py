@@ -60,6 +60,7 @@ def shipment_stock(
 @router.get("/{team_id}/processing-records", response_model=ProcessingRecordPageResponse)
 def list_processing_records(
     include_summary: bool = Query(default=True),
+    report_template: Literal["FACTORY-QC", "QC-SANDBLAST", "QC-DEBURR"] | None = None,
     processor_id: int | None = Query(default=None, ge=1),
     processing_task_id: int | None = Query(default=None, ge=1),
     purpose_id: int | None = Query(default=None, ge=1),
@@ -79,6 +80,7 @@ def list_processing_records(
             session,
             team_id,
             include_summary=include_summary,
+            report_template=report_template,
             record_filters=record_filters,
             processor_id=processor_id,
             processing_task_id=processing_task_id,
