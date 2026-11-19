@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h, reactive, Transition } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -266,6 +266,20 @@ async function render(path = '/team-workspaces/914', animate = false, stockActio
   })
   await flushPromises()
   return router
+}
+async function scanFromToolbar(code: string) {
+  const toolbar = wrapper.get('form[role="search"]')
+  await toolbar
+    .findAll('button')
+    .find((button) => button.text() === '扫码入库')!
+    .trigger('click')
+  await flushPromises()
+  const dialog = new DOMWrapper(document.body).get('[role="dialog"][aria-label="扫码入库"]')
+  const barcode = dialog.get('input[aria-label="扫描转料批次号"]')
+  await barcode.setValue(code)
+  await barcode.trigger('keyup.enter')
+  await flushPromises()
+  return dialog
 }
 
 async function openToolbarMenu() {
@@ -1722,7 +1736,9 @@ describe('team workspace material ledger', () => {
       labels,
     )
     if (tab === 'pending')
-      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
+      expect(wrapper.get('form[role="search"] [aria-label="收料操作"]').text()).toContain(
+        '扫码入库',
+      )
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(labels.length ? 1 : 0)
     expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
     await wrapper.get('nav[aria-label$="视图"] button').trigger('click')
@@ -1837,7 +1853,13 @@ describe('team workspace material ledger', () => {
     const toolbar = wrapper.get('.workspace-toolbar')
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
-    expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
+    expect(
+      toolbar
+        .get('[aria-label="收料操作"]')
+        .findAll('button')
+        .map((button) => button.text()),
+    ).toEqual(['请选择接收人', '扫码入库'])
+    expect(wrapper.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
     expect(toolbar.find('.workspace-actions').exists()).toBe(false)
     expect(toolbar.findAll('button').filter((button) => button.text() === '查询')).toHaveLength(1)
     expect(
@@ -1956,10 +1978,8 @@ describe('team workspace material ledger', () => {
     )
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
     await flushPromises()
-    await wrapper.get('input[aria-label="扫描转料批次号"]').setValue('TL10')
-    await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
-    await flushPromises()
-    expect(wrapper.text()).toContain('接收班组与当前工作台不符')
+    const dialog = await scanFromToolbar('TL10')
+    expect(dialog.text()).toContain('接收班组与当前工作台不符')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
   })
   it('accepts batch actions from serial detail and preserves the dialog on an unchanged focus refresh', async () => {
@@ -2031,10 +2051,8 @@ describe('team workspace material ledger', () => {
     await render('/team-workspaces/914?tab=pending')
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
     await flushPromises()
-    await wrapper.get('input[aria-label="扫描转料批次号"]').setValue('CK-GROUP')
-    await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
-    await flushPromises()
-    expect(wrapper.text()).toContain('请扫描每批物料的独立条码')
+    const dialog = await scanFromToolbar('CK-GROUP')
+    expect(dialog.text()).toContain('请扫描每批物料的独立条码')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
   })
   it.each([
@@ -2199,16 +2217,17 @@ describe('team workspace material ledger', () => {
     const router = await render('/team-workspaces/914?tab=pending')
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
     await flushPromises()
-    await wrapper.get('input[aria-label="扫描转料批次号"]').setValue(transfer.batch_no)
-    await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
-    await flushPromises()
+    const toolbar = wrapper.get('form[role="search"]')
+    expect(toolbar.get('button[aria-label="接收人"]').text()).toContain(receivingPerson.name)
+    expect(wrapper.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
+    const dialog = await scanFromToolbar(transfer.batch_no)
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
     expect(materialTransferApi.confirm).toHaveBeenCalledWith(transfer.batch_no, {
       received_employee_id: receivingPerson.id,
       expected_version: 1,
       idempotency_key: expect.any(String),
     })
-    expect(wrapper.text()).toContain('已入库')
+    expect(dialog.text()).toContain('已入库')
     expect(materialTransferApi.list).toHaveBeenCalledTimes(2)
     state.auth.currentUser.team_id = 900
     await router.push('/team-workspaces/900?tab=outgoing')

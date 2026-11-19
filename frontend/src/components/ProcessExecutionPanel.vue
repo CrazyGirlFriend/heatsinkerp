@@ -242,7 +242,7 @@ onBeforeUnmount(() => ++generation)
   align-items: center;
   padding: 7px 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-muted-surface, #ffffffa8);
   color: var(--text);
   text-align: left;

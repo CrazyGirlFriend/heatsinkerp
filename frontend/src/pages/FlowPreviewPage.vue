@@ -1151,8 +1151,8 @@ onBeforeUnmount(() => {
   margin-bottom: 24px;
 }
 .preview-heading h1 {
-  font-size: 26px;
-  font-weight: 550;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.5px;
   margin: 0;
 }
@@ -1366,8 +1366,8 @@ onBeforeUnmount(() => {
   margin-bottom: 20px;
 }
 .preview-empty h2 {
-  font-size: 22px;
-  font-weight: 500;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 .preview-empty p {
@@ -1381,9 +1381,9 @@ onBeforeUnmount(() => {
   color: var(--muted);
 }
 .selection-title {
-  font-size: 20px;
+  font-size: var(--font-size-section);
   color: var(--text);
-  font-weight: 550;
+  font-weight: var(--font-weight-semibold);
   overflow-wrap: anywhere;
 }
 .selection-description {
@@ -1408,7 +1408,7 @@ onBeforeUnmount(() => {
 }
 .selection-batches .app-button {
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   background: var(--glass-surface);
   padding: 15px;
   text-align: left;
@@ -1472,8 +1472,8 @@ onBeforeUnmount(() => {
 .chain-title h1 {
   margin: 0;
   color: var(--text);
-  font-size: 24px;
-  font-weight: 550;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.4px;
 }
 .chain-query {
@@ -1754,9 +1754,6 @@ onBeforeUnmount(() => {
   .chain-header {
     gap: 8px;
   }
-  .chain-title h1 {
-    font-size: 20px;
-  }
   .chain-query {
     order: 1;
     flex-basis: 100%;
@@ -1832,9 +1829,6 @@ onBeforeUnmount(() => {
   }
   .preview-main {
     padding: 24px 12px;
-  }
-  .preview-heading h1 {
-    font-size: 24px;
   }
   .preview-heading form {
     flex-wrap: wrap;
@@ -1945,9 +1939,6 @@ onBeforeUnmount(() => {
 }
 .chain-page--embedded .purpose-legend {
   gap: 14px;
-}
-.chain-page--embedded .chain-title h1 {
-  font-size: 24px;
 }
 .flow-preview-page:fullscreen {
   height: 100dvh;
@@ -2128,7 +2119,7 @@ onBeforeUnmount(() => {
 .chain-page .canvas-controls button {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 .chain-page .canvas-mode::before {
   width: 32px;

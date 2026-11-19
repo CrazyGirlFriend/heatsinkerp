@@ -86,7 +86,7 @@ function handleTableWheel(event: WheelEvent) {
   border-radius: 12px;
   background: var(--el-table-bg-color);
   color: var(--el-table-text-color);
-  font-size: 14px;
+  font-size: var(--font-size-body);
   font-variant-numeric: tabular-nums;
   box-shadow: none;
 }
@@ -112,8 +112,8 @@ function handleTableWheel(event: WheelEvent) {
 .wm-data-table :deep(th.el-table__cell) {
   height: 48px;
   padding: 12px 0;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.08em;
   background: var(--el-table-header-bg-color);
   border-bottom-color: var(--el-table-border-color);
@@ -129,7 +129,7 @@ function handleTableWheel(event: WheelEvent) {
   line-height: 22px;
 }
 .wm-data-table :deep(td.el-table__cell.is-right .cell) {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .wm-data-table :deep(tbody tr:focus-within > td.el-table__cell) {
   background: var(--el-table-row-hover-bg-color);
@@ -144,8 +144,8 @@ function handleTableWheel(event: WheelEvent) {
 }
 .wm-data-table :deep(.el-button.is-link) {
   height: auto;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--el-table-text-color);
 }
 .wm-data-table :deep(.el-button.is-link:hover:not(:disabled)) {
@@ -161,10 +161,10 @@ function handleTableWheel(event: WheelEvent) {
   min-height: 26px;
   padding: 3px 6px;
   margin-inline: -6px;
-  border-radius: 4px;
+  border-radius: var(--radius-compact);
   color: var(--el-table-text-color);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .wm-data-table :deep(.el-button:focus-visible) {
   outline: 2px solid var(--wm-table-focus, #71717a);
@@ -173,7 +173,7 @@ function handleTableWheel(event: WheelEvent) {
 .wm-data-table :deep(.el-button.wm-table-action) {
   min-height: 26px;
   padding: 3px 7px;
-  border-radius: 5px;
+  border-radius: var(--radius-compact);
   color: var(--wm-table-header-text, #52525b);
 }
 .wm-data-table :deep(.el-button.wm-table-action > span) {

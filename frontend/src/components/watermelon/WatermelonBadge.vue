@@ -17,8 +17,8 @@ withDefaults(defineProps<{ tone?: 'neutral' | 'success' | 'warning' | 'info' | '
   border-radius: 999px;
   background: var(--wm-neutral-bg, #f4f4f5);
   color: var(--wm-neutral-text, #71717a);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
   line-height: 1;
   white-space: nowrap;
 }

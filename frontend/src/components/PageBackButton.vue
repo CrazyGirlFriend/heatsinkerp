@@ -36,12 +36,12 @@ function goBack(): void {
   flex: 0 0 auto;
   align-self: center;
   width: 82px;
-  height: 36px;
+  height: var(--workspace-control-height);
   margin: 0;
   padding: 0 12px;
-  border-radius: 11px;
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .page-back-button.el-button :deep(.el-icon) {
   font-size: 16px;

@@ -34,9 +34,9 @@ defineProps<{ title?: string }>()
 }
 .compact-form-section-heading h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-section);
   line-height: 20px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 .compact-form-section-actions {

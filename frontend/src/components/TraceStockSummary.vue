@@ -309,8 +309,8 @@ const rows = computed(() =>
 }
 .stock-heading h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .stock-unit {
   display: flex;
@@ -473,7 +473,7 @@ button:focus-visible {
   gap: 5px;
 }
 .compact .stock-heading h2 {
-  font-size: 13px;
+  font-size: var(--font-size-label);
 }
 .compact .stock-unit button {
   padding-block: 2px;

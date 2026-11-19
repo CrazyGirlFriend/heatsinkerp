@@ -836,7 +836,7 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--text);
   font-size: var(--dialog-title-size);
-  font-weight: var(--dialog-title-weight);
+  font-weight: var(--font-weight-semibold);
 }
 .handoff-preview {
   display: flex;
@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
     align-items: flex-start;
   }
   .form-heading h2 {
-    font-size: 18px;
+    font-size: var(--dialog-title-size);
   }
 }
 </style>

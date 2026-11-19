@@ -1934,7 +1934,7 @@ watch(
   margin: 0;
   color: var(--text);
   font-size: var(--dialog-title-size);
-  font-weight: var(--dialog-title-weight);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.4px;
 }
 .stock-dialog-heading > span {
@@ -2052,12 +2052,12 @@ watch(
 }
 .source-actions :deep(.el-button) {
   margin-left: 0;
-  font-size: 12px;
+  font-size: var(--font-size-label);
 }
 .source-actions :deep(.el-button:not(.is-link)) {
-  height: 28px;
+  height: var(--control-height-small);
   padding-inline: 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-compact);
 }
 .source-action-chevron {
   margin-left: 4px;
@@ -2079,7 +2079,7 @@ watch(
   justify-content: flex-start;
   min-height: 32px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 .source-meta {
   display: flex;
@@ -2179,7 +2179,8 @@ watch(
   height: auto;
   line-height: 20px;
   padding: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .source-inputs :deep(.el-form-item__content),
 .dispatch-context-fields :deep(.el-form-item__content) {
@@ -2230,8 +2231,8 @@ watch(
   height: 30px;
   align-items: flex-start;
   padding: 0;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   line-height: 20px;
 }
 .specification-label,

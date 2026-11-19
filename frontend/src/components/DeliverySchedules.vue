@@ -1472,7 +1472,8 @@ defineExpose({ exportSource, openDetail })
   margin-bottom: 18px;
 }
 .schedule-detail__heading strong {
-  font-size: 20px;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
   color: var(--primary);
 }
 .schedule-detail__heading > span {
@@ -1487,7 +1488,8 @@ defineExpose({ exportSource, openDetail })
 }
 .schedule-section-heading h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .schedule-section-heading > span,
 .schedule-section-heading > a {

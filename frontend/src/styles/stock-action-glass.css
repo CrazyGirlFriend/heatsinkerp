@@ -18,7 +18,7 @@
   padding: 14px 18px;
 }
 .stock-action-dialog .action-footer .el-button {
-  height: 40px;
+  height: var(--workspace-control-height);
   padding-inline: 20px;
 }
 .stock-action-dialog .source-actions .stock-source-popover {
@@ -36,9 +36,9 @@
   backdrop-filter: none;
 }
 .stock-action-dialog .source-action-menu .el-button {
-  height: 36px;
+  height: var(--workspace-control-height);
   padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 .stock-action-dialog
   .source-action-menu

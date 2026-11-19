@@ -94,13 +94,9 @@ if (workspace?.registerExport) provide(workspaceToolbarExportKey, workspace.regi
   flex: 0 0 90px;
 }
 .wm-data-toolbar .wm-filter-trigger {
-  height: 40px;
   border-color: var(--wm-control-border, #e4e4e7);
-  border-radius: 8px;
   background: var(--wm-control-bg, #fff);
   color: var(--wm-control-text, #27272a);
-  font-size: 14px;
-  font-weight: 500;
   box-shadow: none;
 }
 .wm-data-toolbar .wm-filter-trigger:hover {
@@ -113,8 +109,8 @@ if (workspace?.registerExport) provide(workspaceToolbarExportKey, workspace.regi
   color: var(--wm-filter-active-text, #247960);
 }
 .wm-data-toolbar .wm-refresh {
-  width: 40px;
-  flex: 0 0 40px;
+  width: var(--workspace-control-height);
+  flex: 0 0 var(--workspace-control-height);
   padding: 0;
 }
 .wm-toolbar-tools {
@@ -131,15 +127,11 @@ if (workspace?.registerExport) provide(workspaceToolbarExportKey, workspace.regi
   max-width: 100%;
 }
 .wm-toolbar-tools .el-button {
-  height: 40px;
   margin: 0;
   padding-inline: 12px;
   border: 0;
-  border-radius: 8px;
   background: transparent;
   box-shadow: none;
-  font-size: 14px;
-  font-weight: 500;
   color: var(--wm-control-text, #27272a);
 }
 .wm-toolbar-tools .el-button:hover:not(:disabled) {

@@ -9,13 +9,12 @@
   --primary: var(--wm-primary);
   --primary-soft: var(--wm-hover);
   --surface-soft: var(--wm-muted-surface);
-  --workspace-control-height: 40px;
   --table-header-bg: var(--wm-muted-surface);
   --table-grid-line: var(--wm-border);
   --table-hover-bg: var(--wm-hover);
 }
 .page.team-workspace--watermelon .team-workspace__title {
-  font-size: 20px;
+  font-size: var(--workspace-heading-size);
 }
 .page.team-workspace--watermelon .team-workspace__module {
   font-size: 18px;
@@ -86,7 +85,7 @@
 }
 .wm-scope .el-button:not(.is-link),
 .wm-scope .el-button.is-text {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-surface);
   border-color: var(--wm-border);
   color: var(--wm-text);
@@ -134,7 +133,7 @@
   border-radius: 999px;
   background: var(--el-tag-bg-color);
   box-shadow: none;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .wm-scope .el-tag--success {
   --el-tag-bg-color: var(--wm-success-bg);
@@ -178,8 +177,8 @@
 }
 .wm-app-dialog .el-dialog__title {
   color: var(--wm-text);
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
 }
 .wm-app-dialog .el-dialog__headerbtn {
   background: var(--wm-hover);
@@ -256,7 +255,7 @@ html.wm-app .el-popper.is-light .el-popper__arrow::before {
 }
 .wm-toast-message .el-message__content {
   color: var(--wm-text);
-  font-size: 14px;
+  font-size: var(--font-size-body);
   line-height: 1.5;
 }
 .wm-toast-message.el-message--error .el-message__icon {

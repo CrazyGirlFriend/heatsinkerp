@@ -54,8 +54,8 @@ defineProps<{ data?: TableProps['data'] }>()
 }
 .workspace-table.el-table.business-table :deep(.el-table__header-wrapper th.el-table__cell) {
   color: var(--subtle);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .workspace-table.el-table.business-table :deep(.el-table__cell > .cell) {
   padding-inline: 12px;
@@ -76,9 +76,9 @@ defineProps<{ data?: TableProps['data'] }>()
 .workspace-table.el-table.business-table :deep(.el-button.is-link) {
   height: auto;
   min-height: 24px;
-  font-size: var(--font-size-meta);
+  font-size: var(--font-size-label);
   line-height: var(--line-height-meta);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-medium);
 }
 .workspace-table.el-table.business-table :deep(.el-button--primary.is-link) {
   color: var(--muted);

@@ -1346,8 +1346,8 @@ onBeforeUnmount(() => {
 .transfer-heading {
   flex-shrink: 0;
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
 }
 .heading-actions {
   display: flex;
@@ -1592,9 +1592,9 @@ onBeforeUnmount(() => {
     gap: 10px;
   }
   .heading-actions :deep(.el-button) {
-    height: 40px;
+    height: var(--workspace-control-height);
     padding-inline: 14px;
-    font-size: 14px;
+    font-size: var(--font-size-body);
   }
   .transfers-main {
     gap: 14px;

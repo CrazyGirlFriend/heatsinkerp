@@ -114,7 +114,7 @@ function change(value: number) {
   padding: 16px 0 0;
   border-top: 1px solid var(--wm-control-border, #e4e4e7);
   color: var(--wm-text-muted, #52525b);
-  font-size: 14px;
+  font-size: var(--font-size-body);
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
@@ -146,14 +146,16 @@ function change(value: number) {
   position: relative;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--control-height-small);
+  height: var(--control-height-small);
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--wm-control-text, #27272a);
   font: inherit;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 .wm-pagination .wm-page-arrow {
@@ -162,7 +164,7 @@ function change(value: number) {
 }
 .wm-pagination button[aria-current] {
   color: var(--wm-control-text, #27272a);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .wm-pagination button:hover:not(:disabled):not([aria-current]) {
   background: var(--wm-control-hover-bg, #f4f4f5);
@@ -181,8 +183,8 @@ function change(value: number) {
 .wm-page-ellipsis {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--control-height-small);
+  height: var(--control-height-small);
 }
 .wm-page-number {
   position: relative;

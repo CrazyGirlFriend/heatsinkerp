@@ -143,7 +143,8 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 .team-problem-heading strong {
-  font-size: 20px;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
 }
 .team-problem-description {
   white-space: pre-wrap;

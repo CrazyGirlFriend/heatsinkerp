@@ -50,11 +50,11 @@ function searchOnEnter(event: KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: var(--workspace-control-height);
   padding: 0 12px;
   min-width: 0;
   border: 1px solid var(--wm-control-border, #e4e4e7);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-control-bg, #fff);
   color: var(--wm-text-muted, #71717a);
   transition:
@@ -67,7 +67,7 @@ function searchOnEnter(event: KeyboardEvent) {
 }
 .wm-search input {
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   width: 100%;
   min-width: 0;
   outline: 0;

@@ -28,18 +28,21 @@
   --el-fill-color-lighter: var(--surface);
   --el-fill-color-blank: #fff;
   --el-bg-color-page: var(--workspace-bg);
-  --el-border-radius-base: 9px;
-  --el-border-radius-small: 6px;
+  --el-border-radius-base: var(--radius-control);
+  --el-border-radius-small: var(--radius-compact);
   --el-card-border-radius: var(--card-radius);
   --el-box-shadow-light: 0 8px 24px rgb(35 62 45 / 8%);
-  --el-component-size: 36px;
+  --el-component-size: var(--workspace-control-height);
   --el-transition-duration: var(--motion-panel);
   --el-transition-duration-fast: var(--motion-fast);
   --el-font-family: var(--font-body);
+  --el-font-size-base: var(--font-size-body);
+  --el-font-size-small: var(--font-size-label);
+  --el-font-size-extra-small: var(--font-size-meta);
 }
 
 .el-button {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   transition:
     color var(--motion-fast) ease,
     background-color var(--motion-fast) ease,
@@ -135,7 +138,7 @@
   outline-offset: 3px;
 }
 .el-pager li {
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .el-input__wrapper,
@@ -166,7 +169,7 @@
 }
 
 .el-dialog {
-  --el-component-size: 36px;
+  --el-component-size: var(--workspace-control-height);
   display: flex;
   flex-direction: column;
   max-width: calc(100vw - 32px);
@@ -223,8 +226,8 @@
   color: var(--muted);
 }
 .el-dialog__title {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.3px;
 }
 .el-form-item__label {
@@ -259,16 +262,16 @@
 }
 .dialog-form-section > h3 {
   margin: 8px 0 0;
-  font-size: 14px;
+  font-size: var(--font-size-section);
   line-height: 20px;
-  font-weight: 550;
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 .dialog-form-section > .dialog-form-grid {
   gap: 8px 18px;
 }
 .el-dialog .dialog-form-section {
-  --el-component-size: 32px;
+  --el-component-size: var(--control-height-small);
 }
 .el-dialog .dialog-form-section :is(.el-form-item, .dialog-field) {
   margin-bottom: 0;
@@ -281,7 +284,8 @@
   height: auto;
   min-height: 32px;
   line-height: 20px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 /* Keep validation visible on composite controls, including hover and focus. */
 :is(
@@ -322,8 +326,9 @@
   gap: 6px;
   min-height: 20px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 20px;
+  font-weight: var(--font-weight-medium);
 }
 .dialog-field-label.is-required::before {
   content: '*';
@@ -346,7 +351,8 @@
   min-height: 20px;
   margin-bottom: 6px;
   line-height: 20px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .el-dialog .el-form-item__content {
   min-width: 0;
@@ -408,7 +414,7 @@
   box-sizing: border-box;
 }
 .dialog-form-compact {
-  --el-component-size: 32px;
+  --el-component-size: var(--control-height-small);
 }
 .dialog-form-compact .dialog-form-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -439,7 +445,8 @@
   height: auto;
   margin-bottom: 4px;
   line-height: 20px;
-  font-size: 12px;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .dialog-form-compact .dialog-field {
   gap: 0;
@@ -477,7 +484,7 @@
     margin: 0;
   }
   .dialog-form-compact :is(.el-input__wrapper, .el-select__wrapper) {
-    min-height: 36px;
+    min-height: var(--workspace-control-height);
   }
 }
 @media (max-width: 1100px) {
@@ -536,9 +543,6 @@
   .el-dialog__footer {
     padding-top: 12px;
   }
-  .el-dialog__title {
-    font-size: 18px;
-  }
 }
 .el-message-box {
   display: inline-flex;
@@ -557,8 +561,8 @@
   overscroll-behavior: contain;
 }
 .el-message-box__title {
-  font-size: 19px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
 }
 .el-message-box__message {
   color: var(--text);
@@ -586,8 +590,8 @@
   color: var(--text);
 }
 .el-drawer__title {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
 }
 .el-drawer__body {
   min-height: 0;
@@ -624,8 +628,8 @@
 
 .el-table th.el-table__cell {
   height: 42px;
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .el-table:not(.live-table) {
   --el-table-header-bg-color: var(--table-header-bg);
@@ -768,7 +772,7 @@
     transform var(--motion-fast) var(--motion-ease);
 }
 .el-dialog .el-button:is(.is-link, .is-text) {
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
 }
 .el-dialog .weight-input select {
   transition:

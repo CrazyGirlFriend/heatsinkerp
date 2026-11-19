@@ -168,8 +168,8 @@ onBeforeUnmount(() => {
 .wm-dialog-header h2,
 .wm-dialog-header .el-dialog__title {
   margin: 0;
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text, #111);
 }
 .wm-dialog-header button {

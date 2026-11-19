@@ -168,9 +168,9 @@ const label = (row: FactoryRecentBatch) =>
 }
 .factory-recent h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-section);
   line-height: 22px;
-  font-weight: 550;
+  font-weight: var(--font-weight-semibold);
 }
 .recent-actions,
 .recent-pagination {
@@ -182,8 +182,8 @@ const label = (row: FactoryRecentBatch) =>
   gap: 6px;
 }
 .recent-actions :deep(.el-button) {
-  font-size: 12px;
-  height: 26px;
+  font-size: var(--font-size-label);
+  height: var(--control-height-small);
 }
 .recent-pagination .el-button {
   padding: 4px 8px;
@@ -261,8 +261,8 @@ const label = (row: FactoryRecentBatch) =>
   font-variant-numeric: tabular-nums;
 }
 .recent-table .el-button {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   padding: 0;
   max-width: 100%;
 }

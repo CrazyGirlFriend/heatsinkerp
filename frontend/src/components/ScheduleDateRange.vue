@@ -230,14 +230,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   height: 34px;
   padding: 0 12px;
   margin: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   border-color: var(--line);
   background: linear-gradient(135deg, var(--wm-bg, #fff), var(--wm-muted-surface, #f1f7f3));
   box-shadow:
     inset 0 1px 0 #fff,
     0 1px 3px #204e3508;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-variant-numeric: tabular-nums;
 }
 .schedule-date-trigger :deep(> span) {
@@ -274,7 +274,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   flex: 1;
   padding: 6px 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   background: var(--wm-muted-surface, #f8faf9);
   color: var(--text);
   font: inherit;
@@ -297,7 +297,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   gap: 4px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-bg, #fff);
   color: var(--text);
   text-align: left;

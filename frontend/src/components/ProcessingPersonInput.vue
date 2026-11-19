@@ -234,7 +234,7 @@ function confirm() {
 }
 .person-choice.el-button {
   min-width: 0;
-  height: 40px;
+  height: var(--workspace-control-height);
   margin: 0;
   padding: 0 8px;
 }

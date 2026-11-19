@@ -257,8 +257,8 @@ onBeforeUnmount(() => {
 }
 .review-heading h3 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .review-heading p {
   margin: 6px 0 0;

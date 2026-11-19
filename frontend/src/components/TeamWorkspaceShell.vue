@@ -381,7 +381,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--workspace-heading-size);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.3px;
 }
 .team-workspace__commands,
@@ -393,12 +393,12 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 .team-workspace__commands :deep(.el-button) {
-  height: 32px;
+  height: var(--control-height-small);
   margin: 0;
   padding-inline: 10px;
   border: 0;
-  border-radius: 9px;
-  font-size: 13px;
+  border-radius: var(--radius-compact);
+  font-size: var(--font-size-label);
 }
 .team-workspace__commands :deep(.el-button:focus-visible) {
   outline: 2px solid var(--primary);
@@ -446,11 +446,11 @@ onBeforeUnmount(() => {
   height: 30px;
   margin: 0;
   padding: 0 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   color: var(--muted);
   background: transparent;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   transition:
     background-color var(--motion-standard) ease,
     color var(--motion-standard) ease,
@@ -466,7 +466,7 @@ onBeforeUnmount(() => {
 .team-workspace__section.el-button.is-current {
   background: var(--glass-selected-fill);
   color: var(--primary);
-  font-weight: 620;
+  font-weight: var(--font-weight-semibold);
   box-shadow: var(--glass-selected-shadow);
 }
 .team-workspace__section.el-button:not(:disabled):not(.is-disabled):not(.is-loading):active {

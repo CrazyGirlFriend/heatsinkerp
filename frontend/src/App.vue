@@ -429,8 +429,8 @@ function handleUserCommand(command: string | number | object): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .app-shell--business .sidebar {
   grid-row: 1 / -1;
@@ -454,14 +454,14 @@ function handleUserCommand(command: string | number | object): void {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 36px;
+  min-height: var(--control-height-small);
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   color: var(--muted);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   text-align: left;
 }
 .sidebar__user:hover,
@@ -494,11 +494,11 @@ function handleUserCommand(command: string | number | object): void {
   font-size: 12px;
 }
 .app-shell--business .sidebar__collapse {
-  width: 32px;
-  height: 36px;
+  width: var(--control-height-small);
+  height: var(--control-height-small);
   padding: 0;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
 }
 .app-shell--compact .sidebar__footer {
   grid-template-columns: minmax(0, 1fr);
@@ -597,7 +597,7 @@ function handleUserCommand(command: string | number | object): void {
 }
 @media (prefers-color-scheme: dark) {
   .app-shell--business.wm-app-shell .brand-mark img {
-    border-radius: 6px;
+    border-radius: var(--radius-compact);
     background: #fff;
     padding: 6px;
   }

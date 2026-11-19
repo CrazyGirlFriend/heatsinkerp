@@ -184,9 +184,9 @@ function formatMetric(value: number | null | undefined) {
 .team-status-table :deep(.el-button.is-link) {
   height: auto;
   min-height: 26px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   padding: 0;
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
 }
 .team-status-table :deep(.el-button > span) {
   gap: 6px;

@@ -43,8 +43,8 @@ defineProps<{ title: string; subtitle?: string; help?: string }>()
 .dashboard-card h2 {
   margin: 0;
   color: var(--wm-text);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .dashboard-card p {
   margin: 5px 0 0;

@@ -79,7 +79,7 @@ onBeforeUnmount(() => observer?.disconnect())
 .document-card-heading span,
 .document-card-filename {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .document-card-filename {
   overflow: hidden;
@@ -88,7 +88,6 @@ onBeforeUnmount(() => observer?.disconnect())
 }
 .document-card-actions :deep(.el-button) {
   margin: 0;
-  font-size: 12px;
 }
 .document-card-empty {
   display: flex;

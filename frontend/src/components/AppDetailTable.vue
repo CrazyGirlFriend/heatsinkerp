@@ -26,7 +26,7 @@ const themed = useWatermelonAppearance()
     border: 1px solid var(--wm-border);
     background: var(--wm-bg);
     color: var(--wm-text);
-    font-size: 14px;
+    font-size: var(--font-size-body);
     line-height: 1.6;
     font-variant-numeric: tabular-nums;
   }
@@ -43,7 +43,8 @@ const themed = useWatermelonAppearance()
   .app-detail-table.app-detail-table--themed :deep(th) {
     background: var(--wm-muted-surface);
     color: var(--wm-muted);
-    font-weight: 500;
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
   }
   .app-detail-table.app-detail-table--themed :deep(tbody tr) {
     transition: background-color 140ms ease;

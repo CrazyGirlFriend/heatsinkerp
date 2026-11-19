@@ -1,7 +1,7 @@
 /* Form 10 / Select 21: one shared skin for existing Vue form engines. */
 .wm-scope {
-  --wm-field-height: 40px;
-  --wm-field-radius: 6px;
+  --wm-field-height: var(--workspace-control-height);
+  --wm-field-radius: var(--radius-control);
   --wm-field-inset: inset 0 1px 0 #ffffff80, inset 0 -1px 0 #00000008;
 }
 @media (prefers-color-scheme: dark) {
@@ -31,8 +31,8 @@
   --el-input-height: var(--wm-field-height);
 }
 .wm-scope .el-form-item :is(.el-input__inner, .el-select__selected-item, .el-textarea__inner) {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   letter-spacing: normal;
   color: var(--wm-text);
 }
@@ -68,8 +68,8 @@
 }
 .wm-scope .el-form-item__label {
   color: var(--wm-text);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .wm-scope
   :is(
@@ -108,7 +108,7 @@
   border-radius: var(--wm-field-radius);
   background: var(--wm-danger-bg);
   color: var(--wm-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 1.5;
 }
 .wm-scope.el-dialog .wm-number-input.el-input-number,
@@ -148,8 +148,8 @@ html.wm-app
   background: transparent;
   box-shadow: none;
   color: var(--wm-text);
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   transition: background-color 140ms;
 }
 html.wm-app

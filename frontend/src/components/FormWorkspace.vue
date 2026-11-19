@@ -53,8 +53,8 @@ withDefaults(defineProps<{ documents?: boolean }>(), { documents: true })
   min-height: 20px;
   margin-bottom: 4px;
   line-height: 20px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .form-workspace :deep(.el-input__wrapper),
 .form-workspace :deep(.el-select__wrapper) {

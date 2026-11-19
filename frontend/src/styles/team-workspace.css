@@ -3,7 +3,6 @@
   --workspace-body-size: var(--font-size-body);
   --workspace-meta-size: var(--font-size-meta);
   --workspace-number-size: 15px;
-  --workspace-control-height: 38px;
   --workspace-gutter: 12px;
   --workspace-ink: var(--text);
   --workspace-muted: var(--muted);
@@ -15,9 +14,9 @@
 .team-workspace :is(.workspace-data-toolbar, .workspace-actions) .el-button:not(.is-link) {
   height: var(--workspace-control-height);
   padding-inline: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 22px;
-  font-weight: 400;
+  font-weight: var(--font-weight-medium);
 }
 .team-workspace
   :is(.workspace-data-toolbar, .serial-extra-filters)
@@ -62,7 +61,7 @@
   .el-button.is-link {
   min-height: 24px;
   height: auto;
-  font-size: var(--font-size-meta);
+  font-size: var(--font-size-label);
   line-height: var(--line-height-meta);
 }
 .team-workspace
@@ -259,7 +258,7 @@
 }
 .team-workspace .workspace-data-toolbar :is(.el-input__wrapper, .el-select__wrapper) {
   min-height: 34px;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   background: #ffffffb8;
   box-shadow: 0 0 0 1px var(--line) inset;
 }
@@ -271,7 +270,7 @@
 }
 .team-workspace .workspace-data-toolbar .el-button {
   margin-left: 0;
-  border-radius: 11px;
+  border-radius: var(--radius-control);
 }
 .team-workspace .workspace-data-toolbar > .workspace-tools {
   margin-left: auto;

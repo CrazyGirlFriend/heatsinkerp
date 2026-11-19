@@ -1150,7 +1150,7 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--text);
   font-size: var(--dialog-title-size);
-  font-weight: var(--dialog-title-weight);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.5px;
 }
 .receipt-heading > span {

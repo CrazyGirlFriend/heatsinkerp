@@ -48,10 +48,6 @@ html.wm-app {
 html.wm-app body {
   background: var(--wm-canvas);
 }
-html.wm-app .page {
-  --workspace-control-height: 40px;
-  --workspace-heading-size: 20px;
-}
 html.wm-app .workspace-data-panel.wm-data-panel {
   padding: 20px;
   border: 1px solid var(--wm-border);
@@ -96,12 +92,12 @@ html.wm-app .page.admin-workspace .admin-pagination {
   padding: 16px 20px;
 }
 html.wm-app .app-button.el-button:not(.is-link):not(.is-text) {
-  min-height: 40px;
-  height: 40px;
+  min-height: var(--workspace-control-height);
+  height: var(--workspace-control-height);
   padding-inline: 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   letter-spacing: normal;
   transition:
     background-color 150ms ease,
@@ -109,13 +105,16 @@ html.wm-app .app-button.el-button:not(.is-link):not(.is-text) {
     transform 120ms ease;
 }
 html.wm-app .app-button.el-button.el-button--small:not(.is-link):not(.is-text) {
-  min-height: 32px;
-  height: 32px;
+  min-height: var(--control-height-small);
+  height: var(--control-height-small);
   padding-inline: 10px;
-  font-size: 13px;
+  font-size: var(--font-size-label);
+  border-radius: var(--radius-compact);
 }
-html.wm-app .app-button.el-button.is-circle {
-  padding: 10px;
+html.wm-app .app-button.el-button.is-circle:not(.is-link):not(.is-text) {
+  border-radius: 50%;
+  padding: 0;
+  aspect-ratio: 1;
 }
 html.wm-app .app-button.el-button:not(.is-disabled):not(.is-loading):active {
   transform: scale(0.97);
@@ -124,8 +123,9 @@ html.wm-app .el-button.is-link,
 html.wm-app .el-button.is-text {
   min-height: 28px;
   height: auto;
-  font-weight: 500;
-  font-size: 13px;
+  border-radius: var(--radius-compact);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-label);
   color: var(--wm-text);
   background: transparent;
   border: 0;
@@ -155,12 +155,12 @@ html.wm-app .el-button:focus-visible {
   outline-offset: 3px;
 }
 html.wm-app :is(.el-input__wrapper, .el-select__wrapper) {
-  min-height: 40px;
-  border-radius: 6px;
+  min-height: var(--workspace-control-height);
+  border-radius: var(--radius-control);
   background: var(--wm-surface);
 }
 html.wm-app .el-input {
-  --el-input-height: 40px;
+  --el-input-height: var(--workspace-control-height);
 }
 html.wm-app .el-descriptions {
   --el-descriptions-item-bordered-label-background: var(--wm-muted-surface);
@@ -180,7 +180,7 @@ html.wm-app
 html.wm-app .el-descriptions__label.el-descriptions__cell {
   color: var(--wm-muted);
   background: var(--wm-muted-surface);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 html.wm-app :is(.el-tag, .el-tag.el-tag--light) {
   background-image: none;
@@ -205,8 +205,8 @@ html.wm-app .wm-data-table.el-table .el-table__header-wrapper th.el-table__cell 
   color: var(--wm-muted);
   border-right: 0;
   border-bottom: 1px solid var(--wm-border);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   letter-spacing: normal;
 }
 html.wm-app .wm-data-table.el-table .el-table__body .el-table__row > td.el-table__cell {
@@ -225,8 +225,8 @@ html.wm-app
 }
 html.wm-app .wm-data-table .el-table__cell > .cell {
   padding-inline: 14px;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: inherit;
+  line-height: var(--line-height-body);
 }
 html.wm-app .wm-data-table .el-table__expand-column > .cell {
   padding-inline: 8px;
@@ -241,7 +241,7 @@ html.wm-app
   display: none;
 }
 html.wm-app :is(.el-pagination .el-pager li, .el-pagination .btn-prev, .el-pagination .btn-next) {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-bg);
   color: var(--wm-muted);
   box-shadow: none;
@@ -313,8 +313,8 @@ html.wm-app .wm-app-drawer .el-drawer__header {
   border-bottom: 1px solid var(--wm-border);
 }
 html.wm-app .wm-app-drawer .el-drawer__title {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
 }
 html.wm-app .wm-app-drawer .el-drawer__body {
   padding: 20px 24px;

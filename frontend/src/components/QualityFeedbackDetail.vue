@@ -471,8 +471,9 @@ onBeforeUnmount(() => {
   margin-top: 16px;
 }
 h3 {
-  font-size: 15px;
+  font-size: var(--font-size-section);
   margin: 0 0 14px;
+  font-weight: var(--font-weight-semibold);
 }
 
 .quality-event {

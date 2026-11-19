@@ -94,7 +94,7 @@ html.wm-app,
 }
 .team-workspace--watermelon .page-back-button.el-button {
   border-color: var(--wm-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: var(--wm-surface);
   color: var(--wm-text);
   box-shadow: none;
@@ -141,12 +141,12 @@ html.wm-app,
   --el-bg-color: var(--wm-bg);
   --el-bg-color-overlay: var(--wm-surface);
   color: var(--wm-text);
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 .wm-dialog .el-input__wrapper,
 .wm-dialog .el-select__wrapper {
-  min-height: 38px;
-  border-radius: 8px;
+  min-height: var(--workspace-control-height);
+  border-radius: var(--radius-control);
   background: var(--wm-surface);
   box-shadow: 0 0 0 1px var(--wm-border) inset;
   backdrop-filter: none;
@@ -156,7 +156,7 @@ html.wm-app,
   box-shadow: 0 0 0 1px var(--wm-primary) inset;
 }
 .wm-dialog .el-input__inner {
-  font-size: 14px;
+  font-size: var(--font-size-body);
   color: var(--wm-text);
 }
 .wm-dialog .el-input__inner:focus-visible {
@@ -164,7 +164,8 @@ html.wm-app,
 }
 .wm-dialog .el-form-item__label {
   color: var(--wm-text);
-  font-size: 13px;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .wm-dialog .el-form-item {
   margin-bottom: 20px;
@@ -197,7 +198,7 @@ html.wm-app,
 }
 .wm-dialog .wm-field-error {
   color: var(--wm-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   margin: 6px 0 0;
 }
 .wm-scope .wm-pagination {

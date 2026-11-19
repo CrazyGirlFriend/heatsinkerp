@@ -1105,7 +1105,7 @@ watch(
 }
 .drawer-heading > span:first-child {
   font-size: var(--dialog-title-size);
-  font-weight: var(--dialog-title-weight);
+  font-weight: var(--font-weight-semibold);
 }
 .drawer-heading h2 {
   margin: 0;
@@ -1131,8 +1131,8 @@ watch(
 }
 .document-records h3 {
   margin: 6px 0 12px;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .document-table-scroll {
   overflow-x: auto;
@@ -1181,8 +1181,8 @@ watch(
 }
 .drawer-footer :deep(.el-button) {
   margin: 0;
-  height: 40px;
-  font-size: 15px;
+  height: var(--workspace-control-height);
+  font-size: var(--font-size-body);
 }
 .permission-note {
   display: flex;

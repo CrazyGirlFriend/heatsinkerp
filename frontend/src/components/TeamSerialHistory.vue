@@ -281,8 +281,8 @@ if (serial.value) search()
 }
 .history-prompt h3 {
   color: var(--text);
-  font-size: 22px;
-  font-weight: 500;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 @media (max-width: 760px) {
   .history-total {

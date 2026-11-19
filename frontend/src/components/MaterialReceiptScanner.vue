@@ -1,11 +1,10 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import ElInput from '@/components/AppInput.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import ElButton from '@/components/AppButton.vue'
-import { FullScreen } from '@element-plus/icons-vue'
 import { IconScan } from '@tabler/icons-vue'
-import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import { useAuthStore } from '@/stores/auth'
 import { showToast, type ToastTone } from '@/stores/toast'
 import { materialTransferApi } from '@/services/materialTransferApi'
@@ -23,7 +22,8 @@ import type { TeamEmployee } from '@/types/teamBusiness'
 const props = defineProps<{ teamId: number; paused?: boolean }>()
 const emit = defineEmits<{ received: [transfer: MaterialTransfer] }>()
 const auth = useAuthStore()
-const watermelon = useWatermelonAppearance()
+const scanOpen = ref(false)
+const barcode = ref<InstanceType<typeof ElInput>>()
 const value = ref('')
 const receiver = defineModel<TeamEmployee | null>('receiver', { default: null })
 const receiverRequired = ref(false)
@@ -121,6 +121,7 @@ function scan(raw = value.value) {
   const code = raw.trim().toUpperCase()
   if (!code) return
   value.value = ''
+  if (scanOpen.value) barcode.value?.focus()
   if (code === currentCode.value || queue.value.includes(code)) {
     showToast(`${code} 正在处理，请勿重复扫码`, 'info')
     return
@@ -174,6 +175,7 @@ watch(
     ++epoch
     queue.value = []
     currentCode.value = ''
+    scanOpen.value = false
     value.value = ''
     result.value = null
     keys.clear()
@@ -191,153 +193,73 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="receipt-scanner" :class="{ 'receipt-scanner--watermelon': watermelon }">
-    <div class="incoming-scan">
-      <strong>扫码入库</strong>
-      <div ref="scannerReceiver" class="scanner-receiver">
-        <label><span aria-hidden="true">*</span> 接收人</label>
-        <ReceiptPersonInput
-          v-if="allowed"
-          :key="`${auth.currentUser?.id}:${teamId}`"
-          v-model="receiver"
-          :team-id="teamId"
-          :disabled="!!currentCode || queue.length > 0 || paused"
-          :invalid="receiverRequired && !receiver"
-          @open-change="selectingReceiver = $event"
-        />
-      </div>
-      <div class="scanner-inline">
-        <ElInput
-          v-model="value"
-          aria-label="扫描转料批次号"
-          :placeholder="receiver ? '扫描批次条码，自动签收入库' : '请先选择接收人'"
-          autocomplete="off"
-          :disabled="!allowed || paused || !receiver || selectingReceiver"
-          @keyup.enter="scan()"
-        />
-        <ElButton
-          :type="watermelon ? 'primary' : undefined"
-          :icon="watermelon ? undefined : FullScreen"
-          :disabled="!allowed || paused || !receiver || selectingReceiver || !value.trim()"
-          @click="scan()"
-          ><IconScan v-if="watermelon" :size="17" aria-hidden="true" />入库</ElButton
-        >
-      </div>
-      <span v-if="currentCode" class="scanner-progress" role="status"
-        >正在入库<span v-if="queue.length"> · {{ queue.length }} 批排队中</span></span
-      >
-    </div>
-    <p
-      v-if="result"
-      class="scanner-result"
-      :class="`scanner-result--${result.tone}`"
-      :role="result.tone === 'error' ? 'alert' : 'status'"
+  <div ref="scannerReceiver" class="receipt-scanner" role="group" aria-label="收料操作">
+    <ReceiptPersonInput
+      v-if="allowed"
+      :key="`${auth.currentUser?.id}:${teamId}`"
+      v-model="receiver"
+      class="scanner-receiver"
+      :team-id="teamId"
+      :disabled="!!currentCode || queue.length > 0 || paused"
+      :invalid="receiverRequired && !receiver"
+      @open-change="selectingReceiver = $event"
+    />
+    <ElButton
+      aria-haspopup="dialog"
+      :aria-expanded="scanOpen"
+      :disabled="!allowed || paused || !receiver"
+      @click="scanOpen = true"
     >
-      {{ result.message }}
-    </p>
+      <IconScan :size="17" aria-hidden="true" />扫码入库
+    </ElButton>
+    <AppDialog
+      v-model="scanOpen"
+      title="扫码入库"
+      width="min(420px, 94vw)"
+      append-to-body
+      align-center
+      destroy-on-close
+      @opened="barcode?.focus()"
+      @close="value = ''"
+    >
+      <ElInput
+        ref="barcode"
+        v-model="value"
+        aria-label="扫描转料批次号"
+        placeholder="扫描或输入批次号"
+        autocomplete="off"
+        :disabled="!allowed || paused || !receiver"
+        @keyup.enter="scan()"
+      />
+      <p v-if="currentCode" role="status">
+        正在入库<span v-if="queue.length"> · {{ queue.length }} 批排队中</span>
+      </p>
+      <p v-if="result" :role="result.tone === 'error' ? 'alert' : 'status'">
+        {{ result.message }}
+      </p>
+      <template #footer>
+        <ElButton @click="scanOpen = false">关闭</ElButton>
+        <ElButton
+          type="primary"
+          :disabled="!allowed || paused || !receiver || !value.trim()"
+          @click="scan()"
+          >入库</ElButton
+        >
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <style scoped>
 .receipt-scanner {
-  flex-shrink: 0;
-  min-width: 0;
-  margin: 0 12px 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--workspace-bg);
-}
-.incoming-scan {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-}
-.incoming-scan strong {
-  font-size: 14px;
-  font-weight: 500;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
 }
 .scanner-receiver {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.scanner-receiver label {
-  white-space: nowrap;
-  font-size: 14px;
-}
-.scanner-receiver label span {
-  color: var(--el-color-danger);
-}
-.scanner-inline {
-  display: flex;
-  flex: 0 1 420px;
-  min-width: 0;
-  gap: 8px;
-}
-.scanner-inline > .el-input {
-  flex: 1;
-  min-width: 0;
-}
-.scanner-inline > .el-button {
-  height: 36px;
-  margin-left: 0;
-}
-.scanner-progress {
-  color: var(--muted);
-  font-size: 13px;
-}
-.scanner-result {
-  margin: 8px 0 0;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  color: var(--muted);
-}
-.scanner-result--success {
-  color: var(--primary);
-}
-.scanner-result--error {
-  color: var(--danger);
-}
-.receipt-scanner--watermelon {
-  --el-component-size: 40px;
-  --el-input-height: 40px;
-  margin: 0 0 20px;
-  padding: 14px 16px;
-  border-color: var(--wm-border);
-  background: var(--wm-muted-surface);
-  color: var(--wm-text);
-}
-.receipt-scanner--watermelon :deep(.person-trigger) {
-  height: 40px;
-  min-height: 40px;
-}
-.receipt-scanner--watermelon .scanner-receiver {
-  flex: 0 1 280px;
-  min-width: 0;
-}
-.receipt-scanner--watermelon .scanner-receiver :deep(.team-employee) {
-  flex: 1;
-  min-width: 0;
-}
-.receipt-scanner--watermelon .scanner-inline {
-  flex: 1 1 320px;
-}
-.receipt-scanner--watermelon .scanner-progress,
-.receipt-scanner--watermelon .scanner-result {
-  color: var(--wm-muted);
-}
-.receipt-scanner--watermelon .scanner-result--success {
-  color: var(--wm-success-text);
-}
-.receipt-scanner--watermelon .scanner-result--error,
-.receipt-scanner--watermelon .scanner-receiver label span {
-  color: var(--wm-danger-text);
-}
-@media (max-width: 760px) {
-  .scanner-inline {
-    flex-basis: 100%;
-  }
+  width: auto;
+  max-width: 10rem;
 }
 </style>

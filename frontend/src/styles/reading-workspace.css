@@ -5,7 +5,7 @@
   --reading-muted: var(--muted);
   color: var(--reading-ink);
   background: transparent;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   line-height: 1.5;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -14,8 +14,8 @@
   margin-bottom: 12px;
 }
 .page.reading-workspace :is(.workspace-heading, .page-heading) h1 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.7px;
 }
 .page.reading-workspace
@@ -28,16 +28,16 @@
     .selection-bar
   )
   .el-button:not(.is-link) {
-  min-height: 36px;
-  height: 36px;
+  min-height: var(--workspace-control-height);
+  height: var(--workspace-control-height);
   padding-inline: 12px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
 }
 .page.reading-workspace
   :is(.filter-bar, .trace-search, .analysis-controls)
   :is(.el-input__wrapper, .el-select__wrapper) {
-  min-height: 36px;
+  min-height: var(--workspace-control-height);
   font-size: 14px;
 }
 .page.reading-workspace :is(.filter-bar, .analysis-controls) .el-checkbox__label {
@@ -65,8 +65,8 @@
   height: 42px;
   padding-block: 10px;
   border-bottom-color: var(--table-header-line);
-  font-size: 12px;
-  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 .page.reading-workspace
   :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table)
@@ -87,9 +87,9 @@
   .el-button.is-link {
   min-height: 24px;
   height: auto;
-  font-size: var(--font-size-meta);
+  font-size: var(--font-size-label);
   line-height: var(--line-height-meta);
-  font-weight: 400;
+  font-weight: var(--font-weight-medium);
 }
 .page.reading-workspace
   :is(
@@ -235,18 +235,19 @@
   flex: 0 0 auto;
 }
 .page.reading-workspace .material-ledger h2 {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .page.reading-workspace .material-ledger h2 small {
-  font-size: 14px;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
 }
 .page.reading-workspace .ledger-table {
   flex: 0 0 auto;
 }
 .page.reading-workspace .ledger-table .el-button.is-link {
   color: var(--reading-ink);
-  font-size: 14px;
+  font-size: var(--font-size-label);
 }
 .page.reading-workspace .ledger-table .el-button.is-link:hover {
   color: var(--primary);
@@ -347,8 +348,8 @@
     .preview-heading h1
   ) {
   color: var(--text);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.7px;
 }
 .page.reading-workspace :is(.heading-actions, .stock-toolbar) {
@@ -357,79 +358,40 @@
 .page.reading-workspace
   :is(.filter-bar, .analysis-controls, .trace-search)
   :is(.el-input__wrapper, .el-select__wrapper) {
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   background: var(--wm-surface, #ffffffc4);
 }
 .page.reading-workspace
   :is(.filter-bar, .heading-actions, .analysis-controls, .trace-search)
   .el-button {
-  border-radius: 11px;
+  border-radius: var(--radius-control);
 }
 .page.reading-workspace .el-pagination {
   --el-pagination-button-bg-color: transparent;
 }
 .page.reading-workspace .el-pagination .el-pager li {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 .page.reading-workspace .el-pagination .el-pager li.is-active {
   background: var(--primary-soft);
   color: var(--primary);
 }
 .page.reading-workspace .el-pagination .el-select__wrapper {
-  min-height: 32px;
-  border-radius: 9px;
+  min-height: var(--control-height-small);
+  border-radius: var(--radius-compact);
 }
 @media (max-width: 1280px) {
   .main-content > .page:not(.team-workspace) {
     padding: 16px 18px;
-  }
-  .main-content
-    > .page
-    :is(
-      .workspace-heading h1,
-      .page-heading h1,
-      .factory-heading h1,
-      .stock-heading h1,
-      .transfer-heading,
-      .chain-title h1,
-      .preview-heading h1
-    ) {
-    font-size: 20px;
   }
 }
 @media (max-width: 1080px) {
   .main-content > .page:not(.team-workspace) {
     padding: 14px 15px;
   }
-  .main-content
-    > .page
-    :is(
-      .workspace-heading h1,
-      .page-heading h1,
-      .factory-heading h1,
-      .stock-heading h1,
-      .transfer-heading,
-      .chain-title h1,
-      .preview-heading h1
-    ) {
-    font-size: 20px;
-  }
 }
 @media (max-width: 760px) {
   .main-content > .page:not(.team-workspace) {
     padding: 12px;
-  }
-  .main-content
-    > .page
-    :is(
-      .workspace-heading h1,
-      .page-heading h1,
-      .factory-heading h1,
-      .stock-heading h1,
-      .transfer-heading,
-      .chain-title h1,
-      .preview-heading h1
-    ) {
-    font-size: 22px;
   }
 }

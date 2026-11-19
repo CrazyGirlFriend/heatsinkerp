@@ -1425,28 +1425,28 @@ onBeforeUnmount(() => {
                   </ElButton>
                 </template>
                 <template #primary-actions>
-                  <TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" />
+                  <MaterialReceiptScanner
+                    v-if="tab === 'pending' && canWrite"
+                    :key="teamId"
+                    v-model:receiver="receiptReceiver"
+                    :team-id="teamId"
+                    :paused="
+                      fullscreen ||
+                      Boolean(exportSource) ||
+                      drawerOpen ||
+                      actionOpen ||
+                      reallocationOpen ||
+                      pickerOpen ||
+                      receiptOpen ||
+                      printOpen ||
+                      listFiltersOpen
+                    "
+                    @received="loadView(true, true)"
+                  />
+                  <TeamWorkspaceActions v-else v-bind="actionBindings" :show-refresh="false" />
                 </template>
               </WorkspaceDataToolbar>
 
-              <MaterialReceiptScanner
-                v-if="tab === 'pending' && canWrite"
-                :key="teamId"
-                v-model:receiver="receiptReceiver"
-                :team-id="teamId"
-                :paused="
-                  fullscreen ||
-                  Boolean(exportSource) ||
-                  drawerOpen ||
-                  actionOpen ||
-                  reallocationOpen ||
-                  pickerOpen ||
-                  receiptOpen ||
-                  printOpen ||
-                  listFiltersOpen
-                "
-                @received="loadView(true, true)"
-              />
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
               <StatePanel
                 v-else-if="loadError"

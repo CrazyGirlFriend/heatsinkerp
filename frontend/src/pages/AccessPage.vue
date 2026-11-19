@@ -165,7 +165,7 @@ async function closeInput(): Promise<void> {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   color: inherit;
   background: transparent;
   cursor: pointer;

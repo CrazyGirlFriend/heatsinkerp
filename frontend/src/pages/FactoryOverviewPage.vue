@@ -501,9 +501,9 @@ onBeforeUnmount(() => {
 }
 .factory-heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--workspace-heading-size);
   line-height: 32px;
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
 }
 .factory-heading-start {
   margin-right: auto;
@@ -539,8 +539,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 .factory-section-title > span {

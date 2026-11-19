@@ -130,8 +130,8 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
   margin-left: auto;
 }
 .workspace-pagination :deep(.el-pager li) {
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-compact);
+  font-size: var(--font-size-label);
 }
 .workspace-pagination :deep(.el-pager li.is-active) {
   color: var(--primary);

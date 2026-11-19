@@ -140,10 +140,10 @@ form.workspace-toolbar.workspace-data-toolbar {
   gap: 8px;
 }
 .workspace-toolbar :deep(.el-button:not(.is-link)) {
-  height: 38px;
+  height: var(--workspace-control-height);
   margin: 0;
-  border-radius: 11px;
-  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-body);
 }
 .workspace-toolbar__query-actions > .el-button:last-child:not(.workspace-query) {
   width: 38px;

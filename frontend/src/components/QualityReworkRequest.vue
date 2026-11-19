@@ -152,7 +152,8 @@ onBeforeUnmount(() => {
 }
 .rework-batch-heading h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .rework-selected-batch {
   margin-bottom: 0;

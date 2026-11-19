@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
 .serial-title > span {
   color: var(--text);
   font-size: var(--dialog-title-size);
-  font-weight: var(--dialog-title-weight);
+  font-weight: var(--font-weight-semibold);
 }
 .serial-title strong {
   color: var(--muted);
@@ -669,7 +669,7 @@ onBeforeUnmount(() => {
 }
 .serial-record-table :deep(.el-table),
 .serial-record-table :deep(.el-button.is-link) {
-  font-size: 15px;
+  font-size: var(--font-size-label);
 }
 .serial-record-table :deep(td.el-table__cell) {
   padding-block: 12px;

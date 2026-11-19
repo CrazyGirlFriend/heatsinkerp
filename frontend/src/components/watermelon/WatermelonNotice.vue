@@ -37,7 +37,7 @@ const reduced = useReducedMotion()
   border-radius: 12px;
   background: var(--wm-muted-surface);
   color: var(--wm-text);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.5;
 }
 .wm-notice-icon {

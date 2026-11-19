@@ -1,12 +1,21 @@
 :root {
   --font-body:
     'HeatSink Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --workspace-heading-size: 20px;
+  --dialog-title-size: 18px;
+  --font-size-section: 16px;
   --font-size-body: 14px;
+  --font-size-label: 13px;
   --line-height-body: 20px;
   --font-size-meta: 12px;
   --line-height-meta: 16px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --workspace-control-height: 40px;
+  --control-height-small: 32px;
+  --radius-control: 8px;
+  --radius-compact: 6px;
   font-family: var(--font-body);
   color: var(--text);
   background: #fff;
@@ -252,7 +261,6 @@ a {
   overflow: hidden;
 }
 .page-heading-start {
-  --workspace-heading-size: 22px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -260,12 +268,7 @@ a {
   flex-shrink: 0;
 }
 .page-heading-start > h1 {
-  font-weight: 600;
-}
-@media (max-width: 1080px) {
-  .page-heading-start {
-    --workspace-heading-size: 20px;
-  }
+  font-weight: var(--font-weight-semibold);
 }
 .page-heading,
 .workspace-heading {
@@ -281,8 +284,8 @@ a {
 .workspace-heading h1 {
   margin: 0;
   color: var(--text);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.4;
   letter-spacing: -0.7px;
 }
@@ -408,16 +411,6 @@ a {
   .workspace-heading {
     margin-bottom: 12px;
     gap: 12px;
-  }
-  .page-heading h1,
-  .workspace-heading h1 {
-    font-size: 20px;
-  }
-}
-@media (max-width: 560px) {
-  .page-heading h1,
-  .workspace-heading h1 {
-    font-size: 20px;
   }
 }
 

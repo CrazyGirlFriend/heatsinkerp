@@ -58,7 +58,11 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 async function render(selectReceiver = true) {
-  wrapper = mount(MaterialReceiptScanner, { props: { teamId: 2 }, attachTo: document.body })
+  wrapper = mount(MaterialReceiptScanner, {
+    props: { teamId: 2 },
+    attachTo: document.body,
+    global: { stubs: { teleport: true } },
+  })
   await flushPromises()
   if (selectReceiver && wrapper.findComponent(ReceiptPersonInput).exists()) {
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
@@ -66,7 +70,13 @@ async function render(selectReceiver = true) {
   }
   return wrapper
 }
+const scanButton = () => wrapper.findAll('button').find((button) => button.text() === '扫码入库')!
+async function openScanner() {
+  await scanButton().trigger('click')
+  await flushPromises()
+}
 async function scan(code = 'TL000001') {
+  if (scanButton().attributes('aria-expanded') !== 'true') await openScanner()
   await wrapper.get('input').setValue(code)
   await wrapper.get('input').trigger('keyup.enter')
   await flushPromises()
@@ -79,18 +89,26 @@ describe('scan directly into receiving inventory', () => {
   it('uses the shared warehouse button without bypassing receiver selection or receipt checks', async () => {
     wrapper = mount(MaterialReceiptScanner, {
       props: { teamId: 2 },
-      global: { provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') } },
+      global: {
+        provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') },
+        stubs: { teleport: true },
+      },
     })
     await flushPromises()
-    expect(wrapper.classes()).toContain('receipt-scanner--watermelon')
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(scanButton().classes()).toContain('wm-control-button')
+    expect(scanButton().attributes('disabled')).toBeDefined()
+    await openScanner()
+    expect(wrapper.find('input').exists()).toBe(false)
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+    await openScanner()
     const receiveButton = () =>
       wrapper.findAll('button').find((button) => button.text() === '入库')!
     expect(receiveButton().classes()).toContain('wm-control-button')
     expect(receiveButton().element.disabled).toBe(true)
     await receiveButton().trigger('click')
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
-    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
-    await flushPromises()
     await wrapper.get('input').setValue('TL000001')
     expect(receiveButton().element.disabled).toBe(false)
     await receiveButton().trigger('click')
@@ -290,7 +308,8 @@ describe('scan directly into receiving inventory', () => {
     await render()
     hid('TL000001')
     await flushPromises()
-    expect(wrapper.get('input').attributes('disabled')).toBeDefined()
+    expect(scanButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.find('input').exists()).toBe(false)
     expect(materialTransferApi.get).not.toHaveBeenCalled()
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
   })

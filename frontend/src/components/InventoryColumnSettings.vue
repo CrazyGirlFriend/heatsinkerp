@@ -368,7 +368,7 @@ defineExpose({
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--el-text-color-regular, var(--wm-muted));
   cursor: pointer;

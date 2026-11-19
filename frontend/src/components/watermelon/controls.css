@@ -8,13 +8,13 @@ html.wm-app,
 }
 .wm-control-button.el-button {
   position: relative;
-  min-height: 40px;
+  min-height: var(--workspace-control-height);
   border: 1px solid var(--wm-border, #e4e4e7);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--wm-surface, #fff);
   color: var(--wm-text, #18181b);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   box-shadow: none;
   transition:
     background-color 140ms,
@@ -85,7 +85,7 @@ html.wm-app .wm-control-button.el-button:not(.is-disabled):not(.is-loading):acti
   animation: wm-feedback-in 140ms ease-out;
 }
 .wm-scope .weight-unit .el-select__wrapper {
-  min-height: 40px;
+  min-height: var(--workspace-control-height);
   padding-inline: 8px;
 }
 .wm-page-size-select {
@@ -109,7 +109,7 @@ html.wm-app .wm-control-button.el-button:not(.is-disabled):not(.is-loading):acti
   width: 72px;
 }
 .wm-scope.el-dialog .weight-input .weight-unit .el-select__wrapper {
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--wm-field-radius) var(--wm-field-radius) 0;
   margin-left: -1px;
 }
 
@@ -183,7 +183,7 @@ html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
 }
 .wm-date-panel .el-time-spinner__item.active:not(.disabled) {
   color: var(--wm-text);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   background: var(--wm-hover);
 }
 
@@ -202,7 +202,7 @@ html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
   height: 36px;
   padding: 0 14px;
   color: var(--wm-muted);
-  font-size: 13px;
+  font-size: var(--font-size-label);
   transition: color 140ms;
 }
 .wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__item.is-active {
@@ -271,7 +271,7 @@ html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
   background: var(--wm-success-bg);
 }
 .wm-scope .wm-inline-notice .el-alert__title {
-  font-size: 13px;
+  font-size: var(--font-size-label);
   line-height: 1.5;
 }
 .wm-scope .wm-inline-notice .el-alert__description {
@@ -299,9 +299,9 @@ html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
   padding: 24px;
 }
 .wm-confirm-dialog .el-message-box__btns .el-button {
-  min-height: 40px;
+  min-height: var(--workspace-control-height);
   padding-inline: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background-image: none;
   box-shadow: none;
 }

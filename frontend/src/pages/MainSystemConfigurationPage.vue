@@ -360,8 +360,8 @@ onBeforeUnmount(() => {
 }
 .integration-panel h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 550;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .integration-panel-heading .field-hint {
   margin: 0;

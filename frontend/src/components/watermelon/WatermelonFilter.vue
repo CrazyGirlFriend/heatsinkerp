@@ -223,14 +223,15 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex-shrink: 0;
   gap: 7px;
-  height: 36px;
+  height: var(--workspace-control-height);
   padding: 0 12px;
   border: 1px solid var(--wm-border, #e1e4e8);
   background: var(--wm-surface, #fff);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--wm-text, #4e5660);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition:
     background 180ms,
@@ -244,7 +245,7 @@ onBeforeUnmount(() => {
   border-color: transparent;
   background: transparent;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .wm-filter-trigger.wm-view-switch:hover {
   background: var(--wm-hover);
@@ -259,7 +260,7 @@ onBeforeUnmount(() => {
   padding: 0 6px;
   border-radius: 6px;
   background: var(--wm-muted-surface);
-  font-size: 12px;
+  font-size: var(--font-size-meta);
   line-height: 20px;
   font-variant-numeric: tabular-nums;
 }
@@ -327,7 +328,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: transparent;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   color: var(--wm-text, #535257);
   text-align: left;
   cursor: pointer;

@@ -129,7 +129,7 @@
 .login-card :deep(.el-input__wrapper) {
   min-height: clamp(52px, 4vw, 56px);
   padding: 1px 16px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: rgb(253 255 254 / 78%);
   box-shadow: 0 0 0 1px #bdccc6 inset;
   font-size: 16px;
@@ -175,7 +175,7 @@
   width: 100%;
   min-height: clamp(52px, 4vw, 56px);
   margin-top: 4px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   box-shadow:
     inset 0 1px 1px rgb(255 255 255 / 24%),
     0 10px 24px -12px rgb(21 76 52 / 44%);

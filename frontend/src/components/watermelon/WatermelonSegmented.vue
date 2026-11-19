@@ -88,14 +88,14 @@ function keyboard(event: KeyboardEvent) {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 34px;
+  min-height: var(--control-height-small);
   padding: 0 14px;
   border: 0;
   background: transparent;
-  border-radius: 9px;
+  border-radius: var(--radius-compact);
   color: var(--wm-muted, #767b83);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-label);
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
@@ -106,7 +106,7 @@ function keyboard(event: KeyboardEvent) {
 }
 .wm-segmented .active {
   color: var(--wm-text, #22262b);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .wm-segmented-count {
   min-width: 20px;
@@ -129,7 +129,7 @@ function keyboard(event: KeyboardEvent) {
 .wm-segmented-indicator {
   position: absolute;
   inset: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-compact);
   background: var(--wm-surface, white);
   box-shadow:
     0 1px 3px #11182714,

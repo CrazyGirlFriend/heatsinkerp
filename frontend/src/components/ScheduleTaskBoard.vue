@@ -1163,8 +1163,8 @@ onBeforeUnmount(() => {
 }
 .task-detail__heading strong {
   display: block;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 .task-detail__heading > div > span {

@@ -48,8 +48,8 @@
   }
   .material-detail-section h3 {
     margin: 0;
-    font-size: 16px;
-    font-weight: 550;
+    font-size: var(--font-size-section);
+    font-weight: var(--font-weight-semibold);
     color: var(--text);
   }
   .material-detail-section .detail-section-heading,
@@ -82,8 +82,8 @@
   .material-detail-section .el-table.business-table th.el-table__cell {
     color: var(--subtle);
     background: var(--table-header-bg);
-    font-size: var(--business-table-meta);
-    font-weight: var(--font-weight-regular);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
   }
   .material-detail-section .el-table.business-table .cell {
     line-height: var(--business-table-line);
@@ -133,8 +133,8 @@
     height: 42px;
     padding-block: 10px;
     color: var(--subtle);
-    font-weight: var(--font-weight-regular);
-    font-size: var(--business-table-meta);
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-label);
     text-align: center;
     vertical-align: middle;
     border-bottom-color: var(--table-header-line);
@@ -278,7 +278,7 @@
     justify-content: center;
   }
   .dispatch-detail-content .dispatch-line-actions .el-button {
-    font-size: var(--business-table-font);
+    font-size: var(--font-size-body);
   }
   .serial-detail-body .el-descriptions .el-descriptions__body .el-descriptions__cell {
     padding: var(--business-table-padding);

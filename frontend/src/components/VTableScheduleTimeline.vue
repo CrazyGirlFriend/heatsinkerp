@@ -1635,7 +1635,7 @@ onBeforeUnmount(() => {
 }
 .gantt-zoom button {
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-compact);
   background: none;
   color: var(--wm-muted, #71717a);
   display: grid;

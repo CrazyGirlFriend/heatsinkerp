@@ -1367,8 +1367,8 @@ onBeforeUnmount(() => {
 }
 .processing-section-title {
   margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .processing-current-step {
   margin: 12px 0;
@@ -1500,8 +1500,8 @@ onBeforeUnmount(() => {
 }
 .quantity-history-title {
   margin: 16px 0 10px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
 }
 .el-pagination {
   justify-content: flex-end;

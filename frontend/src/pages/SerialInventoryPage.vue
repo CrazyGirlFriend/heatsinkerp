@@ -831,7 +831,8 @@ function exportSource() {
 }
 .inventory-header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--workspace-heading-size);
+  font-weight: var(--font-weight-semibold);
 }
 .inventory-filter-chips {
   display: flex;

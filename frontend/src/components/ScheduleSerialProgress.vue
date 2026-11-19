@@ -228,8 +228,9 @@ const asNode = (row: unknown) => row as ProductionSchedule
 }
 .serial-progress h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-section);
   color: var(--text);
+  font-weight: var(--font-weight-semibold);
 }
 .serial-progress header > span,
 .serial-progress__scope {

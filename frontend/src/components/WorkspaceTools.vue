@@ -221,7 +221,7 @@ watch(compact, (value) => {
   height: 32px;
   margin: 0;
   padding-inline: 10px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 .workspace-more-menu,
 .workspace-more-menu__actions {

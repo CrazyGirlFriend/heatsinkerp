@@ -144,7 +144,7 @@ onBeforeUnmount(() => observer?.disconnect())
   min-height: 36px;
   margin: 0;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--wm-text, var(--text));
   font-size: 20px;
 }

@@ -1,8 +1,6 @@
 /* Optical surfaces surround the content; inputs, data tables and print sheets stay white. */
 :root {
   --glass-surface-radius: 24px;
-  --dialog-title-size: 20px;
-  --dialog-title-weight: 650;
   --dialog-motion-enter: 240ms;
   --dialog-motion-leave: 160ms;
   --glass-shell-fill: linear-gradient(145deg, #fffffff0, #f8fcf9b3 52%, #e5f1e9d9);
@@ -48,7 +46,7 @@
   }
   :is(.app-glass-dialog, .app-glass-drawer) :is(.el-dialog__title, .el-drawer__title) {
     font-size: var(--dialog-title-size);
-    font-weight: var(--dialog-title-weight);
+    font-weight: var(--font-weight-semibold);
     line-height: 1.4;
     letter-spacing: -0.3px;
   }
@@ -144,13 +142,13 @@
     box-shadow: none;
   }
   :is(.app-glass-surface, .stock-action-dialog) .el-button {
-    border-radius: 10px;
+    border-radius: var(--radius-control);
   }
   :is(.app-glass-surface, .stock-action-dialog)
     :is(.el-dialog__footer, .el-drawer__footer)
     .el-button,
   .el-message-box__btns .el-button {
-    border-radius: 12px;
+    border-radius: var(--radius-control);
   }
   :is(.app-glass-surface, .stock-action-dialog)
     :is(.el-dialog__footer, .el-drawer__footer)
