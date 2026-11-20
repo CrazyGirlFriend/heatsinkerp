@@ -145,7 +145,12 @@ describe('three-level team navigation', () => {
         { id: 3, code: 'FACTORY-GRIND', name: '研磨', kind: 'production', active: true },
       ]
       const { wrapper, router } = await renderSidebar('/team-workspaces/2')
-      expect(wrapper.find('[aria-label="研磨 / 班组管理"]').exists()).toBe(role === 'ADMIN')
+      await wrapper.get('[aria-label="研磨 / 班组管理"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.query.tab).toBe(role === 'ADMIN' ? 'settings' : 'losses')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('研磨 / 班组管理')
+      await router.push('/team-workspaces/2')
+      await flushPromises()
       await wrapper.get('[aria-label="轧制 / 班组管理"]').trigger('click')
       await flushPromises()
       expect(router.currentRoute.value.query.tab).toBe('settings')
@@ -155,7 +160,9 @@ describe('three-level team navigation', () => {
       expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 库存')
       authState.currentUserError = '权限读取失败'
       await flushPromises()
-      expect(wrapper.find('[aria-label="轧制 / 班组管理"]').exists()).toBe(false)
+      await wrapper.get('[aria-label="轧制 / 班组管理"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.query.tab).toBe('losses')
     },
   )
 

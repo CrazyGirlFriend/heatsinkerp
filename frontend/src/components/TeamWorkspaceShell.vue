@@ -50,7 +50,6 @@ const emit = defineEmits<{
   settings: []
 }>()
 const workspaceModule = computed(() => teamWorkspaceModuleFor(props.modelValue))
-const isMovement = computed(() => workspaceModule.value?.value === 'movement')
 const sections = computed(() => {
   if (props.engineering)
     return teamWorkspaceSections.filter((section) => section.value === 'process-routes')
@@ -69,9 +68,15 @@ const sections = computed(() => {
   )
 })
 const moduleLabel = computed(() => workspaceModule.value?.label)
+const inlineViews = computed(
+  () =>
+    ['movement', 'settings'].includes(workspaceModule.value?.value || '') &&
+    sections.value.length > 1,
+)
 const navigationOptions = computed(() =>
   sections.value.map((section) => ({
     ...section,
+    label: section.value === 'settings' ? '管理设置' : section.label,
     count:
       section.value === 'pending'
         ? props.pendingCount
@@ -255,7 +260,7 @@ onBeforeUnmount(() => {
       class="team-workspace__navigation-bar"
       :class="{
         'team-workspace__navigation-bar--tools': $slots['heading-tools'],
-        'team-workspace__navigation-bar--movement': isMovement,
+        'team-workspace__navigation-bar--tabs': inlineViews,
       }"
     >
       <div class="team-workspace__heading page-heading-start">
@@ -264,7 +269,7 @@ onBeforeUnmount(() => {
           ><template v-if="moduleLabel"
             ><span class="team-workspace__divider" aria-hidden="true">/</span>
             <nav
-              v-if="!isMovement && appearance === 'watermelon' && sections.length > 1"
+              v-if="!inlineViews && appearance === 'watermelon' && sections.length > 1"
               :aria-label="`${title}${moduleLabel}视图`"
             >
               <WatermelonFilter
@@ -276,7 +281,11 @@ onBeforeUnmount(() => {
                 @change="selectSection"
               />
             </nav>
-            <span v-else class="team-workspace__module">{{ moduleLabel }}</span></template
+            <span v-else class="team-workspace__module">{{
+              modelValue === 'stock' || (modelValue === 'losses' && !inlineViews)
+                ? sectionLabel
+                : moduleLabel
+            }}</span></template
           ></slot
         >
       </div>
@@ -284,14 +293,15 @@ onBeforeUnmount(() => {
         <slot name="heading-tools" />
       </div>
       <nav
-        v-if="isMovement"
-        class="team-workspace__movement-views"
-        :aria-label="`${title}收发视图`"
+        v-if="inlineViews"
+        class="team-workspace__inline-views"
+        :aria-label="`${title}${moduleLabel}视图`"
       >
         <WatermelonSegmented
+          :class="{ 'wm-segmented--pill': workspaceModule?.value === 'settings' }"
           :model-value="modelValue"
           :options="navigationOptions"
-          label="收发视图"
+          :label="`${moduleLabel}视图`"
           controls="workspace-panel"
           @change="selectSection"
         />
@@ -382,12 +392,12 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   column-gap: 24px;
 }
-.team-workspace__navigation-bar--movement {
-  container: movement-header / inline-size;
+.team-workspace__navigation-bar--tabs {
+  container: workspace-header / inline-size;
   flex-wrap: wrap;
 }
-@container movement-header (max-width: 48rem) {
-  .team-workspace__movement-views {
+@container workspace-header (max-width: 48rem) {
+  .team-workspace__inline-views {
     order: 1;
     flex-basis: 100%;
   }

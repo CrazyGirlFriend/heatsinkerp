@@ -28,7 +28,7 @@ export const teamWorkspaceModules = [
   {
     value: 'inventory',
     label: '库存',
-    sections: ['stock', 'losses'],
+    sections: ['stock'],
   },
   {
     value: 'movement',
@@ -43,7 +43,7 @@ export const teamWorkspaceModules = [
     sections: ['inspection-results', 'quality-feedback'],
   },
   { value: 'warehouse', label: '仓库管理', sections: ['warehouse'] },
-  { value: 'settings', label: '班组管理', sections: ['settings'] },
+  { value: 'settings', label: '班组管理', sections: ['settings', 'losses'] },
 ] as const
 
 export function teamWorkspaceModuleFor(section: string) {

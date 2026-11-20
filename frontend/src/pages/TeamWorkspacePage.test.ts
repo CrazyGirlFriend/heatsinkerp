@@ -1285,8 +1285,7 @@ describe('team workspace material ledger', () => {
   it('switches sections inside the page and restores inventory filters on browser back', async () => {
     const router = await render('/team-workspaces/914?query=铜&page=2&page_size=20')
     const navigation = () => wrapper.get('nav[aria-label$="视图"]')
-    await navigation().get('[aria-current=page]').trigger('click')
-    await flushPromises()
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
     expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
     await router.push('/team-workspaces/914?tab=pending')
     await flushPromises()
@@ -1299,21 +1298,20 @@ describe('team workspace material ledger', () => {
     await router.back()
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
-    expect(navigation().get('[aria-current=page]').text()).toBe('库存明细')
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
   })
-  it('restores inventory filters when switching back from loss records', async () => {
+  it('opens the existing loss URL for a read-only user and restores stock filters on back', async () => {
+    state.auth.currentUser.team_id = 901
     const router = await render('/team-workspaces/914?query=铜&page=2&page_size=20')
-    const switchView = async (label: string) => {
-      await wrapper
-        .findAll('nav[aria-label$="视图"] button')
-        .find((button) => button.text() === label)!
-        .trigger('click')
-      await flushPromises()
-    }
-    await switchView('丢失记录')
-    expect(router.currentRoute.value.query.tab).toBe('losses')
-    await switchView('库存明细')
+    await router.push('/team-workspaces/914?tab=losses')
+    await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('丢失记录')
+    expect(teamMaterialApi.losses).toHaveBeenCalledWith(914, expect.any(Object))
+    expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('登记丢失')
+    await router.back()
+    await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
   })
   it('refreshes the in-page pending count through existing push updates', async () => {
@@ -1327,7 +1325,7 @@ describe('team workspace material ledger', () => {
     await vi.advanceTimersByTimeAsync(110)
     await flushPromises()
     expect(useSidebarStore(appPinia).workspaceCounts['914']?.pending).toBe(5)
-    expect(wrapper.get('nav[aria-label$="视图"] [aria-current=page]').text()).toBe('库存明细')
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
   })
   it.each(['sludge', 'unknown'])(
     'redirects retired type inventory with the %s filter intact',
@@ -1697,7 +1695,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
-    expect(wrapper.get('nav[aria-label$="视图"] [aria-current=page]').text()).toBe('库存明细')
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
     expect(wrapper.find('.workspace-toolbar .workspace-actions').exists()).toBe(false)
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
@@ -1743,18 +1741,20 @@ describe('team workspace material ledger', () => {
       )
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(labels.length ? 1 : 0)
     expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
-    const navigation = wrapper.get('nav[aria-label$="视图"]')
     if (['outgoing', 'pending', 'receipts', 'reallocations', 'overview', 'history'].includes(tab)) {
-      const choices = navigation.findAll('button').map((button) => button.text())
+      const choices = wrapper
+        .get('nav[aria-label$="收发视图"]')
+        .findAll('button')
+        .map((button) => button.text())
       expect(choices).toHaveLength(5)
       expect(choices).toContain('转投记录')
-    } else {
-      await navigation.get('button').trigger('click')
-      await flushPromises()
-      const choices = Array.from(document.querySelectorAll('[role=menuitemradio]')).map(
-        (item) => item.textContent,
+    } else if (tab === 'losses') {
+      expect(wrapper.get('nav[aria-label$="班组管理视图"] [aria-current=page]').text()).toBe(
+        '丢失记录',
       )
-      expect(choices).toEqual(['库存明细', '丢失记录'])
+    } else {
+      expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
+      expect(wrapper.find('nav[aria-label$="库存视图"]').exists()).toBe(false)
     }
   })
   it.each(['losses', 'reallocations'] as const)(
@@ -2314,13 +2314,13 @@ describe('warehouse intake workspace', () => {
       await router.push('/team-workspaces/914?tab=warehouse')
       await flushPromises()
       expect(wrapper.findComponent(WarehouseManagement).exists()).toBe(false)
-      expect(wrapper.get('nav[aria-label$="视图"]').text()).not.toContain('仓库管理')
+      expect(wrapper.get('.team-workspace__heading').text()).toContain('库存明细')
     },
   )
   it('does not expose warehouse management to another team even through a direct tab URL', async () => {
     await render('/team-workspaces/901?tab=warehouse')
     expect(wrapper.findComponent(WarehouseManagement).exists()).toBe(false)
-    expect(wrapper.get('nav[aria-label$="视图"]').text()).not.toContain('仓库管理')
+    expect(wrapper.get('.team-workspace__heading').text()).toContain('库存明细')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
   })
   it.each([

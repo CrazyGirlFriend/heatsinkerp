@@ -86,35 +86,29 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.findComponent(WatermelonSegmented).exists()).toBe(false)
     expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
   })
-  it('uses the selected inventory view as the header label and omits retired material inventory', async () => {
+  it('shows stock directly and exposes loss records under team management', async () => {
     wrapper = mountShell({ props: { title: '库房', modelValue: 'stock', warehouse: true } })
-    const filter = wrapper.getComponent(WatermelonFilter)
-    expect(filter.props('options').map((option: { label: string }) => option.label)).toEqual([
-      '库存明细',
-      '丢失记录',
-    ])
-    for (const [modelValue, label] of [
-      ['stock', '库存明细'],
-      ['losses', '丢失记录'],
-    ]) {
-      await wrapper.setProps({ modelValue })
-      expect(wrapper.get('h1').text()).toBe(label)
-      expect(wrapper.get('[role=region]').attributes('aria-labelledby')).toBe(
-        wrapper.get('h1').attributes('id'),
-      )
-      expect(wrapper.get('nav [aria-current=page]').text()).toBe(label)
-    }
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    await wrapper.setProps({ modelValue: 'settings', manageSettings: true })
+    const nav = wrapper.get('nav[aria-label="库房班组管理视图"]')
+    expect(nav.findAll('button').map((button) => button.text())).toEqual(['管理设置', '丢失记录'])
+    await nav.get('button:last-of-type').trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([['losses']])
+    await wrapper.setProps({ modelValue: 'losses' })
+    expect(nav.get('[aria-current=page]').text()).toBe('丢失记录')
+    await wrapper.setProps({ manageSettings: false })
+    expect(wrapper.get('.team-workspace__module').text()).toBe('丢失记录')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(wrapper.get('h1').text()).toBe('丢失记录')
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock' },
       slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' },
     })
-    expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
-      '库存明细',
-      '丢失记录',
-    ])
-    expect(wrapper.get('.team-workspace__module').text()).toBe('库存')
+    expect(wrapper.get('nav').isVisible()).toBe(false)
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存明细')
     await wrapper.setProps({ modelValue: 'receipts' })
     await wrapper
       .findAll('nav button')
@@ -150,7 +144,7 @@ describe('workspace with in-page navigation', () => {
         reallocations: true,
       },
     })
-    expect(wrapper.getComponent(WatermelonFilter).props('options')).toHaveLength(2)
+    expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
     await wrapper.setProps({ modelValue: 'warehouse' })
     expect(wrapper.get('h1').text()).toBe('仓库管理')
     expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
@@ -259,7 +253,9 @@ describe('workspace with in-page navigation', () => {
         disconnect = disconnect
       },
     )
-    wrapper = mountShell({ props: { title: '研磨', modelValue: 'stock' } })
+    wrapper = mountShell({
+      props: { title: '检验', modelValue: 'inspection-results', inspection: true },
+    })
     const nav = wrapper.get('nav').element
     Object.defineProperties(nav, { clientWidth: { value: 300 }, scrollWidth: { value: 600 } })
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({ left: 10, right: 310 } as DOMRect)
@@ -268,7 +264,7 @@ describe('workspace with in-page navigation', () => {
       left: 520,
       right: 600,
     } as DOMRect)
-    await wrapper.setProps({ modelValue: 'losses' })
+    await wrapper.setProps({ modelValue: 'quality-feedback' })
     expect(nav.scrollLeft).toBe(296)
     nav.scrollLeft = 0
     resize()
@@ -280,7 +276,7 @@ describe('workspace with in-page navigation', () => {
       left: -286,
       right: -206,
     } as DOMRect)
-    await wrapper.setProps({ modelValue: 'stock' })
+    await wrapper.setProps({ modelValue: 'inspection-results' })
     expect(nav.scrollLeft).toBe(-6) // Browser clamps the requested offset at zero.
     expect(nav.scrollTop).toBe(0)
     expect(observe).toHaveBeenCalledWith(nav)

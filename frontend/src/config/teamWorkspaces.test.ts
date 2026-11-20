@@ -78,7 +78,7 @@ describe('shared workspace navigation', () => {
       )
     }
     expect(teamWorkspaceModulesFor(false, false, true, true).map((module) => module.label)).toEqual(
-      ['概览', '库存', '收发', '加工', '交期', '质量'],
+      ['概览', '库存', '收发', '加工', '交期', '质量', '班组管理'],
     )
     expect(teamWorkspaceModulesFor(true, true, true).map((module) => module.value)).not.toContain(
       'processing',
@@ -87,6 +87,8 @@ describe('shared workspace navigation', () => {
       'warehouse',
     )
     expect(teamWorkspaceModuleFor('inspection-results')?.value).toBe('quality')
+    expect(teamWorkspaceModuleFor('stock')?.sections).toEqual(['stock'])
+    expect(teamWorkspaceModuleFor('losses')?.value).toBe('settings')
     expect(teamWorkspaceModuleFor('history')?.value).toBe('movement')
   })
   it('exposes processing records only when that capability is enabled', () => {
