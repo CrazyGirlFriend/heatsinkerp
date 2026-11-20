@@ -35,6 +35,14 @@ CONTAINS_SEARCH_FIELDS = (
 )
 
 
+def transfer_table_columns():
+    return {
+        name: column
+        for name, column in MaterialTransfer.__table__.columns.items()
+        if name not in {"purpose_name", "purpose_id"}
+    }
+
+
 def team_scope_predicate(team_id: int, direction: str = "all"):
     if direction == "outgoing":
         return MaterialTransfer.source_team_id == team_id
