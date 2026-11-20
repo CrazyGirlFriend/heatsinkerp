@@ -1245,6 +1245,7 @@ onBeforeUnmount(() => {
           :key="teamId"
           ref="schedulePanel"
           :team-id="teamId"
+          :warehouse="isWarehouse"
           :fullscreen="fullscreen"
           :refresh-key="overview"
           :sync-message="syncMessage"

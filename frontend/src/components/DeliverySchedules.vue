@@ -61,6 +61,7 @@ import { showToast } from '@/stores/toast'
 
 const props = defineProps<{
   teamId?: number
+  warehouse?: boolean
   manage?: boolean
   fullscreen?: boolean
   refreshKey?: unknown
@@ -454,15 +455,19 @@ function exportSource() {
         label: '实际交完时间',
         value: (row) => formatDateTime(row.handover_completed_at || row.completed_at),
       },
-      {
-        key: 'sources',
-        label: '关联批次',
-        value: (row) =>
-          (row.linked_batches?.length ? row.linked_batches : row.sources)
-            .map((source) => source.batch_no)
-            .filter(Boolean)
-            .join('、'),
-      },
+      ...(props.warehouse
+        ? []
+        : [
+            {
+              key: 'sources',
+              label: '关联批次',
+              value: (row: ProductionSchedule) =>
+                (row.linked_batches?.length ? row.linked_batches : row.sources)
+                  .map((source) => source.batch_no)
+                  .filter(Boolean)
+                  .join('、'),
+            },
+          ]),
       {
         key: 'handover_status',
         label: '班组交付',
@@ -721,7 +726,9 @@ defineExpose({ exportSource, openDetail })
               :append-to="appendTo"
               v-model="draftColumns"
               :columns="scheduleQueryColumns"
-              :exclude="['team_name', 'due_at']"
+              :exclude="
+                warehouse ? ['team_name', 'due_at', 'source_count'] : ['team_name', 'due_at']
+              "
             /> </FilterDialog
         ></template>
         <template #query-actions><div ref="columnSettingsTarget" /></template>
@@ -836,7 +843,7 @@ defineExpose({ exportSource, openDetail })
             }}</ElTag></template
           ></ElTableColumn
         >
-        <ElTableColumn label="关联批次" min-width="100" align="center"
+        <ElTableColumn v-if="!warehouse" label="关联批次" min-width="100" align="center"
           ><template #default="{ row }">{{
             row.linked_batch_count || row.sources.length
               ? `${row.linked_batch_count || row.sources.length} 个批次`

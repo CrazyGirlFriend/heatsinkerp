@@ -11,6 +11,7 @@ import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import TableExportButton from './TableExportButton.vue'
+import TableFilterFields from './TableFilterFields.vue'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -902,4 +903,26 @@ it('shows the team delivery column control above the list', async () => {
   expect(control).toBeDefined()
   expect(control.element.closest('table')).toBeNull()
   expect(wrapper.get('.schedule-table').find('th .table-column-settings').exists()).toBe(false)
+})
+
+it('omits linked batches from the warehouse list, column settings, filters and export', async () => {
+  await render()
+  const schedules = wrapper.vm as InstanceType<typeof DeliverySchedules>
+  const exportKeys = () => schedules.exportSource().fields.map((field) => field.key)
+  expect(exportKeys()).toContain('sources')
+  await wrapper.setProps({ warehouse: true })
+  await flushPromises()
+  const table = wrapper.get('.schedule-table')
+  expect(table.text()).not.toContain('关联批次')
+  expect(table.text()).toContain('有效转出件数')
+  expect(table.text()).toContain('待交件数')
+  const columns = wrapper.getComponent({ name: 'InventoryColumnSettings' }).props('columns')
+  expect(columns).toContainEqual(expect.objectContaining({ label: '待交件数' }))
+  expect(columns).not.toContainEqual(expect.objectContaining({ label: '关联批次' }))
+  expect(exportKeys()).not.toContain('sources')
+  await button('筛选').trigger('click')
+  await flushPromises()
+  const fields = wrapper.getComponent(TableFilterFields)
+  expect(fields.text()).toContain('待交件数')
+  expect(fields.text()).not.toContain('关联批次')
 })
