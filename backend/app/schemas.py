@@ -49,7 +49,23 @@ class ProcessingOutput(BaseModel):
         return self
 
 
+class ProcessingSelfCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    failed_quantity: int = Field(ge=0, le=2_147_483_647)
+    failed_weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
+    failure_reason: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def check_result(self):
+        if self.failed_quantity and not self.failure_reason:
+            raise ValueError("请填写不合格原因")
+        if not self.failed_quantity and (self.failed_weight or self.failure_reason):
+            raise ValueError("全部合格时不能登记不合格重量或原因")
+        return self
+
+
 class ProcessingQuantity(BaseModel):
+    self_check: ProcessingSelfCheck | None = None
     report_template: ReportTemplate | None = None
     inspection: InspectionResults | None = None
     production_schedule_id: int | None = Field(default=None, ge=1)

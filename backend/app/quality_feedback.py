@@ -22,6 +22,7 @@ from .models import (
     MaterialStockBalance,
     MaterialTransfer,
     MaterialTransferEvent,
+    ProcessingParticipant,
     Team,
     utcnow,
 )
@@ -190,6 +191,46 @@ def summaries(db, rows):
     ]
 
 
+def processing_quality_rows(user, team_id, columns):
+    work = MaterialQuantityAdjustment
+    participants = (
+        select(func.aggregate_strings(ProcessingParticipant.name, "、"))
+        .where(ProcessingParticipant.processing_id == work.id)
+        .correlate(work)
+        .scalar_subquery()
+    )
+    values = dict(
+        id=work.id,
+        kind=literal("processing"),
+        team_id=work.team_id,
+        team_name=Team.name,
+        serial_no=MaterialTransfer.serial_no,
+        batch_no=MaterialTransfer.batch_no,
+        material_name=MaterialTransfer.material_name,
+        source_transfer_id=work.source_transfer_id,
+        created_at=work.created_at,
+        checked_at=work.created_at,
+        processor_name=func.coalesce(participants, work.processor_name),
+        processing_date=work.processing_date,
+        failed_quantity=work.failed_quantity,
+        failed_weight=work.failed_weight,
+        notes=work.failure_reason,
+        feedback_status=literal("recorded"),
+    )
+    stmt = (
+        select(*(values.get(k, literal(None, type_=c.type)).label(k) for k, c in columns.items()))
+        .select_from(work)
+        .join(Team, Team.id == work.team_id)
+        .join(MaterialTransfer, MaterialTransfer.id == work.source_transfer_id)
+        .where(work.failed_quantity > 0)
+    )
+    if not is_qc(user) and user.role != "ADMIN":
+        stmt = stmt.where(work.team_id == user.team_id)
+    if team_id is not None:
+        stmt = stmt.where(work.team_id == team_id)
+    return stmt
+
+
 def list_records(
     db,
     user,
@@ -216,7 +257,12 @@ def list_records(
         conditions.append(
             Inspection.problems.any(InspectionProblem.problem_type_id == problem_type_id)
         )
-    columns = {**inspections.inspection_table_columns(), "route_state": literal(None)}
+    columns = {
+        **inspections.inspection_table_columns(),
+        "route_state": literal(None),
+        "processing_date": literal(None, type_=MaterialQuantityAdjustment.processing_date.type),
+        "failed_weight": literal(None, type_=MaterialQuantityAdjustment.failed_weight.type),
+    }
     inspection_rows = (
         select(*(column.label(key) for key, column in columns.items()))
         .select_from(Inspection)
@@ -225,10 +271,12 @@ def list_records(
         .where(*conditions)
     )
     report_rows, progress = team_problems.list_projection(db, user, team_id, columns)
+    work_rows = processing_quality_rows(user, team_id, columns)
     if problem_type_id is not None:
+        work_rows = work_rows.where(False)
         # Team reports have a description, not inspection problem classifications.
         report_rows = report_rows.where(False)
-    combined = union_all(inspection_rows, report_rows).subquery()
+    combined = union_all(inspection_rows, report_rows, work_rows).subquery()
     fields = dict(combined.c.items())
     conditions = RecordFilters(date_from=date_from, date_to=date_to).dates(combined.c.checked_at)
     if kind:
@@ -253,13 +301,13 @@ def list_records(
     pending = (
         db.scalar(
             select(func.count()).select_from(
-                stmt.where(combined.c.feedback_status != "closed").subquery()
+                stmt.where(combined.c.feedback_status.in_(("pending", "processing"))).subquery()
             )
         )
         or 0
     )
     rows = db.execute(stmt.offset((page - 1) * page_size).limit(page_size)).mappings().all()
-    inspection_ids = [r["id"] for r in rows if r["kind"] != "team_report"]
+    inspection_ids = [r["id"] for r in rows if r["kind"] in ("inspection", "patrol")]
     inspection_documents = {
         r["id"]: r
         for r in summaries(
@@ -281,11 +329,31 @@ def list_records(
             team_problems.statement(user, team_id).where(ProcessRoute.id.in_(report_ids))
         )
     }
+    items = []
+    for row in rows:
+        if row["kind"] == "processing":
+            items.append(
+                dict(
+                    id=row["id"],
+                    kind="processing",
+                    feedback_status="recorded",
+                    serial_no=row["serial_no"] or "",
+                    batch_no=row["batch_no"],
+                    team_id=row["team_id"],
+                    team_name=row["team_name"],
+                    checked_at=row["checked_at"].replace(tzinfo=timezone.utc),
+                    processor_name=row["processor_name"],
+                    processing_date=row["processing_date"],
+                    failed_quantity=row["failed_quantity"],
+                    failed_weight=row["failed_weight"],
+                    notes=row["notes"],
+                )
+            )
+        else:
+            documents = report_documents if row["kind"] == "team_report" else inspection_documents
+            items.append(documents[row["id"]])
     return dict(
-        items=[
-            (report_documents if r["kind"] == "team_report" else inspection_documents)[r["id"]]
-            for r in rows
-        ],
+        items=items,
         total=total,
         pending_count=pending,
         page=page,

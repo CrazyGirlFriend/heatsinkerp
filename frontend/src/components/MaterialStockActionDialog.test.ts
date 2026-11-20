@@ -726,7 +726,7 @@ describe('source batch dispatch and loss drafts', () => {
       },
     ])
   })
-  it('requires a team employee and actual work date for whole-lot processing during outbound', async () => {
+  it.each([false, true])('validates inline work (self-check %s)', async (selfCheck) => {
     vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
       { id: 9, team_id: 2, name: '压轧', active: true, version: 1 },
     ])
@@ -737,6 +737,7 @@ describe('source batch dispatch and loss drafts', () => {
       weight: 10,
       revision: 7,
       processing_mode: 'split',
+      self_check_enabled: selfCheck,
       parameter_fields: ['machine_no'],
       task_required: true,
       allowed_task_ids: [9],
@@ -746,7 +747,9 @@ describe('source batch dispatch and loss drafts', () => {
       page: 1,
       page_size: 10,
     })
-    await render('dispatch', [source()])
+    const batch = source()
+    if (selfCheck) Object.assign(batch.transfer.next_team, { name: '线切割', code: 'FACTORY-WIRE' })
+    await render('dispatch', [batch])
     await destination()
     await sourceAction('登记加工后件数')
     await flushPromises()
@@ -788,6 +791,15 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     await wrapper.get('textarea[aria-label="加工备注"]').setValue('无')
+    if (selfCheck) {
+      await submit()
+      expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+      wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.find('input[aria-label="加工自检"]').exists())!
+        .vm.$emit('update:modelValue', 'pass')
+      await flushPromises()
+    }
     await submit()
     expect(
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
@@ -796,6 +808,9 @@ describe('source batch dispatch and loss drafts', () => {
         source_transfer_id: 10,
         quantity: 100,
         expected_revision: 7,
+        ...(selfCheck
+          ? { self_check: { failed_quantity: 0, failed_weight: 0, failure_reason: '' } }
+          : {}),
         processor_employee_id: 22,
         machine_no: 'ROLL-02',
         processing_minutes: 90,

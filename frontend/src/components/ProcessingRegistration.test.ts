@@ -176,6 +176,45 @@ it('requires an actual employee and submits partial work without changing origin
   )
   expect(vi.mocked(teamMaterialApi.changeQuantity).mock.calls[0]![1].outputs).toBeUndefined()
 })
+it.each(['pass', 'fail'])(
+  'registers the operator self-check (%s) without an inspection',
+  async (result) => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+      ...(await teamMaterialApi.quantityContext(2, 10)),
+      self_check_enabled: true,
+    })
+    await render()
+    wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+    expect(wrapper.findComponent(ProcessingInspectionFields).exists()).toBe(false)
+    await save()
+    expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+    wrapper
+      .findAllComponents(AppSelect)
+      .find((s) => s.find('input[aria-label="加工自检"]').exists())!
+      .vm.$emit('update:modelValue', result)
+    await flushPromises()
+    if (result === 'fail') {
+      wrapper
+        .findAllComponents(ElInputNumber)
+        .find((s) => s.find('input[aria-label="不合格件数"]').exists())!
+        .vm.$emit('update:modelValue', 2)
+      wrapper
+        .findAllComponents(WeightInput)
+        .find((s) => s.props('ariaLabel') === '不合格重量')!
+        .vm.$emit('update:modelValue', 1.25)
+      await save()
+      expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+      await wrapper.get('input[aria-label="不合格原因"]').setValue('边缘磕伤')
+    }
+    await save()
+    expect(teamMaterialApi.changeQuantity).toHaveBeenCalledOnce()
+    expect(vi.mocked(teamMaterialApi.changeQuantity).mock.calls[0]![1].self_check).toEqual(
+      result === 'pass'
+        ? { failed_quantity: 0, failed_weight: 0, failure_reason: '' }
+        : { failed_quantity: 2, failed_weight: 1.25, failure_reason: '边缘磕伤' },
+    )
+  },
+)
 it('saves QC results with the work and blocks an incomplete defect report', async () => {
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...(await teamMaterialApi.quantityContext(2, 10)),

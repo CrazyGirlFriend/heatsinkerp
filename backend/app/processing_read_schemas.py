@@ -72,6 +72,9 @@ class QuantityAdjustmentResponse(ReadResponse):
     input_weight: float | None
     completed_quantity: int | None
     completed_weight: float | None
+    failed_quantity: int | None = None
+    failed_weight: float | None = None
+    failure_reason: str | None = None
     scrap_quantity: int | None
     scrap_weight: float | None
     operation_kind: Literal["outbound_clearance", "processing"]
@@ -117,6 +120,7 @@ class ReworkProblemTeamResponse(ReadResponse):
 class QuantityAdjustmentContextResponse(
     PageResponse[QuantityAdjustmentResponse], SharedMaterialResponse
 ):
+    self_check_enabled: bool = False
     inspection_enabled: bool = False
     parameter_fields: list[str]
     rework_inspections: list[ReworkInspectionReference]

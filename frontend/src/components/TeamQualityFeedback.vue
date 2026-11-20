@@ -11,6 +11,8 @@ import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { ElOption, ElTableColumn, ElTag } from 'element-plus'
+import AppDialog from './AppDialog.vue'
+import { ElDescriptions, ElDescriptionsItem } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute } from 'vue-router'
 import FilterDialog from './FilterDialog.vue'
@@ -24,7 +26,8 @@ import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import {
   qualityFeedbackApi,
-  feedbackStates,
+  qualityRecordStates,
+  type ProcessingQuality,
   dispositions,
   type QualityRow,
   qualitySourceLabels,
@@ -46,6 +49,21 @@ const pending = computed(() => result.value?.pending_count ?? 0)
 const query = ref(''),
   selected = ref<number>()
 const selectedProblem = ref<number>()
+const selectedWork = ref<ProcessingQuality>()
+function involvedTeams(row: QualityRow) {
+  return row.kind === 'processing'
+    ? row.team_name
+    : row.involved_teams.map((t) => t.name).join('、')
+}
+function replyCount(row: QualityRow) {
+  if (row.kind === 'processing') return '—'
+  return `${row.involved_teams.filter((t) => t.replied).length} / ${row.involved_teams.length}`
+}
+function openRecord(row: QualityRow) {
+  if (row.kind === 'processing') selectedWork.value = row
+  else if (row.kind === 'team_report') selectedProblem.value = row.id
+  else selected.value = row.id
+}
 const filtersOpen = ref(false),
   draftStatus = ref<QualityFilters['status']>(),
   draftKind = ref<QualityFilters['kind']>(),
@@ -81,7 +99,7 @@ const count = computed(
 )
 const live = useLiveRefresh(() => load(true), {
   teamId: () => (props.showAll ? undefined : props.teamId),
-  busy: () => loading.value || !!selected.value || !!selectedProblem.value,
+  busy: () => loading.value || !!selected.value || !!selectedProblem.value || !!selectedWork.value,
 })
 const tableQuery = useTableQuery(
   {
@@ -91,6 +109,11 @@ const tableQuery = useTableQuery(
       ['问题说明', 'notes'],
     ]),
     ...dispositionColumns,
+    处理状态: {
+      field: 'feedback_status',
+      kind: 'select',
+      options: Object.entries(qualityRecordStates).map(([value, label]) => ({ value, label })),
+    },
     来源: {
       field: 'kind',
       kind: 'select',
@@ -163,25 +186,25 @@ function exportSource() {
       {
         key: 'scope',
         label: '检验方式',
-        value: (r) => (r.kind === 'team_report' ? '—' : r.scope === 'full' ? '全检' : '抽检'),
+        value: (r) => ('scope' in r ? (r.scope === 'full' ? '全检' : '抽检') : '—'),
       },
       {
         key: 'sample_quantity',
         label: '检查件数',
-        value: (r) => (r.kind === 'team_report' ? '' : r.sample_quantity),
+        value: (r) => ('sample_quantity' in r ? r.sample_quantity : ''),
       },
       { key: 'failed_quantity', label: '不合格件数', value: (r) => r.failed_quantity },
       {
         key: 'involved',
         label: '涉及班组',
-        value: (r) => r.involved_teams.map((t) => t.name).join('、'),
+        value: involvedTeams,
       },
       { key: 'notes', label: '问题说明', value: (r) => r.notes },
       { key: 'problems', label: '检验问题', value: qualityProblemLabel },
       {
         key: 'feedback_status',
         label: '处理状态',
-        value: (r) => feedbackStates[r.feedback_status],
+        value: (r) => qualityRecordStates[r.feedback_status],
       },
       {
         key: 'route_state',
@@ -192,14 +215,25 @@ function exportSource() {
       {
         key: 'disposition',
         label: '处理方式',
-        value: (r) => dispositions[r.disposition as keyof typeof dispositions],
+        value: (r) =>
+          r.kind === 'processing' ? '' : dispositions[r.disposition as keyof typeof dispositions],
       },
       {
         key: 'decision_notes',
         label: '处理意见',
-        value: (r) => (r.kind === 'team_report' ? '' : r.decision_notes),
+        value: (r) => ('decision_notes' in r ? r.decision_notes : ''),
       },
       { key: 'batch_no', label: '批次号', value: (r) => r.batch_no },
+      {
+        key: 'failed_weight',
+        label: '自检不合格重量（kg）',
+        value: (r) => (r.kind === 'processing' ? r.failed_weight : null),
+      },
+      {
+        key: 'processor_name',
+        label: '自检加工人',
+        value: (r) => (r.kind === 'processing' ? r.processor_name : ''),
+      },
     ],
     (signal, progress) =>
       loadExportPages(
@@ -232,7 +266,7 @@ watch(
       typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined
     applied.value = {
       status:
-        typeof status === 'string' && Object.hasOwn(feedbackStates, status)
+        typeof status === 'string' && Object.hasOwn(qualityRecordStates, status)
           ? (status as QualityFilters['status'])
           : undefined,
       team_id: props.showAll && Number.isInteger(teamId) && teamId > 0 ? teamId : undefined,
@@ -243,6 +277,7 @@ watch(
     page.value = 1
     selected.value = undefined
     selectedProblem.value = undefined
+    selectedWork.value = undefined
     void load()
   },
   { immediate: true },
@@ -281,9 +316,12 @@ watch(
               v-model="draftKind"
               clearable
               placeholder="全部"
-              ><ElOption label="班组反馈" value="team_report" /><ElOption
-                label="历史巡检"
-                value="patrol" /><ElOption label="检验" value="inspection" /></ElSelect
+            >
+              <ElOption
+                v-for="(label, value) in qualitySourceLabels"
+                :key="value"
+                :value="value"
+                :label="label" /></ElSelect
           ></label>
           <label
             >处理状态<ElSelect
@@ -292,7 +330,7 @@ watch(
               clearable
               placeholder="全部"
               ><ElOption
-                v-for="(name, key) in feedbackStates"
+                v-for="(name, key) in qualityRecordStates"
                 :key="key"
                 :value="key"
                 :label="name" /></ElSelect
@@ -360,14 +398,17 @@ watch(
       <ElTableColumn prop="failed_quantity" label="不合格件数" width="110" align="center" />
       <ElTableColumn label="涉及班组" min-width="180" align="center" show-overflow-tooltip
         ><template #default="{ row }">{{
-          (row as QualityRow).involved_teams.map((t) => t.name).join('、') || '待指定'
+          involvedTeams(row as QualityRow) || '待指定'
         }}</template></ElTableColumn
       >
       <ElTableColumn label="处理状态" width="110" align="center"
         ><template #default="{ row }"
-          ><ElTag :type="row.feedback_status === 'closed' ? 'success' : 'warning'">{{
-            feedbackStates[row.feedback_status as keyof typeof feedbackStates]
-          }}</ElTag></template
+          ><ElTag
+            :type="['closed', 'recorded'].includes(row.feedback_status) ? 'success' : 'warning'"
+            >{{
+              qualityRecordStates[row.feedback_status as keyof typeof qualityRecordStates]
+            }}</ElTag
+          ></template
         ></ElTableColumn
       >
       <ElTableColumn label="工艺状态" width="110" align="center">
@@ -396,24 +437,22 @@ watch(
       <ElTableColumn prop="team_name" label="发现班组" min-width="100" align="center" />
       <ElTableColumn label="检验方式" width="120" align="center"
         ><template #default="{ row }">{{
-          row.kind === 'team_report' ? '—' : row.scope === 'full' ? '全检' : '抽检'
+          row.kind === 'processing' || row.kind === 'team_report'
+            ? '—'
+            : row.scope === 'full'
+              ? '全检'
+              : '抽检'
         }}</template></ElTableColumn
       >
       <ElTableColumn label="班组反馈" width="110" align="center"
-        ><template #default="{ row }"
-          >{{ (row as QualityRow).involved_teams.filter((t) => t.replied).length }} /
-          {{ row.involved_teams.length }}</template
-        ></ElTableColumn
+        ><template #default="{ row }">{{ replyCount(row as QualityRow) }}</template></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
       <ElTableColumn label="操作" width="110" fixed="right" align="center"
         ><template #default="{ row }"
-          ><ElButton
-            link
-            type="primary"
-            @click="row.kind === 'team_report' ? (selectedProblem = row.id) : (selected = row.id)"
-            >查看 / 处理</ElButton
-          ></template
+          ><ElButton link type="primary" @click="openRecord(row as QualityRow)">{{
+            row.kind === 'processing' ? '查看' : '查看 / 处理'
+          }}</ElButton></template
         ></ElTableColumn
       >
     </WorkspaceTable>
@@ -430,6 +469,32 @@ watch(
       "
       >共 {{ total }} 条问题 · {{ pending }} 条未结束</WorkspacePagination
     >
+    <AppDialog
+      v-if="selectedWork"
+      :model-value="true"
+      title="加工自检"
+      @update:model-value="selectedWork = undefined"
+    >
+      <ElDescriptions :column="2" border>
+        <ElDescriptionsItem label="班组">{{ selectedWork.team_name }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="加工人">{{ selectedWork.processor_name }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="批次号">{{ selectedWork.batch_no }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="流水号">{{ selectedWork.serial_no || '—' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="不合格件数">{{
+          selectedWork.failed_quantity
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="不合格重量"
+          >{{ selectedWork.failed_weight }} kg</ElDescriptionsItem
+        >
+        <ElDescriptionsItem label="加工日期">{{ selectedWork.processing_date }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="登记时间">{{
+          formatDateTime(selectedWork.checked_at)
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="不合格原因" :span="2">{{
+          selectedWork.notes
+        }}</ElDescriptionsItem>
+      </ElDescriptions>
+    </AppDialog>
     <TeamProblemDetail
       v-if="selectedProblem"
       :route-id="selectedProblem"

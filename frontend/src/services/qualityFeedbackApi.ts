@@ -23,21 +23,28 @@ export type QualityFeedbackDetail = QualityFeedback &
     rechecks: InspectionRecord[]
   }
 export type TeamProblem = Contract['TeamProblemResponse']
-export type QualityRow = QualityFeedback | TeamProblem
+export type ProcessingQuality = Contract['ProcessingQualityResponse']
+export type QualityRow = QualityFeedback | TeamProblem | ProcessingQuality
+export const qualityRecordStates = { ...feedbackStates, recorded: '已登记' }
 export const qualitySourceLabels = {
   inspection: '检验',
   patrol: '历史巡检',
+  processing: '加工自检',
   team_report: '班组反馈',
 }
 export const qualityProblemLabel = (row: QualityRow) =>
-  row.kind === 'team_report' ? row.notes : inspectionProblemLabel(row)
+  row.kind === 'processing'
+    ? '—'
+    : row.kind === 'team_report'
+      ? row.notes
+      : inspectionProblemLabel(row)
 export interface QualityFilters {
   table_query?: string
   problem_type_id?: number
   team_id?: number
   query?: string
   kind?: QualityRow['kind']
-  status?: keyof typeof feedbackStates
+  status?: keyof typeof qualityRecordStates
   date_from?: string
   date_to?: string
   page?: number

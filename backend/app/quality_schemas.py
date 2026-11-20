@@ -1,6 +1,6 @@
 """Inspection and quality feedback contracts, separate from transactions."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -275,7 +275,25 @@ class TeamProblemResponse(ReadResponse):
     rework_progress: ReworkProgressResponse
 
 
-class QualityFeedbackPageResponse(PageResponse[QualityFeedbackResponse | TeamProblemResponse]):
+class ProcessingQualityResponse(ReadResponse):
+    id: int
+    kind: Literal["processing"]
+    feedback_status: Literal["recorded"]
+    serial_no: str
+    batch_no: str
+    team_id: int
+    team_name: str
+    checked_at: datetime
+    processing_date: date
+    processor_name: str
+    failed_quantity: int
+    failed_weight: float
+    notes: str
+
+
+class QualityFeedbackPageResponse(
+    PageResponse[QualityFeedbackResponse | TeamProblemResponse | ProcessingQualityResponse]
+):
     pending_count: int
 
 

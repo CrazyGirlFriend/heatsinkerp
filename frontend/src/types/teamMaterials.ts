@@ -88,6 +88,7 @@ export type {
 } from './processingContract'
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
+  self_check_enabled?: boolean
   inspection_enabled?: boolean
   parameter_fields?: string[]
   purpose_id?: number | null
@@ -144,6 +145,7 @@ export interface QuantityAdjustmentContext
   rework_count?: number
 }
 export interface CreateQuantityAdjustment extends ProcessingParameters {
+  self_check?: { failed_quantity: number; failed_weight: number; failure_reason: string }
   report_template?: 'FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR'
   inspection?: components['schemas']['InspectionResults']
   production_schedule_id?: number | null

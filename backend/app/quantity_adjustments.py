@@ -20,7 +20,7 @@ from .models import (
 )
 from .processing_registration import METRICS, prepare
 from .schemas import ProcessingQuantity
-from .team_constants import INSPECTION_TEAM_CODE, SPLITTING_TEAM_CODES
+from .team_constants import INSPECTION_TEAM_CODE, SELF_CHECK_TEAM_CODES, SPLITTING_TEAM_CODES
 
 
 def validate_outbound_clearance(lot, quantity, weight, available, clearance):
@@ -105,6 +105,9 @@ def record_dict(row):
         "delta_quantity": row.after_quantity - row.before_quantity,
         "weight": float(row.weight_snapshot),
         "reason": row.reason,
+        "failed_quantity": row.failed_quantity,
+        "failed_weight": row.failed_weight,
+        "failure_reason": row.failure_reason,
         "processor_name": "、".join(person["name"] for person in participants if person["name"])
         or row.processor_name,
         "processor_employee_id": row.processor_employee_id,
@@ -275,8 +278,10 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         .order_by(MaterialInspection.id.desc())
         .limit(50)
     ).all()
+    team_code = stock.require_team(db, team_id).code
     return {
-        "inspection_enabled": stock.require_team(db, team_id).code == INSPECTION_TEAM_CODE,
+        "self_check_enabled": team_code in SELF_CHECK_TEAM_CODES,
+        "inspection_enabled": team_code == INSPECTION_TEAM_CODE,
         "rework_inspections": [
             {"id": row.id, "kind": row.kind, "checked_at": _utc(row.checked_at)}
             for row in inspections
@@ -369,6 +374,22 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     prior_work = validate(db, lot, payload, latest)
     task_fields = task_snapshot(db, lot, payload, None if route_index is not None else prior_work)
     payload, production = prepare(lot, balance, latest, payload, team.code)
+    check = payload.self_check
+    if check is not None:
+        if team.code not in SELF_CHECK_TEAM_CODES or not production:
+            raise HTTPException(422, "本次登记不支持加工自检")
+        # Defective pieces already separated as physical scrap are part of the self-check.
+        separated = [
+            line
+            for line in payload.outputs or []
+            if line.role == "scrap" and line.material_type == "defective"
+        ]
+        pieces = sum(line.quantity for line in separated)
+        weight = sum(line.weight for line in separated)
+        if not pieces <= check.failed_quantity <= pieces + production["completed_quantity"]:
+            raise HTTPException(422, "请核对不合格件数与本次加工产出、次品明细")
+        if not weight <= check.failed_weight <= weight + production["completed_weight"]:
+            raise HTTPException(422, "请核对不合格重量与本次加工产出、次品明细")
     from .processing_schedules import bind_outputs, select_plan
 
     schedule_id = select_plan(db, lot, payload)
@@ -454,6 +475,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         }
     row = Adjustment(
         report_template=payload.report_template,
+        failed_quantity=check.failed_quantity if check else None,
+        failed_weight=check.failed_weight if check else None,
+        failure_reason=check.failure_reason if check else None,
         production_schedule_id=schedule_id,
         **route_fields,
         source_transfer_id=lot.id,

@@ -92,6 +92,41 @@ async function render(showAll = false) {
   })
   await flushPromises()
 }
+it('shows the operator’s failed self-check as a read-only quality record', async () => {
+  vi.mocked(qualityFeedbackApi.records).mockResolvedValue({
+    items: [
+      {
+        id: 7,
+        kind: 'processing',
+        feedback_status: 'recorded',
+        serial_no: 'Q001',
+        batch_no: 'TL7',
+        team_id: 2,
+        team_name: '雕刻',
+        checked_at: '2026-11-20T01:00:00Z',
+        processing_date: '2026-11-19',
+        processor_name: '张师傅',
+        failed_quantity: 2,
+        failed_weight: 1.25,
+        notes: '边缘磕伤',
+      },
+    ],
+    total: 1,
+    pending_count: 0,
+  })
+  await render()
+  expect(wrapper.text()).toContain('加工自检')
+  expect(wrapper.text()).toContain('已登记')
+  expect(wrapper.text()).toContain('边缘磕伤')
+  expect(wrapper.text()).not.toContain('查看 / 处理')
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '查看')!
+    .trigger('click')
+  expect(wrapper.text()).toContain('张师傅')
+  expect(wrapper.text()).toContain('1.25 kg')
+  expect(wrapper.findComponent(QualityFeedbackDetail).exists()).toBe(false)
+})
 it('lists cross-team issues without a team constraint and keeps disposition filtering in exports', async () => {
   vi.mocked(qualityFeedbackApi.records).mockResolvedValue({
     items: [

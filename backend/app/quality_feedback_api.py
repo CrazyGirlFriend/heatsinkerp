@@ -28,8 +28,8 @@ router = AsyncAPIRouter(prefix="/api/quality-feedback", tags=["quality feedback"
 def records(
     team_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
-    kind: Literal["patrol", "inspection", "team_report"] | None = None,
-    status: Literal["pending", "processing", "closed"] | None = None,
+    kind: Literal["patrol", "inspection", "team_report", "processing"] | None = None,
+    status: Literal["pending", "processing", "closed", "recorded"] | None = None,
     problem_type_id: int | None = Query(default=None, ge=1),
     date_from: date | None = None,
     date_to: date | None = None,

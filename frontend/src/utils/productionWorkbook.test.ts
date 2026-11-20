@@ -2,7 +2,12 @@ import { readFile } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ExcelJS from 'exceljs'
 import { strFromU8, unzipSync } from 'fflate'
-import { createProductionWorkbook, productionTemplates } from './productionWorkbook'
+import {
+  createProductionWorkbook,
+  productionTemplates,
+  productionRecordData,
+  productionReportRows,
+} from './productionWorkbook'
 import definitions from '../config/productionTemplates.json'
 import reportColumns from '../config/productionTemplateColumns.json'
 import type { ProcessingRecord } from '../types/materialProcessing'
@@ -26,7 +31,7 @@ const check = (overrides: Partial<Inspection> = {}): Inspection => ({
   notes: '',
   ...overrides,
 })
-async function exported(key: string, row: Record<string, string | number | null>) {
+async function exported(key: string, row: Parameters<typeof createProductionWorkbook>[1][number]) {
   const blob = await createProductionWorkbook(key, [row])
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(await blob.arrayBuffer())
@@ -48,6 +53,43 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
+it.each([
+  ['FACTORY-ENGRAVE', 'H', 'I', 'J', 'K', 'L'],
+  ['FACTORY-ANNEAL', 'F', 'G', 'H', 'I', 'J'],
+  ['FACTORY-GRIND', 'L', 'M', 'N', 'O', 'P'],
+  ['FACTORY-WIRE', 'I', 'J', 'K', 'L', 'Y'],
+] as const)(
+  'shows operator quality in the original %s columns on screen and in Excel',
+  async (key, ...columns) => {
+    const record = {
+      serial_no: 'Q-001',
+      reason: '无',
+      completed_quantity: 99,
+      completed_weight: 9.75,
+      scrap_weight: 0.25,
+      failed_quantity: 2,
+      failed_weight: 0.5,
+      failure_reason: '划伤',
+      outputs: [{ role: 'scrap', material_type: 'defective', quantity: 1, weight: 0.25 }],
+    } as ProcessingRecord
+    const data = productionRecordData(record)
+    const [row] = productionReportRows(key, [data])
+    const sheet = await exported(key, data)
+    const at = definitions[key].firstDataRow
+    const expected = [98, 9.5, 2, 0.5, '划伤']
+    expect(columns.map((c) => row![c])).toEqual(expected)
+    expect(columns.map((c) => sheet.getCell(c + at).value)).toEqual(expected)
+    const passed = productionRecordData({
+      ...record,
+      outputs: [],
+      failed_quantity: 0,
+      failed_weight: 0,
+      failure_reason: '',
+    })
+    expect(productionReportRows(key, [passed])[0]![columns[0]]).toBe(99)
+    expect(productionReportRows(key, [passed])[0]![columns[2]]).toBe(0)
+  },
+)
 it.each(Object.keys(definitions))(
   'fills the original %s workbook without changing its header or layout',
   async (key) => {

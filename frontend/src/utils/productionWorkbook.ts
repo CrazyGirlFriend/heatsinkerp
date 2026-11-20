@@ -31,6 +31,8 @@ function values(
   const people = String(r.processor_name || '').split('、')
   const note = r.reason
   const remaining = r.remaining_weight
+  const qualifiedQuantity = r.qualified_quantity ?? r.completed_quantity
+  const qualifiedWeight = r.qualified_weight ?? r.completed_weight
   // Blank cells represent fields that were not recorded. Do not infer quality results,
   // machine use, upstream/downstream dispatches or operator roles from production counts.
   if (key === 'FACTORY-ROLL')
@@ -56,8 +58,11 @@ function values(
       C: r.material_name,
       D: r.after_specification,
       E: r.processing_task_name,
-      F: r.completed_quantity,
-      G: r.completed_weight,
+      F: qualifiedQuantity,
+      G: qualifiedWeight,
+      H: r.failed_quantity,
+      I: r.failed_weight,
+      J: r.failure_reason,
       K: r.processor_name,
       L: r.actual_temperature_c,
       M: hours,
@@ -72,8 +77,11 @@ function values(
       D: r.material_name,
       J: r.processing_task_name,
       K: r.finished_quantity,
-      L: r.completed_quantity,
-      M: r.completed_weight,
+      L: qualifiedQuantity,
+      M: qualifiedWeight,
+      N: r.failed_quantity,
+      O: r.failed_weight,
+      P: r.failure_reason,
       Q: hours,
       R: r.processor_name,
       S: r.machine_no,
@@ -86,17 +94,22 @@ function values(
       B: r.serial_no,
       C: r.material_name,
       H: r.finished_quantity,
-      I: r.completed_quantity,
-      J: r.completed_weight,
+      I: qualifiedQuantity,
+      J: qualifiedWeight,
+      K: r.failed_quantity,
+      L: r.failed_weight,
       M: remaining,
-      N: r.scrap_weight,
+      N: r.other_scrap_weight ?? r.scrap_weight,
       P: r.processing_task_name,
       S: r.machine_no,
       T: r.processing_minutes,
       U: people[0],
       V: people[1],
       W: people.slice(2).join('、'),
-      Y: note,
+      Y:
+        r.failure_reason && note && note !== '无' && note !== r.failure_reason
+          ? [r.failure_reason, note].join('；')
+          : r.failure_reason || note,
     }
   if (key === 'FACTORY-ENGRAVE')
     return {
@@ -105,10 +118,11 @@ function values(
       C: r.material_name,
       D: r.after_specification,
       E: r.finished_quantity,
-      H: r.completed_quantity,
-      I: r.completed_weight,
-      J: r.scrap_quantity,
-      K: r.scrap_weight,
+      H: qualifiedQuantity,
+      I: qualifiedWeight,
+      J: r.failed_quantity ?? r.scrap_quantity,
+      K: r.failed_weight ?? r.scrap_weight,
+      L: r.failure_reason,
       M: r.remaining_quantity,
       N: remaining,
       P: r.processing_task_name,
@@ -172,12 +186,26 @@ function values(
 
 export function productionRecordData(record: ProcessingRecord): ExportRow {
   const { report_inspections, outputs, ...fields } = record
+  const separated =
+    outputs?.filter((line) => line.role === 'scrap' && line.material_type === 'defective') || []
+  const separatedQuantity = separated.reduce((sum, line) => sum + line.quantity, 0)
+  const separatedWeight = separated.reduce((sum, line) => sum + line.weight, 0)
   return {
     ...(Object.fromEntries(
       Object.entries(fields).filter(
         ([, value]) => value == null || typeof value === 'string' || typeof value === 'number',
       ),
     ) as ExportRow),
+    ...(record.failed_quantity != null && record.failed_weight != null
+      ? {
+          qualified_quantity:
+            (record.completed_quantity || 0) + separatedQuantity - record.failed_quantity,
+          qualified_weight: Number(
+            ((record.completed_weight || 0) + separatedWeight - record.failed_weight).toFixed(6),
+          ),
+          other_scrap_weight: Number(((record.scrap_weight || 0) - separatedWeight).toFixed(6)),
+        }
+      : {}),
     processing_minutes: record.labor_minutes,
     serial_no: sharedSerialLabel(record),
     report_inspections: JSON.stringify(report_inspections || []),

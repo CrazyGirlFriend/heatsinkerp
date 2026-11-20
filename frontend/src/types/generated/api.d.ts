@@ -2488,6 +2488,7 @@ export interface components {
       report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
       /** Rework Of Id */
       rework_of_id?: number | null
+      self_check?: components['schemas']['ProcessingSelfCheck'] | null
       /** Source Transfer Id */
       source_transfer_id: number
       /** Temperature Requirement */
@@ -5697,6 +5698,47 @@ export interface components {
       /** Name */
       name: string | null
     }
+    /** ProcessingQualityResponse */
+    ProcessingQualityResponse: {
+      /** Batch No */
+      batch_no: string
+      /**
+       * Checked At
+       * Format: date-time
+       */
+      checked_at: string
+      /** Failed Quantity */
+      failed_quantity: number
+      /** Failed Weight */
+      failed_weight: number
+      /**
+       * Feedback Status
+       * @constant
+       */
+      feedback_status: 'recorded'
+      /** Id */
+      id: number
+      /**
+       * Kind
+       * @constant
+       */
+      kind: 'processing'
+      /** Notes */
+      notes: string
+      /**
+       * Processing Date
+       * Format: date
+       */
+      processing_date: string
+      /** Processor Name */
+      processor_name: string
+      /** Serial No */
+      serial_no: string
+      /** Team Id */
+      team_id: number
+      /** Team Name */
+      team_name: string
+    }
     /** ProcessingQuantity */
     ProcessingQuantity: {
       /** Actual Temperature C */
@@ -5751,6 +5793,7 @@ export interface components {
       report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
       /** Rework Of Id */
       rework_of_id?: number | null
+      self_check?: components['schemas']['ProcessingSelfCheck'] | null
       /** Source Transfer Id */
       source_transfer_id: number
       /** Temperature Requirement */
@@ -5818,6 +5861,12 @@ export interface components {
       delta_quantity: number
       /** Equipment Id */
       equipment_id?: number | null
+      /** Failed Quantity */
+      failed_quantity?: number | null
+      /** Failed Weight */
+      failed_weight?: number | null
+      /** Failure Reason */
+      failure_reason?: string | null
       /** Finished Quantity */
       finished_quantity: number | null
       /** Furnace No */
@@ -5937,6 +5986,18 @@ export interface components {
        * @enum {string}
        */
       work_kind: 'initial' | 'rework'
+    }
+    /** ProcessingSelfCheck */
+    ProcessingSelfCheck: {
+      /** Failed Quantity */
+      failed_quantity: number
+      /** Failed Weight */
+      failed_weight: number | string
+      /**
+       * Failure Reason
+       * @default
+       */
+      failure_reason: string
     }
     /** ProcessingSummaryResponse */
     ProcessingSummaryResponse: {
@@ -6361,6 +6422,7 @@ export interface components {
       items: (
         | components['schemas']['QualityFeedbackResponse']
         | components['schemas']['TeamProblemResponse']
+        | components['schemas']['ProcessingQualityResponse']
       )[]
       /** Page */
       page: number
@@ -6600,6 +6662,11 @@ export interface components {
       rework_route_ready: boolean
       /** Rework Task Records */
       rework_task_records: components['schemas']['ReworkTaskRecordResponse'][]
+      /**
+       * Self Check Enabled
+       * @default false
+       */
+      self_check_enabled: boolean
       /** Serial No */
       serial_no: string
       /** Shared Group Id */
@@ -6654,6 +6721,12 @@ export interface components {
       delta_quantity: number
       /** Equipment Id */
       equipment_id?: number | null
+      /** Failed Quantity */
+      failed_quantity?: number | null
+      /** Failed Weight */
+      failed_weight?: number | null
+      /** Failure Reason */
+      failure_reason?: string | null
       /** Furnace No */
       furnace_no: string | null
       /** Holding Minutes */
@@ -13298,12 +13371,12 @@ export interface operations {
       query?: {
         date_from?: string | null
         date_to?: string | null
-        kind?: ('patrol' | 'inspection' | 'team_report') | null
+        kind?: ('patrol' | 'inspection' | 'team_report' | 'processing') | null
         page?: number
         page_size?: number
         problem_type_id?: number | null
         query?: string | null
-        status?: ('pending' | 'processing' | 'closed') | null
+        status?: ('pending' | 'processing' | 'closed' | 'recorded') | null
         team_id?: number | null
       }
       header?: never

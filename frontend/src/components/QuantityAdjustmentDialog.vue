@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
 import ProcessingInspectionFields from './ProcessingInspectionFields.vue'
+import ProcessingSelfCheckFields from './ProcessingSelfCheckFields.vue'
 import {
   processingParameterErrors,
   processingParameterPayload,
@@ -150,6 +151,7 @@ const editingProcessingDate = ref(false)
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
 const reportTemplate = ref<'FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR'>()
+const selfCheck = ref<CreateQuantityAdjustment['self_check'] | null>()
 const inspection = ref<CreateQuantityAdjustment['inspection'] | null>(null)
 const inspectionEnabled = computed(
   () => unitProcessing.value && snapshot.value?.inspection_enabled === true,
@@ -216,6 +218,27 @@ const cumulativeWeightDifference = computed(
     Math.round(((snapshot.value?.weight_difference || 0) + weightDifference.value) * 1000000) /
     1000000,
 )
+const selfCheckEnabled = computed(() => structured.value && snapshot.value?.self_check_enabled)
+const selfCheckTotals = computed(() => {
+  if (unitProcessing.value)
+    return { producedQuantity: quantity.value, producedWeight: completedWeight.value }
+  const totals = {
+    producedQuantity: 0,
+    producedWeight: 0,
+    separatedQuantity: 0,
+    separatedWeight: 0,
+  }
+  for (const line of activeOutputs.value) {
+    if (line.role === 'produced') {
+      totals.producedQuantity += line.quantity || 0
+      totals.producedWeight += line.weight || 0
+    } else if (line.role === 'scrap' && line.material_type === 'defective') {
+      totals.separatedQuantity += line.quantity || 0
+      totals.separatedWeight += line.weight || 0
+    }
+  }
+  return totals
+})
 const progressInvalid = computed(
   () =>
     !progress.value ||
@@ -401,6 +424,7 @@ async function save() {
         !processingDate.value ||
         processingDate.value > factoryToday())) ||
     (inspectionEnabled.value && (!reportTemplate.value || !inspection.value)) ||
+    (selfCheckEnabled.value && !selfCheck.value) ||
     !processingMinutesValid.value ||
     (structured.value && Object.keys(parameterErrors.value).length > 0) ||
     (structured.value &&
@@ -448,6 +472,7 @@ async function save() {
       : {}),
   }))
   const body = {
+    ...(selfCheckEnabled.value && selfCheck.value ? { self_check: selfCheck.value } : {}),
     ...(inspectionEnabled.value && inspection.value
       ? { inspection: inspection.value, report_template: reportTemplate.value }
       : {}),
@@ -516,6 +541,7 @@ watch(
     ++generation
     snapshot.value = null
     reportTemplate.value = undefined
+    selfCheck.value = undefined
     inspection.value = null
     scheduleId.value = null
     records.value = []
@@ -796,6 +822,14 @@ onBeforeUnmount(() => {
                 :submitted="submitted"
                 :disabled="saving || loading"
                 @change="inspection = $event"
+              />
+              <ProcessingSelfCheckFields
+                v-if="selfCheckEnabled"
+                :key="`${teamId}:${sourceId}`"
+                v-bind="selfCheckTotals"
+                :submitted="submitted"
+                :disabled="saving || loading"
+                @change="selfCheck = $event"
               />
               <ElFormItem
                 :label="structured ? '备注' : '备注（选填）'"

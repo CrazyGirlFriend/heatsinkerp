@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
+import ProcessingSelfCheckFields from './ProcessingSelfCheckFields.vue'
 import {
   processingParameterErrors,
   processingParameterPayload,
@@ -70,6 +71,7 @@ import {
 } from '@/types/materialTransfer'
 import type {
   CreateDispatch,
+  CreateQuantityAdjustment,
   DispatchKind,
   CreatedMaterialBatches,
   MaterialLoss,
@@ -206,6 +208,7 @@ const processing = reactive<
       parameters: ProcessingParameters
       minutes?: number
       date?: string
+      selfCheck?: CreateQuantityAdjustment['self_check'] | null
       structured?: boolean
       processorName: string
       processorOptions: string[]
@@ -639,6 +642,8 @@ const validation = useDialogValidation(() => {
         draft.quantity! > 2147483647
       )
         add('processingQuantity', '请填写有效非负整数')
+      if (draft.context?.self_check_enabled && !draft.selfCheck)
+        add('selfCheck', '请填写加工自检结果')
       if (draft.structured && !draft.employees.length) add('processorName', '请选择加工人')
       if (
         draft.structured &&
@@ -980,6 +985,9 @@ async function submit() {
       quantity: draft.quantity!,
       expected_revision: draft.revision!,
       processor_name: draft.processorName.trim(),
+      ...(draft.context?.self_check_enabled && draft.selfCheck
+        ? { self_check: draft.selfCheck }
+        : {}),
       ...(draft.context?.task_required != null
         ? { processing_task_id: draft.taskId || null, purpose_id: draft.purposeId || null }
         : {}),
@@ -1444,6 +1452,14 @@ watch(
                     :precision="0"
                     controls-position="right"
                 /></ElFormItem>
+                <ProcessingSelfCheckFields
+                  v-if="processing[Number(line.source.transfer.id)]!.context?.self_check_enabled"
+                  :produced-quantity="processing[Number(line.source.transfer.id)]!.quantity"
+                  :produced-weight="processing[Number(line.source.transfer.id)]!.context?.weight"
+                  :submitted="!!lineError(line, 'selfCheck')"
+                  :disabled="saving"
+                  @change="processing[Number(line.source.transfer.id)]!.selfCheck = $event"
+                />
                 <ElFormItem
                   :label="
                     processing[Number(line.source.transfer.id)]!.structured
