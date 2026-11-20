@@ -306,8 +306,7 @@ function mockDispatchableRows(...ids: number[]) {
 }
 const dispatchCheckbox = (id: number) =>
   wrapper.get<HTMLInputElement>(`label[aria-label="勾选批次 TL${id}"] input`)
-async function newDispatch() {
-  const label = wrapper.findComponent(TeamInventory).exists() ? '出库' : '新建出库'
+async function newDispatch(label = '出库') {
   await wrapper
     .findAll('button')
     .find((button) => button.text() === label)!
@@ -1482,7 +1481,7 @@ describe('team workspace material ledger', () => {
         const router = await render(path)
         await dispatchCheckbox(10).setValue(true)
         await dispatchCheckbox(11).setValue(true)
-        await newDispatch()
+        await newDispatch(profile.code === 'FACTORY-WAREHOUSE' ? '新建出库' : '出库')
         expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
           source_ids: '10,11',
           availability: 'dispatchable',
@@ -1608,7 +1607,7 @@ describe('team workspace material ledger', () => {
   })
   it('opens the inventory list to select batches when starting from outbound records', async () => {
     const router = await render('/team-workspaces/914?tab=outgoing&status=pending')
-    await newDispatch()
+    await newDispatch('新建出库')
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
     expect(router.currentRoute.value.query).toEqual({ tab: 'stock' })
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('勾选批次'), 'info')
@@ -1720,7 +1719,7 @@ describe('team workspace material ledger', () => {
   it.each([
     ['serials', []],
     ['stock', []],
-    ['outgoing', ['新建出库']],
+    ['outgoing', []],
     ['pending', []],
     ['receipts', ['新建入库']],
     ['losses', ['登记丢失']],
@@ -1732,6 +1731,13 @@ describe('team workspace material ledger', () => {
   ] as const)('shows only relevant actions on warehouse %s', async (tab, labels) => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
+    if (tab === 'stock' || tab === 'outgoing') {
+      const create = wrapper
+        .findAll('form[role="search"] button')
+        .filter((button) => button.text() === '新建出库')
+      expect(create).toHaveLength(tab === 'stock' ? 1 : 0)
+      if (tab === 'stock') expect(create[0]!.attributes('disabled')).toBeDefined()
+    }
     expect(wrapper.findAll('.workspace-actions button').map((button) => button.text())).toEqual(
       labels,
     )

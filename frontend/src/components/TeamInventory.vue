@@ -14,7 +14,7 @@ import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Operation, Search } from '@element-plus/icons-vue'
+import { Operation, Plus, Search } from '@element-plus/icons-vue'
 import { ElCheckbox, ElOption, ElOptionGroup, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -1192,10 +1192,13 @@ onBeforeUnmount(() => {
           >清空勾选</ElButton
         >
         <ElButton
-          v-if="canWrite && canDispatchSelection"
+          v-if="canWrite && (warehouse || canDispatchSelection)"
+          :disabled="loading || !canDispatchSelection"
+          :title="!canDispatchSelection ? '请先勾选可出库批次' : undefined"
           :loading="preparingDispatch"
+          :icon="warehouse ? Plus : undefined"
           @click="dispatchSelected"
-          >出库</ElButton
+          >{{ warehouse ? '新建出库' : '出库' }}</ElButton
         >
         <ElButton
           v-if="processing && canWrite && selectedProcessingAction"

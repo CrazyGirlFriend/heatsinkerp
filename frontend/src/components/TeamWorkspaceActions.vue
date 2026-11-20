@@ -30,7 +30,9 @@ const emit = defineEmits<{
   refresh: []
 }>()
 const receiptVisible = computed(() => props.canReceive && props.section === 'receipts')
-const dispatchVisible = computed(() => props.canWrite && props.section === 'outgoing')
+const dispatchVisible = computed(
+  () => props.canWrite && !props.warehouse && props.section === 'outgoing',
+)
 const lossVisible = computed(() => props.canWrite && props.section === 'losses')
 const reallocationVisible = computed(() => props.canReallocate && props.section === 'reallocations')
 </script>

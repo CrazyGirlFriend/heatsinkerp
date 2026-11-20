@@ -1224,6 +1224,11 @@ describe('warehouse grouped stock', () => {
       await update(80, 0, 80)
       expect(wrapper.find('label[aria-label="勾选批次 TL11"] input').exists()).toBe(false)
       expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
+      if (warehouse)
+        expect(
+          wrapper.findAll('button').find((button) => button.text() === '新建出库')!.element
+            .disabled,
+        ).toBe(true)
       expect(wrapper.text()).toContain('全部待签收')
       expect(wrapper.findAll('button').some((button) => button.text() === '在途转出')).toBe(true)
       await update(80, 80, 0)
@@ -1231,7 +1236,7 @@ describe('warehouse grouped stock', () => {
       expect(
         wrapper
           .findAll('button')
-          .find((button) => button.text() === '出库')!
+          .find((button) => button.text() === (warehouse ? '新建出库' : '出库'))!
           .attributes('disabled'),
       ).toBeUndefined()
     },
