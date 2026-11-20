@@ -885,7 +885,7 @@ async function savedReallocation(item: MaterialTransfer) {
 function openNewDispatch() {
   if (!canWrite.value || openingDispatch.value) return
   void router.push({ path: route.path, query: { tab: 'stock' } })
-  showToast('在库存列表勾选批次后，点「出库」', 'info')
+  showToast('在库存明细勾选批次后，点「新建出库」', 'info')
 }
 function canStartStockAction(mode: StockAction) {
   if (mode === 'reallocate') return canReallocate.value

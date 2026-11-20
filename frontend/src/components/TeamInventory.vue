@@ -1192,13 +1192,13 @@ onBeforeUnmount(() => {
           >清空勾选</ElButton
         >
         <ElButton
-          v-if="canWrite && (warehouse || canDispatchSelection)"
+          v-if="canWrite"
           :disabled="loading || !canDispatchSelection"
           :title="!canDispatchSelection ? '请先勾选可出库批次' : undefined"
           :loading="preparingDispatch"
-          :icon="warehouse ? Plus : undefined"
+          :icon="Plus"
           @click="dispatchSelected"
-          >{{ warehouse ? '新建出库' : '出库' }}</ElButton
+          >新建出库</ElButton
         >
         <ElButton
           v-if="processing && canWrite && selectedProcessingAction"

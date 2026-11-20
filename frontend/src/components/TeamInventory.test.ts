@@ -1223,22 +1223,13 @@ describe('warehouse grouped stock', () => {
       await update(80, 80, 0)
       await update(80, 0, 80)
       expect(wrapper.find('label[aria-label="勾选批次 TL11"] input').exists()).toBe(false)
-      expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
-      if (warehouse)
-        expect(
-          wrapper.findAll('button').find((button) => button.text() === '新建出库')!.element
-            .disabled,
-        ).toBe(true)
+      const create = wrapper.findAll('button').find((button) => button.text() === '新建出库')!
+      expect(create.element.disabled).toBe(true)
       expect(wrapper.text()).toContain('全部待签收')
       expect(wrapper.findAll('button').some((button) => button.text() === '在途转出')).toBe(true)
       await update(80, 80, 0)
       await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
-      expect(
-        wrapper
-          .findAll('button')
-          .find((button) => button.text() === (warehouse ? '新建出库' : '出库'))!
-          .attributes('disabled'),
-      ).toBeUndefined()
+      expect(create.element.disabled).toBe(false)
     },
   )
   it('keeps external pending stock distinct and searches authoritative stock amounts', async () => {
@@ -1504,7 +1495,9 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, false)
     expect(wrapper.find('tbody input[aria-label^="勾选批次"]').exists()).toBe(false)
     await showColumns('stock_status', 'on_hand_weight')
-    expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
+    expect(
+      wrapper.findAll('button').find((button) => button.text() === '新建出库')!.element.disabled,
+    ).toBe(true)
     expect(wrapper.text()).toContain('全部待签收')
     await wrapper
       .findAll('button')
@@ -1642,7 +1635,7 @@ describe('warehouse grouped stock', () => {
     expect(hints()).toContain('可处理量 5 kg')
     expect(wrapper.find('label[aria-label="勾选批次 TL12"]').exists()).toBe(false)
     await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
-    const buttons = wrapper.findAll('button').filter((button) => button.text() === '出库')
+    const buttons = wrapper.findAll('button').filter((button) => button.text() === '新建出库')
     expect(buttons[0]!.attributes('disabled')).toBeUndefined()
     expect(buttons).toHaveLength(1)
     expect(hints()).toContain('当前剩余 — 件 / — kg')
@@ -1997,7 +1990,7 @@ describe('warehouse grouped stock', () => {
     expect(
       wrapper
         .findAll('button')
-        .find((button) => button.text() === '出库')!
+        .find((button) => button.text() === '新建出库')!
         .attributes('disabled'),
     ).toBeUndefined()
     select('库存搜索字段').vm.$emit('update:modelValue', 'purpose_name')

@@ -306,10 +306,10 @@ function mockDispatchableRows(...ids: number[]) {
 }
 const dispatchCheckbox = (id: number) =>
   wrapper.get<HTMLInputElement>(`label[aria-label="勾选批次 TL${id}"] input`)
-async function newDispatch(label = '出库') {
+async function newDispatch() {
   await wrapper
     .findAll('button')
-    .find((button) => button.text() === label)!
+    .find((button) => button.text() === '新建出库')!
     .trigger('click')
   await flushPromises()
 }
@@ -1132,7 +1132,7 @@ describe('team workspace material ledger', () => {
         await render('/team-workspaces/914?tab=stock')
         expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
           914,
-          expect.objectContaining({ availability: 'current' }),
+          expect.objectContaining({ availability: 'current_or_transit' }),
         )
         expect(
           wrapper
@@ -1144,7 +1144,7 @@ describe('team workspace material ledger', () => {
           wrapper
             .get('.inventory-row-actions')
             .findAll('button')
-            .some((button) => button.text() === '出库'),
+            .some((button) => button.text() === '新建出库'),
         ).toBe(false)
         expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
       } finally {
@@ -1479,9 +1479,17 @@ describe('team workspace material ledger', () => {
       try {
         const path = '/team-workspaces/914?tab=stock&query=AL&page=2'
         const router = await render(path)
+        const create = wrapper
+          .getComponent(TeamInventory)
+          .get('form[role="search"]')
+          .findAll('button')
+          .filter((button) => button.text() === '新建出库')
+        expect(create).toHaveLength(1)
+        expect(create[0]!.element.disabled).toBe(true)
         await dispatchCheckbox(10).setValue(true)
         await dispatchCheckbox(11).setValue(true)
-        await newDispatch(profile.code === 'FACTORY-WAREHOUSE' ? '新建出库' : '出库')
+        expect(create[0]!.element.disabled).toBe(false)
+        await newDispatch()
         expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
           source_ids: '10,11',
           availability: 'dispatchable',
@@ -1607,7 +1615,7 @@ describe('team workspace material ledger', () => {
   })
   it('opens the inventory list to select batches when starting from outbound records', async () => {
     const router = await render('/team-workspaces/914?tab=outgoing&status=pending')
-    await newDispatch('新建出库')
+    await newDispatch()
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
     expect(router.currentRoute.value.query).toEqual({ tab: 'stock' })
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('勾选批次'), 'info')
