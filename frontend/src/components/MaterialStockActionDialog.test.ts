@@ -795,9 +795,9 @@ describe('source batch dispatch and loss drafts', () => {
       await submit()
       expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
       wrapper
-        .findAllComponents(ElSelect)
-        .find((item) => item.find('input[aria-label="加工自检"]').exists())!
-        .vm.$emit('update:modelValue', 'pass')
+        .findAllComponents(ElInputNumber)
+        .find((item) => item.find('input[aria-label="不合格数"]').exists())!
+        .vm.$emit('update:modelValue', 0)
       await flushPromises()
     }
     await submit()

@@ -189,15 +189,11 @@ it.each(['pass', 'fail'])(
     await save()
     expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
     wrapper
-      .findAllComponents(AppSelect)
-      .find((s) => s.find('input[aria-label="加工自检"]').exists())!
-      .vm.$emit('update:modelValue', result)
+      .findAllComponents(ElInputNumber)
+      .find((s) => s.find('input[aria-label="不合格数"]').exists())!
+      .vm.$emit('update:modelValue', result === 'pass' ? 0 : 2)
     await flushPromises()
     if (result === 'fail') {
-      wrapper
-        .findAllComponents(ElInputNumber)
-        .find((s) => s.find('input[aria-label="不合格件数"]').exists())!
-        .vm.$emit('update:modelValue', 2)
       wrapper
         .findAllComponents(WeightInput)
         .find((s) => s.props('ariaLabel') === '不合格重量')!
@@ -596,4 +592,48 @@ it('requires an explicit remark and keeps route-supplied values out of disabled 
     2,
     expect.objectContaining({ reason: '无' }),
   )
+})
+
+it('sums the failed counts of two output sizes in one self-check', async () => {
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...(await teamMaterialApi.quantityContext(2, 10)),
+    quantity: 1,
+    processing_mode: 'split',
+    self_check_enabled: true,
+  })
+  await render()
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
+  await wrapper
+    .findAll('button')
+    .find((btn) => btn.text() === '增加明细')!
+    .trigger('click')
+  const count = (label: string, n: number) =>
+    wrapper
+      .findAllComponents(ElInputNumber)
+      .find((item) => item.props('ariaLabel') === label)!
+      .vm.$emit('update:modelValue', n)
+  const weight = (label: string, n: number) =>
+    wrapper
+      .findAllComponents(WeightInput)
+      .find((item) => item.props('ariaLabel') === label)!
+      .vm.$emit('update:modelValue', n)
+  for (const row of [2, 3]) {
+    count(`明细${row}件数`, 50)
+    weight(`明细${row}重量`, 50)
+    const size = wrapper.findAllComponents(SpecificationInput)[row - 2]!
+    size.vm.$emit('update:modelValue', `尺寸 ${row}`)
+  }
+  await flushPromises()
+  count('明细2不合格数', 2)
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  count('明细3不合格数', 1)
+  await flushPromises()
+  weight('不合格重量', 3)
+  await wrapper.get('input[aria-label="不合格原因"]').setValue('划伤')
+  await save()
+  expect(vi.mocked(teamMaterialApi.changeQuantity).mock.calls[0]?.[1]).toMatchObject({
+    self_check: { failed_quantity: 3, failed_weight: 3, failure_reason: '划伤' },
+    outputs: [{ failed_quantity: 2 }, { failed_quantity: 1 }],
+  })
 })

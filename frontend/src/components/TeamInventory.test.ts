@@ -234,6 +234,7 @@ describe('warehouse grouped stock', () => {
       '材质',
       '物料类型',
       '尺寸',
+      '转出待签收件数',
       '操作',
     ])
     expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
@@ -1214,18 +1215,19 @@ describe('warehouse grouped stock', () => {
       await showColumns('stock_status', 'on_hand_weight')
       expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
         901,
-        expect.objectContaining({ availability: 'current' }),
+        expect.objectContaining({ availability: 'current_or_transit' }),
       )
       await update(100, 100, 0)
       await update(100, 70, 30)
       await update(100, 80, 20)
       await update(80, 80, 0)
       await update(80, 0, 80)
-      await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
-      expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(true)
+      expect(wrapper.find('label[aria-label="勾选批次 TL11"] input').exists()).toBe(false)
+      expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
       expect(wrapper.text()).toContain('全部待签收')
       expect(wrapper.findAll('button').some((button) => button.text() === '在途转出')).toBe(true)
       await update(80, 80, 0)
+      await wrapper.get('label[aria-label="勾选批次 TL11"] input').setValue(true)
       expect(
         wrapper
           .findAll('button')
@@ -1399,6 +1401,7 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     const cells = wrapper.get('tbody tr').findAll('td')
     expect(cells[headers().indexOf('数量（件）')]!.text()).toBe('70')
+    expect(cells[headers().indexOf('转出待签收件数')]!.text()).toBe('30')
     expect(cells[headers().indexOf('重量（kg）')]!.text()).toBe('7')
     const pending = wrapper.findAll(`button[aria-label="查看${row.serial_no}转出待签收批次"]`)
     expect(pending.map((button) => button.text())).toEqual(['30', '3'])
@@ -1442,14 +1445,16 @@ describe('warehouse grouped stock', () => {
       '材质',
       '物料类型',
       '尺寸',
+      '转出待签收件数',
       '操作',
     ])
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
       901,
-      expect.objectContaining({ availability: 'current' }),
+      expect.objectContaining({ availability: 'current_or_transit' }),
     )
     const cells = wrapper.findAll('tbody tr')[0]!.findAll('td')
     expect(cells[headers().indexOf('数量（件）')]!.text()).toBe('70')
+    expect(cells[headers().indexOf('转出待签收件数')]!.text()).toBe('30')
     expect(headers()).not.toContain('重量（kg）')
     expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
     await showColumns('stock_status', 'on_hand_weight')
@@ -1491,7 +1496,8 @@ describe('warehouse grouped stock', () => {
       page: 1,
       page_size: 10,
     })
-    await render('/team-workspaces/901?tab=stock&availability=owned', true, false)
+    await render(undefined, true, false)
+    expect(wrapper.find('tbody input[aria-label^="勾选批次"]').exists()).toBe(false)
     await showColumns('stock_status', 'on_hand_weight')
     expect(wrapper.findAll('button').some((button) => button.text() === '出库')).toBe(false)
     expect(wrapper.text()).toContain('全部待签收')
@@ -1573,6 +1579,7 @@ describe('warehouse grouped stock', () => {
       '材质',
       '上序班组',
       '重量（kg）',
+      '转出待签收件数',
       '操作',
     ])
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['70', '70'])
@@ -1667,6 +1674,7 @@ describe('warehouse grouped stock', () => {
       '材质',
       '物料类型',
       '尺寸',
+      '转出待签收件数',
       '操作',
     ])
     expect(wrapper.text()).not.toContain('车间转入 ·')
@@ -1827,6 +1835,7 @@ describe('warehouse grouped stock', () => {
       '材质',
       '物料类型',
       '尺寸',
+      '转出待签收件数',
       '操作',
     ])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
@@ -1859,7 +1868,7 @@ describe('warehouse grouped stock', () => {
     ).toEqual(['供应商 A', '检验', '供应商 A'])
     expect(wrapper.text()).toContain('共 28 条库存记录')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, {
-      availability: 'current',
+      availability: 'current_or_transit',
       page: 1,
       page_size: 10,
     })
@@ -2144,4 +2153,27 @@ it('identifies separate schedule batches in stock and its export for the same se
   ])
   const column = warehouseColumns.find((column) => column.key === 'task_batch_number')!
   expect(column.format(warehouseFixture({ task_batch_number: 2 }))).toBe('第2批')
+})
+
+it('shows failed counts alongside stock quantity for self-check teams', async () => {
+  const amounts = [2, 0, null]
+  vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+    items: amounts.map((failed_quantity, index) =>
+      warehouseFixture({ group_id: index + 1, failed_quantity }),
+    ),
+    total: 3,
+    page: 1,
+    page_size: 10,
+  })
+  await render('/team-workspaces/901?tab=stock', false, false, false)
+  await wrapper.setProps({ processing: true, teamCode: 'FACTORY-GRIND' })
+  const index = wrapper
+    .findAll('.el-table__header th')
+    .findIndex((th) => th.text().includes('不合格数'))
+  expect(index).toBeGreaterThanOrEqual(0)
+  expect(
+    wrapper.findAll('.el-table__body tbody tr').map((tr) => tr.findAll('td')[index]!.text()),
+  ).toEqual(['2', '0', '—'])
+  await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
+  expect(wrapper.find('.el-table__header').text()).not.toContain('不合格数')
 })

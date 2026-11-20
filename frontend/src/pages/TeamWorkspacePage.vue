@@ -1288,6 +1288,7 @@ onBeforeUnmount(() => {
             :key="teamId"
             ref="inventoryPanel"
             :team-id="teamId"
+            :team-code="team?.code"
             :warehouse="isWarehouse"
             :overview="overview"
             :can-write="canWrite"

@@ -30,6 +30,7 @@ from .models import (
 )
 from .processing_records import (
     annotate_source,
+    lot_self_check_counts,
     next_local_work,
     registered_lots,
     source_metadata,
@@ -44,7 +45,7 @@ from .schedule_task_identity import (
 )
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
-from .team_constants import WAREHOUSE_TEAM_CODE
+from .team_constants import SELF_CHECK_TEAM_CODES, WAREHOUSE_TEAM_CODE
 
 mt = MaterialTransfer
 WarehouseSearchField = Literal[
@@ -75,7 +76,9 @@ WarehouseSearchField = Literal[
 
 class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
-    availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
+    availability: Literal["current", "current_or_transit", "owned", "all", "available", "scrap"] = (
+        "current"
+    )
     receipt_source: (
         Literal["external", "return", "internal", "opening", "processing", "rework"] | None
     ) = None
@@ -405,7 +408,7 @@ def list_inventory(db, team_id, filters):
     if filters.availability != "all":
         prefix = (
             "on_hand"
-            if filters.availability == "current"
+            if filters.availability in ("current", "current_or_transit")
             else "owned"
             if filters.availability == "owned"
             else "scrap"
@@ -416,6 +419,11 @@ def list_inventory(db, team_id, filters):
             or_(
                 table.c[prefix + "_quantity"] != 0,
                 table.c[prefix + "_weight"] != 0,
+                *(
+                    (table.c.in_transit_quantity > 0, table.c.in_transit_weight > 0)
+                    if filters.availability == "current_or_transit"
+                    else ()
+                ),
                 table.c.shortage_quantity > 0,
                 table.c.shortage_weight > 0,
             )
@@ -701,6 +709,8 @@ def list_inventory(db, team_id, filters):
     origins = origin_columns(include_team=team_id is None)
     differences = {}
     batches = {}
+    checked_lots = set()
+    output_parents = set()
     if rows:
         # Fetch complete batch lists only for this page; do not use GROUP_CONCAT,
         # whose MySQL length limit can silently lose batch numbers.
@@ -708,6 +718,10 @@ def list_inventory(db, team_id, filters):
             select(
                 *(column.label(name) for name, column in origins.items()),
                 mt.batch_no,
+                mt.id,
+                mt.next_team_code,
+                mt.source_transfer_id,
+                mt.entry_kind,
                 parent.batch_no.label("previous_batch_no"),
             )
             .outerjoin(parent, parent.id == mt.source_transfer_id)
@@ -719,6 +733,10 @@ def list_inventory(db, team_id, filters):
             )
         ).mappings()
         for source in source_rows:
+            if source["next_team_code"] in SELF_CHECK_TEAM_CODES:
+                checked_lots.add(source["id"])
+                if source["entry_kind"] == "processing_output":
+                    output_parents.add(source["source_transfer_id"])
             current, previous = batches.setdefault(
                 tuple(source[name] for name in origins), (set(), set())
             )
@@ -747,6 +765,7 @@ def list_inventory(db, team_id, filters):
         row["group_id"] for row in rows if row["receipt_source"] in ("external", "return")
     ]
     editable_receipts = editable_ids(db, receipt_ids) if receipt_ids else set()
+    failed_quantities = lot_self_check_counts(db, checked_lots, output_parents)
     completed_by_team = {}
     for row in rows:
         if row["processing_state"] == "complete":
@@ -766,6 +785,7 @@ def list_inventory(db, team_id, filters):
         current, previous = batches[tuple(row[name] for name in origins)]
         item["batch_nos"] = sorted(current)
         item["receipt_editable"] = row["group_id"] in editable_receipts
+        item["failed_quantity"] = failed_quantities.get(row["group_id"])
         item["has_next_processing_task"] = row["group_id"] in lots_with_next_task
         item["previous_batch_nos"] = sorted(previous)
         rework_route = routes.get(item["rework_route_id"])

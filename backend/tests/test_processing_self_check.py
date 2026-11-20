@@ -78,12 +78,18 @@ def test_processing_check_appears_once_in_own_team_quality(client, warehouse, co
         client.get("/api/quality-feedback", params=params, headers=s["headers"]).json()["total"]
         == 0
     )
+    inventory = client.get(base(s, True) + "/inventory")
+    assert inventory.status_code == 200, inventory.text
+    stock = [row for row in inventory.json()["items"] if row["on_hand_quantity"]]
+    assert [(row["on_hand_quantity"], row["failed_quantity"]) for row in stock] == [(100, 2)]
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert (totals["on_hand_quantity"], totals["on_hand_weight"]) == (100, 100)
 
 
 def test_passed_processing_is_only_in_production(client, warehouse):
     lot, employee = setup_lot(client, warehouse)
+    url = base(warehouse, True) + "/inventory"
+    assert client.get(url).json()["items"][0]["failed_quantity"] is None
     for invalid in [
         dict(failed_quantity=1, failed_weight=1, failure_reason="  "),
         dict(failed_quantity=0, failed_weight=1),
@@ -95,6 +101,8 @@ def test_passed_processing_is_only_in_production(client, warehouse):
     )
     assert passed.status_code == 201, passed.text
     assert passed.json()["failed_quantity"] == 0
+    completed = next(row for row in client.get(url).json()["items"] if row["on_hand_quantity"])
+    assert completed["failed_quantity"] == 0
     assert client.get("/api/quality-feedback", params={"kind": "processing"}).json()["total"] == 0
 
 
@@ -121,6 +129,56 @@ def test_split_defects_are_part_of_the_self_check(client, warehouse):
     assert response.status_code == 201, response.text
     assert response.json()["completed_quantity"] == 98
     assert response.json()["failed_quantity"] == 2
+
+    stock = client.get(base(warehouse, True) + "/inventory").json()["items"]
+    assert {
+        row["processing_role"]: row["failed_quantity"] for row in stock if row["on_hand_quantity"]
+    } == {"produced": 0, "scrap": 2}
+
+
+@pytest.mark.parametrize("allocated", [True, False])
+def test_multiple_output_sizes_do_not_repeat_the_work_total(client, warehouse, allocated):
+    lot, employee = setup_lot(client, warehouse, "FACTORY-WIRE", quantity=2)
+    outputs = [
+        dict(
+            role="produced",
+            material_type="semi_finished",
+            quantity=q,
+            weight=q,
+            transfer_specification=spec,
+        )
+        for q, spec in [(60, "尺寸 A"), (38, "尺寸 B")]
+    ]
+    outputs.extend(
+        [
+            dict(role="scrap", material_type="defective", quantity=1, weight=1),
+            dict(role="remaining", material_type=lot["material_type"], quantity=1, weight=1),
+        ]
+    )
+    extra = dict(
+        quantity=100,
+        input_quantity=1,
+        outputs=outputs,
+        self_check=dict(failed_quantity=4, failed_weight=4, failure_reason="划伤"),
+    )
+    if allocated:
+        outputs[0]["failed_quantity"] = 2
+        assert work(client, warehouse, lot, employee, **extra).status_code == 422
+        outputs[1]["failed_quantity"] = 2
+        assert work(client, warehouse, lot, employee, **extra).status_code == 422
+        outputs[1]["failed_quantity"] = 1
+    saved = work(client, warehouse, lot, employee, **extra)
+    assert saved.status_code == 201, saved.text
+    rows = client.get(base(warehouse, True) + "/inventory").json()["items"]
+    by_id = {row["group_id"]: row["failed_quantity"] for row in rows}
+    assert [by_id[line["id"]] for line in saved.json()["outputs"]] == [
+        2 if allocated else None,
+        1 if allocated else None,
+        1,
+        None,
+    ]
+    issues = client.get("/api/quality-feedback", params={"kind": "processing"}).json()
+    assert [(row["failed_quantity"], row["notes"]) for row in issues["items"]] == [(4, "划伤")]
 
 
 def test_outbound_self_check_is_atomic_with_the_transfer(client, warehouse):
@@ -161,6 +219,9 @@ def test_outbound_self_check_is_atomic_with_the_transfer(client, warehouse):
     records = client.get(quality).json()
     assert records["total"] == 1
     assert (records["items"][0]["failed_quantity"], records["pending_count"]) == (2, 0)
+    stock = client.get(base(warehouse, True) + "/inventory").json()["items"]
+    source = next(row for row in stock if row["group_id"] == lot["id"])
+    assert source["failed_quantity"] == 2
 
 
 def test_migration_preserves_existing_work_without_guessing_quality():

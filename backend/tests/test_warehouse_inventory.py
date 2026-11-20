@@ -106,9 +106,22 @@ def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, war
         notes="废料回库",
     ).json()
     assert inventory(client, s, receipt_source="internal")["total"] == 0
+    scope = {"availability": "current_or_transit"}
+    sender_url = base(s, True) + "/inventory"
+    sending = client.get(sender_url, params=scope).json()["items"]
+    assert [
+        (row["on_hand_quantity"], row["in_transit_quantity"], row["available_quantity"])
+        for row in sending
+    ] == [(0, 50, 0)]
+    assert client.get(sender_url, params={"availability": "current"}).json()["total"] == 0
+    assert inventory(client, s, receipt_source="internal", **scope)["total"] == 0
     pending = client.get(base(s) + "/overview").json()["pending_incoming"]
     assert pending["count"] == 2 and pending["batch_count"] == 2
     assert confirm(client, s, returned).status_code == 200
+    assert client.get(sender_url, params=scope).json()["total"] == 0
+    received = inventory(client, s, receipt_source="internal", **scope)["items"]
+    assert sum(row["on_hand_quantity"] for row in received) == 50
+    assert all(row["in_transit_quantity"] == 0 for row in received)
     rows = inventory(client, s, receipt_source="internal")["items"]
     assert len(rows) == 2 and sum(row["on_hand_quantity"] for row in rows) == 50
     assert all(row["source_name"] == "轧制" for row in rows)

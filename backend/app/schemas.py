@@ -25,6 +25,7 @@ SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 class ProcessingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: Literal["remaining", "produced", "scrap"]
+    failed_quantity: int | None = Field(default=None, ge=0)
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
@@ -42,6 +43,10 @@ class ProcessingOutput(BaseModel):
 
     @model_validator(mode="after")
     def validate_output(self):
+        if self.failed_quantity is not None and (
+            self.role != "produced" or self.failed_quantity > self.quantity
+        ):
+            raise ValueError("产出行的不合格数不能超过该行件数")
         if self.quantity == 0 and self.weight == 0:
             raise ValueError("加工明细的件数和重量至少一项大于零")
         if (self.material_type in SCRAP_MATERIAL_TYPES) != (self.role == "scrap"):
@@ -107,6 +112,21 @@ class ProcessingQuantity(BaseModel):
                 raise ValueError("加工人员不能重复，且必须是有效员工")
             return sorted(value)
         return value
+
+    @model_validator(mode="after")
+    def validate_output_self_check(self):
+        outputs = self.outputs or []
+        if any(line.failed_quantity is not None for line in outputs):
+            produced = [line for line in outputs if line.role == "produced" and line.quantity]
+            separated = sum(line.quantity for line in outputs if line.material_type == "defective")
+            if (
+                self.self_check is None
+                or any(line.failed_quantity is None for line in produced)
+                or sum(line.failed_quantity or 0 for line in produced) + separated
+                != self.self_check.failed_quantity
+            ):
+                raise ValueError("请核对各产出行与本次自检的不合格数")
+        return self
 
     @model_validator(mode="after")
     def validate_primary_processor(self):

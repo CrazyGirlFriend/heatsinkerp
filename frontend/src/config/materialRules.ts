@@ -8,6 +8,10 @@ export const processingTeamCodes = [
   'FACTORY-PLATE',
   'FACTORY-QC',
 ] as const
+export const isSelfCheckTeamCode = (code?: string) =>
+  ['FACTORY-ENGRAVE', 'FACTORY-ANNEAL', 'FACTORY-GRIND', 'FACTORY-WIRE'].some(
+    (value) => value === code,
+  )
 export const isSplittingTeamCode = (code?: string) =>
   splittingTeamCodes.some((value) => value === code)
 export const isProcessingTeamCode = (code?: string) =>

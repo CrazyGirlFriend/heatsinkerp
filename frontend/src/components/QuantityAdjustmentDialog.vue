@@ -125,6 +125,7 @@ type OutputDraft = {
   material_type: MaterialType
   quantity?: number
   weight?: number
+  failedQuantity?: number
   gross?: number
   percent?: number
   specification: string
@@ -220,8 +221,13 @@ const cumulativeWeightDifference = computed(
 )
 const selfCheckEnabled = computed(() => structured.value && snapshot.value?.self_check_enabled)
 const selfCheckTotals = computed(() => {
-  if (unitProcessing.value)
-    return { producedQuantity: quantity.value, producedWeight: completedWeight.value }
+  if (unitProcessing.value || !detailed.value)
+    return {
+      producedQuantity: quantity.value,
+      producedWeight: unitProcessing.value ? completedWeight.value : snapshot.value?.weight,
+      separatedQuantity: 0,
+      separatedWeight: 0,
+    }
   const totals = {
     producedQuantity: 0,
     producedWeight: 0,
@@ -238,6 +244,27 @@ const selfCheckTotals = computed(() => {
     }
   }
   return totals
+})
+const checkedOutputs = computed(() =>
+  activeOutputs.value.filter((line) => line.role === 'produced' && (line.quantity || 0) > 0),
+)
+const perOutputCheck = computed(
+  () => selfCheckEnabled.value && detailed.value && checkedOutputs.value.length > 1,
+)
+const outputFailedQuantity = computed(() => {
+  if (!perOutputCheck.value) return undefined
+  let total = selfCheckTotals.value.separatedQuantity
+  for (const line of checkedOutputs.value) {
+    if (
+      line.failedQuantity == null ||
+      !Number.isSafeInteger(line.failedQuantity) ||
+      line.failedQuantity < 0 ||
+      line.failedQuantity > line.quantity!
+    )
+      return null
+    total += line.failedQuantity
+  }
+  return total
 })
 const progressInvalid = computed(
   () =>
@@ -275,6 +302,7 @@ function outputRoleChanged(line: OutputDraft) {
   }
 }
 function outputTypeChanged(line: OutputDraft) {
+  line.failedQuantity = undefined
   line.quantity = isWeightOnlyType(line.material_type) ? 0 : undefined
   line.weight = line.gross = line.percent = undefined
 }
@@ -462,6 +490,9 @@ async function save() {
     (!snapshot.value.process_route || snapshot.value.process_route.split_here) &&
     line.role === 'produced'
       ? { serial_no: line.serialNo }
+      : {}),
+    ...(perOutputCheck.value && line.role === 'produced'
+      ? { failed_quantity: line.failedQuantity || 0 }
       : {}),
     quantity: outputQuantity(line)!,
     weight: line.weight!,
@@ -827,6 +858,7 @@ onBeforeUnmount(() => {
                 v-if="selfCheckEnabled"
                 :key="`${teamId}:${sourceId}`"
                 v-bind="selfCheckTotals"
+                :output-failed-quantity="outputFailedQuantity"
                 :submitted="submitted"
                 :disabled="saving || loading"
                 @change="selfCheck = $event"
@@ -962,7 +994,14 @@ onBeforeUnmount(() => {
               <div class="processing-output-scroll">
                 <AppDetailTable
                   columns-key="QuantityAdjustmentDialog-1"
-                  :required-columns="['类别', '物料类型', '件数', '实测重量', '归属流水号 *']"
+                  :required-columns="[
+                    '类别',
+                    '物料类型',
+                    '件数',
+                    '不合格数',
+                    '实测重量',
+                    '归属流水号 *',
+                  ]"
                   class="processing-output-table business-document-table"
                 >
                   <thead>
@@ -975,6 +1014,7 @@ onBeforeUnmount(() => {
                       <th v-if="snapshot.shared_unallocated" class="shared-owner-column">
                         归属流水号 *
                       </th>
+                      <th v-if="perOutputCheck">不合格数</th>
                       <th>操作</th>
                     </tr>
                   </thead>
@@ -1088,6 +1128,20 @@ onBeforeUnmount(() => {
                             line.role === 'scrap' ? '共投废料' : '共投未分配'
                           }}</span>
                         </td>
+                        <td v-if="perOutputCheck">
+                          <ElInputNumber
+                            v-if="checkedOutputs.includes(line)"
+                            v-model="line.failedQuantity"
+                            :aria-label="`明细${index + 1}不合格数`"
+                            :min="0"
+                            :max="line.quantity"
+                            :precision="0"
+                            placeholder="全部合格填 0"
+                          />
+                          <span v-else>{{
+                            line.material_type === 'defective' ? line.quantity : '—'
+                          }}</span>
+                        </td>
                         <td>
                           <ElButton
                             text
@@ -1098,7 +1152,13 @@ onBeforeUnmount(() => {
                         </td>
                       </tr>
                       <tr v-if="line.material_type === 'sludge'">
-                        <td :colspan="snapshot.shared_unallocated ? 7 : 6">
+                        <td
+                          :colspan="
+                            6 +
+                            Number(snapshot.shared_unallocated || false) +
+                            Number(perOutputCheck)
+                          "
+                        >
                           <SludgeWeightFields
                             v-model:gross="line.gross"
                             v-model:percent="line.percent"

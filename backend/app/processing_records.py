@@ -20,6 +20,48 @@ from .schemas import SCRAP_MATERIAL_TYPES
 from .team_constants import PROCESSING_TEAM_CODES
 
 
+def lot_self_check_counts(db, lot_ids, output_parent_ids):
+    """Read the local work that produced each visible physical lot, including old snapshots."""
+    if not lot_ids:
+        return {}
+    records = db.execute(
+        select(Adjustment.source_transfer_id, Adjustment.failed_quantity, Adjustment.outputs)
+        .where(
+            Adjustment.source_transfer_id.in_(lot_ids | output_parent_ids),
+            Adjustment.processing_mode.is_not(None),
+        )
+        .order_by(Adjustment.id)
+    )
+    counts = {}
+    for source_id, failed, outputs in records:
+        if source_id in lot_ids:
+            # A split consumes the source. An in-place registration keeps its batch number.
+            counts[source_id] = None if outputs else failed
+        if failed is None or not outputs or source_id not in output_parent_ids:
+            continue
+        produced = [line for line in outputs if line["role"] == "produced" and line["quantity"]]
+        separated = sum(
+            line["quantity"] for line in outputs if line["material_type"] == "defective"
+        )
+        rest = failed - separated
+        all_failed = rest == sum(line["quantity"] for line in produced)
+        for line in outputs:
+            if line["id"] not in lot_ids:
+                continue
+            if line["material_type"] == "defective":
+                counts[line["id"]] = line["quantity"]
+            elif line["role"] == "produced":
+                count = line.get("failed_quantity")
+                if count is None:
+                    # Older reports recorded only a total. Attribute only unambiguous counts.
+                    if all_failed or not line["quantity"]:
+                        count = line["quantity"]
+                    elif len(produced) == 1 or rest == 0:
+                        count = rest
+                counts[line["id"]] = count
+    return counts
+
+
 def registered_lots(team_id):
     # Children inherit their creation's registration until they are processed
     # again. Their own latest record then takes precedence over the parent.

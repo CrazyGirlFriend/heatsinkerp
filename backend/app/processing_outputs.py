@@ -133,6 +133,11 @@ def create_outputs(db, lot, payload, user, now, hold, task_fields=None, route_st
             "serial_no": row.serial_no,
             "shared_unallocated": row.shared_unallocated,
             "role": row.processing_role,
+            **(
+                {"failed_quantity": line.failed_quantity}
+                if line.failed_quantity is not None
+                else {}
+            ),
             "quantity": row.quantity,
             "weight": float(row.weight),
             "material_type": row.material_type,
@@ -144,7 +149,7 @@ def create_outputs(db, lot, payload, user, now, hold, task_fields=None, route_st
             if row.sludge_content_percent is not None
             else None,
         }
-        for row in items
+        for row, line in zip(items, payload.outputs, strict=True)
     ]
     return items, snapshots, sum((row.weight for row in items), Decimal(0))
 

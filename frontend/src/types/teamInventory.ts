@@ -24,6 +24,7 @@ import type { InventoryScheduleSummary } from './productionSchedule'
 export type WarehouseSource =
   'external' | 'return' | 'internal' | 'opening' | 'processing' | 'rework'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
+  failed_quantity?: number | null
   has_next_processing_task?: boolean
   process_route?: import('./processRoute').ProcessRouteContext | null
   is_outsourced?: boolean
@@ -100,7 +101,13 @@ export function inventoryDispatchable(row: TeamInventoryRow) {
   return { quantity: row[`${prefix}_quantity`] ?? null, weight: row[`${prefix}_weight`] ?? null }
 }
 export const inventoryCanDispatch = (row: TeamInventoryRow) =>
-  row.batch_count > 0 && Object.values(inventoryDispatchable(row)).every((value) => value != null)
+  row.batch_count > 0 &&
+  !(
+    row.on_hand_quantity === 0 &&
+    row.on_hand_weight === 0 &&
+    (Number(row.in_transit_quantity) > 0 || Number(row.in_transit_weight) > 0)
+  ) &&
+  Object.values(inventoryDispatchable(row)).every((value) => value != null)
 export const inventoryHasPending = (row: TeamInventoryRow) =>
   [
     row.reserved_quantity,
@@ -324,7 +331,7 @@ export const warehouseColumns = [
   },
   {
     key: 'in_transit_quantity',
-    label: '待签收件数',
+    label: '转出待签收件数',
     width: 150,
     defaultVisible: false,
     numeric: true,
@@ -333,7 +340,7 @@ export const warehouseColumns = [
   },
   {
     key: 'in_transit_weight',
-    label: '待签收重量 (kg)',
+    label: '转出待签收重量 (kg)',
     width: 180,
     defaultVisible: false,
     numeric: true,
@@ -430,7 +437,7 @@ export const warehouseSearchKind = (field: WarehouseSearchField) =>
       : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
   table_query?: string
-  availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
+  availability?: 'current' | 'current_or_transit' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField
   rework?: 'pending' | 'worked'
   receipt_source?: WarehouseSource

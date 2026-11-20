@@ -2955,6 +2955,8 @@ export interface components {
       external_pending_weight: number
       /** External Source */
       external_source: string
+      /** Failed Quantity */
+      failed_quantity?: number | null
       /** Finished Quantity */
       finished_quantity: number | null
       /** Finished Quantity Count */
@@ -3726,6 +3728,8 @@ export interface components {
       external_pending_weight: number
       /** External Source */
       external_source: string
+      /** Failed Quantity */
+      failed_quantity?: number | null
       /** Finished Quantity */
       finished_quantity: number | null
       /** Finished Quantity Count */
@@ -5628,6 +5632,8 @@ export interface components {
     }
     /** ProcessingOutput */
     ProcessingOutput: {
+      /** Failed Quantity */
+      failed_quantity?: number | null
       /** Material Type */
       material_type: string
       /** Quantity */
@@ -5652,6 +5658,8 @@ export interface components {
     ProcessingOutputResponse: {
       /** Batch No */
       batch_no: string
+      /** Failed Quantity */
+      failed_quantity?: number | null
       /** Id */
       id: number
       /** In Transit Quantity */
@@ -14359,7 +14367,7 @@ export interface operations {
       query?: {
         activity_day?: string | null
         activity_kind?: ('incoming' | 'outgoing' | 'loss') | null
-        availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
+        availability?: 'current' | 'current_or_transit' | 'owned' | 'all' | 'available' | 'scrap'
         date_from?: string | null
         date_to?: string | null
         days?: 7 | 30

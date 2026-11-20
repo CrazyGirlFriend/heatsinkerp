@@ -11,6 +11,7 @@ from .stock_read_schemas import ProcessingState
 
 
 class ProcessingOutputResponse(ReadResponse):
+    failed_quantity: int | None = None
     id: int
     batch_no: str
     serial_no: str | None = None

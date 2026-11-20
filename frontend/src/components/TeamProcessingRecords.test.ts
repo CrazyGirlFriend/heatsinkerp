@@ -850,3 +850,28 @@ it('switches between all three original inspection tables and restarts paginatio
     expect(wrapper.getComponent(TableExportButton).props('source')()!.title).toBe(label)
   }
 })
+
+it('shows the operator’s failed count on each self-check team and exports zero distinctly', async () => {
+  const response = await teamMaterialApi.processingRecords(5)
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    ...response,
+    total: 3,
+    items: [{ ...record(), failed_quantity: 2 }, { ...record(2), failed_quantity: 0 }, record(3)],
+  })
+  await render()
+  for (const code of ['FACTORY-WIRE', 'FACTORY-ANNEAL', 'FACTORY-ENGRAVE', 'FACTORY-GRIND']) {
+    await wrapper.setProps({ teamCode: code })
+    const index = wrapper
+      .findAll('.el-table__header th')
+      .findIndex((th) => th.text().includes('不合格数'))
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(
+      wrapper.findAll('.el-table__body tbody tr').map((row) => row.findAll('td')[index]!.text()),
+    ).toEqual(['2', '0', '—'])
+  }
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  const exported = await source.load(new AbortController().signal, () => {})
+  expect(exported.map((row) => row.failed_quantity)).toEqual([2, 0, undefined])
+  await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
+  expect(wrapper.find('.el-table__header').text()).not.toContain('不合格数')
+})

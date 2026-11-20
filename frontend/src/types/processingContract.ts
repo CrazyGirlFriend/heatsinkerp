@@ -19,6 +19,7 @@ export type QuantityAdjustment = Pick<RecordedWork, RequiredWorkFields> &
   }
 
 export interface CreateProcessingOutput extends SludgeMeasurement {
+  failed_quantity?: number | null
   serial_no?: string | null
   role: import('./processingStatus').ProcessingRole
   quantity: number

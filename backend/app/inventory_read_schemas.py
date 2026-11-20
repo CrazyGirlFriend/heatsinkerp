@@ -10,6 +10,7 @@ from .serial_urgency_schemas import UrgencyResponse
 
 
 class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
+    failed_quantity: int | None = None
     is_outsourced: bool = False
     group_id: int
     task_batch_number: int | None

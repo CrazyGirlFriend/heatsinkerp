@@ -2,6 +2,7 @@
 import { useTableQuery } from '@/composables/useTableQuery'
 import { useInventorySchedules } from '@/composables/useInventorySchedules'
 import { useBatchSelection } from '@/composables/useBatchSelection'
+import { isSelfCheckTeamCode } from '@/config/materialRules'
 import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 import ElAlert from '@/components/AppAlert.vue'
 import ElDatePicker from '@/components/AppDatePicker.vue'
@@ -72,6 +73,7 @@ import { scheduleBatchSearch } from '@/utils/scheduleBatch'
 const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
 const props = defineProps<{
   teamId: number
+  teamCode?: string
   overview: TeamMaterialOverview
   canWrite?: boolean
   warehouse?: boolean
@@ -165,7 +167,7 @@ const fieldDraft = ref<WarehouseSearchField>('all'),
   operatorDraft = ref<'eq' | 'gte' | 'lte'>('eq'),
   inputError = ref('')
 const reworkDraft = ref<'pending' | 'worked' | ''>('')
-const availabilityDraft = ref<TeamInventoryParams['availability']>('current'),
+const availabilityDraft = ref<TeamInventoryParams['availability']>('current_or_transit'),
   sourceTeamDraft = ref<number | undefined>()
 const purposeDraft = ref<number | undefined>(),
   purposes = ref<TeamPurpose[]>([]),
@@ -254,8 +256,18 @@ const sourceOptions = computed(() =>
 )
 const sourceTeams = computed(() => directory.items.filter((team) => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
+const selfCheckTeam = computed(() => isSelfCheckTeamCode(props.teamCode))
+const failedQuantityColumn = {
+  key: 'failed_quantity',
+  label: '不合格数',
+  width: 115,
+  numeric: true,
+  defaultVisible: true,
+  format: (row: TeamInventoryRow) => inventoryAmount(row.failed_quantity),
+} as const
+type TeamColumnKey = WarehouseColumnKey | 'failed_quantity'
 const columns = computed(() =>
-  warehouseColumns
+  [...warehouseColumns, ...(selfCheckTeam.value ? [failedQuantityColumn] : [])]
     .filter(
       (column) =>
         !['processing_role', 'owned_quantity', 'owned_weight'].includes(column.key) &&
@@ -265,6 +277,7 @@ const columns = computed(() =>
     )
     .map((column) => ({
       ...column,
+      defaultVisible: column.key === 'in_transit_quantity' || column.defaultVisible,
       label:
         props.processing && column.key === 'stock_status'
           ? '加工状态'
@@ -286,7 +299,7 @@ const columns = computed(() =>
             on_hand_weight: 120,
             stock_status: 135,
             process_route: 150,
-          } as Partial<Record<WarehouseColumnKey, number>>
+          } as Partial<Record<TeamColumnKey, number>>
         )[column.key] || column.width,
       format: (row: TeamInventoryRow) =>
         column.key === 'source'
@@ -302,7 +315,15 @@ const columns = computed(() =>
 )
 const requiredColumnKeys = computed(() =>
   props.processing
-    ? ['batch_no', 'on_hand_quantity', 'process_route', 'rework', 'stock_status', 'material_name']
+    ? [
+        'batch_no',
+        'on_hand_quantity',
+        ...(selfCheckTeam.value ? ['failed_quantity'] : []),
+        'process_route',
+        'rework',
+        'stock_status',
+        'material_name',
+      ]
     : props.warehouse
       ? ['batch_no', 'warehouse_location', 'on_hand_quantity', 'material_name']
       : ['batch_no', 'on_hand_quantity', 'material_name'],
@@ -323,10 +344,13 @@ const searchColumns = computed(() =>
 )
 const fixedColumns = ref<string[] | null>(null)
 const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
-const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(
+const columnChoices = ref<InventoryColumnChoice<TeamColumnKey>[]>(
   warehouseColumns
     .filter((column) => column.key !== 'material_name')
-    .map((column) => ({ key: column.key, visible: column.defaultVisible })),
+    .map((column) => ({
+      key: column.key,
+      visible: column.key === 'in_transit_quantity' || column.defaultVisible,
+    })),
 )
 const storageKey = computed(() =>
   auth.currentUser?.id
@@ -388,9 +412,11 @@ const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
     page: page.value,
     page_size: pageSize.value,
-    availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability'))
+    availability: ['current_or_transit', 'current', 'owned', 'all', 'available', 'scrap'].includes(
+      text('availability'),
+    )
       ? text('availability')
-      : 'current',
+      : 'current_or_transit',
   }
   for (const key of [
     'query',
@@ -516,12 +542,13 @@ const activeFilters = computed(() => {
       label: `加工任务：${text('purpose_id') === '0' ? '未指定任务' : purposes.value.find((purpose) => purpose.id === Number(text('purpose_id')))?.name || text('purpose_id')}`,
     })
   const availabilityLabels = {
+    current: '仅在库',
     owned: '含已转出待确认',
     available: '正常料可转出',
     scrap: '废料可处理',
     all: '全部（含零库存）',
   }
-  if (filters.value.availability && filters.value.availability !== 'current')
+  if (filters.value.availability && filters.value.availability !== 'current_or_transit')
     chips.push({ key: 'availability', label: availabilityLabels[filters.value.availability] })
   return chips
 })
@@ -625,7 +652,7 @@ function applyDialogFilters() {
   }
   if (filterResetRequested.value) {
     delete params.page
-    if (params.availability === 'current') delete params.availability
+    if (params.availability === 'current_or_transit') delete params.availability
   }
   apply(params, '')
   filtersOpen.value = false
@@ -640,7 +667,7 @@ function resetDialogFilters() {
   typeDraft.value = ''
   materialDraft.value = ''
   purposeDraft.value = undefined
-  availabilityDraft.value = 'current'
+  availabilityDraft.value = 'current_or_transit'
   fieldDraft.value = 'all'
   operatorDraft.value = 'eq'
   queryDraft.value = ''
@@ -1083,9 +1110,9 @@ onBeforeUnmount(() => {
                 :append-to="appendTo"
                 v-model="availabilityDraft"
                 aria-label="库存范围"
-                ><ElOption value="current" label="当前有料" /><ElOption
-                  value="owned"
-                  label="含已转出待确认" /><ElOption
+                ><ElOption value="current_or_transit" label="在库及转出待签收" /><ElOption
+                  value="current"
+                  label="仅在库" /><ElOption value="owned" label="含已转出待确认" /><ElOption
                   value="available"
                   label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption
                   value="all"
@@ -1150,7 +1177,7 @@ onBeforeUnmount(() => {
               : '批次号、流水号、数量和材质始终显示。'
           "
           :columns="selectableColumns"
-          :new-visible-keys="['task_batch_number']"
+          :new-visible-keys="['task_batch_number', 'in_transit_quantity']"
           :fixed-column-options="fixedColumnOptions"
           @fixed-change="fixedColumns = $event"
           :legacy-keys="warehouseLegacyColumnKeys"

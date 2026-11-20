@@ -160,6 +160,7 @@ export const processingQueryColumns = queryColumns([
   ['加工任务', 'processing_task_name'],
   ['物料类型', 'material_type'],
   ['本次完成件数', 'completed_quantity', 'number'],
+  ['不合格数', 'failed_quantity', 'number'],
   ['本次完成重量 (kg)', 'completed_weight', 'number'],
   ['加工前件数', 'before_quantity', 'number'],
   ['加工后件数', 'after_quantity', 'number'],

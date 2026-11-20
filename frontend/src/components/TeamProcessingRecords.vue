@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
+import { isSelfCheckTeamCode } from '@/config/materialRules'
 import { processingQueryColumns } from '@/utils/tableQueryColumns'
 import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
 
@@ -56,6 +57,7 @@ const props = defineProps<{
   dispatchingRecordId?: number
 }>()
 const reportTemplates = computed(() => productionTemplates(props.teamCode))
+const selfCheckTeam = computed(() => isSelfCheckTeamCode(props.teamCode))
 const isInspectionTeam = computed(() => props.teamCode === 'FACTORY-QC')
 function latestInspection(row: ProcessingRecord) {
   return row.report_inspections?.filter((check) => check.kind === 'inspection').at(-1)
@@ -277,6 +279,15 @@ function exportSource() {
         value: (row) => row.processing_date || '未登记',
       },
       { key: 'completed_quantity', label: '本次完成件数', value: (row) => row.completed_quantity },
+      ...(selfCheckTeam.value
+        ? [
+            {
+              key: 'failed_quantity',
+              label: '不合格数',
+              value: (row: ProcessingRecord) => row.failed_quantity,
+            },
+          ]
+        : []),
       ...(isInspectionTeam.value
         ? [
             {
@@ -803,6 +814,15 @@ onBeforeUnmount(() => {
           inventoryAmount(row.completed_quantity)
         }}</template></ElTableColumn
       >
+      <ElTableColumn
+        v-if="selfCheckTeam"
+        label="不合格数"
+        prop="failed_quantity"
+        min-width="115"
+        align="right"
+      >
+        <template #default="{ row }">{{ inventoryAmount(row.failed_quantity) }}</template>
+      </ElTableColumn>
       <template v-if="isInspectionTeam">
         <ElTableColumn label="检验件数" min-width="110" align="right">
           <template #default="{ row }">{{
