@@ -187,7 +187,15 @@ async function stockDialog(sources = [source(), source(4)]) {
   await flushPromises()
 }
 async function mode(kind: ExternalEntryKind) {
-  wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', kind)
+  if (kind === 'warehouse_outbound') {
+    await wrapper
+      .get('[aria-label="出库方式"]')
+      .findAll('button')
+      .find((button) => button.text() === '对外出库')!
+      .trigger('click')
+  } else {
+    wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', kind)
+  }
   await flushPromises()
 }
 function destinationSelect() {
@@ -373,7 +381,7 @@ describe('external dispatch creation', () => {
     await submit()
     expect(teamMaterialApi.refreshSource).toHaveBeenCalledTimes(2)
     expect(destinationSelect().props('modelValue')).toBe('外委库')
-    expect(wrapper.getComponent(ElRadioGroup).props('modelValue')).toBe('warehouse_outbound')
+    expect(wrapper.get('[aria-label="出库方式"] [aria-pressed="true"]').text()).toBe('对外出库')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
     wrapper

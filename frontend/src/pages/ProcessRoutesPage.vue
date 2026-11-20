@@ -6,19 +6,17 @@ import TableFilterFields from '@/components/TableFilterFields.vue'
 import type { TableColumnCondition } from '@/types/tableQuery'
 import AppButton from '@/components/AppButton.vue'
 import ElAlert from '@/components/AppAlert.vue'
-import ElSelect from '@/components/AppSelect.vue'
-import { ElOption } from 'element-plus'
 import AppPopover from '@/components/AppPopover.vue'
-import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import AsyncStatus from '@/components/AsyncStatus.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
+import WatermelonBadge from '@/components/watermelon/WatermelonBadge.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowDown, Plus, Setting } from '@element-plus/icons-vue'
-import { ElIcon, ElTag, ElTableColumn } from 'element-plus'
+import { ElIcon, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -34,8 +32,6 @@ import { formatDateTime } from '@/utils/format'
 import { canMaintainProcessRoute } from '@/utils/processRoutePermissions'
 const loadEditor = () => import('@/components/ProcessRouteEditor.vue')
 const ProcessRouteEditor = defineAsyncComponent(loadEditor)
-const TeamProblemDetail = defineAsyncComponent(() => import('@/components/TeamProblemDetail.vue'))
-const pendingProblemId = ref<number | null>(null)
 const location = useRoute()
 const router = useRouter()
 const auth = useAuthStore(),
@@ -52,51 +48,13 @@ const canManageTeam = computed(
 const managingTeam = computed(
   () => location.query.tab === 'settings' && canManageTeam.value && !!team.value,
 )
-const routeKind = ref<'normal' | 'rework'>(location.query.kind === 'rework' ? 'rework' : 'normal')
-const reworkScope = ref<'open' | 'ended' | 'all'>('open')
-const routeState = ref<'draft' | 'published'>()
-const pendingOnly = computed(() => routeState.value === 'draft')
 const filtersOpen = ref(false)
-const draftScope = ref<'open' | 'ended' | 'all'>('open')
-const draftState = ref<'draft' | 'published'>()
 const draftColumns = ref<TableColumnCondition[]>([])
 const columnSettingsTarget = ref<HTMLElement | null>(null)
 const openingId = ref<number | null>(null)
 const preparingEditor = ref(false)
-function clearPending() {
-  routeState.value = undefined
-  page.value = 1
-  void load()
-}
-function showPendingRework() {
-  routeKind.value = 'rework'
-  void router.replace({ query: { ...location.query, kind: 'rework' } })
-  routeState.value = 'draft'
-  reworkScope.value = 'open'
-  page.value = 1
-  query.value = appliedQuery.value = ''
-  void load()
-}
-function changeKind(kind: 'normal' | 'rework') {
-  if (kind === routeKind.value) return
-  pendingProblemId.value = null
-  if (openingId.value !== null || preparingEditor.value) closeEditor()
-  filtersOpen.value = false
-  routeState.value = undefined
-  reworkScope.value = 'open'
-  routeKind.value = kind
-  if ((location.query.kind === 'rework' ? 'rework' : 'normal') !== kind)
-    void router.replace({
-      query: { ...location.query, kind: kind === 'rework' ? kind : undefined },
-    })
-  query.value = ''
-  appliedQuery.value = ''
-  page.value = 1
-  void load()
-}
 const items = ref<ProcessRoute[]>([]),
   total = ref(0),
-  pendingRework = ref(0),
   page = ref(1),
   pageSize = ref(20),
   query = ref(''),
@@ -106,14 +64,12 @@ const items = ref<ProcessRoute[]>([]),
   selected = ref<ProcessRoute | null>(null),
   editing = ref(false),
   creating = ref(false)
-// Keep only the latest page of each type, scoped to this mounted workbench.
 type RoutePage = Awaited<ReturnType<typeof processRouteApi.list>>
-const viewCache = new Map<string, { key: string; result: RoutePage }>()
+let cachedPage: { key: string; result: RoutePage } | undefined
 const hasLoadedView = ref(false)
 const initialLoading = computed(() => loading.value && !hasLoadedView.value)
 async function create() {
   if (!canEdit.value) return
-  if (routeKind.value !== 'normal') return
   const request = ++detailGeneration
   preparingEditor.value = true
   error.value = ''
@@ -133,25 +89,14 @@ function closeEditor() {
   preparingEditor.value = false
   editing.value = false
   creating.value = false
-  pendingProblemId.value = null
 }
-function closeProblem() {
-  pendingProblemId.value = null
-  void load()
-}
-const filterColumns = computed(() => ({
-  ...queryColumns([
-    ['流水号', 'serial_nos'],
-    ['工艺人员', 'engineering_employee_name'],
-    ['修改人员', 'modified_employee_name'],
-    ['更新时间', 'updated_at', 'date'],
-  ]),
-  ...queryColumns(
-    routeKind.value === 'rework'
-      ? [['提交班组', 'requesting_team_name']]
-      : [['材质', 'material_name']],
-  ),
-}))
+const filterColumns = queryColumns([
+  ['流水号', 'serial_nos'],
+  ['工艺人员', 'engineering_employee_name'],
+  ['修改人员', 'modified_employee_name'],
+  ['更新时间', 'updated_at', 'date'],
+  ['材质', 'material_name'],
+])
 const tableQuery = useTableQuery(
   filterColumns,
   () => {
@@ -162,39 +107,25 @@ const tableQuery = useTableQuery(
     processRouteApi.list(
       appliedQuery.value,
       1,
-      routeState.value,
+      undefined,
       'desc',
       pageSize.value,
-      routeKind.value,
-      routeKind.value === 'rework' ? reworkScope.value : 'all',
+      'normal',
+      'all',
       table_query,
     ),
 )
-const filterCount = computed(
-  () =>
-    tableQuery.state.value.filters.length +
-    (routeKind.value === 'rework'
-      ? Number(reworkScope.value !== 'all') + Number(!!routeState.value)
-      : 0),
-)
 function openFilters() {
   draftColumns.value = tableQuery.state.value.filters.map((item) => ({ ...item }))
-  draftScope.value = reworkScope.value
-  draftState.value = routeState.value
 }
 function resetFilters() {
   draftColumns.value = []
-  draftScope.value = 'all'
-  draftState.value = undefined
 }
 function applyFilters() {
   tableQuery.state.value.filters = draftColumns.value.map((item) => ({ ...item }))
-  reworkScope.value = draftScope.value
-  routeState.value = routeKind.value === 'rework' ? draftState.value : undefined
   filtersOpen.value = false
   search()
 }
-watch(routeKind, () => tableQuery.reset(), { flush: 'sync' })
 let generation = 0
 let detailGeneration = 0
 watch(
@@ -208,33 +139,31 @@ watch(
 async function load() {
   if (managingTeam.value) return
   const request = ++generation
-  const kind = routeKind.value
   const params = [
     appliedQuery.value,
     page.value,
-    routeState.value,
-    'desc' as const,
+    undefined,
+    'desc',
     pageSize.value,
-    kind,
-    kind === 'rework' ? reworkScope.value : 'all',
+    'normal',
+    'all',
     tableQuery.params.value.table_query,
   ] as const
   const key = JSON.stringify(params)
-  const cached = viewCache.get(kind)
-  hasLoadedView.value = cached?.key === key
-  items.value = hasLoadedView.value ? cached!.result.items : []
-  total.value = hasLoadedView.value ? cached!.result.total : 0
+  const cached = cachedPage?.key === key ? cachedPage.result : undefined
+  hasLoadedView.value = !!cached
+  items.value = cached?.items ?? []
+  total.value = cached?.total ?? 0
   loading.value = true
   error.value = ''
   try {
     const result = await processRouteApi.list(...params)
     if (request !== generation) return
-    viewCache.set(kind, { key, result })
+    cachedPage = { key, result }
     items.value = result.items
     hasLoadedView.value = true
     stepDetails.value = {}
     total.value = result.total
-    pendingRework.value = result.pending_rework_count ?? 0
   } catch (e) {
     if (request === generation) error.value = e instanceof Error ? e.message : '工艺读取失败'
   } finally {
@@ -242,7 +171,7 @@ async function load() {
   }
 }
 function saved() {
-  viewCache.clear()
+  cachedPage = undefined
   void load()
 }
 function search() {
@@ -281,12 +210,9 @@ function stepInitial(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
   return Array.from(stepTeamName(step).trim())[0] || '—'
 }
 const routeMedia = window.matchMedia?.('(max-width: 1100px)')
-const responsiveStepCount = ref(routeMedia?.matches ? 4 : 6)
-const visibleStepCount = computed(() =>
-  routeKind.value === 'rework' ? 3 : responsiveStepCount.value,
-)
+const visibleStepCount = ref(routeMedia?.matches ? 4 : 6)
 function resizeRouteSummary() {
-  responsiveStepCount.value = routeMedia?.matches ? 4 : 6
+  visibleStepCount.value = routeMedia?.matches ? 4 : 6
 }
 const stepDetails = ref<
   Record<number, { steps?: ProcessRouteStep[]; loading: boolean; error?: string }>
@@ -337,17 +263,11 @@ async function openDrawing(routeId: number, drawing: ProcessRouteDrawing) {
 async function open(id: number, startEditing = false) {
   const request = ++detailGeneration
   error.value = ''
-  const row = items.value.find((item) => item.id === id)
-  if (row?.route_kind === 'rework' && row.state === 'draft' && !canEdit.value && !auth.isAdmin) {
-    openingId.value = null
-    pendingProblemId.value = id
-    return
-  }
   openingId.value = id
   try {
     const [result] = await Promise.all([processRouteApi.detail(id), loadEditor()])
     if (request === detailGeneration) {
-      editing.value = result.route_kind !== 'rework' && startEditing && canEdit.value
+      editing.value = startEditing && canEdit.value
       selected.value = result
     }
   } catch (e) {
@@ -356,10 +276,6 @@ async function open(id: number, startEditing = false) {
     if (request === detailGeneration) openingId.value = null
   }
 }
-watch(
-  () => location.query.kind,
-  (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
-)
 watch(managingTeam, (managing) => {
   closeEditor()
   closeDrawing()
@@ -376,7 +292,6 @@ useLiveRefresh(load, {
     loading.value ||
     openingId.value !== null ||
     preparingEditor.value ||
-    pendingProblemId.value !== null ||
     !!selected.value ||
     creating.value,
 })
@@ -395,25 +310,10 @@ onBeforeUnmount(() => {
 <template>
   <TeamWorkspaceShell
     class="process-workspace"
-    title="工艺"
+    :title="managingTeam ? '工艺' : '工艺记录'"
     :model-value="managingTeam ? 'settings' : 'process-routes'"
     engineering
   >
-    <template v-if="!managingTeam" #heading-view>
-      <span class="team-workspace__divider" aria-hidden="true">/</span>
-      <nav aria-label="工艺类型">
-        <WatermelonFilter
-          view-switch
-          :model-value="routeKind"
-          title="工艺类型"
-          :options="[
-            { value: 'normal', label: '正常工艺' },
-            { value: 'rework', label: '返修记录', count: pendingRework },
-          ]"
-          @change="changeKind($event as 'normal' | 'rework')"
-        />
-      </nav>
-    </template>
     <TeamBusinessDialog
       v-if="managingTeam && team"
       :model-value="true"
@@ -430,11 +330,7 @@ onBeforeUnmount(() => {
         v-model="query"
         :loading="loading"
         search-label="工艺记录搜索"
-        :placeholder="
-          routeKind === 'rework'
-            ? '搜索流水号、批次号、问题、班组或工艺人员'
-            : '搜索流水号、批次号、工艺人员'
-        "
+        placeholder="搜索流水号、批次号、工艺人员"
         refresh-label="刷新工艺记录"
         @search="search"
         @refresh="load"
@@ -443,34 +339,11 @@ onBeforeUnmount(() => {
           <FilterDialog
             v-model="filtersOpen"
             v-slot="{ appendTo }"
-            :count="filterCount"
+            :count="tableQuery.state.value.filters.length"
             @open="openFilters"
             @apply="applyFilters"
             @reset="resetFilters"
           >
-            <template v-if="routeKind === 'rework'">
-              <label>
-                返工范围
-                <ElSelect v-model="draftScope" :append-to="appendTo" aria-label="返工范围筛选">
-                  <ElOption value="open" label="未结束" />
-                  <ElOption value="ended" label="已复检" />
-                  <ElOption value="all" label="全部" />
-                </ElSelect>
-              </label>
-              <label>
-                班组安排
-                <ElSelect
-                  v-model="draftState"
-                  :append-to="appendTo"
-                  clearable
-                  placeholder="全部"
-                  aria-label="班组安排筛选"
-                >
-                  <ElOption value="draft" label="待指定" />
-                  <ElOption value="published" label="已指定" />
-                </ElSelect>
-              </label>
-            </template>
             <TableFilterFields
               v-model="draftColumns"
               :columns="filterColumns"
@@ -478,18 +351,11 @@ onBeforeUnmount(() => {
             />
           </FilterDialog>
         </template>
-        <template #query-actions><div ref="columnSettingsTarget" /></template>
+        <template #tools><div ref="columnSettingsTarget" /></template>
         <template #status>
           <AsyncStatus v-if="openingId !== null" label="正在打开工艺…">
             <ElButton link @click="closeEditor">取消</ElButton>
           </AsyncStatus>
-          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待指定</ElTag>
-          <ElButton
-            v-else-if="routeKind === 'rework' && pendingRework"
-            class="route-pending-filter"
-            @click="showPendingRework"
-            >仅看待指定</ElButton
-          >
         </template>
         <template #actions>
           <ElButton
@@ -501,7 +367,7 @@ onBeforeUnmount(() => {
         </template>
         <template #primary-actions>
           <ElButton
-            v-if="canEdit && routeKind === 'normal'"
+            v-if="canEdit"
             :icon="Plus"
             :loading="preparingEditor"
             :disabled="initialLoading"
@@ -514,7 +380,6 @@ onBeforeUnmount(() => {
         columns-key="ProcessRoutesPage-1"
         :column-query="tableQuery.controller.value"
         :column-settings-target="columnSettingsTarget"
-        :key="routeKind"
         :loading="loading && (!hasLoadedView || items.length > 0)"
         :data="items"
         border
@@ -522,74 +387,36 @@ onBeforeUnmount(() => {
         class="team-table route-list"
         aria-label="工艺记录"
       >
-        <ElTableColumn
-          class-name="table-identity"
-          label="流水号"
-          :min-width="routeKind === 'rework' ? 205 : 190"
-          :fixed="routeKind === 'rework' ? 'left' : false"
-          align="left"
+        <ElTableColumn class-name="table-identity" label="流水号" min-width="175" align="left"
           ><template #default="{ row }"
-            ><ElButton
-              v-if="row.serial_nos[0]"
-              class="route-serial"
-              :loading="openingId === row.id"
-              type="primary"
-              link
-              @click="open(row.id)"
-              >{{ row.serial_nos[0] }}</ElButton
-            ><span v-else class="route-empty">—</span>
-            <ElTag
-              v-if="row.missing_documents?.length"
-              type="warning"
-              size="small"
-              class="route-document-warning"
-              :title="`缺少：${row.missing_documents.join('、')}`"
-              >待补资料</ElTag
-            >
-          </template></ElTableColumn
+            ><div class="route-identity">
+              <ElButton
+                v-if="row.serial_nos[0]"
+                class="route-serial"
+                :loading="openingId === row.id"
+                type="primary"
+                link
+                @click="open(row.id)"
+                >{{ row.serial_nos[0] }}</ElButton
+              ><span v-else class="route-empty">—</span>
+              <WatermelonBadge
+                v-if="row.missing_documents?.length"
+                tone="warning"
+                class="route-document-warning"
+                :title="`缺少：${row.missing_documents.join('、')}`"
+                >待补资料</WatermelonBadge
+              >
+            </div></template
+          ></ElTableColumn
         >
-        <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
-          <template #default="{ row }">
-            <div
-              class="rework-problem"
-              :title="row.rework_request?.problem_notes || row.rework_request?.reason"
-            >
-              <template v-if="row.rework_request?.problem_names?.length">
-                <span
-                  v-for="name in row.rework_request.problem_names"
-                  :key="name"
-                  class="rework-problem-name"
-                  >{{ name }}</span
-                >
-              </template>
-              <span v-else class="rework-problem-description">{{
-                row.rework_request?.reason || '未记录'
-              }}</span>
-            </div>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="班组安排" width="82" align="center">
-          <template #default="{ row }"
-            ><ElTag
-              :type="row.state === 'published' ? 'success' : 'warning'"
-              class="route-rework-status"
-              :class="{ 'route-rework-ready': row.state === 'published' }"
-              >{{ row.state === 'published' ? '已指定' : '待指定' }}</ElTag
-            ></template
-          >
-        </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'normal'" label="材质" width="120">
+        <ElTableColumn label="材质" width="103">
           <template #default="{ row }">
             <span :class="{ 'route-empty': !row.material_name }">{{
               row.material_name || '—'
             }}</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn
-          :label="routeKind === 'rework' ? '返工概要' : '工序概要'"
-          :min-width="routeKind === 'rework' ? 180 : 300"
-          :show-overflow-tooltip="false"
-        >
+        <ElTableColumn label="工序概要" min-width="260" :show-overflow-tooltip="false">
           <template #default="{ row }">
             <div
               v-if="routeSteps(row).length"
@@ -689,18 +516,10 @@ onBeforeUnmount(() => {
                 </AppPopover>
               </template>
             </div>
-            <span v-else class="route-empty">{{
-              routeKind === 'rework' && row.state !== 'published' ? '待指定' : '—'
-            }}</span>
+            <span v-else class="route-empty">—</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn
-          v-if="routeKind === 'normal'"
-          label="图纸"
-          width="88"
-          align="center"
-          :show-overflow-tooltip="false"
-        >
+        <ElTableColumn label="图纸" width="76" align="center" :show-overflow-tooltip="false">
           <template #default="{ row }">
             <ElButton
               v-if="row.drawings?.length === 1"
@@ -742,64 +561,12 @@ onBeforeUnmount(() => {
             <span v-else class="route-empty">—</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="轮次" width="80" align="center"
-          ><template #default="{ row }"
-            >第 {{ row.rework_request?.round }} 轮</template
-          ></ElTableColumn
-        >
-        <ElTableColumn v-if="routeKind === 'rework'" label="提交班组" width="100" align="center"
-          ><template #default="{ row }"
-            ><span :class="{ 'route-empty': !row.rework_request?.requesting_team_name }">{{
-              row.rework_request?.requesting_team_name || '未记录'
-            }}</span></template
-          ></ElTableColumn
-        >
-        <ElTableColumn v-if="routeKind === 'rework'" label="涉及班组" width="110" align="center">
-          <template #default="{ row }">
-            <div
-              v-if="row.rework_request?.problem_teams?.length"
-              class="rework-team-list"
-              role="list"
-              aria-label="涉及班组"
-            >
-              <span
-                v-for="team in row.rework_request.problem_teams"
-                :key="team.id"
-                role="listitem"
-                >{{ team.name }}</span
-              >
-            </div>
-            <span v-else class="route-empty">未记录</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'rework'" label="执行班组" width="110" align="center">
-          <template #default="{ row }">
-            <div
-              v-if="row.rework_request?.execution_team_names?.length"
-              class="rework-team-list"
-              role="list"
-              aria-label="执行班组"
-            >
-              <span
-                v-for="name in row.rework_request.execution_team_names"
-                :key="name"
-                role="listitem"
-                >{{ name }}</span
-              >
-            </div>
-            <span v-else class="route-empty">待指定</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn
-          label="工艺人员"
-          :width="routeKind === 'rework' ? 110 : undefined"
-          :min-width="routeKind === 'normal' ? 110 : undefined"
-          align="center"
+        <ElTableColumn label="工艺人员" min-width="100" align="center"
           ><template #default="{ row }"
             ><span :class="{ 'route-empty': !row.engineering_employee_name }"
               ><PersonName :name="row.engineering_employee_name || '—'" /></span></template
         ></ElTableColumn>
-        <ElTableColumn v-if="routeKind === 'normal'" label="修改人员" min-width="110" align="center"
+        <ElTableColumn label="修改人员" min-width="96" align="center"
           ><template #default="{ row }"
             ><span
               class="route-modifier"
@@ -812,32 +579,17 @@ onBeforeUnmount(() => {
             ><span v-else class="route-empty">—</span></template
           ></ElTableColumn
         >
-        <ElTableColumn
-          prop="updated_at"
-          label="更新时间"
-          :width="routeKind === 'rework' ? 154 : undefined"
-          :min-width="routeKind === 'normal' ? 180 : undefined"
-          align="center"
+        <ElTableColumn prop="updated_at" label="更新时间" min-width="155" align="center"
           ><template #default="{ row }"
             ><span class="route-updated-at">{{
               formatDateTime(row.updated_at || row.created_at)
             }}</span></template
           ></ElTableColumn
         >
-        <ElTableColumn
-          v-if="canEdit"
-          label="操作"
-          :width="routeKind === 'rework' ? 140 : undefined"
-          :min-width="routeKind === 'normal' ? 120 : undefined"
-          align="center"
-          fixed="right"
+        <ElTableColumn v-if="canEdit" label="操作" width="96" align="center" fixed="right"
           ><template #default="{ row }"
-            ><ElButton
-              size="small"
-              class="route-record-action"
-              :loading="openingId === row.id"
-              @click="open(row.id, row.route_kind !== 'rework')"
-              >{{ row.route_kind === 'rework' ? '查看返修安排' : '修改工艺' }}</ElButton
+            ><ElButton link :loading="openingId === row.id" @click="open(row.id, true)"
+              >修改工艺</ElButton
             ></template
           ></ElTableColumn
         >
@@ -853,11 +605,6 @@ onBeforeUnmount(() => {
       >
     </WorkspaceDataPanel>
     <template #dialogs>
-      <TeamProblemDetail
-        v-if="pendingProblemId !== null"
-        :route-id="pendingProblemId"
-        @close="closeProblem"
-      />
       <DocumentViewer
         v-if="drawingUrl"
         :title="drawingTitle"
@@ -869,7 +616,7 @@ onBeforeUnmount(() => {
         :key="selected?.id || 'new'"
         :route="selected || undefined"
         :start-editing="editing"
-        :view-only="!canEdit || routeKind === 'rework'"
+        :view-only="!canEdit"
         @close="closeEditor"
         @saved="saved"
       />
@@ -877,8 +624,11 @@ onBeforeUnmount(() => {
   </TeamWorkspaceShell>
 </template>
 <style scoped>
-.route-document-warning {
-  margin-left: 8px;
+.route-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 
 .process-workspace {
@@ -926,8 +676,8 @@ onBeforeUnmount(() => {
 .route-step-node,
 .route-step-symbol {
   color: var(--route-team-color);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   line-height: 1;
 }
 .route-path-more:hover,
@@ -1079,62 +829,8 @@ onBeforeUnmount(() => {
 .process-workspace :deep(.team-workspace__title) {
   color: var(--route-ink);
   line-height: 28px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
-}
-.process-workspace .route-list .route-rework-status {
-  --el-tag-text-color: var(--route-ink);
-  --el-tag-bg-color: var(--wm-muted-surface, #fff6e5);
-  --el-tag-border-color: #e6c691;
-  height: 24px;
-  padding-inline: 8px;
-  border-radius: 5px;
-  background: linear-gradient(180deg, var(--wm-muted-surface, #fffcf5), var(--el-tag-bg-color));
-  box-shadow:
-    inset 0 1px 0 #fff,
-    inset 0 -1px 0 #8a571518;
-  font-size: 12px;
-  font-weight: 500;
-}
-.process-workspace .route-list .route-rework-ready {
-  --el-tag-bg-color: var(--wm-muted-surface, #f1e9ff);
-  --el-tag-border-color: #cfb8ec;
-  background: linear-gradient(180deg, var(--wm-muted-surface, #fcfaff), var(--el-tag-bg-color));
-  box-shadow:
-    inset 0 1px 0 #fff,
-    inset 0 -1px 0 #7036b518;
-}
-.rework-problem {
-  display: grid;
-  gap: 4px;
-  line-height: 22px;
-  min-width: 0;
-  text-align: left;
-}
-.rework-problem-name {
-  overflow-wrap: anywhere;
-}
-.rework-problem-description {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-.rework-team-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-}
-.rework-team-list > span {
-  padding: 1px 7px;
-  border: 1px solid var(--wm-border, #dce1e7);
-  border-radius: 4px;
-  background: var(--wm-muted-surface, #f7f8fa);
-  color: var(--route-ink);
-  font-size: 12px;
-  white-space: nowrap;
 }
 .workspace-toolbar-actions {
   margin-left: auto;
@@ -1165,22 +861,6 @@ onBeforeUnmount(() => {
   --el-button-hover-text-color: var(--route-ink);
   --el-button-hover-link-text-color: var(--route-ink);
   --el-button-active-color: var(--route-ink);
-}
-.process-workspace .route-list .route-record-action {
-  --el-button-text-color: var(--route-ink);
-  --el-button-hover-text-color: var(--route-ink);
-  --el-button-active-text-color: var(--route-ink);
-  height: 28px;
-  min-height: 28px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: var(--font-size-meta);
-  line-height: 20px;
-  font-weight: 400;
-}
-.process-workspace .route-list .route-record-action:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 .process-workspace :deep(.workspace-data-panel .el-table.business-table.route-list .route-serial) {
   color: var(--route-ink);

@@ -9,6 +9,7 @@ defineProps<{
   options: ReadonlyArray<{
     value: string
     label: string
+    sectionId?: string
     icon?: Component
     disabled?: boolean
     count?: number | null
@@ -21,8 +22,8 @@ const id = useId()
 const spring = computed(() =>
   reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 360, damping: 30 },
 )
-function choose(option: { value: string; disabled?: boolean }) {
-  if (option.disabled || option.value === value.value) return
+function choose(option: { value: string; disabled?: boolean; sectionId?: string }) {
+  if (option.disabled || (!option.sectionId && option.value === value.value)) return
   value.value = option.value
   emit('change', option.value)
 }
@@ -52,8 +53,16 @@ function keyboard(event: KeyboardEvent) {
       :key="option.value"
       type="button"
       :aria-pressed="value === option.value"
-      :aria-controls="controls"
-      :aria-current="controls && value === option.value ? 'page' : undefined"
+      :aria-controls="option.sectionId || controls"
+      :aria-current="
+        value === option.value
+          ? option.sectionId
+            ? 'location'
+            : controls
+              ? 'page'
+              : undefined
+          : undefined
+      "
       :class="{ active: value === option.value }"
       :disabled="option.disabled"
       @click="choose(option)"
@@ -134,5 +143,13 @@ function keyboard(event: KeyboardEvent) {
   box-shadow:
     0 1px 3px #11182714,
     0 0 0 1px #11182706;
+}
+.wm-segmented--pill {
+  background: light-dark(#f5f1eb, #302d29);
+}
+.wm-segmented--pill,
+.wm-segmented--pill button,
+.wm-segmented--pill .wm-segmented-indicator {
+  border-radius: 999px;
 }
 </style>

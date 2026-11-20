@@ -22,6 +22,7 @@ import DashboardMetric from './DashboardMetric.vue'
 import FactoryTeamStatus from './FactoryTeamStatus.vue'
 import TeamProductionChart from './TeamProductionChart.vue'
 import StatePanel from './StatePanel.vue'
+import WatermelonBadge from './watermelon/WatermelonBadge.vue'
 import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
@@ -240,7 +241,7 @@ const attentionRows = computed(() => {
       serial: row.serial_no,
       team: row.team_name,
       time: attentionDue(row),
-      tone: row.status === 'overdue' ? 'danger' : 'warning',
+      tone: row.status === 'overdue' ? ('danger' as const) : ('warning' as const),
       badge: row.status === 'overdue' ? `逾期 ${elapsed(attentionDue(row))}` : '今日到期',
       amount:
         row.target_quantity != null
@@ -256,7 +257,7 @@ const attentionRows = computed(() => {
       serial: row.serial_no || row.batch_no,
       team: row.team_name,
       time: row.received_at,
-      tone: 'neutral',
+      tone: 'neutral' as const,
       badge: `滞留 ${elapsed(row.received_at)}`,
       amount: `${number(row.quantity)} 件 · ${number(row.weight)} kg`,
       open: () =>
@@ -270,7 +271,7 @@ const attentionRows = computed(() => {
     serial: row.serial_no || row.batch_no,
     team: `${row.source_team_name || '外部'} → ${row.next_team_name || row.external_destination || '待确认'}`,
     time: row.created_at,
-    tone: 'warning',
+    tone: 'warning' as const,
     badge: `等待 ${elapsed(row.created_at)}`,
     amount: `${number(row.quantity)} 件 · ${number(row.weight)} kg`,
     open: () => router.push({ path: '/transfer-batches', query: { batch_no: row.batch_no } }),
@@ -302,7 +303,7 @@ function quality() {
 </script>
 
 <template>
-  <div class="operations-overview" :class="{ 'operations-overview--motion': motion }">
+  <div class="operations-overview">
     <DashboardToolbar inline :updated-at="updated" :loading="loading">
       <template #heading><slot name="heading" /></template>
       <WatermelonSegmented
@@ -438,9 +439,7 @@ function quality() {
             <span class="operations-attention-content">
               <span class="operations-attention-top"
                 ><strong>{{ row.serial }}</strong
-                ><span class="operations-attention-badge" :class="row.tone">{{
-                  row.badge
-                }}</span></span
+                ><WatermelonBadge :tone="row.tone">{{ row.badge }}</WatermelonBadge></span
               >
               <span class="operations-attention-bottom"
                 ><span>{{ row.team }}</span
@@ -520,12 +519,6 @@ function quality() {
 .operations-metrics :deep(.dashboard-metric + .dashboard-metric) {
   border-left: 1px solid var(--wm-border);
 }
-.operations-metrics :deep(.dashboard-metric strong) {
-  font-size: 29px;
-}
-.operations-metrics :deep(.dashboard-metric__heading) {
-  font-size: 12px;
-}
 .operations-main {
   display: grid;
   grid-template-columns: minmax(0, 2.15fr) minmax(320px, 1fr);
@@ -553,7 +546,7 @@ function quality() {
   justify-content: space-between;
   gap: 12px;
   color: var(--wm-muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .operations-team-footer > span {
   display: inline-flex;
@@ -615,32 +608,16 @@ function quality() {
   min-width: 0;
 }
 .operations-attention-top strong {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.operations-attention-badge {
-  font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 5px;
-  color: var(--wm-muted);
-  background: var(--wm-muted-surface);
-  flex-shrink: 0;
-}
-.operations-attention-badge.danger {
-  color: var(--wm-danger-text);
-  background: var(--wm-danger-bg);
-}
-.operations-attention-badge.warning {
-  color: var(--wm-warning-text);
-  background: var(--wm-warning-bg);
-}
 .operations-attention-bottom {
   color: var(--wm-muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .operations-attention-bottom > span:first-child {
   margin-right: auto;
@@ -671,10 +648,10 @@ function quality() {
   justify-content: center;
   color: var(--wm-muted);
   min-height: 220px;
-  font-size: 12px;
+  font-size: var(--font-size-meta);
 }
 .operations-empty strong {
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
 }
 .operations-empty svg {
   color: var(--wm-success-text);
@@ -699,7 +676,7 @@ function quality() {
   flex-wrap: wrap;
   gap: 16px;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   color: var(--wm-muted);
 }
 .operations-fulfilment {
@@ -709,39 +686,23 @@ function quality() {
   gap: 18px;
 }
 .operations-context b {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--wm-text);
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }
 .operations-context-label {
   color: var(--wm-text);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .operations-quality {
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 .operations-overview :deep(.el-button > span) {
   gap: 6px;
 }
 .operations-overview :deep(.state-panel) {
   min-height: 220px;
-}
-.operations-overview--motion .operations-main > * {
-  animation: overview-enter 350ms ease-out both;
-}
-.operations-overview--motion .operations-main > :nth-child(2) {
-  animation-delay: 60ms;
-}
-@keyframes overview-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 @media (max-width: 1400px) {
   .operations-main {
@@ -777,11 +738,6 @@ function quality() {
   }
   .operations-footer-note {
     display: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .operations-overview--motion .operations-main > * {
-    animation: none;
   }
 }
 </style>

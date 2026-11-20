@@ -43,6 +43,11 @@ const sections = [
   { key: 'quality', label: '检验与质量' },
   { key: 'inventory', label: '库存与交接' },
 ] as const
+const sectionOptions = sections.map(({ key, label }) => ({
+  value: key,
+  label,
+  sectionId: `factory-${key}`,
+}))
 type SectionKey = (typeof sections)[number]['key']
 const page = ref<HTMLElement>(),
   heading = ref<HTMLElement>(),
@@ -70,7 +75,9 @@ function scrollToSection(key: SectionKey, animate = true) {
     behavior: animate && motion.value ? 'smooth' : 'auto',
   })
 }
-function navigateSection(key: SectionKey) {
+function navigateSection(value: string) {
+  const key = sections.find((section) => section.key === value)?.key
+  if (!key) return
   anchoredSection = key
   if (view.value === key) scrollToSection(key)
   else preference({ view: key })
@@ -314,19 +321,17 @@ onBeforeUnmount(() => {
       <div class="factory-heading-start page-heading-start">
         <PageBackButton />
         <div class="factory-heading-title">
-          <h1>全厂数据分析</h1>
+          <h1>全厂总览</h1>
         </div>
       </div>
       <nav class="factory-section-nav" aria-label="分析分区定位">
-        <ElButton
-          v-for="section in sections"
-          :key="section.key"
-          text
-          :aria-controls="`factory-${section.key}`"
-          :aria-current="activeSection === section.key ? 'location' : undefined"
-          @click="navigateSection(section.key)"
-          >{{ section.label }}</ElButton
-        >
+        <WatermelonSegmented
+          class="wm-segmented--pill"
+          label="分析分区"
+          :model-value="activeSection"
+          :options="sectionOptions"
+          @change="navigateSection"
+        />
       </nav>
     </header>
     <section id="factory-overview" class="factory-section" aria-labelledby="factory-overview-title">
@@ -337,7 +342,7 @@ onBeforeUnmount(() => {
         @preference="preference"
       >
         <template #heading>
-          <h2 id="factory-overview-title" class="factory-section-title"><span>01</span>运行概览</h2>
+          <h2 id="factory-overview-title" class="factory-section-title">运行概览</h2>
         </template>
       </FactoryOperationsOverview>
     </section>
@@ -346,11 +351,11 @@ onBeforeUnmount(() => {
       class="factory-section"
       aria-labelledby="factory-production-title"
     >
-      <h2 id="factory-production-title" class="factory-section-title"><span>02</span>生产完成</h2>
+      <h2 id="factory-production-title" class="factory-section-title">生产完成</h2>
       <FactoryPerformancePanel scene="production" :motion="motion" />
     </section>
     <section id="factory-quality" class="factory-section" aria-labelledby="factory-quality-title">
-      <h2 id="factory-quality-title" class="factory-section-title"><span>03</span>检验与质量</h2>
+      <h2 id="factory-quality-title" class="factory-section-title">检验与质量</h2>
       <FactoryPerformancePanel scene="quality" :motion="motion" />
     </section>
     <section
@@ -358,7 +363,7 @@ onBeforeUnmount(() => {
       class="factory-section"
       aria-labelledby="factory-inventory-title"
     >
-      <h2 id="factory-inventory-title" class="factory-section-title"><span>04</span>库存与交接</h2>
+      <h2 id="factory-inventory-title" class="factory-section-title">库存与交接</h2>
       <DashboardToolbar class="factory-controls" :loading="loading" :updated-at="report?.as_of">
         <WatermelonSegmented
           label="全厂统计单位"
@@ -490,7 +495,6 @@ onBeforeUnmount(() => {
   z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -505,23 +509,13 @@ onBeforeUnmount(() => {
   line-height: 32px;
   font-weight: var(--font-weight-semibold);
 }
-.factory-heading-start {
-  margin-right: auto;
-}
 .factory-section-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
 }
-.factory-section-nav .el-button {
-  margin: 0;
-  color: var(--wm-muted);
-}
-.factory-section-nav .el-button[aria-current='location'] {
-  color: var(--wm-text);
-  background: var(--wm-bg);
-  box-shadow: inset 0 0 0 1px var(--wm-border);
+.factory-section-nav :deep(.wm-segmented) {
+  flex-wrap: nowrap;
 }
 .factory-section {
   display: flex;
@@ -542,12 +536,6 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-section);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
-}
-.factory-section-title > span {
-  color: var(--wm-muted);
-  font-size: 12px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
 }
 .factory-controls :deep(.dashboard-toolbar__filters > .el-select) {
   width: 130px;
@@ -577,21 +565,6 @@ onBeforeUnmount(() => {
 }
 .factory-stage {
   min-width: 0;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .factory-overview > :not(.factory-heading) {
-    animation: dashboard-enter 180ms ease-out;
-  }
-  @keyframes dashboard-enter {
-    from {
-      opacity: 0;
-      transform: translateY(5px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 }
 @media (max-width: 900px) {
   .factory-overview {

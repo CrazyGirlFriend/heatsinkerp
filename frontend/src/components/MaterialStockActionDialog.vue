@@ -34,6 +34,8 @@ import { ElForm, ElFormItem, ElIcon, ElOption, ElRadioButton, ElRadioGroup } fro
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import MaterialAmount from './MaterialAmount.vue'
+import WatermelonBadge from './watermelon/WatermelonBadge.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
@@ -248,6 +250,9 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
   if (!team || directory.error) return null
   return teamExternalDispatchKind(team)
 })
+const warehouseDispatch = computed(
+  () => !isLoss.value && externalOption.value === 'warehouse_outbound',
+)
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const dialogTitle = computed(() =>
@@ -1158,9 +1163,26 @@ watch(
     @close="close"
   >
     <template #header="{ titleId, titleClass }">
-      <div class="stock-dialog-heading">
+      <div
+        class="stock-dialog-heading"
+        :class="{ 'warehouse-dispatch-heading': warehouseDispatch }"
+      >
         <h2 :id="titleId" :class="titleClass">{{ dialogTitle }}</h2>
-        <span>{{ lines.length }} 项物料</span>
+        <WatermelonBadge v-if="warehouseDispatch">{{ lines.length }} 项物料</WatermelonBadge>
+        <span v-else class="stock-material-count">{{ lines.length }} 项物料</span>
+        <WatermelonSegmented
+          v-if="warehouseDispatch"
+          class="wm-segmented--pill"
+          label="出库方式"
+          :model-value="form.entryKind"
+          :options="[
+            { value: 'transfer', label: '内部转料', disabled: busy || !canWrite },
+            { value: 'warehouse_outbound', label: '对外出库', disabled: busy || !canWrite },
+          ]"
+          @change="
+            form.entryKind = $event === 'warehouse_outbound' ? 'warehouse_outbound' : 'transfer'
+          "
+        />
       </div>
     </template>
     <ElAlert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" />
@@ -1175,7 +1197,7 @@ watch(
         :disabled="busy || !canWrite"
         @submit.prevent="submit"
       >
-        <div v-if="!isLoss && externalOption" class="dispatch-mode">
+        <div v-if="!isLoss && externalOption && !warehouseDispatch" class="dispatch-mode">
           <ElRadioGroup v-model="form.entryKind" aria-label="出库方式">
             <ElRadioButton value="transfer">内部转料</ElRadioButton>
             <ElRadioButton :value="externalOption">{{
@@ -1233,7 +1255,7 @@ watch(
               <div class="source-balance">
                 <span>账面库存</span>
                 <MaterialAmount
-                  animate
+                  :animate="!warehouseDispatch"
                   :weight-only="isWeightOnlyType(line.source.transfer.material_type)"
                   :quantity="dispatchableAmounts(line.latest).quantity"
                   :weight="dispatchableAmounts(line.latest).weight"
@@ -1900,7 +1922,7 @@ watch(
           <span>{{ isLoss ? '本次丢失' : '本次合计' }}</span
           ><MaterialAmount
             prominent
-            animate
+            :animate="!warehouseDispatch"
             :weight-only="
               lines.length > 0 && lines.every((line) => isWeightOnlyType(line.materialType))
             "
@@ -1936,13 +1958,17 @@ watch(
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.4px;
 }
-.stock-dialog-heading > span {
+.stock-material-count {
   color: var(--muted);
   font-size: var(--font-size-meta);
   padding: 3px 9px;
   background: var(--wm-muted-surface, #ffffff82);
   border: 1px solid var(--wm-muted-surface, #ffffffcc);
   border-radius: 12px;
+}
+.warehouse-dispatch-heading {
+  align-items: center;
+  flex-wrap: wrap;
 }
 .dispatch-context {
   margin-top: 16px;

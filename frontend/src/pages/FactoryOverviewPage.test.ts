@@ -64,10 +64,10 @@ describe('factory dashboard', () => {
     Object.defineProperty(root, 'scrollTo', { value: scrollTo, configurable: true })
     expect(wrapper.getComponent(FactoryOperationsOverview).props('days')).toBe(7)
     expect(wrapper.findAll('.factory-section-title').map((heading) => heading.text())).toEqual([
-      '01运行概览',
-      '02生产完成',
-      '03检验与质量',
-      '04库存与交接',
+      '运行概览',
+      '生产完成',
+      '检验与质量',
+      '库存与交接',
     ])
     const panels = wrapper.findAllComponents(FactoryPerformancePanel)
     expect(panels.map((panel) => panel.props('scene'))).toEqual(['production', 'quality'])
