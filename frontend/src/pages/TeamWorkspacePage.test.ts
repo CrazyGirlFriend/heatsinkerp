@@ -1523,15 +1523,13 @@ describe('team workspace material ledger', () => {
           '/team-workspaces/914?tab=stock&query=AL&page=2' +
           (['FACTORY-WIRE', 'FACTORY-WAREHOUSE'].includes(profile.code) ? '&stock_pick=1' : '')
         const router = await render(path)
-        const create = wrapper
-          .getComponent(TeamInventory)
-          .get('form[role="search"]')
-          .findAll('button')
-          .filter((button) => button.text() === '新建出库')
+        const toolbar = wrapper.getComponent(TeamInventory).get('form[role="search"]')
+        const create = toolbar.findAll('button').filter((button) => button.text() === '新建出库')
         expect(create).toHaveLength(1)
         expect(create[0]!.element.disabled).toBe(false)
         await dispatchCheckbox(10).setValue(true)
         await dispatchCheckbox(11).setValue(true)
+        expect(toolbar.text()).not.toContain('清空勾选')
         expect(create[0]!.element.disabled).toBe(false)
         await newDispatch()
         expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
@@ -1626,7 +1624,7 @@ describe('team workspace material ledger', () => {
       ),
     ).toEqual(['批次 TL10', '批次 TL12', '批次 TL21'])
   }, 15_000)
-  it('selects and clears inventory batches through the header and toolbar in fullscreen', async () => {
+  it('selects and clears the current page of inventory batches through the header in fullscreen', async () => {
     mockDispatchableRows(10, 11)
     await render('/team-workspaces/914?tab=stock')
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
@@ -1641,11 +1639,7 @@ describe('team workspace material ledger', () => {
     expect(dispatchCheckbox(11).element.checked).toBe(true)
     expect(inventory.find('.batch-selection-bar').exists()).toBe(false)
 
-    const toolbar = inventory.get('form[role="search"]')
-    await toolbar
-      .findAll('button')
-      .find((button) => button.text() === '清空勾选')!
-      .trigger('click')
+    await selectPage.setValue(false)
     expect(selectPage.element.checked).toBe(false)
     expect(dispatchCheckbox(10).element.checked).toBe(false)
     expect(dispatchCheckbox(11).element.checked).toBe(false)

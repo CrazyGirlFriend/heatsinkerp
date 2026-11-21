@@ -1528,13 +1528,6 @@ onBeforeUnmount(() => {
           >返回流水号库存</ElButton
         >
         <ElButton
-          v-if="canWrite && batchSelection.selected.size"
-          text
-          :disabled="preparingDispatch"
-          @click="clearBatchSelection()"
-          >清空勾选</ElButton
-        >
-        <ElButton
           v-if="canWrite"
           :disabled="loading || (!!batchSelection.selected.size && !canDispatchSelection)"
           :loading="preparingDispatch"
