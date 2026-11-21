@@ -44,6 +44,7 @@ def test_outputs_keep_origin_and_partition_stock_with_atomic_replay(client, proc
     )
     assert response.status_code == 201, response.text
     data = response.json()
+    assert data["processing_weight_difference"] == 0
     assert data["weight"] == data["after_weight"] == 100
     assert [row["quantity"] for row in data["outputs"]] == [1, 20, 0]
     assert (

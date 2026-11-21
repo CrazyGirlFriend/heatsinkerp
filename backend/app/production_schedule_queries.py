@@ -31,7 +31,7 @@ from .models import (
 from .team_constants import WAREHOUSE_TEAM_CODE
 
 # Defective workpieces can still be scheduled for an explicitly chosen disposition.
-EXCLUDED_MATERIAL_TYPES = ("waste", "sludge", "scrap_chips")
+EXCLUDED_MATERIAL_TYPES = ("waste", "sludge", "slag", "scrap_chips")
 LOCAL_ZONE = timezone(timedelta(hours=8))
 
 

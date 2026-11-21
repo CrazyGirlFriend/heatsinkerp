@@ -294,6 +294,7 @@ export interface DispatchLine extends SludgeMeasurement {
 export type CreateDispatch = {
   feeding_assignments?: components['schemas']['FeedingAssignment'][]
   feeding_targets?: components['schemas']['FeedingTarget'][]
+  recovery?: components['schemas']['RecoveryBucket']
   feeding_target?: components['schemas']['FeedingTarget']
   rework_return?: boolean
   sent_employee_id: number

@@ -1015,7 +1015,7 @@ describe('warehouse grouped stock', () => {
     ])
     expect(wrapper.text()).toContain('待检验指定班组')
   })
-  it.each(['waste', 'sludge', 'scrap_chips'])(
+  it.each(['waste', 'slag', 'sludge', 'scrap_chips'])(
     'filters %s by material type and clears incompatible processing filters',
     async (materialType) => {
       const router = await render(
@@ -1029,7 +1029,7 @@ describe('warehouse grouped stock', () => {
         .findAllComponents(ElOption)
         .map((option) => option.props('label'))
       expect(types).toEqual(expect.arrayContaining(['半成品', '成品', '废料', '废泥', '废屑']))
-      expect(types).not.toContain('废渣')
+      expect(types).toContain('废渣')
       expect(select('库存加工分类筛选')).toBeUndefined()
       expect(
         select('库存加工状态筛选')
@@ -1059,6 +1059,26 @@ describe('warehouse grouped stock', () => {
       )
     },
   )
+  it('filters usable remainders directly and resets pagination', async () => {
+    const router = await render('/team-workspaces/901?tab=stock&page=2', true, false)
+    const control = wrapper
+      .findAll('label')
+      .find((l) => l.text() === '只看可用余料')!
+      .get('input')
+    await control.setValue(true)
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({
+      page: '1',
+      usable_remainders_only: 'true',
+    })
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
+      901,
+      expect.objectContaining({ usable_remainders_only: true }),
+    )
+    await control.setValue(false)
+    await flushPromises()
+    expect(router.currentRoute.value.query.usable_remainders_only).toBeUndefined()
+  })
   it('filters workshops by configured business and retains the exact choice across pagination and dates', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
       { id: 11, team_id: 901, name: '检验', active: true, version: 1 },
@@ -1224,7 +1244,9 @@ describe('warehouse grouped stock', () => {
       await update(80, 0, 80)
       expect(wrapper.find('label[aria-label="勾选批次 TL11"] input').exists()).toBe(false)
       const create = wrapper.findAll('button').find((button) => button.text() === '新建出库')!
-      expect(create.element.disabled).toBe(true)
+      expect(create.element.disabled).toBe(false)
+      await create.trigger('click')
+      expect(wrapper.emitted('action')?.at(-1)).toEqual(['dispatch', []])
       expect(wrapper.text()).toContain('全部待签收')
       expect(wrapper.findAll('button').some((button) => button.text() === '在途转出')).toBe(true)
       await update(80, 80, 0)
@@ -1497,7 +1519,7 @@ describe('warehouse grouped stock', () => {
     await showColumns('stock_status', 'on_hand_weight')
     expect(
       wrapper.findAll('button').find((button) => button.text() === '新建出库')!.element.disabled,
-    ).toBe(true)
+    ).toBe(false)
     expect(wrapper.text()).toContain('全部待签收')
     await wrapper
       .findAll('button')

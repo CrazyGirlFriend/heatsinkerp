@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RecoveryBucketForm from './RecoveryBucketForm.vue'
 import WarehouseFeedingFields from './WarehouseFeedingFields.vue'
 import type { components } from '@/types/generated/api'
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
@@ -101,6 +102,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [boolean]
   saved: [CreatedMaterialBatches | MaterialLoss]
+  pickStock: []
+  register: [id: number]
   balancesChanged: []
 }>()
 function needsRoute(line: (typeof lines.value)[number]) {
@@ -199,6 +202,9 @@ function setLineActions(key: string, open: boolean) {
   if (open) activeActions.value = key
   else if (activeActions.value === key) activeActions.value = ''
 }
+const dispatchContent = ref('stock')
+const recoveryForm = ref<InstanceType<typeof RecoveryBucketForm>>()
+const recovering = computed(() => props.mode === 'dispatch' && dispatchContent.value === 'recovery')
 const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
@@ -216,6 +222,7 @@ const processing = reactive<
       minutes?: number
       date?: string
       selfCheck?: CreateQuantityAdjustment['self_check'] | null
+      measuredWeight?: number
       structured?: boolean
       processorName: string
       processorOptions: string[]
@@ -404,6 +411,10 @@ function availableFor(line: (typeof lines.value)[number]) {
   const draft = processing[Number(line.source.transfer.id)]
   return {
     ...free,
+    weight:
+      draft?.status === 'complete' && draft.measuredWeight != null
+        ? draft.measuredWeight
+        : free.weight,
     quantity:
       draft && !draft.error && draft.revision != null
         ? (draft.quantity ?? free.quantity)
@@ -520,8 +531,8 @@ async function loadProcessing(source: StockBatch) {
     draft.processorOptions = context.processor_options || []
     draft.structured = !!context.processing_mode
     draft.date ||= factoryToday()
-    if (processingTeam.value)
-      draft.status ??= draft.structured ? 'complete' : context.processing_status || 'partial'
+    if (processingTeam.value && !draft.structured)
+      draft.status ??= context.processing_status || 'partial'
     lines.value
       .filter((line) => line.source.transfer.id === source.transfer.id)
       .forEach((line) => {
@@ -720,7 +731,11 @@ const validation = useDialogValidation(() => {
         add('processingMinutes', '请填写大于零的加工时长')
       if (draft.structured && (!draft.date || draft.date > factoryToday()))
         add('processingDate', '请填写实际加工日期')
-      if (processingTeam.value && !draft.status) add('processingStatus', '请选择加工进度')
+      if (processingTeam.value && !draft.status) add('processingStatus', '请选择是否还有可用余料')
+      if (draft.structured && draft.status === 'partial')
+        add('processingStatus', '请先登记余料与加工产出，再选择产出批次出库')
+      if (draft.structured && draft.status === 'complete' && !(Number(draft.measuredWeight) > 0))
+        add('measuredWeight', '请填写全部加工产出的实重')
       if (draft.structured && !draft.reason.trim())
         add('processingReason', '请填写备注，无特殊情况请填无')
       if (draft.reason.trim().length > 2000) add('processingReason', '内容过长')
@@ -742,6 +757,7 @@ watch(
     activeLineKey.value = ''
     Object.keys(processing).forEach((key) => delete processing[Number(key)])
     if (!open) return
+    dispatchContent.value = !props.sources.length && !isLoss.value ? 'recovery' : 'stock'
     lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map((source) => ({
       key: materialRequestKey(),
       shared: false,
@@ -1111,6 +1127,7 @@ async function submit() {
             processing_mode: 'split' as const,
             processing_date: draft.date!,
             input_quantity: draft.original!,
+            completed_weight: draft.measuredWeight,
           }
         : {}),
       reason: draft.reason.trim(),
@@ -1281,7 +1298,7 @@ watch(
   <AppDialog
     :model-value="modelValue"
     :title="dialogTitle"
-    width="min(1180px, 96vw)"
+    :width="recovering ? 'min(780px, 94vw)' : 'min(1180px, 96vw)'"
     top="16px"
     class="stock-action-dialog"
     modal-class="stock-action-overlay"
@@ -1295,11 +1312,25 @@ watch(
         class="stock-dialog-heading"
         :class="{ 'warehouse-dispatch-heading': warehouseDispatch }"
       >
-        <h2 :id="titleId" :class="titleClass">{{ dialogTitle }}</h2>
-        <WatermelonBadge v-if="warehouseDispatch">{{ lines.length }} 项物料</WatermelonBadge>
-        <span v-else class="stock-material-count">{{ lines.length }} 项物料</span>
+        <h2 :id="titleId" :class="titleClass">{{ recovering ? '物料出库' : dialogTitle }}</h2>
         <WatermelonSegmented
-          v-if="warehouseDispatch"
+          v-if="!isLoss"
+          v-model="dispatchContent"
+          class="wm-segmented--pill"
+          label="出库内容"
+          :options="[
+            { value: 'stock', label: '按流水号出库', disabled: saving },
+            { value: 'recovery', label: '回收料出库', disabled: saving },
+          ]"
+        />
+        <WatermelonBadge v-if="!recovering && warehouseDispatch && lines.length"
+          >{{ lines.length }} 项物料</WatermelonBadge
+        >
+        <span v-else-if="!recovering && lines.length" class="stock-material-count"
+          >{{ lines.length }} 项物料</span
+        >
+        <WatermelonSegmented
+          v-if="warehouseDispatch && !recovering && lines.length"
           class="wm-segmented--pill"
           label="出库方式"
           :model-value="form.entryKind"
@@ -1313,11 +1344,50 @@ watch(
         />
       </div>
     </template>
-    <ElAlert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" />
-    <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
+    <RecoveryBucketForm
+      v-if="modelValue && recovering"
+      ref="recoveryForm"
+      :key="teamId"
+      :team-id="teamId"
+      :can-write="canWrite"
+      @busy="saving = $event"
+      @saved="
+        (result) => {
+          emit('saved', result)
+          emit('update:modelValue', false)
+        }
+      "
+    />
+    <div v-else-if="!isLoss && !lines.length" class="dispatch-mode">
+      <ElButton
+        @click="
+          () => {
+            emit('update:modelValue', false)
+            emit('pickStock')
+          }
+        "
+        >去库存明细选择批次</ElButton
+      >
+    </div>
+    <ElAlert
+      v-if="!recovering && errorMessage"
+      :title="errorMessage"
+      type="error"
+      :closable="false"
+    />
+    <ElAlert
+      v-if="!recovering && scheduleError && !isLoss"
+      :title="scheduleError"
+      type="error"
+      :closable="false"
+    >
       <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
     </ElAlert>
-    <FormWorkspace class="dispatch-workspace" :documents="attachmentItems.length > 0">
+    <FormWorkspace
+      v-if="!recovering && lines.length"
+      class="dispatch-workspace"
+      :documents="attachmentItems.length > 0"
+    >
       <template #documents>
         <SerialRouteAttachments :items="attachmentItems" available-only />
       </template>
@@ -1692,12 +1762,27 @@ watch(
                 />
                 <ElFormItem
                   v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading"
-                  label="本批加工进度"
+                  :label="
+                    processing[Number(line.source.transfer.id)]!.structured
+                      ? '是否还有可用余料'
+                      : '本批加工进度'
+                  "
                   :error="lineError(line, 'processingStatus')"
-                  :required="!processing[Number(line.source.transfer.id)]!.structured"
-                  ><span v-if="processing[Number(line.source.transfer.id)]!.structured"
-                    >全部完成</span
-                  ><ElSelect
+                  required
+                >
+                  <WatermelonSegmented
+                    v-if="processing[Number(line.source.transfer.id)]!.structured"
+                    label="是否还有可用余料"
+                    :model-value="processing[Number(line.source.transfer.id)]!.status || ''"
+                    :options="[
+                      { value: 'partial', label: '有余料' },
+                      { value: 'complete', label: '无余料' },
+                    ]"
+                    @change="
+                      processing[Number(line.source.transfer.id)]!.status =
+                        $event === 'partial' ? 'partial' : 'complete'
+                    " />
+                  <ElSelect
                     v-else
                     v-model="processing[Number(line.source.transfer.id)]!.status"
                     :aria-label="`${line.source.transfer.batch_no}本批加工进度`"
@@ -1712,8 +1797,36 @@ watch(
                       " /></ElSelect
                 ></ElFormItem>
 
+                <ElFormItem
+                  v-if="
+                    processing[Number(line.source.transfer.id)]!.structured &&
+                    processing[Number(line.source.transfer.id)]!.status === 'complete'
+                  "
+                  label="全部产出实重"
+                  required
+                  :error="lineError(line, 'measuredWeight')"
+                >
+                  <WeightInput
+                    v-model="processing[Number(line.source.transfer.id)]!.measuredWeight"
+                    ariaLabel="全部产出实重"
+                  />
+                </ElFormItem>
+                <ElButton
+                  v-if="
+                    processing[Number(line.source.transfer.id)]!.structured &&
+                    processing[Number(line.source.transfer.id)]!.status === 'partial'
+                  "
+                  link
+                  @click="
+                    () => {
+                      emit('update:modelValue', false)
+                      emit('register', Number(line.source.transfer.id))
+                    }
+                  "
+                  >登记余料与产出</ElButton
+                >
                 <p class="dialog-field-hint dialog-field-wide">
-                  此处登记本批全部加工完成，与本次出库一起保存。部分加工请先从库存登记，分别选择已加工与未加工库存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
+                  加工登记与本次出库一起保存。<ElButton
                     link
                     @click="delete processing[Number(line.source.transfer.id)]"
                     >取消登记</ElButton
@@ -2103,16 +2216,22 @@ watch(
         </div>
       </ElForm>
     </FormWorkspace>
-    <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
-      v-if="balanceNotice"
+      v-if="!recovering && weightNotice"
+      :title="weightNotice"
+      type="warning"
+      :closable="false"
+      show-icon
+    />
+    <ElAlert
+      v-if="!recovering && balanceNotice"
       :title="balanceNotice"
       type="warning"
       :closable="false"
       show-icon
     />
     <ElButton
-      v-if="balanceNotice"
+      v-if="!recovering && balanceNotice"
       link
       type="primary"
       :loading="refreshing"
@@ -2122,7 +2241,7 @@ watch(
     >
     <template #footer
       ><div class="action-footer">
-        <div>
+        <div v-if="!recovering && lines.length">
           <span>{{ isLoss ? '本次丢失' : '本次合计' }}</span
           ><MaterialAmount
             prominent
@@ -2134,9 +2253,19 @@ watch(
             :weight="totalWeight"
           />
         </div>
+        <div v-else />
         <div>
           <ElButton :disabled="busy" @click="close">取消</ElButton
           ><ElButton
+            v-if="recovering"
+            type="primary"
+            :disabled="!canWrite"
+            :loading="saving"
+            @click="recoveryForm?.submit()"
+            >确认出库</ElButton
+          >
+          <ElButton
+            v-else-if="lines.length"
             type="primary"
             :loading="saving"
             :disabled="busy || !canWrite || lines.some((line) => !line.latest || line.locationBusy)"

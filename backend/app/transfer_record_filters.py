@@ -130,6 +130,7 @@ def apply_record_headers(db, columns, filters, kind, *, source_team=None, base=N
             "waste": "废料",
             "sludge": "废泥",
             "scrap_chips": "废屑",
+            "slag": "废渣",
         },
         value=Transfer.material_type,
         else_="未填写",

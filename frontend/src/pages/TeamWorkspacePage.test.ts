@@ -1404,7 +1404,7 @@ describe('team workspace material ledger', () => {
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
       914,
       expect.objectContaining({
-        availability: 'current',
+        availability: 'current_or_transit',
         query: 'AL',
         date_from: '2026-09-12',
         page: 2,
@@ -1486,7 +1486,7 @@ describe('team workspace material ledger', () => {
           .findAll('button')
           .filter((button) => button.text() === '新建出库')
         expect(create).toHaveLength(1)
-        expect(create[0]!.element.disabled).toBe(true)
+        expect(create[0]!.element.disabled).toBe(false)
         await dispatchCheckbox(10).setValue(true)
         await dispatchCheckbox(11).setValue(true)
         expect(create[0]!.element.disabled).toBe(false)
@@ -1745,7 +1745,7 @@ describe('team workspace material ledger', () => {
         .findAll('form[role="search"] button')
         .filter((button) => button.text() === '新建出库')
       expect(create).toHaveLength(tab === 'stock' ? 1 : 0)
-      if (tab === 'stock') expect(create[0]!.attributes('disabled')).toBeDefined()
+      if (tab === 'stock') expect(create[0]!.attributes('disabled')).toBeUndefined()
     }
     expect(wrapper.findAll('.workspace-actions button').map((button) => button.text())).toEqual(
       labels,
@@ -2110,7 +2110,7 @@ describe('team workspace material ledger', () => {
         inventoryCalls,
       )
       expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(Number(id), {
-        availability: 'current',
+        availability: 'current_or_transit',
         page: 1,
         page_size: 10,
       })

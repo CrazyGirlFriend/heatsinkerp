@@ -10,6 +10,7 @@ from test_quantity_adjustments import base, change, confirm, dispatch
 from test_serial_reallocations import reallocate
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -88,6 +89,7 @@ def test_direct_transfer_conversion_and_edit_cannot_introduce_pieces(client, war
         quantity=1,
         weight=3,
         **measurement(kind),
+        **select_location(client, s, headers=s["other_headers"]),
     )
     assert (
         sender_post(
@@ -141,6 +143,7 @@ def test_legacy_counts_remain_readable_but_cannot_be_increased(client, warehouse
         "/api/material-transfers",
         headers=s["other_headers"],
         json={
+            **select_location(client, s, headers=s["other_headers"]),
             "serial_no": "LEGACY",
             "material_type": "scrap_chips",
             "next_team_id": s["team"]["id"],

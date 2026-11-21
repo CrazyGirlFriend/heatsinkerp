@@ -10,6 +10,7 @@ import {
 import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
 import StatePanel from './StatePanel.vue'
 import AppDetailTable from './AppDetailTable.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
@@ -183,8 +184,18 @@ watch(employees, (value) => {
 })
 const detailed = ref(false),
   outputs = ref<OutputDraft[]>([])
-const activeOutputs = computed(() =>
+const splitProcessing = computed(
+  () => props.processing && snapshot.value?.processing_mode === 'split',
+)
+const remainderChoice = ref('')
+const visibleOutputs = computed(() =>
   outputs.value.filter(
+    (line) =>
+      !splitProcessing.value || line.role !== 'remaining' || remainderChoice.value === 'yes',
+  ),
+)
+const activeOutputs = computed(() =>
+  visibleOutputs.value.filter(
     (line) =>
       Number(outputQuantity(line)) ||
       Number(line.weight) ||
@@ -308,6 +319,13 @@ function outputTypeChanged(line: OutputDraft) {
 }
 function outputError(line: OutputDraft, field: 'quantity' | 'weight' | 'specification' | 'serial') {
   if (!submitted.value || !activeOutputs.value.includes(line)) return false
+  if (
+    splitProcessing.value &&
+    line.role === 'remaining' &&
+    (field === 'quantity' || field === 'weight') &&
+    !(Number(line[field]) > 0)
+  )
+    return true
   if (field === 'serial')
     return (
       snapshot.value?.shared_unallocated &&
@@ -437,6 +455,11 @@ async function save() {
   submitted.value = true
   const byOutput = props.processing && detailed.value && !unitProcessing.value
   const count = byOutput ? outputTotal.value : quantity.value
+  const missingRemainder =
+    splitProcessing.value &&
+    (!remainderChoice.value ||
+      (remainderChoice.value === 'yes' &&
+        !activeOutputs.value.some((line) => line.role === 'remaining')))
   const invalidOutputs =
     byOutput &&
     (!activeOutputs.value.length ||
@@ -468,6 +491,7 @@ async function save() {
     !processorName.value.trim() ||
     processorName.value.trim().length > 80 ||
     invalidOutputs ||
+    missingRemainder ||
     (props.processing && !byOutput && !specificationValid.value) ||
     !Number.isSafeInteger(count) ||
     count! < 0 ||
@@ -596,6 +620,7 @@ watch(
     submitted.value = false
     detailed.value = false
     outputs.value = []
+    remainderChoice.value = ''
     loading.value = saving.value = conflict.value = false
     if (props.modelValue) void load()
   },
@@ -790,6 +815,36 @@ onBeforeUnmount(() => {
                 />
               </ElFormItem>
               <ElFormItem
+                v-if="splitProcessing"
+                label="是否还有可用余料"
+                required
+                :show-message="true"
+                :error="
+                  submitted && !remainderChoice
+                    ? '请选择是否还有可用余料'
+                    : submitted &&
+                        remainderChoice === 'yes' &&
+                        !activeOutputs.some((line) => line.role === 'remaining')
+                      ? '请填写余料的实际件数和重量'
+                      : ''
+                "
+              >
+                <WatermelonSegmented
+                  v-model="remainderChoice"
+                  label="是否还有可用余料"
+                  :options="[
+                    { value: 'yes', label: '有余料' },
+                    { value: 'no', label: '无余料' },
+                  ]"
+                  @change="
+                    (value) => {
+                      if (value === 'yes' && !outputs.some((line) => line.role === 'remaining'))
+                        addOutput('remaining')
+                    }
+                  "
+                />
+              </ElFormItem>
+              <ElFormItem
                 v-if="unitProcessing"
                 label="本次完成重量"
                 required
@@ -980,9 +1035,7 @@ onBeforeUnmount(() => {
                 aria-label="按明细登记"
                 active-text="按明细登记"
               /><span>{{
-                detailed
-                  ? '按加工后尺寸分别填写产出。有未加工余料时填写余料行。'
-                  : '一批产出有多种尺寸时，可按明细登记。'
+                detailed ? '按加工后尺寸分别填写产出。' : '一批产出有多种尺寸时，可按明细登记。'
               }}</span>
             </div>
             <section
@@ -1019,7 +1072,7 @@ onBeforeUnmount(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <template v-for="(line, index) in outputs" :key="line.key"
+                    <template v-for="(line, index) in visibleOutputs" :key="line.key"
                       ><tr>
                         <td>
                           <ElSelect
@@ -1029,6 +1082,11 @@ onBeforeUnmount(() => {
                             ><ElOption
                               v-for="(label, value) in processingRoleLabels"
                               :key="value"
+                              :disabled="
+                                splitProcessing &&
+                                value === 'remaining' &&
+                                remainderChoice !== 'yes'
+                              "
                               :value="value"
                               :label="label"
                           /></ElSelect>
@@ -1150,7 +1208,7 @@ onBeforeUnmount(() => {
                           <ElButton
                             text
                             :aria-label="`移除明细${index + 1}`"
-                            @click="outputs.splice(index, 1)"
+                            @click="outputs.splice(outputs.indexOf(line), 1)"
                             >移除</ElButton
                           >
                         </td>
@@ -1294,6 +1352,9 @@ onBeforeUnmount(() => {
               </dl>
               <h4>本道工艺要求</h4>
               <p>{{ row.process_step_instructions || '历史未登记本道工艺要求' }}</p>
+              <p v-if="row.processing_weight_difference != null">
+                本次重量差 {{ row.processing_weight_difference }} kg
+              </p>
               <template v-if="row.outputs?.length">
                 <h4>实物明细</h4>
                 <div class="history-outputs">

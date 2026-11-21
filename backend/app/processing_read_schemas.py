@@ -82,6 +82,7 @@ class QuantityAdjustmentResponse(ReadResponse):
     processing_status: Literal["partial", "complete"] | None
     before_specification: str | None
     after_specification: str | None
+    processing_weight_difference: float | None = None
     after_weight: float | None
     outputs: list[ProcessingOutputResponse] | None
     created_by: str

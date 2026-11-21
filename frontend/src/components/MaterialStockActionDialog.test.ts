@@ -10,6 +10,7 @@ import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import AppDialog from './AppDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
+import WeightInput from './WeightInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import SharedDispatchFields from './SharedDispatchFields.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
@@ -44,7 +45,7 @@ vi.mock('@/stores/teamDirectory', () => ({
     items: [
       { id: 2, name: '轧制', active: true },
       { id: 3, name: '退火', active: true },
-      { id: 1, name: '库房', kind: 'warehouse', active: true },
+      { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true },
     ],
   }),
 }))
@@ -803,6 +804,14 @@ describe('source batch dispatch and loss drafts', () => {
     await flushPromises()
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '无余料')!
+      .trigger('click')
+    wrapper
+      .findAllComponents(WeightInput)
+      .find((i) => i.props('ariaLabel') === '全部产出实重')!
+      .vm.$emit('update:modelValue', 10)
     const picker = wrapper
       .findAllComponents(TeamEmployeeInput)
       .find((item) => item.props('label') === '加工人')!
@@ -2169,4 +2178,33 @@ it('assigns each source serial to its own destination when issuing separate ware
       source_transfer_ids: [11],
     },
   ])
+})
+
+it('submits a weighed bucket from an empty selection without a serial or source allocation', async () => {
+  await render('dispatch', [])
+  expect(wrapper.find('.source-line').exists()).toBe(false)
+  await submit()
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  wrapper
+    .findAllComponents(ElSelect)
+    .find((i) => i.find('input[aria-label="回收料类型"]').exists())!
+    .vm.$emit('update:modelValue', 'sludge')
+  wrapper.getComponent(WeightInput).vm.$emit('update:modelValue', 12.345)
+  const location = wrapper.getComponent(WarehouseLocationSelect)
+  location.vm.$emit('update:modelValue', '回收区')
+  location.vm.$emit('update:reservationKey', 'test-key')
+  await flushPromises()
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, {
+    sent_employee_id: 22,
+    next_team_id: 1,
+    lines: [],
+    idempotency_key: expect.any(String),
+    recovery: {
+      material_type: 'sludge',
+      weight: 12.345,
+      warehouse_location: '回收区',
+      warehouse_location_reservation_key: 'test-key',
+    },
+  })
 })

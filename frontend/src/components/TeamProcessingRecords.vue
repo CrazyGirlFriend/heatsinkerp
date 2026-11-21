@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useTableQuery } from '@/composables/useTableQuery'
-import { isSelfCheckTeamCode } from '@/config/materialRules'
+import { isSelfCheckTeamCode, isSplittingTeamCode } from '@/config/materialRules'
 import { processingQueryColumns } from '@/utils/tableQueryColumns'
 import { processingParameterFields, formatProcessingParameter } from '@/config/processingParameters'
 
@@ -310,6 +310,11 @@ function exportSource() {
       { key: 'completed_weight', label: '本次完成重量 (kg)', value: (row) => row.completed_weight },
       { key: 'input_quantity', label: '本次投入件数', value: (row) => row.input_quantity },
       { key: 'input_weight', label: '本次投入重量 (kg)', value: (row) => row.input_weight },
+      {
+        key: 'processing_weight_difference',
+        label: '本次重量差 (kg)',
+        value: (row) => row.processing_weight_difference,
+      },
       { key: 'scrap_quantity', label: '本次废料件数', value: (row) => row.scrap_quantity },
       { key: 'scrap_weight', label: '本次废料重量 (kg)', value: (row) => row.scrap_weight },
       {
@@ -852,6 +857,16 @@ onBeforeUnmount(() => {
           inventoryAmount(row.completed_weight)
         }}</template></ElTableColumn
       >
+      <ElTableColumn
+        v-if="isSplittingTeamCode(teamCode)"
+        label="本次重量差 (kg)"
+        min-width="150"
+        align="right"
+      >
+        <template #default="{ row }">{{
+          inventoryAmount(row.processing_weight_difference)
+        }}</template>
+      </ElTableColumn>
       <ElTableColumn label="加工前件数" min-width="110" align="right"
         ><template #default="{ row }">{{
           inventoryAmount(row.before_quantity)

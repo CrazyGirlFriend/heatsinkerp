@@ -77,6 +77,15 @@ PROCESSING_STRATEGIES = {"unit": prepare_unit, "split": prepare_split}
 
 def prepare(lot, balance, latest, payload, team_code, *, today: date):
     splitting = team_code in SPLITTING_TEAM_CODES
+    if splitting and (payload.processing_mode == "split" or payload.outputs is not None):
+        if payload.processing_status is None:
+            raise ProcessingRuleError(422, "请选择是否还有可用余料")
+    if splitting and payload.outputs is not None:
+        remainder = [line for line in payload.outputs if line.role == "remaining"]
+        if (payload.processing_status == "partial") != bool(remainder):
+            raise ProcessingRuleError(422, "可用余料选项与余料明细不一致")
+        if any(line.quantity <= 0 or line.weight <= 0 for line in remainder):
+            raise ProcessingRuleError(422, "请填写可用余料的实际件数和重量")
     if payload.processing_mode is None:
         if not splitting:
             raise ProcessingRuleError(422, "本班组按件登记加工，不能修改加工件数或拆分产出")
@@ -110,7 +119,9 @@ def prepare(lot, balance, latest, payload, team_code, *, today: date):
             input_quantity=input_quantity,
             input_weight=w,
             completed_quantity=payload.quantity,
-            completed_weight=w,
+            completed_weight=payload.completed_weight
+            if payload.completed_weight is not None
+            else w,
             scrap_quantity=0,
             scrap_weight=Decimal(0),
         )

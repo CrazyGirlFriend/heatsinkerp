@@ -771,7 +771,12 @@ async function openAction(
     showToast('账号信息刷新失败，请重试', 'error')
     return
   }
-  if (current !== actionVersion || scope !== teamKey.value || !canWrite.value || !sources.length)
+  if (
+    current !== actionVersion ||
+    scope !== teamKey.value ||
+    !canWrite.value ||
+    (mode !== 'dispatch' && !sources.length)
+  )
     return
   pickerOpen.value = false
   actionMode.value = mode
@@ -895,7 +900,7 @@ async function savedReallocation(item: MaterialTransfer) {
 function openNewDispatch() {
   if (!canWrite.value || openingDispatch.value) return
   void router.push({ path: route.path, query: { tab: 'stock' } })
-  showToast('在库存明细勾选批次后，点「新建出库」', 'info')
+  showToast('在库存明细勾选批次出库，或直接新建回收料出库单', 'info')
 }
 function canStartStockAction(mode: StockAction) {
   if (mode === 'reallocate') return canReallocate.value
@@ -1726,6 +1731,8 @@ onBeforeUnmount(() => {
         :mode="actionMode"
         :sources="actionSources"
         :initial-schedule="initialSchedule"
+        @pick-stock="router.push({ path: route.path, query: { tab: 'stock' } })"
+        @register="openProcessing"
         @saved="savedAction"
         @balances-changed="loadView"
       />

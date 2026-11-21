@@ -436,6 +436,7 @@ export const warehouseSearchKind = (field: WarehouseSearchField) =>
       ? 'number'
       : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
+  usable_remainders_only?: boolean
   table_query?: string
   availability?: 'current' | 'current_or_transit' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField

@@ -11,6 +11,7 @@ import hashlib
 import json
 from contextlib import nullcontext
 from decimal import Decimal
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -154,6 +155,14 @@ class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
         return value.strip() if value is not None else None
 
 
+class RecoveryBucket(WarehouseLocationChoice):
+    """One weighed collection, with no individual work order or source stock lot."""
+
+    model_config = ConfigDict(extra="forbid")
+    material_type: Literal["waste", "slag", "sludge", "scrap_chips"]
+    weight: Decimal = Field(gt=0, max_digits=17, decimal_places=6)
+
+
 class DispatchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sent_employee_id: int = Field(ge=1)
@@ -174,6 +183,7 @@ class DispatchCreate(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=100)
     lines: list[DispatchLine] = Field(default_factory=list, max_length=100)
     inventory_total: ShipmentTotal | None = None
+    recovery: RecoveryBucket | None = None
     quantity_clearances: list[OutboundQuantityClearance] = Field(
         default_factory=list, max_length=100
     )
@@ -226,7 +236,19 @@ class DispatchCreate(BaseModel):
                 or self.rework_return
             ):
                 raise ValueError("汇总发货仅用于检验班组，不能同时填写逐批明细")
-        elif not self.lines:
+        if self.recovery and (
+            self.lines
+            or self.inventory_total
+            or self.feeding_target
+            or self.feeding_targets
+            or self.feeding_assignments
+            or self.rework_return
+            or self.quantity_clearances
+            or self.quantity_adjustments
+            or self.entry_kind == "inspection_shipment"
+        ):
+            raise ValueError("回收料按整桶单独开单")
+        if not (self.inventory_total or self.lines or self.recovery):
             raise ValueError("请选择来源批次")
         if any(
             item.outputs is not None or item.processing_mode == "unit"
@@ -575,6 +597,12 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
+            if payload.recovery:
+                if source.kind not in ("production", "warehouse"):
+                    raise HTTPException(403, "该班组不办理实物收发")
+                workflow.validate_material_route(
+                    None, payload.recovery.material_type, target, payload.entry_kind, payload.notes
+                )
             feeding_plan = feeding_cursor = None
             feeding_fields = {}
             joint_members = joint_plans = None
@@ -762,7 +790,7 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
             output_lines = payload.lines[:1] if pooled else payload.lines
             if pooled:
                 warehouse_feeding.require_matching_materials(payload.lines, lots, processing)
-            batch_numbers = next_transfer_batch_numbers(db, len(output_lines))
+            batch_numbers = next_transfer_batch_numbers(db, 1 if payload.recovery else len(output_lines))
             submitted_at = utcnow()
             # External exits are final at submission; only internal handoffs wait for receipt.
             completion = (
@@ -790,6 +818,32 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
             db.add(dispatch)
             db.flush()
             items = []
+            if bucket := payload.recovery:
+                from .warehouse_locations import consume
+
+                location = consume(db, target, bucket, user, required=True)
+                transfer = MaterialTransfer(
+                    batch_no=batch_numbers.pop(),
+                    serial_no="",
+                    material_type=bucket.material_type,
+                    quantity=0,
+                    weight=bucket.weight,
+                    warehouse_location=location,
+                    dispatch_id=dispatch.id,
+                    source_team_id=source.id,
+                    source_team_code=source.code,
+                    source_team_name=source.name,
+                    **destination,
+                    **completion,
+                    notes=payload.notes,
+                    sent_employee_id=employee.id,
+                    sent_employee_name=employee.name,
+                    created_by=actor_name(user),
+                    created_by_user_id=user.id,
+                    history=[],
+                )
+                db.add(transfer)
+                items.append(transfer)
             consumed_locations = {}
             location_names = []
             # Consume every lease before staging transfers. A partial location
@@ -941,7 +995,7 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
             db.flush()
             from .production_schedules import associate_dispatch
 
-            if not feeding_cursor:
+            if not feeding_cursor and not payload.recovery:
                 associate_dispatch(db, team_id, payload, items)
             for source_id, clearance in clearances.items():
                 record_outbound_clearance(
@@ -981,7 +1035,7 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
                     set_committed_value(transfer, field, getattr(persisted[transfer.id], field))
                 for field, value in (
                     ("urgency", persisted[transfer.id].SerialUrgency),
-                    ("stock_source", lots[transfer.source_transfer_id]),
+                    ("stock_source", lots.get(transfer.source_transfer_id)),
                     ("dispatch", dispatch),
                     ("source_team", source),
                     ("next_team", target),
@@ -993,7 +1047,7 @@ def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
                     user,
                     "dispatched" if external else "created",
                     flush=False,
-                    stock_after=stock_after[transfer.source_transfer_id],
+                    stock_after=stock_after.get(transfer.source_transfer_id),
                 )
             db.flush()
             # These rows were just created in our transaction; only replays need

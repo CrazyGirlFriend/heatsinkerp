@@ -138,6 +138,12 @@ def record_dict(row):
         "processing_status": row.processing_status,
         "before_specification": row.before_specification,
         "after_specification": row.after_specification,
+        "processing_weight_difference": (
+            float(row.after_weight - row.weight_snapshot)
+            if (row.processing_mode == "split" or (row.processing_mode is None and row.outputs))
+            and row.after_weight is not None
+            else None
+        ),
         "after_weight": float(row.after_weight) if row.after_weight is not None else None,
         "outputs": row.outputs,
         "created_by": row.created_by,
@@ -350,7 +356,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
 
     parameters = recorded_parameters(payload, team.code, db=db, team_id=team.id)
     if lot.material_type in WEIGHT_ONLY_TYPES:
-        raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
+        raise HTTPException(422, "废渣、废泥、废屑只按重量计量，不能修改加工件数")
     balance = db.scalar(
         select(Balance)
         .where(Balance.transfer_id == lot.id)
@@ -460,6 +466,8 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         items, snapshots, after_weight = create_outputs(
             db, lot, payload, user, now, hold, task_fields, route_index
         )
+    elif payload.processing_mode == "split" and payload.completed_weight is not None:
+        after_weight = payload.completed_weight
     bind_outputs(lot, items, schedule_id)
     finish_processing(db, lot, payload, route_index, items)
     route_fields = processing_fields(lot, route_index)

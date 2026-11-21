@@ -8,7 +8,7 @@ import { formatDateTime } from './format'
 
 // Defective workpieces and reusable surplus can still have an administrator's delivery plan.
 export const isScheduleApplicable = (materialType?: string | null) =>
-  !['waste', 'sludge', 'scrap_chips'].includes(materialType || '')
+  !['waste', 'sludge', 'slag', 'scrap_chips'].includes(materialType || '')
 
 export function inventoryScheduleBaseline(
   materialType?: string | null,

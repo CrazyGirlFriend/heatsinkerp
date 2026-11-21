@@ -47,7 +47,7 @@ from .schedule_task_identity import (
 )
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_dict, urgency_map
-from .team_constants import SELF_CHECK_TEAM_CODES, WAREHOUSE_TEAM_CODE
+from .team_constants import SELF_CHECK_TEAM_CODES, SPLITTING_TEAM_CODES, WAREHOUSE_TEAM_CODE
 
 mt = MaterialTransfer
 WarehouseSearchField = Literal[
@@ -107,6 +107,7 @@ class WarehouseInventoryFilters(SerialFilters):
         ]
         | None
     ) = None
+    usable_remainders_only: bool = False
     processing_role: Literal["remaining", "produced", "scrap"] | None = None
     route_status: Literal["linked", "unlinked"] | None = None
 
@@ -392,6 +393,39 @@ def list_inventory(db, team_id, filters):
         conditions.append(processing_state == filters.processing_state)
     if filters.processing_role:
         conditions.append(table.c.processing_role == filters.processing_role)
+    if filters.usable_remainders_only:
+        # Physical remainders keep their identity through subsequent handoffs.
+        # A new machining output starts a separate material lineage.
+        remainders = (
+            select(mt.id)
+            .where(mt.processing_role == "remaining", mt.source_team_code.in_(SPLITTING_TEAM_CODES))
+            .cte("usable_remainders", recursive=True)
+        )
+        remainders = remainders.union_all(
+            select(mt.id)
+            .join(remainders, mt.source_transfer_id == remainders.c.id)
+            .where(
+                mt.entry_kind.in_(("transfer", "serial_reallocation")),
+                mt.status == "received",
+                mt.material_type.not_in(SCRAP_MATERIAL_TYPES),
+                func.coalesce(mt.sent_processing_status, "") != "complete",
+            )
+        )
+        split_remainder = and_(
+            table.c.group_id.in_(select(remainders.c.id)), processing_state != "complete"
+        )
+        conditions.extend(
+            (
+                or_(
+                    split_remainder,
+                    table.c.material_type.in_(("finished_surplus", "semi_finished_surplus")),
+                ),
+                table.c.on_hand_quantity > 0,
+                table.c.on_hand_weight > 0,
+                table.c.inspection_hold_count == 0,
+                table.c.rework_pending.is_(False),
+            )
+        )
     if filters.route_status:
         conditions.append(
             table.c.process_route_id.is_not(None)

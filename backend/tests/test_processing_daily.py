@@ -64,6 +64,12 @@ def work(client, s, lot, employee, **extra):
             assert result.status_code == 201, result.text
             task = result.json()
         body["processing_task_id"] = task["id"]
+    if context["processing_mode"] == "split":
+        body["processing_status"] = (
+            "partial"
+            if any(row["role"] == "remaining" for row in extra.get("outputs") or [])
+            else "complete"
+        )
     body.update(extra)
     key = next(
         (key for key in context.get("parameter_fields", []) if key in ("machine_no", "furnace_no")),

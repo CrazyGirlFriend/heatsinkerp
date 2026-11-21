@@ -32,13 +32,14 @@ export const materialTypeOptions = [
   { value: 'defective', label: '废品' },
   { value: 'waste', label: '废料' },
   { value: 'sludge', label: '废泥' },
+  { value: 'slag', label: '废渣' },
   { value: 'scrap_chips', label: '废屑' },
 ] as const
 export type MaterialType = (typeof materialTypeOptions)[number]['value']
 export const isScrapType = (type?: string | null) =>
-  ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
+  ['defective', 'waste', 'sludge', 'slag', 'scrap_chips'].includes(type || '')
 export const isWeightOnlyType = (type?: string | null) =>
-  ['sludge', 'scrap_chips'].includes(type || '')
+  ['sludge', 'slag', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'rework_split') return '返工料划分'
   if (transfer.entry_kind === 'processing_output') return '本班组加工'

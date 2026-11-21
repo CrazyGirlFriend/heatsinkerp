@@ -5,7 +5,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from fastapi import HTTPException
 
 SLUDGE_FIELDS = ("sludge_gross_weight", "sludge_content_percent")
-WEIGHT_ONLY_TYPES = ("sludge", "scrap_chips")
+WEIGHT_ONLY_TYPES = ("sludge", "slag", "scrap_chips")
 MATERIAL_WEIGHT_TOLERANCE = Decimal("1")  # Allowed cumulative difference per source batch, kg.
 
 
@@ -19,9 +19,9 @@ def validate_material_amounts(material_type, quantity, weight, *, existing=None)
         and quantity == existing.quantity
     )
     if quantity != 0 and not legacy_count:
-        raise HTTPException(422, "废泥、废屑只按重量计量，件数须为 0")
+        raise HTTPException(422, "废渣、废泥、废屑只按重量计量，件数须为 0")
     if weight <= 0 and not (legacy_count and weight == existing.weight):
-        raise HTTPException(422, "废泥、废屑的重量须大于 0")
+        raise HTTPException(422, "废渣、废泥、废屑的重量须大于 0")
 
 
 def sludge_measurement(

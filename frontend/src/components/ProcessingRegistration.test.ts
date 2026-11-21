@@ -328,7 +328,7 @@ it('opens splitting outputs directly and includes worker identity and actual wor
       .findAllComponents(ElSelect)
       .filter((select) => /^明细\d+类别$/.test(select.props('ariaLabel') || ''))
       .map((select) => select.props('modelValue')),
-  ).toEqual(['remaining', 'produced'])
+  ).toEqual(['produced'])
   expect(wrapper.find('.dialog-readonly').exists()).toBe(false)
   expect(wrapper.text()).not.toContain('加工后本批未转出总件数')
   expect(wrapper.find('input[aria-label="加工任务"]').exists()).toBe(false)
@@ -345,13 +345,25 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:people', [employee])
   wrapper
     .findAllComponents(ElInputNumber)
-    .find((i) => i.props('ariaLabel') === '明细2件数')!
+    .find((i) => i.props('ariaLabel') === '明细1件数')!
     .vm.$emit('update:modelValue', 100)
   wrapper
     .findAllComponents(WeightInput)
-    .find((i) => i.props('ariaLabel') === '明细2重量')!
+    .find((i) => i.props('ariaLabel') === '明细1重量')!
     .vm.$emit('update:modelValue', 98)
   wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '20 × 10 × 2 mm')
+  await save()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  expect(
+    wrapper
+      .findAllComponents(ElFormItem)
+      .find((i) => i.props('label') === '是否还有可用余料')!
+      .props('error'),
+  ).toBe('请选择是否还有可用余料')
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '无余料')!
+    .trigger('click')
   await save()
   expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
     2,
@@ -617,17 +629,21 @@ it('sums the failed counts of two output sizes in one self-check', async () => {
       .findAllComponents(WeightInput)
       .find((item) => item.props('ariaLabel') === label)!
       .vm.$emit('update:modelValue', n)
-  for (const row of [2, 3]) {
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '无余料')!
+    .trigger('click')
+  for (const row of [1, 2]) {
     count(`明细${row}件数`, 50)
     weight(`明细${row}重量`, 50)
-    const size = wrapper.findAllComponents(SpecificationInput)[row - 2]!
+    const size = wrapper.findAllComponents(SpecificationInput)[row - 1]!
     size.vm.$emit('update:modelValue', `尺寸 ${row}`)
   }
   await flushPromises()
-  count('明细2不合格数', 2)
+  count('明细1不合格数', 2)
   await save()
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-  count('明细3不合格数', 1)
+  count('明细2不合格数', 1)
   await flushPromises()
   weight('不合格重量', 3)
   await wrapper.get('input[aria-label="不合格原因"]').setValue('划伤')

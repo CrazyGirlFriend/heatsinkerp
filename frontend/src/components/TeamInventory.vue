@@ -446,6 +446,7 @@ const filters = computed<TeamInventoryParams>(() => {
     delete params.search_field
     delete params.search_operator
   }
+  if (text('usable_remainders_only') === 'true') params.usable_remainders_only = true
   if (text('rework')) params.rework = text('rework')
   for (const key of ['processing_state', 'processing_role', 'route_status'])
     if (text(key)) params[key] = text(key)
@@ -752,8 +753,12 @@ const canDispatchSelection = computed(
     [...batchSelection.selected.values()].every(inventoryCanDispatch),
 )
 async function dispatchSelected() {
-  if (!props.canWrite || loading.value || !canDispatchSelection.value || preparingDispatch.value)
+  if (!props.canWrite || loading.value || preparingDispatch.value) return
+  if (!batchSelection.selected.size) {
+    emit('action', 'dispatch', [])
     return
+  }
+  if (!canDispatchSelection.value) return
   const ids = [...batchSelection.selected.keys()]
   const current = ++sourceVersion
   preparingDispatch.value = true
@@ -1165,6 +1170,14 @@ onBeforeUnmount(() => {
           </div> </FilterDialog
       ></template>
       <template #tools>
+        <ElCheckbox
+          :model-value="!!filters.usable_remainders_only"
+          @change="
+            (value) =>
+              apply({ ...filters, page: 1, usable_remainders_only: value === true || undefined })
+          "
+          >只看可用余料</ElCheckbox
+        >
         <InventoryColumnSettings
           ref="columnSettings"
           :key="`${teamId}:${Boolean(processing)}`"
@@ -1193,8 +1206,7 @@ onBeforeUnmount(() => {
         >
         <ElButton
           v-if="canWrite"
-          :disabled="loading || !canDispatchSelection"
-          :title="!canDispatchSelection ? '请先勾选可出库批次' : undefined"
+          :disabled="loading || (!!batchSelection.selected.size && !canDispatchSelection)"
           :loading="preparingDispatch"
           :icon="Plus"
           @click="dispatchSelected"

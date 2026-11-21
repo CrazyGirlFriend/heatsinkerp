@@ -2919,6 +2919,7 @@ export interface components {
       quantity_adjustments?: components['schemas']['ProcessingQuantity'][]
       /** Quantity Clearances */
       quantity_clearances?: components['schemas']['OutboundQuantityClearance'][]
+      recovery?: components['schemas']['RecoveryBucket'] | null
       /**
        * Rework Return
        * @default false
@@ -6096,6 +6097,8 @@ export interface components {
       processing_task_id: number | null
       /** Processing Task Name */
       processing_task_name: string | null
+      /** Processing Weight Difference */
+      processing_weight_difference?: number | null
       /** Processor Employee Id */
       processor_employee_id: number | null
       /** Processor Name */
@@ -6925,6 +6928,8 @@ export interface components {
       processing_task_id: number | null
       /** Processing Task Name */
       processing_task_name: string | null
+      /** Processing Weight Difference */
+      processing_weight_difference?: number | null
       /** Processor Employee Id */
       processor_employee_id: number | null
       /** Processor Name */
@@ -7060,6 +7065,23 @@ export interface components {
       repair_team_id?: number | null
       /** Repair Team Name */
       repair_team_name?: string | null
+    }
+    /**
+     * RecoveryBucket
+     * @description One weighed collection, with no individual work order or source stock lot.
+     */
+    RecoveryBucket: {
+      /**
+       * Material Type
+       * @enum {string}
+       */
+      material_type: 'waste' | 'slag' | 'sludge' | 'scrap_chips'
+      /** Warehouse Location */
+      warehouse_location?: string | null
+      /** Warehouse Location Reservation Key */
+      warehouse_location_reservation_key?: string | null
+      /** Weight */
+      weight: number | string
     }
     /** ResumeWrite */
     ResumeWrite: {
@@ -14148,6 +14170,7 @@ export interface operations {
         stock_age_max?: number | null
         stock_age_min?: number | null
         team_id?: number | null
+        usable_remainders_only?: boolean
         waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         waiting_direction?: ('incoming' | 'outgoing') | null
       }
@@ -14700,6 +14723,7 @@ export interface operations {
         stock_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         stock_age_max?: number | null
         stock_age_min?: number | null
+        usable_remainders_only?: boolean
         waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
         waiting_direction?: ('incoming' | 'outgoing') | null
       }

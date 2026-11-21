@@ -54,6 +54,7 @@ def test_split_work_counts_outputs_and_scrap_without_changing_the_input_quantity
         production(
             "split",
             input_quantity=7,
+            processing_status="partial",
             outputs=[
                 dict(
                     role="produced",
@@ -75,7 +76,13 @@ def test_split_work_counts_outputs_and_scrap_without_changing_the_input_quantity
 
 def test_inline_split_completion_keeps_the_legacy_whole_lot_contract():
     prepared, metrics = normalize(
-        production("split", quantity=60, input_quantity=10, processing_status="complete"),
+        production(
+            "split",
+            completed_weight=None,
+            quantity=60,
+            input_quantity=10,
+            processing_status="complete",
+        ),
         "FACTORY-WIRE",
     )
     assert prepared.outputs is None
@@ -108,6 +115,7 @@ def test_split_work_requires_the_dimensions_the_operator_enters():
             production(
                 "split",
                 input_quantity=10,
+                processing_status="complete",
                 outputs=[
                     dict(role="produced", quantity=60, weight=100, material_type="semi_finished")
                 ],

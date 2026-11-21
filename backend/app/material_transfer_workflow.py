@@ -633,6 +633,12 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         if transfer.source_transfer_id or transfer.delivery_origin_id:
             if any(field in supplied for field in FIELDS):
                 raise HTTPException(422, "交期继承自源头批次，请在源头单据维护")
+        if transfer.dispatch_id and transfer.source_transfer_id is None and not transfer.serial_no:
+            if any(
+                field in supplied and getattr(payload, field) != getattr(transfer, field)
+                for field in ("serial_no", "material_type", "quantity", *SLUDGE_FIELDS)
+            ):
+                raise HTTPException(422, "回收料单不能改为订单物料或按件计量")
         validate_pair(
             *(
                 getattr(payload, field) if field in supplied else getattr(transfer, field)

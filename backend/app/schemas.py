@@ -19,8 +19,8 @@ from .process_route_schemas import RouteIntakeWrite
 from .quality_schemas import InspectionResults, ReportTemplate
 from .read_schemas import SharedSerialResponse
 
-DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
-SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
+DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|slag|scrap_chips)$"
+SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "slag", "scrap_chips")
 
 
 class ProcessingOutput(BaseModel):

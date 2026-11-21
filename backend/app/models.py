@@ -338,7 +338,9 @@ class MaterialTransfer(Base):
             "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock', 'serial_reallocation', 'processing_output', 'rework_split') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
             "AND external_destination IS NULL AND status IN ('pending', 'received', 'voided')) OR "
             "(entry_kind IN ('warehouse_outbound', 'inspection_shipment') AND next_team_id IS NULL AND next_team_code IS NULL AND next_team_name IS NULL "
-            "AND external_destination IS NOT NULL AND length(trim(external_destination)) > 0 AND source_transfer_id IS NOT NULL AND dispatch_id IS NOT NULL "
+            "AND external_destination IS NOT NULL AND length(trim(external_destination)) > 0 AND dispatch_id IS NOT NULL "
+            "AND (source_transfer_id IS NOT NULL OR (entry_kind = 'warehouse_outbound' AND serial_no = '' AND quantity = 0 "
+            "AND material_type IS NOT NULL AND material_type IN ('waste', 'slag', 'sludge', 'scrap_chips'))) "
             "AND stock_tracked = 0 AND status IN ('pending', 'dispatched', 'voided'))",
             name="ck_mt_entry_destination",
         ),

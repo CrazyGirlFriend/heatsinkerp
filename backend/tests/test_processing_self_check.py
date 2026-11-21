@@ -187,6 +187,7 @@ def test_outbound_self_check_is_atomic_with_the_transfer(client, warehouse):
     adjustment = dict(
         source_transfer_id=lot["id"],
         quantity=100,
+        completed_weight="99.995",
         expected_revision=0,
         processor_name=employee["name"],
         processor_employee_id=employee["id"],
@@ -222,6 +223,9 @@ def test_outbound_self_check_is_atomic_with_the_transfer(client, warehouse):
     stock = client.get(base(warehouse, True) + "/inventory").json()["items"]
     source = next(row for row in stock if row["group_id"] == lot["id"])
     assert source["failed_quantity"] == 2
+    assert source["on_hand_weight"] == 1.995
+    record = client.get(base(warehouse, True) + "/processing-records").json()["items"][0]
+    assert record["processing_weight_difference"] == -0.005
 
 
 def test_migration_preserves_existing_work_without_guessing_quality():
