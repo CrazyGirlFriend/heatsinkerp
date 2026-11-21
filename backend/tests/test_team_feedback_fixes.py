@@ -40,14 +40,16 @@ def test_normal_transfer_can_omit_or_clear_dimensions_and_still_be_received(clie
     assert result.json()["transfer_specification"] is None
 
 
-def test_unknown_intake_serial_blocked_when_engineering_enabled(client, warehouse):
+def test_new_and_known_intake_serials_stay_unbound_when_engineering_enabled(client, warehouse):
     with SessionLocal.begin() as db:
         db.add(ProcessRoutePolicy(id=1, enforced_after=datetime.now()))
-    result = intake(client, warehouse, serial_no="WRONG-123")
-    assert result.status_code == 422 and "流水号未登记" in result.text
-    result = intake(
-        client, warehouse, serial_no="", material_type="raw_material", idempotency_key="raw"
-    )
+    for key in ("new", "existing"):
+        result = intake(client, warehouse, serial_no="NEW-123", idempotency_key=key)
+        assert result.status_code == 201, result.text
+        assert result.json()["serial_no"] == "NEW-123"
+        assert result.json()["process_route"] is None
+        assert result.json().get("schedule_task_id") is None
+    result = intake(client, warehouse, serial_no="", material_type="waste", idempotency_key="waste")
     assert result.status_code == 201, result.text
 
 

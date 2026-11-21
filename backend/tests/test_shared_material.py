@@ -54,7 +54,7 @@ def shared_intake(client, setup, **extra):
     members = [
         SharedMaterialSerial.model_validate(member) for member in values.pop("shared_serials")
     ]
-    original = intake(client, setup, **values)
+    original = intake(client, setup, **{**values, "serial_no": members[0].serial_no})
     assert original.status_code == 201, original.text
     with SessionLocal.begin() as db:
         lot = db.get(MaterialTransfer, original.json()["id"])
@@ -408,7 +408,14 @@ def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, wareho
     # Compare with the pre-plan canonical request, including its original default fields.
     value = payload.model_dump(
         mode="json",
-        exclude={"idempotency_key", "process_route", "document_ids", "confirmed_imports"},
+        exclude={
+            "idempotency_key",
+            "process_route",
+            "document_ids",
+            "confirmed_imports",
+            "source_team_id",
+            "is_outsourced",
+        },
     )
     from app.material_transfer_workflow import DOCUMENT_FIELDS, SLUDGE_FIELDS
 

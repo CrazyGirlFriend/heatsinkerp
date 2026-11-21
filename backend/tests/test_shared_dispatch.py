@@ -82,7 +82,7 @@ def joint(client, warehouse, request):
                 member.pop(field)
     if mode == "unspecified_first":
         members.reverse()
-    response = intake(client, warehouse, serial_no="", quantity=2, weight=20)
+    response = intake(client, warehouse, serial_no=members[0]["serial_no"], quantity=2, weight=20)
     assert response.status_code == 201, response.text
     return response.json(), members
 
@@ -138,7 +138,7 @@ def test_joint_transfer_counts_one_physical_lot_preserves_remainder_and_retry(
         assert db.scalar(select(func.count(SharedMaterialGroup.id))) == 1
         parent = db.get(MaterialTransfer, origin["id"])
         assert (
-            parent.serial_no == ""
+            parent.serial_no == origin["serial_no"]
             and parent.shared_group_id is None
             and parent.process_route_id is None
         )

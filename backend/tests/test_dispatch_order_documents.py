@@ -21,7 +21,7 @@ from test_order_document_preview import pdf
 from test_process_route_orders import xlsx
 from test_process_routes import published
 from test_warehouse_classification import base, confirm, dispatch
-from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import intake, legacy_unassigned_receipt  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
 
 
@@ -304,7 +304,7 @@ def test_warehouse_outbound_accepts_dispatch_order_without_engineering_order(
     client, warehouse, dispatcher
 ):
     body = setup_order(client, warehouse)
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     payload = {
         "next_team_id": warehouse["other"]["id"],
         "idempotency_key": uuid4().hex,

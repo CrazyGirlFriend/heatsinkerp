@@ -114,7 +114,6 @@ def _correction_location(db, lot, team, payload, user):
 def update_receipt(db, team_id, lot_id, payload, user):
     from .material_delivery import FIELDS as delivery_fields
     from .material_delivery import with_schedule
-    from .material_entry_validation import require_registered_serial
     from .process_route_paths import require_order_route
 
     stock.require_actor(user, team_id)
@@ -131,7 +130,11 @@ def update_receipt(db, team_id, lot_id, payload, user):
             if lot.version != payload.expected_version:
                 raise HTTPException(409, "入库单已更新，请重新打开并核对")
             serial = payload.serial_no if "serial_no" in payload.model_fields_set else lot.serial_no
-            if serial.startswith("共投-") or (lot.receipt_kind == "return" and not serial):
+            if not serial and (
+                lot.receipt_kind == "return" or payload.material_type not in SCRAP_MATERIAL_TYPES
+            ):
+                raise HTTPException(422, "请填写或选择流水号")
+            if serial.startswith("共投-"):
                 raise HTTPException(422, "请输入有效流水号")
             if lot.receipt_kind == "return" and not (
                 payload.external_source
@@ -158,7 +161,6 @@ def update_receipt(db, team_id, lot_id, payload, user):
                     for row in documents
                 ):
                     raise HTTPException(422, "流水号须与已归档的订单表一致")
-                require_registered_serial(db, serial, payload.material_type, documents=documents)
                 if lot.process_route:
                     require_order_route(db, lot.process_route, serial)
             if lot.process_route and payload.material_type in SCRAP_MATERIAL_TYPES:
@@ -271,15 +273,11 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 return replay(prior, user, request_hash, team_id)
             if payload.shared_serials:
                 raise HTTPException(422, "入库只登记实物，共投请在库房向下序转出时填写")
+            if not payload.serial_no and payload.material_type not in SCRAP_MATERIAL_TYPES:
+                raise HTTPException(422, "请填写或选择流水号")
             from .warehouse_receipt_documents import attach_documents, validate_documents
 
             documents = validate_documents(db, team, payload, user)
-            from .material_entry_validation import require_registered_serial
-
-            if source_reference is None:
-                require_registered_serial(
-                    db, payload.serial_no, payload.material_type, documents=documents
-                )
             route = intake_route(db, team, payload, user)
             delivery_origin_id = None
             outsourced = payload.is_outsourced

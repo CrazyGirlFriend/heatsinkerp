@@ -10,7 +10,7 @@ from sender_helpers import sender_post
 from sqlalchemy import delete, select
 from test_engineering_team import author
 from test_process_route_intake import publish_payload, route_payload
-from test_warehouse_receipts import intake
+from test_warehouse_receipts import intake, legacy_unassigned_receipt
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
@@ -56,7 +56,7 @@ def test_unnamed_receipt_splits_into_serial_specific_routes_without_relabelling_
     client, warehouse
 ):
     first, second = routes(client, warehouse)
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     assert receipt["serial_no"] == "" and receipt["process_route"] is None
     lines = [
         {"source_transfer_id": receipt["id"], "serial_no": "ORDER-A", "quantity": 30, "weight": 3},
@@ -101,7 +101,7 @@ def test_missing_outbound_information_rejects_entire_order_without_stock_change(
     client, warehouse, missing
 ):
     first, _ = routes(client, warehouse)
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     with SessionLocal() as db:
         if missing == "order":
             db.execute(
@@ -171,7 +171,7 @@ def test_serial_lookup_is_exact_and_bound_serial_cannot_be_replaced(client, ware
 
 def test_selected_version_conflict_does_not_bind_stock(client, warehouse):
     first, _ = routes(client, warehouse)
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     result = dispatch(
         client,
         warehouse,
@@ -198,7 +198,7 @@ def test_dispatch_needs_no_manual_downstream_task_even_when_team_has_tasks(clien
         steps = deepcopy(route.steps)
         steps[1]["purpose_id"] = None
         route.steps = steps
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     result = dispatch(
         client,
         warehouse,
@@ -227,7 +227,7 @@ def test_anonymous_outbound_selects_exact_schedule_and_carries_its_documents(cli
     from test_production_schedules import URL, plan
 
     first, _ = routes(client, warehouse)
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     plans = [
         plan(
             client,

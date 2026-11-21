@@ -322,6 +322,9 @@ watch(intakeSerials, () => {
   routeReviewed.value = importedRoute.value?.state === 'published'
 })
 const detailsOpen = ref(false)
+const serialRequired = computed(
+  () => form.receiptKind === 'return' || !isScrapType(form.materialType),
+)
 const weightOnly = computed(() => isWeightOnlyType(form.materialType))
 const enteredQuantity = computed(() =>
   weightOnly.value
@@ -456,8 +459,8 @@ const validation = useDialogValidation(() => {
     form.externalSource.trim().length > 240
   )
     issues.externalSource = '请填写外部来源单位'
-  if ((!form.serialNo.trim() && form.receiptKind === 'return') || form.serialNo.trim().length > 80)
-    issues.serialNo = '请输入有效流水号'
+  if (!form.serialNo.trim() && serialRequired.value) issues.serialNo = '请填写或选择流水号'
+  else if (form.serialNo.trim().length > 80) issues.serialNo = '请输入有效流水号'
   if (!form.document.material_name.trim()) issues.material_name = '请输入材质'
   if (!form.materialType) issues.materialType = '请选择物料类型'
   const originalMeasurement = originalSludge.value
@@ -893,7 +896,7 @@ onBeforeUnmount(() => {
             label="流水号"
             :error="fieldErrors.serialNo"
             :class="['receipt-identity-field', importedClass('serial_no')]"
-            :required="form.receiptKind === 'return'"
+            :required="serialRequired"
             ><template #label
               >流水号<AutofillBadge
                 :source="documentSource('serial_no')"
@@ -905,7 +908,7 @@ onBeforeUnmount(() => {
               label="流水号"
               :maxlength="80"
               :disabled="readonly || Boolean(original?.return_dispatch_no)"
-              placeholder="选填，出库时可补充"
+              :placeholder="serialRequired ? '输入新流水号或选择已有号' : '选填'"
               @selected="autofill.select"
           /></ElFormItem>
         </CompactFormSection>

@@ -16,20 +16,22 @@ from warehouse_test_locations import select_location
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
-def test_receipt_requires_location_but_not_serial_and_lists_each_batch(client, warehouse):
+def test_receipt_requires_location_and_lists_each_batch(client, warehouse):
     setup = warehouse
     for missing in (None, "", " "):
-        rejected = intake(client, setup, serial_no="", warehouse_location=missing)
+        rejected = intake(client, setup, warehouse_location=missing)
         assert rejected.status_code == 422, rejected.text
         assert "入库仓位" in rejected.text
-    first = intake(client, setup, serial_no="").json()
-    second = intake(client, setup, serial_no="", idempotency_key="second").json()
+    first = intake(client, setup).json()
+    second = intake(client, setup, idempotency_key="second").json()
     assert first["batch_no"] != second["batch_no"]
     url = base(setup) + "/inventory"
     result = client.get(url).json()
     assert result["total"] == 2
     assert {row["batch_no"] for row in result["items"]} == {first["batch_no"], second["batch_no"]}
-    assert all(row["serial_no"] == "" and row["batch_count"] == 1 for row in result["items"])
+    assert all(
+        row["serial_no"] == "WAREHOUSE-001" and row["batch_count"] == 1 for row in result["items"]
+    )
     # Location names follow the current slot, not the original document snapshot.
     with SessionLocal.begin() as db:
         slot = db.scalar(

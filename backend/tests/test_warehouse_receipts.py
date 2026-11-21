@@ -77,6 +77,16 @@ def intake(client, setup, **overrides):
     )
 
 
+def legacy_unassigned_receipt(client, setup, **fields):
+    """An existing batch received before warehouse serials were required."""
+    response = intake(client, setup, **fields)
+    assert response.status_code == 201, response.text
+    receipt = response.json()
+    with SessionLocal.begin() as db:
+        db.get(MaterialTransfer, receipt["id"]).serial_no = ""
+    return {**receipt, "serial_no": ""}
+
+
 def test_manual_intake_is_a_stock_origin_not_a_self_transfer(client, warehouse):
     response = intake(client, warehouse)
     assert response.status_code == 201, response.text
@@ -122,7 +132,7 @@ def test_manual_intake_is_a_stock_origin_not_a_self_transfer(client, warehouse):
 
 
 def test_correcting_unused_receipt_keeps_batch_and_updates_stock_and_slot(client, warehouse):
-    receipt = intake(client, warehouse, serial_no="").json()
+    receipt = legacy_unassigned_receipt(client, warehouse)
     url = f"{warehouse['url']}/{receipt['id']}"
     payload = {
         "expected_version": receipt["version"],
@@ -134,6 +144,8 @@ def test_correcting_unused_receipt_keeps_batch_and_updates_stock_and_slot(client
         "warehouse_location": receipt["warehouse_location"],
     }
     assert client.patch(url, headers=warehouse["other_headers"], json=payload).status_code == 403
+    blank = client.patch(url, headers=warehouse["headers"], json={**payload, "serial_no": "  "})
+    assert blank.status_code == 422 and "请填写或选择流水号" in blank.text
     updated = client.patch(url, headers=warehouse["headers"], json=payload)
     assert updated.status_code == 200, updated.text
     assert updated.json()["batch_no"] == receipt["batch_no"]
@@ -602,9 +614,7 @@ def test_migration_retains_old_batches_children_audit_losses_and_indexes(tmp_pat
 
 
 @pytest.mark.parametrize("serial", [None, "", "  "])
-def test_intake_without_serial_keeps_material_available_for_later_assignment(
-    client, warehouse, serial
-):
+def test_normal_intake_requires_a_serial(client, warehouse, serial):
     payload = {
         "material_name": "铜钼",
         "material_type": "semi_finished",
@@ -616,6 +626,6 @@ def test_intake_without_serial_keeps_material_available_for_later_assignment(
     if serial is not None:
         payload["serial_no"] = serial
     response = client.post(warehouse["url"], headers=warehouse["headers"], json=payload)
-    assert response.status_code == 201, response.text
-    assert not response.json()["serial_no"]
-    assert client.get(warehouse["url"]).json()["total"] == 1
+    assert response.status_code == 422, response.text
+    assert "流水号" in response.text
+    assert client.get(warehouse["url"]).json()["total"] == 0

@@ -162,7 +162,7 @@ describe('warehouse manual receipt', () => {
     expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ batch_no: 'TL-RECEIPT', version: 4 })
   })
 
-  it('requires a location even when the serial is unknown', async () => {
+  it('requires both a location and a serial, accepting a new number without a route', async () => {
     await render()
     await fill()
     await wrapper.get('input[aria-label="流水号"]').setValue('')
@@ -175,13 +175,30 @@ describe('warehouse manual receipt', () => {
     expect(wrapper.text()).toContain('请选择入库仓位')
     await chooseLocation()
     await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
-      901,
-      expect.objectContaining({
-        serial_no: '',
-        warehouse_location: 'A区-01',
-      }),
-    )
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(
+      wrapper.get('input[aria-label="流水号"]').element.closest('.el-form-item')?.classList,
+    ).toContain('is-error')
+    await wrapper.get('input[aria-label="流水号"]').setValue('NEW-IN-01')
+    await submit()
+    const body = vi.mocked(teamMaterialApi.createReceipt).mock.lastCall![1]
+    expect(body).toMatchObject({ serial_no: 'NEW-IN-01', warehouse_location: 'A区-01' })
+    expect(body).not.toHaveProperty('process_route')
+    expect(body).not.toHaveProperty('schedule_task_id')
+  })
+  it('allows non-order scrap without a serial', async () => {
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="流水号"]').setValue('')
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('input[aria-label="物料类型"]').exists())!
+      .vm.$emit('update:modelValue', 'waste')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.lastCall?.[1]).toMatchObject({
+      material_type: 'waste',
+      serial_no: '',
+    })
   })
   it('validates only the physical batch dimensions on receipts', async () => {
     await render()
@@ -217,14 +234,13 @@ describe('warehouse manual receipt', () => {
         .findAllComponents(ElSelect)
         .find((item) => item.find('input[aria-label="物料类型"]').exists())!
         .vm.$emit('update:modelValue', 'raw_material')
-      await wrapper.get('input[aria-label="流水号"]').setValue('')
       if (dimensions) await input.setValue(dimensions)
       await submit()
       const [teamId, body] = vi.mocked(teamMaterialApi.createReceipt).mock.lastCall!
       expect(teamId).toBe(901)
       expect(body).toMatchObject({
         material_type: 'raw_material',
-        serial_no: '',
+        serial_no: 'QA-IN',
         transfer_specification: dimensions || null,
       })
       expect(body.process_route).toBeUndefined()
@@ -299,6 +315,9 @@ describe('warehouse manual receipt', () => {
         weight: 1.5,
       }),
     )
+    const body = vi.mocked(teamMaterialApi.createReceipt).mock.lastCall![1]
+    expect(body).not.toHaveProperty('process_route')
+    expect(body).not.toHaveProperty('schedule_task_id')
   })
 
   it('keeps measured sludge and percentage in a retried receipt without double conversion', async () => {
@@ -1262,14 +1281,13 @@ describe('库房补充附件与导入确认', () => {
     )
     await render()
     await fill()
-    await wrapper.get('input[aria-label="流水号"]').setValue('')
     await uploadDocument(process)
     await uploadDocument(drawing)
     await confirmImported()
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
     expect(original).toMatchObject({
-      serial_no: '',
+      serial_no: 'QA-IN',
       document_ids: [701, 703],
       confirmed_imports: true,
     })

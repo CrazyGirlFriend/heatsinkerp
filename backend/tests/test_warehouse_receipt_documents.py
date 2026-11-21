@@ -19,7 +19,7 @@ from test_process_route_import import PROCESS, docx
 from test_process_route_intake import publish_payload, route_payload
 from test_process_route_orders import VALUES, xlsx
 from test_process_routes import published
-from test_warehouse_receipts import intake
+from test_warehouse_receipts import intake, legacy_unassigned_receipt
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
@@ -137,15 +137,14 @@ def test_documents_cannot_be_claimed_by_another_warehouse_user(client, warehouse
     assert client.delete(f"/api/receipt-documents/{item['id']}", headers=headers).status_code == 404
 
 
-def test_order_serial_validation_and_anonymous_receipts(client, warehouse):
+def test_order_serial_must_be_present_and_match(client, warehouse):
     item = upload(client, warehouse, content=order_bytes("OTHER-SERIAL")).json()
     response = intake(client, warehouse, document_ids=[item["id"]], confirmed_imports=True)
     assert response.status_code == 422 and "流水号" in response.text
     anonymous = intake(
         client, warehouse, serial_no="", document_ids=[item["id"]], confirmed_imports=True
     )
-    assert anonymous.status_code == 201, anonymous.text
-    assert anonymous.json()["serial_no"] == ""
+    assert anonymous.status_code == 422 and "流水号" in anonymous.text
 
 
 def test_receipt_route_needs_confirmation_but_supplements_do_not_change_it(client, warehouse):
@@ -243,16 +242,16 @@ def test_outbound_uses_confirmed_matching_receipt_order_without_changing_route(
             key: value for key, value in row.source_data.items() if key != "order_document"
         }
     order = upload(client, warehouse, content=order_bytes(serial)).json()
-    receipt = intake(
+    receipt = legacy_unassigned_receipt(
         client,
         warehouse,
-        serial_no="",
+        serial_no=serial,
         document_ids=[order["id"]],
         confirmed_imports=True,
         is_outsourced=True,
         delivery_date="2026-12-01",
         delivery_quantity=10,
-    ).json()
+    )
     response = sender_post(
         client,
         warehouse["url"].replace("/receipts", "/dispatches"),

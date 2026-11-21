@@ -22,7 +22,7 @@ from test_engineering_team import author
 from test_outbound_documents import dispatch
 from test_process_routes import published, work
 from test_warehouse_classification import base, confirm
-from test_warehouse_receipts import intake
+from test_warehouse_receipts import intake, legacy_unassigned_receipt
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
@@ -91,7 +91,13 @@ def test_selected_engineering_route_drives_outbound_and_all_processing_steps(
         f"/api/process-routes/{route['id']}/dispatch-order", params={"serial_no": serial}
     )
     assert linked_order.json()["task_id"] == task["id"]
-    origin = intake(client, warehouse, serial_no="" if anonymous else serial, weight=10).json()
+    origin = (
+        legacy_unassigned_receipt(client, warehouse, weight=10)
+        if anonymous
+        else intake(client, warehouse, serial_no=serial, weight=10).json()
+    )
+    assert origin["process_route"] is None
+    assert origin.get("schedule_task_id") is None
     sent = dispatch(
         client,
         warehouse,
@@ -225,14 +231,7 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
     )
     assert response.status_code == 200, response.text
     route = response.json()
-    receipt = intake(
-        client,
-        warehouse,
-        serial_no="",
-        quantity=1,
-        weight=10,
-    )
-    assert receipt.status_code == 201, receipt.text
+    receipt = legacy_unassigned_receipt(client, warehouse, quantity=1, weight=10)
     person = client.post(URL + "/business-people", json={"name": "业务甲"}).json()["id"]
     tasks = {}
     for serial in ("A", "B", "INDEPENDENT-ORDER"):
@@ -256,7 +255,7 @@ def test_reused_route_does_not_attribute_other_orders_shared_stock_to_new_order(
         warehouse,
         [
             {
-                "source_transfer_id": receipt.json()["id"],
+                "source_transfer_id": receipt["id"],
                 "quantity": 1,
                 "weight": 10,
                 "shared_serials": [
