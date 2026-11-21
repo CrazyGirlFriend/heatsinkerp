@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElFormItem, ElOption } from 'element-plus'
 import AppAutocomplete from './AppAutocomplete.vue'
+import AppButton from './AppButton.vue'
 import AppSelect from './AppSelect.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { components } from '@/types/generated/api'
@@ -9,13 +10,14 @@ import { formatAmount, formatDateTime } from '@/utils/format'
 
 type Option = components['schemas']['FeedingOption']
 const props = defineProps<{
+  sourceLabel?: string
+  position: number
+  removable: boolean
   teamId: number
-  quantity: number
-  weight: number
   refresh: number
   error?: string
 }>()
-const emit = defineEmits<{ select: [Option | undefined] }>()
+const emit = defineEmits<{ select: [Option | undefined]; remove: [] }>()
 const serial = ref('')
 const options = ref<Option[]>([])
 const selectedId = ref<number>()
@@ -65,11 +67,17 @@ watch(plan, (value) => emit('select', value), { immediate: true, flush: 'sync' }
 </script>
 <template>
   <div class="dialog-form-grid">
-    <ElFormItem label="目标流水号" required>
+    <ElFormItem :label="sourceLabel ? `${sourceLabel} 的目标流水号` : '目标流水号'" required>
       <AppAutocomplete
         v-model="serial"
         :fetch-suggestions="suggest"
-        aria-label="目标流水号"
+        :aria-label="
+          sourceLabel
+            ? `${sourceLabel} 的目标流水号`
+            : position === 1
+              ? '目标流水号'
+              : `共投流水号 ${position}`
+        "
         placeholder="输入或选择排期流水号"
         clearable
       />
@@ -80,7 +88,7 @@ watch(plan, (value) => emit('select', value), { immediate: true, flush: 'sync' }
         :loading="loading"
         :disabled="!options.length"
         placeholder="选择加工排期"
-        aria-label="加工排期"
+        :aria-label="position === 1 ? '加工排期' : `加工排期 ${position}`"
       >
         <ElOption
           v-for="item in options"
@@ -92,22 +100,44 @@ watch(plan, (value) => emit('select', value), { immediate: true, flush: 'sync' }
       <span v-if="message || error" role="status" class="dialog-field-hint">{{
         message || error
       }}</span>
+      <div v-if="plan || removable" class="feeding-summary" aria-live="polite">
+        <span v-if="plan" class="dialog-field-hint"
+          >库房待转出
+          <strong>{{
+            [
+              plan.remaining_quantity != null ? formatAmount(plan.remaining_quantity) + ' 件' : '',
+              plan.remaining_weight != null ? formatAmount(plan.remaining_weight) + ' kg' : '',
+            ]
+              .filter(Boolean)
+              .join(' / ')
+          }}</strong></span
+        >
+        <AppButton
+          v-if="removable"
+          link
+          :aria-label="`移除目标流水号 ${position}`"
+          @click="emit('remove')"
+          >移除</AppButton
+        >
+      </div>
     </ElFormItem>
-    <div class="dialog-field-wide dialog-form-grid" aria-live="polite">
-      <span class="dialog-field-hint"
-        >本次投料 {{ formatAmount(quantity) }} 件 / {{ formatAmount(weight) }} kg</span
-      >
-      <span v-if="plan" class="dialog-field-hint"
-        >排期待交
-        {{
-          [
-            plan.remaining_quantity != null ? formatAmount(plan.remaining_quantity) + ' 件' : '',
-            plan.remaining_weight != null ? formatAmount(plan.remaining_weight) + ' kg' : '',
-          ]
-            .filter(Boolean)
-            .join(' / ')
-        }}</span
-      >
-    </div>
   </div>
 </template>
+
+<style scoped>
+.feeding-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--form-field-gap, 14px);
+}
+.feeding-summary .app-button {
+  margin-left: auto;
+}
+.dialog-field-hint strong {
+  color: var(--text);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+</style>

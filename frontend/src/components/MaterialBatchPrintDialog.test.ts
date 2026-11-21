@@ -59,6 +59,39 @@ it('excludes internal rework allocations from batch previews and print counts', 
   expect(materialTransferApi.get).toHaveBeenCalledTimes(2)
   expect(window.print).toHaveBeenCalledOnce()
 })
+it('loads every lot of the selected warehouse document for preview and reprint', async () => {
+  const document = items.map((item) => ({ ...item, warehouse_dispatch_id: 51 }))
+  const load = vi.spyOn(materialTransferApi, 'warehouseDocument').mockResolvedValue(document)
+  await wrapper.setProps({ items: [document[0]!] })
+  await flushPromises()
+  expect(wrapper.getComponent(MaterialBatchPrintSheet).props('items')).toEqual(document)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text().includes('打印 1 张转料单'))!
+    .trigger('click')
+  await flushPromises()
+  expect(load.mock.calls).toEqual([[51], [51]])
+  expect(window.print).toHaveBeenCalledOnce()
+})
+it('prints only the selected target group when an old submission contains independent transfers', async () => {
+  const rows = dispatchFixture(3).items.map((row, index) => ({
+    ...row,
+    warehouse_dispatch_id: 51,
+    warehouse_document_no: index < 2 ? 'KF-51-1' : 'KF-51-3',
+  }))
+  vi.spyOn(materialTransferApi, 'warehouseDocument').mockResolvedValue(rows)
+  await wrapper.setProps({ items: [rows[1]!] })
+  await flushPromises()
+  expect(wrapper.getComponent(MaterialBatchPrintSheet).props('items')).toEqual(rows.slice(0, 2))
+})
+it('reports a missing warehouse lot instead of printing a partial selection', async () => {
+  const rows = items.map((row) => ({ ...row, warehouse_dispatch_id: 51 }))
+  vi.spyOn(materialTransferApi, 'warehouseDocument').mockResolvedValue(rows.slice(1))
+  await wrapper.setProps({ items: rows })
+  await flushPromises()
+  expect(wrapper.text()).toContain('转料单已变化')
+  expect(window.print).not.toHaveBeenCalled()
+})
 it('does not print stale or partial data when a batch reload fails', async () => {
   vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('批次读取失败'))
   await print()

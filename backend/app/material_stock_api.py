@@ -302,6 +302,7 @@ def warehouse_locations(
     serial_no: str | None = Query(default=None, max_length=80),
     material_name: str | None = Query(default=None, max_length=160),
     material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
+    transfer_specification: str | None = Query(default=None, max_length=240),
     limit: int = Query(default=100, ge=1, le=100),
     page: int = Query(default=1, ge=1),
     _: User = Depends(get_current_user),
@@ -318,6 +319,7 @@ def warehouse_locations(
             page=page,
             selected=selected,
             identity=identity,
+            specification=transfer_specification,
         ),
         schema=WarehouseLocationPage,
     )

@@ -90,6 +90,34 @@ function batch(id: number, parent: number | null = null, team = 1): TraceBatch {
 }
 
 describe('ECharts flow preview data', () => {
+  it('deducts each source share while drawing the single pooled transfer once', () => {
+    const first = {
+      ...batch(1),
+      received_at: '2026-09-19T00:00:00Z',
+      on_hand_quantity: 8,
+      on_hand_weight: 0.8,
+    }
+    const second = { ...first, id: 2, batch_no: 'B2', on_hand_quantity: 7, on_hand_weight: 0.7 }
+    const outgoing = {
+      ...batch(3, 1, 2),
+      source_team: first.next_team,
+      quantity: 5,
+      weight: 0.5,
+      status: 'pending' as const,
+      transferred_at: '2026-09-20T00:00:00Z',
+      received_at: null,
+      feeding_sources: [
+        { source_transfer_id: 1, serial_no: 'A', batch_no: 'B1', quantity: 2, weight: 0.2 },
+        { source_transfer_id: 2, serial_no: 'B', batch_no: 'B2', quantity: 3, weight: 0.3 },
+      ],
+    }
+    const model = traceFlowModel([first, second, outgoing], '2026-09-21T00:00:00Z')
+    expect(model.nodes).toHaveLength(3)
+    expect(model.byId.get('1')?.stays.at(-1)?.quantity).toBe(8)
+    expect(model.byId.get('2')?.stays.at(-1)?.quantity).toBe(7)
+    expect(traceRelated(model, '3')).toEqual(new Set(['1', '2', '3']))
+    expect(traceRelated(model, '2')).toEqual(new Set(['2', '3']))
+  })
   it('deducts A reallocation at its real time and treats B as a new intake in the same team', () => {
     const first = {
       ...batch(1),

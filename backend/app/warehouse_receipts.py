@@ -47,7 +47,12 @@ def editable_ids(db, lot_ids, *, locking=False):
     lot = MaterialTransfer.__table__
     child = lot.alias("receipt_child")
     event = MaterialTransferEvent.__table__
+    from .models import WarehouseFeedingSource
+
     dependencies = (
+        select(WarehouseFeedingSource.transfer_id).where(
+            WarehouseFeedingSource.source_transfer_id == lot.c.id
+        ),
         select(child.c.id).where(child.c.source_transfer_id == lot.c.id),
         select(MaterialLoss.id).where(MaterialLoss.source_transfer_id == lot.c.id),
         select(MaterialQuantityAdjustment.id).where(
@@ -499,7 +504,9 @@ def list_receipts(
     }
 
 
-def locations(db, team_id, *, query=None, limit=100, page=1, selected=None, identity=None):
+def locations(
+    db, team_id, *, query=None, limit=100, page=1, selected=None, identity=None, specification=None
+):
     from .warehouse_locations import list_locations
 
     return list_locations(
@@ -511,4 +518,5 @@ def locations(db, team_id, *, query=None, limit=100, page=1, selected=None, iden
         available_only=True,
         selected=selected,
         identity=identity,
+        specification=specification,
     )

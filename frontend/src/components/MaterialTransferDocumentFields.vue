@@ -80,7 +80,7 @@ const fields = computed<DocumentField[]>(() => {
       value: materialSourceLabel(t),
     },
     { label: '流水号', key: 'serial', value: sharedSerialLabel(t) },
-    ...(t.entry_kind === 'transfer' && t.source_serial_no
+    ...(t.entry_kind === 'transfer' && t.source_serial_no && !t.feeding_sources?.length
       ? [{ label: '来源流水号', value: t.source_serial_no }]
       : []),
     {
@@ -111,7 +111,13 @@ const fields = computed<DocumentField[]>(() => {
     ...(t.next_team.code === 'FACTORY-WAREHOUSE'
       ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }]
       : []),
-    { label: '上一批次', value: t.source_transfer_batch_no || '—' },
+    ...(t.feeding_sources?.length
+      ? t.feeding_sources.map((part) => ({
+          label: '来源批次',
+          value: `${part.batch_no} · ${part.serial_no || '—'} · ${part.quantity} 件 / ${part.weight} kg`,
+          fullWidth: true,
+        }))
+      : [{ label: '上一批次', value: t.source_transfer_batch_no || '—' }]),
     ...(t.task_batch_number ? [{ label: '排期批次', value: formatScheduleBatch(t) }] : []),
     ...(t.rework_pending || t.rework_count
       ? [

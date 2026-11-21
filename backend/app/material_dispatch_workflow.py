@@ -87,6 +87,57 @@ def get_dispatch(db, dispatch_no, user):
     return stock.dispatch_dict(db, dispatch, user, items=items, include_history=True)
 
 
+def warehouse_document(db, dispatch_id, user):
+    from .material_delivery import with_schedule
+    from .team_constants import WAREHOUSE_TEAM_CODE
+
+    rows = db.scalars(
+        select(MaterialTransfer)
+        .where(
+            MaterialTransfer.dispatch_id == dispatch_id,
+            MaterialTransfer.entry_kind == "transfer",
+            MaterialTransfer.source_team_code == WAREHOUSE_TEAM_CODE,
+        )
+        .options(*workflow.material_transfer_list_options())
+        .order_by(MaterialTransfer.id)
+    ).all()
+    if not rows:
+        raise HTTPException(404, "库房转料单不存在")
+    documents = with_schedule(
+        db, [workflow.material_transfer_dict(row, user, include_history=False) for row in rows]
+    )
+    # Older bulk submissions could contain several independent transfers in one
+    # header. Recover their boundaries from the recorded source/target links.
+    groups = []
+    for row in documents:
+        source = row["source_serial_no"] or row["source_transfer_batch_no"] or row["batch_no"]
+        links = {("source", source.casefold())}
+        targets = row["shared_serials"] if row["shared_unallocated"] else [row]
+        for target in targets:
+            links.add(
+                (
+                    "target",
+                    (target["serial_no"] or row["batch_no"]).casefold(),
+                    target.get("schedule_task_id"),
+                )
+            )
+        connected = [group for group in groups if group[0] & links]
+        members = [row]
+        for group in connected:
+            links.update(group[0])
+            members.extend(group[1])
+            groups.remove(group)
+        groups.append((links, members))
+    number = documents[0]["dispatch_no"] or f"KF-{dispatch_id}"
+    for _, members in groups:
+        document_no = (
+            number if len(groups) == 1 else f"{number}-{min(item['id'] for item in members)}"
+        )
+        for row in members:
+            row["warehouse_document_no"] = document_no
+    return {"items": documents}
+
+
 def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
     try:
         with db.begin():
@@ -98,9 +149,11 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
             _require_confirmer(db, group, user, external)
             # All mutations follow source -> line order. Never lock a group
             # first and then wait for its sources (a child edit does the reverse).
+            from .material_lineage import source_ids_for
+
             source_ids = db.scalars(
-                select(MaterialTransfer.source_transfer_id).where(
-                    MaterialTransfer.dispatch_id == group.id
+                source_ids_for(
+                    select(MaterialTransfer.id).where(MaterialTransfer.dispatch_id == group.id)
                 )
             ).all()
             if not source_ids or any(item is None for item in source_ids):

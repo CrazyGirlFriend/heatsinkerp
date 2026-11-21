@@ -1,5 +1,7 @@
 """One physical lot, many order associations; allocation happens during processing."""
 
+from types import SimpleNamespace
+
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 
@@ -35,7 +37,18 @@ def group_dict(group, unallocated=False):
         "shared_unallocated": bool(unallocated),
         "shared_origin_batch_no": group.batch_no if group else None,
         "shared_serials": [
-            SharedMaterialSerial.model_validate(member).model_dump(mode="json")
+            {
+                **SharedMaterialSerial.model_validate(member).model_dump(mode="json"),
+                **(
+                    {
+                        "feeding_schedule_id": member.feeding_schedule_id,
+                        "schedule_task_id": member.feeding_schedule.task_id,
+                        "task_batch_number": member.task_batch_number,
+                    }
+                    if member.feeding_schedule_id
+                    else {}
+                ),
+            }
             for member in group.members
         ]
         if group
@@ -49,13 +62,18 @@ def document(transfer):
     )
 
 
-def create_group(db, batch_no, members):
+def create_group(db, batch_no, members, *, feeding_plans=None):
     group = SharedMaterialGroup(
         batch_no=batch_no,
         split_step_index=common_split_index(db, [member.process_route_id for member in members])
         if all(member.process_route_id for member in members)
         else None,
-        members=[SharedMaterialMember(**member.model_dump()) for member in members],
+        members=[
+            SharedMaterialMember(
+                **member.model_dump(), **(feeding_plans or {}).get(member.serial_no, {})
+            )
+            for member in members
+        ],
     )
     db.add(group)
     db.flush()
@@ -115,8 +133,6 @@ def execution_step(lot, index):
 
 def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
     """Bind each order's published route to the outbound portion, not the receipt."""
-    from types import SimpleNamespace
-
     from .process_route_paths import require_order_route
     from .process_routes import require_dispatch_documents, require_route
     from .schemas import SCRAP_MATERIAL_TYPES
@@ -153,10 +169,14 @@ def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
         require_order_route(db, route, member.serial_no)
         require_dispatch_documents(db, route, lot, member.serial_no)
         routes[route.id] = route
-    split_index = common_split_index(
-        db, [member.process_route_id for member in line.shared_serials]
+    return dispatch_cursor(
+        db, source, [routes[member.process_route_id] for member in line.shared_serials]
     )
-    route = routes[line.shared_serials[0].process_route_id]
+
+
+def dispatch_cursor(db, source, routes):
+    split_index = common_split_index(db, [route.id for route in routes])
+    route = routes[0]
     return SimpleNamespace(
         process_route_id=route.id,
         process_route=route,
@@ -168,7 +188,7 @@ def prepare_dispatch(db, lot, line, source, target, kind, rework_return):
         shared_unallocated=True,
         shared_group=SimpleNamespace(
             split_step_index=split_index,
-            members=[SimpleNamespace(process_route=route) for route in routes.values()],
+            members=[SimpleNamespace(process_route=route) for route in routes],
         ),
         rework_route_id=None,
         rework_pending=False,
@@ -187,7 +207,7 @@ def is_split_step(lot, index):
     )
 
 
-def allocate(lot, output):
+def allocate(db, lot, output):
     serial = (output.serial_no or "").strip()
     if not lot.shared_unallocated:
         if serial and serial != lot.serial_no:
@@ -202,14 +222,16 @@ def allocate(lot, output):
     )
     if not member:
         raise HTTPException(422, "请选择该共投批次关联的归属流水号")
-    return (
-        serial,
-        False,
-        {
-            "customer_code": member.customer_code,
-            "finished_specification": member.finished_specification,
-        },
+    fields = {}
+    if member.feeding_schedule_id:
+        from .warehouse_feeding import order_fields
+
+        fields = order_fields(db, member.process_route, member.feeding_schedule)
+        fields.update(delivery_date=None, delivery_quantity=None)
+    fields.update(
+        customer_code=member.customer_code, finished_specification=member.finished_specification
     )
+    return serial, False, fields
 
 
 def annotate_groups(db, items):

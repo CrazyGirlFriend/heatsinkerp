@@ -461,7 +461,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             db, lot, payload, user, now, hold, task_fields, route_index
         )
     bind_outputs(lot, items, schedule_id)
-    finish_processing(lot, payload, route_index, items)
+    finish_processing(db, lot, payload, route_index, items)
     route_fields = processing_fields(lot, route_index)
     if prior_work and route_index is None:
         route_fields = {

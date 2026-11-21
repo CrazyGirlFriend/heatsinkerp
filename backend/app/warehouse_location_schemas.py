@@ -13,6 +13,7 @@ class WarehouseOccupantResponse(SharedMaterialResponse):
     serial_no: str
     material_name: str | None
     material_type: str | None
+    transfer_specification: str | None = None
     status: str
     created_at: str
     received_at: str | None

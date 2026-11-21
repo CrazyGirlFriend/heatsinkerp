@@ -91,10 +91,16 @@ const columnKeys = {
           v-else
           link
           class="batch-link"
-          :title="row.batch_no"
+          :title="
+            row.pending_receipt_lines?.map((line) => line.batch_no).join(' / ') || row.batch_no
+          "
           @click="emit('detail', row)"
         >
-          {{ row.batch_no }}
+          {{
+            row.pending_receipt_lines
+              ? row.batch_no + ' 等 ' + row.pending_receipt_lines.length + ' 批'
+              : row.batch_no
+          }}
         </AppButton>
       </template>
     </ElTableColumn>
@@ -103,7 +109,17 @@ const columnKeys = {
         <span class="record-serial"
           ><span :title="sharedSerialLabel(row)">{{ sharedSerialLabel(row) }}</span></span
         >
-        <small v-if="row.entry_kind === 'transfer' && row.source_serial_no">
+        <small v-if="row.pending_receipt_lines"
+          >来源
+          {{
+            [
+              ...new Set(
+                row.pending_receipt_lines.map((line) => line.source_serial_no).filter(Boolean),
+              ),
+            ].join(' / ')
+          }}</small
+        >
+        <small v-else-if="row.entry_kind === 'transfer' && row.source_serial_no">
           来源 {{ row.source_serial_no }} · {{ row.source_transfer_batch_no }}
         </small>
       </template>
@@ -129,13 +145,28 @@ const columnKeys = {
       </ElTableColumn>
     </template>
     <ElTableColumn label="材质" min-width="130" show-overflow-tooltip>
-      <template #default="{ row }">{{ row.material_name || '—' }}</template>
+      <template #default="{ row }">{{
+        row.pending_receipt_lines
+          ? [...new Set(row.pending_receipt_lines.map((line) => line.material_name || '—'))].join(
+              ' / ',
+            )
+          : row.material_name || '—'
+      }}</template>
     </ElTableColumn>
     <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip>
-      <template #default="{ row }"
-        >{{ materialTypeLabel(row.material_type)
-        }}{{ row.is_outsourced ? ' · 外委产品' : '' }}</template
-      >
+      <template #default="{ row }">{{
+        row.pending_receipt_lines
+          ? [
+              ...new Set(
+                row.pending_receipt_lines.map(
+                  (line) =>
+                    materialTypeLabel(line.material_type) +
+                    (line.is_outsourced ? ' · 外委产品' : ''),
+                ),
+              ),
+            ].join(' / ')
+          : materialTypeLabel(row.material_type) + (row.is_outsourced ? ' · 外委产品' : '')
+      }}</template>
     </ElTableColumn>
     <template v-if="kind === 'outgoing'">
       <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip>

@@ -182,6 +182,8 @@ def _validate_change(db, transfer, after):
     delta_quantity, delta_weight = quantity - transfer.quantity, weight - transfer.weight
     if delta_quantity == 0 and delta_weight == 0:
         return []
+    if transfer.pooled_feeding:
+        raise HTTPException(422, "合批转料的件数和重量由各来源批次合计")
     if transfer.material_type == "sludge" and delta_weight:
         raise HTTPException(422, "泥料重量关联含量计算，请保持原重量")
     branches = _remaining_branches(db, transfer)

@@ -372,6 +372,15 @@ function residence(
       issue = true
       continue
     }
+    const portion = row.feeding_sources?.find(
+      (part) => String(part.source_transfer_id) === String(lot.id),
+    )
+    if (portion) {
+      add(traceTimestamp(row.transferred_at), -portion.quantity, -portion.weight)
+      if (row.status === 'voided')
+        add(traceTimestamp(row.voided_at), portion.quantity, portion.weight)
+      continue
+    }
     const events = [...(row.history || [])]
       .filter((event) => ['created', 'updated', 'voided'].includes(event.action))
       .sort(
@@ -478,7 +487,13 @@ export function traceFlowModel(
   const ids = new Set(rows.map((row) => String(row.id))),
     children = new Map<string, TraceBatch[]>()
   const roots: TraceBatch[] = []
+  const extraWithdrawals = new Map<string, TraceBatch[]>()
   for (const row of rows) {
+    for (const part of row.feeding_sources || []) {
+      const source = String(part.source_transfer_id)
+      if (source !== String(row.source_transfer_id))
+        extraWithdrawals.set(source, [...(extraWithdrawals.get(source) || []), row])
+    }
     if (row.source_transfer_id && ids.has(String(row.source_transfer_id))) {
       const id = String(row.source_transfer_id)
       children.set(id, [...(children.get(id) || []), row])
@@ -575,7 +590,11 @@ export function traceFlowModel(
         .map((row) => ({ ...row, on_hand_quantity: null, on_hand_weight: null }))
       const result = residence(
         node,
-        [...(children.get(String(node.batch.id)) || []), ...reassigned],
+        [
+          ...(children.get(String(node.batch.id)) || []),
+          ...(extraWithdrawals.get(String(node.batch.id)) || []),
+          ...reassigned,
+        ],
         closing,
       )
       node.stays = result.stays
@@ -634,16 +653,33 @@ export function traceFlowModel(
 // Highlight the selected batch's ancestors and descendants, not unrelated sibling splits.
 export function traceRelated(model: ReturnType<typeof traceFlowModel>, id: string) {
   const related = new Set<string>([id])
-  let parent = model.byId.get(id)?.batch.source_transfer_id
-  while (parent && !related.has(String(parent))) {
-    related.add(String(parent))
-    parent = model.byId.get(String(parent))?.batch.source_transfer_id
+  const parents = (batch: TraceBatch) =>
+    batch.feeding_sources?.length
+      ? batch.feeding_sources.map((part) => String(part.source_transfer_id))
+      : batch.source_transfer_id
+        ? [String(batch.source_transfer_id)]
+        : []
+  const ancestors = [id]
+  while (ancestors.length) {
+    const node = model.byId.get(ancestors.pop()!)
+    if (!node) continue
+    for (const parent of parents(node.batch)) {
+      if (related.has(parent)) continue
+      related.add(parent)
+      ancestors.push(parent)
+    }
   }
-  const descendants = new Set<string>([id])
-  for (const node of model.nodes) {
-    if (descendants.has(String(node.batch.source_transfer_id))) {
-      descendants.add(String(node.batch.id))
-      related.add(String(node.batch.id))
+  const children = new Map<string, string[]>()
+  for (const { batch } of model.nodes) {
+    for (const parent of parents(batch))
+      children.set(parent, [...(children.get(parent) || []), String(batch.id)])
+  }
+  const descendants = [id]
+  while (descendants.length) {
+    for (const child of children.get(descendants.pop()!) || []) {
+      if (related.has(child)) continue
+      related.add(child)
+      descendants.push(child)
     }
   }
   return related

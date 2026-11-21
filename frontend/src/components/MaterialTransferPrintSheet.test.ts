@@ -24,6 +24,75 @@ const transfer = {
 }
 
 describe('shared transfer print template', () => {
+  it('prints the pooled batch with the prior template fields once per copy', async () => {
+    const parts = [26, 100, 100].map((quantity, index) => ({
+      quantity,
+      weight: 100,
+      source_transfer_id: index + 1,
+      serial_no: `来源-${index + 1}`,
+      batch_no: `RAW-${index + 1}`,
+    }))
+    const pooled = {
+      ...transfer,
+      feeding_sources: parts,
+      source_serial_no: parts.map((part) => part.serial_no).join(' / '),
+      source_transfer_batch_no: parts.map((part) => part.batch_no).join(' / '),
+      delivery_origin_batch_no: 'TL-DELIVERY',
+      shared_origin_batch_no: 'TL-SHARED',
+      quantity: 226,
+      weight: 300,
+      dispatch_no: null,
+      warehouse_dispatch_id: 7,
+    }
+    const other = { ...transfer, batch_no: 'TL-OTHER', warehouse_dispatch_id: 8 }
+    const wrapper = mount(MaterialBatchPrintSheet, { props: { items: [pooled, other] } })
+    await flushPromises()
+    const pages = wrapper.findAll('.transfer-print-page')
+    expect(pages).toHaveLength(2)
+    for (const copy of pages[0]!.findAll('.transfer-print-copy')) {
+      expect(copy.get('.transfer-print-lines thead').findAll('th')).toHaveLength(8)
+      expect(copy.findAll('.transfer-print-material')).toHaveLength(1)
+      expect(copy.get('svg[data-code128-value]').attributes('data-code128-value')).toBe(
+        transfer.batch_no,
+      )
+      expect(copy.get('.transfer-print-material td').text()).toBe(transfer.serial_no)
+      const labels = copy.findAll('.transfer-print-pairs strong').map((field) => field.text())
+      for (const label of ['上一批次', '原流水号', '交期源头批次', '共投来源批次', '原单批号'])
+        expect(labels.filter((text) => text === label)).toHaveLength(1)
+      expect(copy.text()).toContain(pooled.source_transfer_batch_no)
+      expect(copy.text()).toContain(pooled.source_serial_no)
+      expect(copy.get('.transfer-print-total').text()).toContain('226')
+      expect(copy.get('.transfer-print-total').text()).toContain('300')
+    }
+    expect(pages[1]!.get('svg[data-code128-value]').attributes('data-code128-value')).toBe(
+      'TL-OTHER',
+    )
+    wrapper.unmount()
+  })
+
+  it('prints both target serials in the serial cell for one shared lot with a single physical row per copy', async () => {
+    const item = {
+      ...transfer,
+      warehouse_dispatch_id: 9,
+      shared_unallocated: true,
+      source_serial_no: 'SOURCE',
+      shared_serials: [
+        { serial_no: 'A', task_batch_number: 2 },
+        { serial_no: 'B', task_batch_number: 3 },
+      ],
+      quantity: 100,
+      weight: 20,
+    }
+    const wrapper = mount(MaterialBatchPrintSheet, { props: { items: [item] } })
+    await flushPromises()
+    const copy = wrapper.get('.transfer-print-page .transfer-print-copy')
+    expect(copy.get('.transfer-print-material td').text()).toBe('A / B')
+    expect(copy.text()).not.toContain('关联流水号')
+    expect(copy.findAll('.transfer-print-material')).toHaveLength(1)
+    expect(copy.get('.transfer-print-total').text()).toContain('1 批')
+    wrapper.unmount()
+  })
+
   it('prints the sending employee instead of the login account and leaves legacy identity unfilled', async () => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer } })
     await flushPromises()

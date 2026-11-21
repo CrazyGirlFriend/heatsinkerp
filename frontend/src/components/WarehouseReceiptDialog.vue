@@ -980,6 +980,7 @@ onBeforeUnmount(() => {
               :serial-no="form.serialNo"
               :material-name="form.document.material_name"
               :material-type="form.materialType"
+              :specification="form.document.transfer_specification ?? undefined"
               :active="modelValue"
               :disabled="readonly"
               :show-stock-preview="!editing"

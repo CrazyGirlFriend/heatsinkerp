@@ -19,6 +19,7 @@ from .models import (
     MaterialTransfer,
     utcnow,
 )
+from .warehouse_placements import SLOT_MATERIAL_FIELDS, outgoing_portions
 
 PREFIXES = ("received", "on_hand", "reserved", "in_transit", "dispatched", "lost")
 AMOUNTS = tuple(f"{prefix}_{amount}" for prefix in PREFIXES for amount in ("quantity", "weight"))
@@ -29,6 +30,7 @@ FIELDS = {
         "next_team_id",
         "source_team_id",
         "warehouse_location",
+        *SLOT_MATERIAL_FIELDS,
         "status",
         "stock_tracked",
         "entry_kind",
@@ -91,7 +93,7 @@ def remember_balances(db, *_):
         db.info[PENDING] = changes
 
 
-def contribute(deltas, model, row, sign):
+def contribute(deltas, model, row, sign, sources):
     if row is None:
         return
     if model is MaterialQuantityAdjustment:
@@ -104,10 +106,14 @@ def contribute(deltas, model, row, sign):
             deltas[row["source_transfer_id"]]["on_hand_weight"] += weight_delta
         return
 
-    def add(lot_id, prefix, direction=1):
+    def add(lot_id, prefix, direction=1, quantity=None, weight=None):
         if lot_id is not None:
-            deltas[lot_id][f"{prefix}_quantity"] += sign * direction * row["quantity"]
-            deltas[lot_id][f"{prefix}_weight"] += sign * direction * Decimal(str(row["weight"]))
+            deltas[lot_id][f"{prefix}_quantity"] += (
+                sign * direction * (row["quantity"] if quantity is None else quantity)
+            )
+            deltas[lot_id][f"{prefix}_weight"] += (
+                sign * direction * (Decimal(str(row["weight"])) if weight is None else weight)
+            )
 
     if model is MaterialLoss:
         add(row["source_transfer_id"], "lost")
@@ -116,16 +122,17 @@ def contribute(deltas, model, row, sign):
     if is_stock(row):
         add(row["id"], "received")
         add(row["id"], "on_hand")
-    if row["status"] == "pending":
-        add(row["source_transfer_id"], "reserved")
-        if row["entry_kind"] == "transfer":
-            add(row["source_transfer_id"], "in_transit")
-    elif row["status"] in ("received", "dispatched"):
-        add(row["source_transfer_id"], "dispatched")
-        if row["entry_kind"] in ("processing_output", "rework_split"):
-            add(row["source_transfer_id"], "converted")
-    if row["status"] in ("pending", "received", "dispatched"):
-        add(row["source_transfer_id"], "on_hand", -1)
+    for source_id, quantity, weight in outgoing_portions(row, sources):
+        if row["status"] == "pending":
+            add(source_id, "reserved", 1, quantity, weight)
+            if row["entry_kind"] == "transfer":
+                add(source_id, "in_transit", 1, quantity, weight)
+        elif row["status"] in ("received", "dispatched"):
+            add(source_id, "dispatched", 1, quantity, weight)
+            if row["entry_kind"] in ("processing_output", "rework_split"):
+                add(source_id, "converted", 1, quantity, weight)
+        if row["status"] in ("pending", "received", "dispatched"):
+            add(source_id, "on_hand", -1, quantity, weight)
 
 
 @event.listens_for(Session, "after_flush_postexec")
@@ -151,8 +158,9 @@ def apply_balances(db, *_):
         if model is MaterialQuantityAdjustment:
             recounted.add(row.source_transfer_id)
         after = None if deleted else {name: getattr(row, name) for name in FIELDS[model]}
-        contribute(deltas, model, before, -1)
-        contribute(deltas, model, after, 1)
+        sources = row.feeding_sources if model is MaterialTransfer and row.pooled_feeding else ()
+        contribute(deltas, model, before, -1, sources)
+        contribute(deltas, model, after, 1, sources)
         if model is MaterialTransfer:
             if is_stock(after):
                 teams[row.id] = after["next_team_id"]

@@ -17,6 +17,8 @@ from sqlalchemy import create_engine, inspect
             "20261104_0066_shared_dispatch_routes.py",
             ["shared_material_groups", "shared_material_members"],
         ),
+        ("20261121_pooled_feeding.py", ["material_transfers", "warehouse_feeding_sources"]),
+        ("20261121_joint_feeding.py", ["shared_material_members"]),
         ("20261105_0069_unified_team_tasks.py", ["team_processing_tasks"]),
         ("20261109_0070_quality_notices.py", ["quality_notices", "quality_notice_reads"]),
     ],

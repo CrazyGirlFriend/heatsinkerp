@@ -18,6 +18,7 @@ from .models import (
     MaterialTransferEvent,
     SharedMaterialGroup,
     SharedMaterialMember,
+    WarehouseFeedingSource,
 )
 from .processing_statistics import difference_totals, weight_differences
 
@@ -66,7 +67,19 @@ def serial_trace(db, serial_no, user):
         )
     if len(requested_ids) > 1200:
         raise HTTPException(422, "本流水号链路超过 1200 个批次，请输入具体批次号查看该批及后续流转")
-    ancestry = relatives(list(requested_ids), ancestors=True, name="trace_ancestors")
+    trace_ids = set(requested_ids)
+    if requested_ids and not group_id and not batch:
+        # Include the outgoing batch as context for a source serial without attributing
+        # other contributors' stock or the target order's production to that source.
+        trace_ids.update(
+            db.scalars(
+                select(WarehouseFeedingSource.transfer_id)
+                .where(WarehouseFeedingSource.source_transfer_id.in_(requested_ids))
+                .distinct()
+                .limit(1201)
+            )
+        )
+    ancestry = relatives(list(trace_ids), ancestors=True, name="trace_ancestors")
     all_ids = list(db.scalars(select(ancestry.c.id).limit(1201))) if requested_ids else []
     if len(all_ids) > 1200:
         raise HTTPException(422, "本链路超过 1200 个批次，请按具体批次检索记录")

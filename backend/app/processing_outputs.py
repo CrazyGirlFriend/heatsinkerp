@@ -50,7 +50,7 @@ def create_outputs(db, lot, payload, user, now, hold, task_fields=None, route_st
         serial_no, unallocated, member_fields = (
             (lot.serial_no, lot.shared_unallocated, {})
             if payload.processing_mode == "unit" or route_shared
-            else allocate(lot, output)
+            else allocate(db, lot, output)
         )
         if (
             output.role == "remaining"

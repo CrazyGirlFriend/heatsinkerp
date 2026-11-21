@@ -292,6 +292,8 @@ export interface DispatchLine extends SludgeMeasurement {
   transfer_specification?: string | null
 }
 export type CreateDispatch = {
+  feeding_assignments?: components['schemas']['FeedingAssignment'][]
+  feeding_targets?: components['schemas']['FeedingTarget'][]
   feeding_target?: components['schemas']['FeedingTarget']
   rework_return?: boolean
   sent_employee_id: number
@@ -303,6 +305,12 @@ export type CreateDispatch = {
   quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[]
 } & (
   | { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
+  | {
+      entry_kind?: 'transfer'
+      feeding_assignments: components['schemas']['FeedingAssignment'][]
+      next_team_id?: never
+      external_destination?: never
+    }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )
 export interface ShipmentStock {

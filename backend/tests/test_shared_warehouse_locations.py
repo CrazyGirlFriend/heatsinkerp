@@ -69,29 +69,62 @@ def test_same_material_arrivals_share_inventory_without_merging_batches(client, 
 
 
 @pytest.mark.parametrize(
-    "change", [{"serial_no": "OTHER"}, {"material_name": "材料2"}, {"material_type": "finished"}]
+    ("change", "field"),
+    [
+        ({"material_name": "材料2"}, "材质"),
+        ({"material_type": "finished"}, "物料类型"),
+        ({"transfer_specification": "100 × 80 × 6 mm"}, "尺寸"),
+    ],
 )
-def test_different_materials_share_selected_location_as_separate_batches(client, warehouse, change):
-    chosen = location(client, warehouse, "A-混放")
-    first = intake(client, warehouse, **chosen)
+def test_incompatible_stock_is_rejected_and_slot_lease_survives(client, warehouse, change, field):
+    first = intake(client, warehouse, **location(client, warehouse, "A-01"))
     assert first.status_code == 201, first.text
     slot = state(client, {"id": 1})
-    different = {**MATERIAL, **change}
-    endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
-    assert [row["id"] for row in client.get(endpoint, params=different).json()["items"]] == [
-        slot["id"]
+    if "material_name" in change or "material_type" in change:
+        partial = {**MATERIAL, **change}
+        endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
+        assert client.get(endpoint, params=partial).json()["items"] == []
+        lease = client.post(
+            f"/api/warehouse-locations/{slot['id']}/reservation",
+            headers=warehouse["headers"],
+            json={"key": uuid4().hex, **partial},
+        )
+        assert lease.status_code == 409, lease.text
+    if "transfer_specification" in change:
+        endpoint = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
+        assert client.get(endpoint, params={**MATERIAL, **change}).json()["items"] == []
+        assert (
+            client.get(endpoint, params={**MATERIAL, "transfer_specification": "100*80*5"}).json()[
+                "total"
+            ]
+            == 1
+        )
+        lease = client.post(
+            f"/api/warehouse-locations/{slot['id']}/reservation",
+            headers=warehouse["headers"],
+            json={"key": uuid4().hex, **MATERIAL, **change},
+        )
+        assert lease.status_code == 409 and "尺寸" in lease.text
+    selected = reserve(client, warehouse, slot)
+    response = intake(client, warehouse, idempotency_key="mixed", **change, **selected)
+    assert response.status_code == 409 and field in response.text, response.text
+    result = state(client, slot)
+    assert result["draft_locked"] and [row["id"] for row in result["batches"]] == [
+        first.json()["id"]
     ]
-    selected = reserve(client, warehouse, slot, different)
-    second = intake(client, warehouse, idempotency_key="mixed", **change, **selected)
-    assert second.status_code == 201, second.text
-    batches = state(client, slot)["batches"]
-    assert len(batches) == 2
-    assert {batch["id"] for batch in batches} == {first.json()["id"], second.json()["id"]}
-    assert sum(batch["quantity"] for batch in batches) == 200
-    assert {field: batches[1][field] for field in different} == different
-    assert not state(client, slot)["draft_locked"]
-    found = client.get(endpoint, params={"query": second.json()["batch_no"]}).json()
-    assert found["total"] == 1 and found["items"][0]["id"] == slot["id"]
+    accepted = intake(
+        client,
+        warehouse,
+        idempotency_key="mixed",
+        serial_no="OTHER",
+        transfer_specification="100*80*5",
+        material_description="说明不同",
+        material_shape="棒料",
+        outsourced_unit="加工厂",
+        is_outsourced=True,
+        **selected,
+    )
+    assert accepted.status_code == 201, accepted.text
 
 
 def test_same_material_still_cannot_steal_another_forms_live_lock(client, warehouse):
@@ -112,7 +145,7 @@ def test_same_material_still_cannot_steal_another_forms_live_lock(client, wareho
     assert listed["total"] == 1 and listed["items"][0]["draft_locked"]
 
 
-def test_manual_placement_adds_same_lot_and_different_material_with_versions(client, warehouse):
+def test_manual_placement_adds_same_lot_and_rejects_different_material(client, warehouse):
     slot = create_slot(client)
     first = intake(client, warehouse).json()
     second = intake(client, warehouse, idempotency_key="second", material_name="铝").json()
@@ -134,9 +167,12 @@ def test_manual_placement_adds_same_lot_and_different_material_with_versions(cli
                 "expected_version": version,
             },
         )
-        assert response.status_code == 200, response.text
-    assert len(state(client, slot)["batches"]) == 2
-    assert sum(batch["quantity"] for batch in state(client, slot)["batches"]) == 200
+        if lot["id"] == second["id"]:
+            assert response.status_code == 409 and "材质" in response.text, response.text
+        else:
+            assert response.status_code == 200, response.text
+    assert [batch["id"] for batch in state(client, slot)["batches"]] == [first["id"]]
+    assert sum(batch["quantity"] for batch in state(client, slot)["batches"]) == 100
     assert (
         client.post(
             endpoint,
@@ -151,9 +187,7 @@ def test_manual_placement_adds_same_lot_and_different_material_with_versions(cli
     )
 
 
-def test_mixed_types_in_one_bulk_submit_share_occupied_slot_and_receive_independently(
-    client, warehouse
-):
+def test_mixed_bulk_arrival_rolls_back_every_line_and_keeps_lease(client, warehouse):
     source = production_source(client, warehouse)
     stored = intake(
         client,
@@ -182,29 +216,15 @@ def test_mixed_types_in_one_bulk_submit_share_occupied_slot_and_receive_independ
             ],
         },
     )
-    assert response.status_code == 201, response.text
-    rows = response.json()["items"]
-    assert {row["material_type"] for row in rows} == {"semi_finished", "finished"}
-    assert all(row["warehouse_location"] == "A-01" for row in rows)
+    assert response.status_code == 409, response.text
     with SessionLocal() as db:
         slot = db.scalar(select(WarehouseLocation).where(WarehouseLocation.name == "A-01"))
-        assert slot.reservation_key is None
+        assert slot.reservation_key == chosen["warehouse_location_reservation_key"]
         slot_id = slot.id
-    for row in rows:
-        received = receipt_post(
-            client,
-            "/api/material-transfers/" + row["batch_no"] + "/confirm",
-            headers=warehouse["headers"],
-            json={"idempotency_key": "receive-" + row["batch_no"]},
-        )
-        assert received.status_code == 200, received.text
-    batches = state(client, {"id": slot_id})["batches"]
-    assert {row["id"] for row in batches} == {stored["id"], *(row["id"] for row in rows)}
-    assert all(row["status"] == "received" for row in batches)
-    assert sum(row["quantity"] for row in batches) == 120
+    assert [row["id"] for row in state(client, {"id": slot_id})["batches"]] == [stored["id"]]
 
 
-def test_pending_batches_allow_material_edits_and_receive_independently(client, warehouse):
+def test_pending_batches_reject_incompatible_edits_and_receive_independently(client, warehouse):
     source = production_source(client, warehouse)
     chosen = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     response = return_rows(client, warehouse, source, "same-material", chosen, count=2)
@@ -220,8 +240,8 @@ def test_pending_batches_allow_material_edits_and_receive_independently(client, 
     changed = client.patch(
         endpoint, headers=warehouse["other_headers"], json={"material_type": "finished"}
     )
-    assert changed.status_code == 200, changed.text
-    assert client.get(endpoint).json()["material_type"] == "finished"
+    assert changed.status_code == 409 and "物料类型" in changed.text, changed.text
+    assert client.get(endpoint).json()["material_type"] == "semi_finished"
     edited = client.patch(
         endpoint,
         headers=warehouse["other_headers"],

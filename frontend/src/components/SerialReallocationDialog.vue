@@ -289,6 +289,11 @@ async function submit() {
               :serial-no="form.serial.trim()"
               :material-name="source?.transfer.material_name || ''"
               :material-type="source?.transfer.material_type || ''"
+              :specification="
+                source?.current_specification ??
+                source?.transfer.transfer_specification ??
+                undefined
+              "
               :active="modelValue && !!form.serial.trim()"
               :disabled="saving || !canWrite || !form.serial.trim()"
               @busy-change="locationBusy = $event"

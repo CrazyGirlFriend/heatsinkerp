@@ -47,6 +47,7 @@ import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vu
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
+import WarehouseIncomingReceipt from '@/components/WarehouseIncomingReceipt.vue'
 import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import StatePanel from '@/components/StatePanel.vue'
@@ -255,7 +256,11 @@ const tableQuery = useTableQuery(
   (table_query) => {
     const params = { ...listParams(), table_query },
       id = teamId.value
-    if (tab.value === 'pending') return materialTransferApi.pendingFilterOptions(id, params)
+    if (tab.value === 'pending')
+      return materialTransferApi.pendingFilterOptions(id, {
+        ...params,
+        ...(!isWarehouse.value && { group_warehouse_receipts: true }),
+      })
     if (tab.value === 'outgoing')
       return teamMaterialApi.transferRecordFilterOptions(id, 'outbound-batches', {
         ...params,
@@ -365,6 +370,7 @@ function openExport() {
                 return materialTransferApi.list({
                   ...pagination,
                   team_id: id,
+                  ...(!isWarehouse.value && { group_warehouse_receipts: true }),
                   direction: 'incoming',
                   status: 'pending',
                 })
@@ -664,6 +670,7 @@ function closeDetails() {
   openingDispatch.value = false
   processingDispatch.value = null
   drawerOpen.value = false
+  incomingGroup.value = null
   selected.value = null
   actionOpen.value = false
   reallocationOpen.value = false
@@ -682,8 +689,11 @@ function openDetail(transfer: MaterialTransfer) {
   selected.value = transfer
   drawerOpen.value = true
 }
+const incomingGroup = ref<MaterialTransfer | null>(null)
 function openIncoming(transfer: MaterialTransfer) {
-  openDetail(transfer)
+  if (transfer.pending_receipt_lines?.length || transfer.feeding_sources?.length)
+    incomingGroup.value = transfer
+  else openDetail(transfer)
 }
 function openWarehouseMaterial(batchNo: string) {
   selected.value = null
@@ -922,7 +932,9 @@ function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
     first && isExternalEntryKind(first.entry_kind) && first.status === 'dispatched'
       ? `已完成${first.entry_kind === 'inspection_shipment' ? '发货' : '出库'}`
       : 'items' in result
-        ? `已生成 ${result.items.length} 个独立批次，每批一个条码`
+        ? first?.warehouse_dispatch_id
+          ? `已生成 ${new Set(result.items.map((item) => item.warehouse_dispatch_id)).size} 张转料单，共 ${result.items.length} 批物料`
+          : `已生成 ${result.items.length} 个独立批次，每批一个条码`
         : `丢失记录 ${result.loss_no} 已登记`,
     'success',
   )
@@ -1029,6 +1041,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
       const result = await materialTransferApi.list({
         ...params,
         team_id: id,
+        ...(!isWarehouse.value && { group_warehouse_receipts: true }),
         direction: 'incoming',
         status: 'pending',
       })
@@ -1435,6 +1448,7 @@ onBeforeUnmount(() => {
                       fullscreen ||
                       Boolean(exportSource) ||
                       drawerOpen ||
+                      !!incomingGroup ||
                       actionOpen ||
                       reallocationOpen ||
                       pickerOpen ||
@@ -1631,6 +1645,15 @@ onBeforeUnmount(() => {
                 >共 {{ total }} 条记录</WorkspacePagination
               >
             </WorkspaceDataPanel>
+            <WarehouseIncomingReceipt
+              v-if="tab === 'pending' && incomingGroup"
+              :key="incomingGroup.batch_no"
+              :row="incomingGroup"
+              :receiver="receiptReceiver"
+              :can-write="canWrite"
+              @close="incomingGroup = null"
+              @refresh="loadView(true)"
+            />
             <MaterialTransferDrawer
               v-model="drawerOpen"
               :transfer="selected"

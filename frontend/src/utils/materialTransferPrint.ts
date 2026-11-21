@@ -10,6 +10,7 @@ import {
   materialSenderName,
   materialTransferStatusLabel,
   receiptSourceLabel,
+  warehouseTransferDocumentNumber,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
 import { processingRoleLabels } from '@/types/materialProcessing'
@@ -158,7 +159,7 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
     )
   if (item.shared_origin_batch_no)
     fields.push({ label: '共投来源批次', value: item.shared_origin_batch_no })
-  if (item.shared_unallocated) {
+  if (item.shared_unallocated && !item.warehouse_dispatch_id) {
     fields.push({ label: '共投状态', value: '未分配；实物件数和重量仅计一份' })
     for (const member of item.shared_serials || []) {
       fields.push(
@@ -306,21 +307,40 @@ export function groupTransferPrintItems(items: MaterialTransfer[]): TransferPrin
     if (!canPrintMaterialTransfer(item) || seen.has(item.batch_no)) continue
     seen.add(item.batch_no)
     const profile = transferPrintProfile(item)
-    const key = JSON.stringify([
-      item.entry_kind || 'transfer',
-      item.source_team.id,
-      profile.source,
-      item.next_team.id,
-      profile.target,
-      item.sent_employee_id ?? null,
-      materialSenderName(item),
-      formatDateTime(item.transferred_at).slice(0, 10),
-    ])
+    const key = item.warehouse_dispatch_id
+      ? `warehouse:${warehouseTransferDocumentNumber(item)}`
+      : JSON.stringify([
+          item.entry_kind === 'transfer' && item.source_team.code === 'FACTORY-WAREHOUSE'
+            ? item.dispatch_no || item.batch_no
+            : null,
+          item.entry_kind || 'transfer',
+          item.source_team.id,
+          profile.source,
+          item.next_team.id,
+          profile.target,
+          item.sent_employee_id ?? null,
+          materialSenderName(item),
+          formatDateTime(item.transferred_at).slice(0, 10),
+        ])
     if (!groups.has(key)) groups.set(key, { key, items: [], blocks: [] })
     groups.get(key)!.items.push(item)
-    groups.get(key)!.blocks.push(...blocksFor(item))
+  }
+  for (const group of groups.values()) {
+    group.blocks = group.items.flatMap(blocksFor)
   }
   return [...groups.values()]
+}
+
+export function selectedWarehouseDocuments(rows: MaterialTransfer[], selected: MaterialTransfer[]) {
+  const batches = new Set(selected.map((item) => item.batch_no))
+  const included = new Set(
+    rows.filter((item) => batches.has(item.batch_no)).map(warehouseTransferDocumentNumber),
+  )
+  const received = new Set(rows.map((item) => item.batch_no))
+  if (selected.some((item) => !received.has(item.batch_no))) {
+    throw new Error('转料单已变化，请刷新后重试')
+  }
+  return rows.filter((item) => included.has(warehouseTransferDocumentNumber(item)))
 }
 
 export function transferPrintTotals(items: MaterialTransfer[]) {

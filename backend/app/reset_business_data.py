@@ -24,6 +24,7 @@ RESET_TABLES = (
     "production_schedule_order_files",
     "production_schedule_task_people",
     "production_schedule_tasks",
+    "warehouse_feeding_sources",
     "warehouse_placements",
     "warehouse_receipt_documents",
     "material_stock_balances",
@@ -110,6 +111,7 @@ def reset_business_data(db: Session) -> dict[str, int]:
         # Both ends are within the reset scope. Break these nullable commitment
         # links before deleting schedules; keep foreign-key checks enabled.
         for name, column in (
+            ("shared_material_members", "feeding_schedule_id"),
             ("material_transfers", "processing_schedule_id"),
             ("material_quantity_adjustments", "production_schedule_id"),
         ):

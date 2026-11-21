@@ -6,8 +6,10 @@ Reversed deductions return to unassigned stock, never to an old/reused slot.
 The source lot lock serializes withdrawals, restores and manual placement.
 """
 
+import re
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import delete, func, select, update
 
 from .models import (
@@ -19,6 +21,57 @@ from .models import (
     WarehousePlacement,
 )
 from .team_constants import WAREHOUSE_TEAM_CODE
+
+SLOT_MATERIAL_FIELDS = {
+    "material_name": "材质",
+    "material_type": "物料类型",
+    "transfer_specification": "尺寸",
+}
+
+
+def physical_value(field, value):
+    value = (value or "").strip()
+    if field == "transfer_specification":
+        # The dimension editor uses mm. Keep free-text specifications literal.
+        dimensions = re.fullmatch(
+            r"(\d+(?:\.\d+)?(?:\s*[*×xX]\s*\d+(?:\.\d+)?){1,2})\s*(?:mm|毫米)?",
+            value,
+            re.IGNORECASE,
+        )
+        if dimensions:
+            return tuple(Decimal(part.strip()) for part in re.split(r"[*×xX]", dimensions[1]))
+    return value
+
+
+def require_slot_material(connection, location_id, lot):
+    placement = WarehousePlacement.__table__
+    transfer = MaterialTransfer.__table__
+    # The slot lock serializes arrivals even when the first occupant has just left.
+    connection.execute(
+        select(WarehouseLocation.id).where(WarehouseLocation.id == location_id).with_for_update()
+    )
+    occupants = connection.execute(
+        select(*(transfer.c[field] for field in SLOT_MATERIAL_FIELDS))
+        .select_from(placement.join(transfer, transfer.c.id == placement.c.transfer_id))
+        .where(
+            placement.c.location_id == location_id,
+            placement.c.transfer_id != lot.id,
+            (placement.c.quantity > 0) | (placement.c.weight > 0),
+        )
+        .with_for_update()
+    )
+    for row in occupants:
+        for field, label in SLOT_MATERIAL_FIELDS.items():
+            if physical_value(field, getattr(row, field)) != physical_value(
+                field, getattr(lot, field)
+            ):
+                raise HTTPException(409, f"同一仓位物料的{label}不一致")
+
+
+def outgoing_portions(row, sources):
+    if sources:
+        return [(part.source_transfer_id, part.quantity, part.weight) for part in sources]
+    return [(row["source_transfer_id"], row["quantity"], Decimal(str(row["weight"])))]
 
 
 def physical_out(row):
@@ -126,6 +179,7 @@ def apply_changes(connection, changes, fields):
                         .with_for_update()
                     )
                     if location_id is not None:
+                        require_slot_material(connection, location_id, obj)
                         connection.execute(
                             table.insert().values(
                                 location_id=location_id,
@@ -140,6 +194,19 @@ def apply_changes(connection, changes, fields):
                         .where(table.c.transfer_id == obj.id)
                         .values(quantity=after["quantity"], weight=after["weight"])
                     )
+            if (
+                before
+                and after
+                and after["next_team_id"] == warehouse_id
+                and after["status"] in ("pending", "received")
+                and any(before[field] != after[field] for field in SLOT_MATERIAL_FIELDS)
+            ):
+                for location_id in connection.scalars(
+                    select(table.c.location_id)
+                    .where(table.c.transfer_id == obj.id)
+                    .order_by(table.c.location_id)
+                ).all():
+                    require_slot_material(connection, location_id, obj)
             if (
                 before
                 and after
@@ -159,6 +226,10 @@ def apply_changes(connection, changes, fields):
             if (after or before)["source_team_id"] == warehouse_id:
                 old_q, old_w = physical_out(before)
                 new_q, new_w = physical_out(after)
+                if obj.pooled_feeding:
+                    if (new_q or new_w) and not (old_q or old_w):
+                        withdrawals.extend(outgoing_portions(after, obj.feeding_sources))
+                    continue
                 withdrawals.append(
                     (
                         (after or before)["source_transfer_id"],

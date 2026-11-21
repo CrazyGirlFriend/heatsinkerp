@@ -125,7 +125,7 @@ class Harness:
     def balances(self):
         """Independent primitive ledger calculation; no stock_table/cache reuse."""
         from sqlalchemy import select
-        from app.models import MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer as MT
+        from app.models import MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer as MT, WarehouseFeedingSource
 
         with self.Session() as db:
             lots = {row.id: row for row in db.execute(select(MT.id, MT.next_team_id, MT.quantity, MT.weight)
@@ -138,7 +138,10 @@ class Harness:
             ).where(MaterialQuantityAdjustment.source_transfer_id.in_(lots))):
                 remaining[source][0] += after - before
             deductions = db.execute(select(MT.source_transfer_id, MT.quantity, MT.weight)
-                .where(MT.source_transfer_id.in_(lots), MT.status.in_(["pending", "received", "dispatched"]))).all()
+                .where(MT.source_transfer_id.in_(lots), MT.pooled_feeding.is_(False), MT.status.in_(["pending", "received", "dispatched"]))).all()
+            deductions += db.execute(select(WarehouseFeedingSource.source_transfer_id, WarehouseFeedingSource.quantity, WarehouseFeedingSource.weight)
+                .join(MT, MT.id == WarehouseFeedingSource.transfer_id)
+                .where(WarehouseFeedingSource.source_transfer_id.in_(lots), MT.status.in_(["pending", "received", "dispatched"]))).all()
             deductions += db.execute(select(MaterialLoss.source_transfer_id, MaterialLoss.quantity, MaterialLoss.weight)
                                      .where(MaterialLoss.source_transfer_id.in_(lots))).all()
             for source, quantity, weight in deductions:

@@ -82,6 +82,19 @@ function warehouseRoute() {
     next_team_id: 3,
   }
 }
+const warehouseFeedingOption = {
+  serial_no: 'ORDER-C',
+  schedule_id: 71,
+  route_id: 8,
+  route_version: 2,
+  task_id: 6,
+  task_batch_number: 2,
+  team_id: 3,
+  team_name: '退火',
+  remaining_quantity: 226,
+  remaining_weight: null,
+  due_at: '2026-12-03T00:00:00Z',
+}
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(materialTransferApi, 'get').mockImplementation(async (batch) =>
@@ -92,6 +105,13 @@ beforeEach(() => {
   ])
   vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   vi.spyOn(productionScheduleApi, 'candidates').mockResolvedValue({ items: [] })
+  vi.spyOn(productionScheduleApi, 'serialOptions').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 30,
+  })
+  vi.spyOn(productionScheduleApi, 'feedingOptions').mockResolvedValue([warehouseFeedingOption])
   glass.enhance.mockReset()
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
     { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
@@ -521,9 +541,23 @@ describe('source batch dispatch and loss drafts', () => {
     row.transfer.next_team.code = code
     if (code === 'FACTORY-WAREHOUSE') row.transfer.process_route = warehouseRoute()
     await render('dispatch', [row])
-    expect(
-      wrapper.get('.form-workspace-documents').getComponent(SerialRouteAttachments).props('items'),
-    ).toMatchObject([{ batchNo: 'TL10', serialNo: 'SERIAL10' }])
+    if (code === 'FACTORY-WAREHOUSE') {
+      await wrapper.get('input[aria-label="目标流水号"]').setValue(warehouseFeedingOption.serial_no)
+      await vi.waitFor(() => expect(wrapper.text()).toContain('库房待转出'))
+      expect(wrapper.getComponent(SerialRouteAttachments).props('items')).toMatchObject([
+        {
+          serialNo: warehouseFeedingOption.serial_no,
+          scheduleTaskId: warehouseFeedingOption.task_id,
+        },
+      ])
+    } else {
+      expect(
+        wrapper
+          .get('.form-workspace-documents')
+          .getComponent(SerialRouteAttachments)
+          .props('items'),
+      ).toMatchObject([{ batchNo: 'TL10', serialNo: 'SERIAL10' }])
+    }
     const menu = wrapper.find('button[aria-label$="更多操作"]')
     if (menu.exists()) await openSourceActions()
     expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
@@ -1119,7 +1153,7 @@ describe('source batch dispatch and loss drafts', () => {
     await wrapper.setProps({ mode: 'loss' })
     expect(wrapper.find('[aria-label="剩余件数清零"]').exists()).toBe(false)
   })
-  it('warehouse transfers carry the original type and current position without processing controls', async () => {
+  it('warehouse transfers show the source serial only and carry the original material type', async () => {
     const row = source()
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
     row.transfer.process_route = warehouseRoute()
@@ -1128,7 +1162,10 @@ describe('source batch dispatch and loss drafts', () => {
     row.unassigned_quantity = 100
     row.unassigned_weight = 10
     await render('dispatch', [row])
-    expect(wrapper.text()).toContain('当前仓位 未分配仓位')
+    expect(wrapper.get('.warehouse-serial').text()).toBe(row.transfer.serial_no)
+    expect(wrapper.find('.warehouse-materials .source-actions').exists()).toBe(false)
+    expect(wrapper.find('.warehouse-materials .source-specification-field').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('当前仓位')
     expect(wrapper.text()).not.toContain('历史仓位')
     expect(wrapper.text()).not.toContain('登记加工后件数')
     expect(wrapper.text()).not.toContain('拆分物料')
@@ -1137,6 +1174,8 @@ describe('source batch dispatch and loss drafts', () => {
         .findAllComponents(ElSelect)
         .some((select) => String(select.attributes('aria-label')).includes('物料类型')),
     ).toBe(false)
+    await wrapper.get('input[aria-label="目标流水号"]').setValue(warehouseFeedingOption.serial_no)
+    await vi.waitFor(() => expect(wrapper.text()).toContain('库房待转出'))
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
@@ -1675,7 +1714,7 @@ it('carries the published route destination and business into dispatch without a
   )
 })
 
-it('automatically resolves a warehouse serial and submits its complete documents atomically', async () => {
+it('resolves the warehouse route when dispatching from an existing delivery schedule', async () => {
   const { routeFixture } = await import('@/testFixtures/processRoute')
   const { orderFixture } = await import('@/testFixtures/processRouteOrder')
   const { processRouteApi } = await import('@/services/processRouteApi')
@@ -1725,7 +1764,7 @@ it('automatically resolves a warehouse serial and submits its complete documents
         resolveRoute = resolve
       }),
   )
-  await render('dispatch', [row])
+  await render('dispatch', [row], { id: 71, next_team_id: 3, external_destination: null })
   await submit()
   expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
   await new Promise((resolve) => setTimeout(resolve, 350))
@@ -1778,7 +1817,7 @@ it('requires the current order instead of accepting another order retained by th
       { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
     ],
   })
-  await render('dispatch', [row])
+  await render('dispatch', [row], { id: 71, next_team_id: 3, external_destination: null })
   await new Promise((resolve) => setTimeout(resolve, 350))
   await flushPromises()
   await submit()
@@ -1786,92 +1825,33 @@ it('requires the current order instead of accepting another order retained by th
   expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
 })
 
-it('routes multiple outbound serials together only when their next teams agree', async () => {
-  const { routeFixture } = await import('@/testFixtures/processRoute')
-  const { orderFixture } = await import('@/testFixtures/processRouteOrder')
-  const { processRouteApi } = await import('@/services/processRouteApi')
-  const rows = [source(), source(11)]
-  rows.forEach((row) => {
-    row.transfer.serial_no = ''
-    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
-  })
-  vi.mocked(productionScheduleApi.candidates).mockImplementation(async (params) => ({
-    items:
-      params.serial_no === 'ORDER-A'
-        ? [
-            {
-              source_transfer_id: 10,
-              schedules: [
-                {
-                  id: 81,
-                  task_batch_number: 2,
-                  serial_no: 'ORDER-A',
-                  due_at: '2026-12-03T00:00:00Z',
-                  remaining_quantity: 120,
-                } as ScheduleSummary,
-              ],
-            },
-          ]
-        : [],
-  }))
-  vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
-    ...routeFixture,
-    id: serial === 'ORDER-A' ? 8 : 9,
-    state: 'published',
-    serial_nos: ['ORDER-A', 'ORDER-B', 'ORDER-C'],
-    source_data: {
-      ...routeFixture.source_data,
-      order_document: { ...orderFixture, serial_no: serial },
-    },
-    drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
-    steps: [
-      { ...routeFixture.steps[0]!, team_id: 2 },
-      { ...routeFixture.steps[1]!, team_id: 1, serial_nos: ['ORDER-C'] },
-      { ...routeFixture.steps[2]!, team_id: 3, serial_nos: ['ORDER-A', 'ORDER-B'] },
-    ],
-  }))
-  await render('dispatch', rows)
-  expect(wrapper.get('.source-lines').element.nextElementSibling).toBe(
-    wrapper.get('.dispatch-context').element,
-  )
-  const receiver = () => wrapper.get('.destination-field [role="status"]').text()
-  expect(receiver()).toBe('填写流水号后按工艺带出')
-  const inputs = wrapper.findAll('input[aria-label="出库流水号"]')
-  await inputs[0]!.setValue('ORDER-A')
-  await vi.waitFor(() =>
-    expect(wrapper.get('.source-schedule-estimate').text()).toContain('还差 20 件'),
-  )
-  expect(wrapper.findAll('.source-schedule-estimate')).toHaveLength(1)
-  expect(receiver()).toBe('填写流水号后按工艺带出')
-  await inputs[1]!.setValue('ORDER-B')
-  await vi.waitFor(() => expect(receiver()).toBe('退火'))
-  await flushPromises()
-  const sourceCards = wrapper.findAll('.source-line')
-  await sourceCards[0]!.trigger('focusin')
-  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
-    items: [expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8, batchNo: 'TL10' })],
-  })
-  await sourceCards[1]!.trigger('pointerdown')
-  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
-    items: [expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9, batchNo: 'TL11' })],
-  })
-  await submit()
-  expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
-    2,
-    expect.objectContaining({
-      next_team_id: 3,
-      lines: [
-        expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
-        expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
-      ],
-    }),
-  )
-  await inputs[1]!.setValue('ORDER-C')
-  expect(receiver()).toBe('填写流水号后按工艺带出')
-  await vi.waitFor(() => expect(receiver()).toContain('请按接收班组分开出库'))
-  await submit()
-  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
-})
+it.each([
+  ['SERIAL10', 'SERIAL10'],
+  ['', ''],
+])(
+  'selects a single target schedule for stock with source serials %j and %j',
+  async (first, second) => {
+    const rows = [source(), source(11)]
+    for (const [index, row] of rows.entries()) {
+      row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+      row.transfer.serial_no = index ? second : first
+    }
+    await render('dispatch', rows)
+    expect(wrapper.findAll('input[aria-label="目标流水号"]')).toHaveLength(1)
+    expect(wrapper.find('input[aria-label="出库流水号"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="投料方式"]').exists()).toBe(false)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await wrapper.get('input[aria-label="目标流水号"]').setValue(warehouseFeedingOption.serial_no)
+    await vi.waitFor(() =>
+      expect(wrapper.get('.destination-field [role="status"]').text()).toBe('退火'),
+    )
+    await submit()
+    const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+    expect(body.feeding_target?.schedule_id).toBe(warehouseFeedingOption.schedule_id)
+    expect(body.lines.map((line) => line.source_transfer_id)).toEqual([10, 11])
+  },
+)
 
 it.each([null, 'ORDER-A', 'ORDER-B'])(
   'dispatches joint material and preserves the task specified by %s without requiring cutting plans',
@@ -1907,7 +1887,7 @@ it.each([null, 'ORDER-A', 'ORDER-B'])(
       vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
         { id: 55, team_id: 3, name: '粗切', active: true, version: 1 },
       ])
-    await render('dispatch', [row])
+    await render('dispatch', [row], { id: 71, next_team_id: 3, external_destination: null })
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '共投')!
@@ -2008,30 +1988,34 @@ it('assigns two warehouse serials to one processing plan without crediting the i
   rows.forEach((row) => {
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
   })
-  const option = {
-    serial_no: 'ORDER-C',
-    schedule_id: 71,
-    route_id: 8,
-    route_version: 2,
-    task_id: 6,
-    task_batch_number: 2,
-    team_id: 3,
-    team_name: '退火',
-    remaining_quantity: 100,
-    remaining_weight: null,
-    due_at: '2026-12-03T00:00:00Z',
-  }
-  vi.spyOn(productionScheduleApi, 'feedingOptions').mockResolvedValue([
+  const option = warehouseFeedingOption
+  vi.mocked(productionScheduleApi.feedingOptions).mockResolvedValue([
     { ...option, schedule_id: 70, task_batch_number: 1 },
     option,
   ])
-  vi.spyOn(productionScheduleApi, 'serialOptions').mockResolvedValue({
-    items: [],
-    total: 0,
-    page: 1,
-    page_size: 30,
-  })
   await render('dispatch', rows)
+  expect(wrapper.findAll('h3').map((node) => node.text())).toEqual([
+    '投料排期',
+    '转出物料',
+    '收发信息',
+  ])
+  expect(wrapper.findAll('.materials-head > span').map((cell) => cell.text())).toEqual([
+    '流水号',
+    '账面库存',
+    '出库件数',
+    '出库重量',
+  ])
+  expect(wrapper.findAll('.warehouse-serial').map((cell) => cell.text())).toEqual([
+    'SERIAL10',
+    'SERIAL11',
+  ])
+  expect(wrapper.find('.warehouse-materials .source-actions').exists()).toBe(false)
+  expect(wrapper.find('.warehouse-materials .source-specification-field').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('按原流水号')
+  expect(wrapper.find('[aria-label="投料方式"]').exists()).toBe(false)
+  expect(wrapper.get('.action-notes-section button').attributes('aria-expanded')).toBe('true')
+  await wrapper.get('.action-notes-section button').trigger('click')
+  expect(wrapper.get('.action-notes-section button').attributes('aria-expanded')).toBe('false')
   await wrapper.get('input[aria-label="目标流水号"]').setValue('ORDER-C')
   await vi.waitFor(() =>
     expect(productionScheduleApi.feedingOptions).toHaveBeenCalledWith(2, 'ORDER-C'),
@@ -2044,7 +2028,7 @@ it('assigns two warehouse serials to one processing plan without crediting the i
   await submit()
   expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
   planPickers[0]!.vm.$emit('update:modelValue', 71)
-  await vi.waitFor(() => expect(wrapper.text()).toContain('排期待交 100 件'))
+  await vi.waitFor(() => expect(wrapper.text()).toContain('库房待转出 226 件'))
   expect(wrapper.text()).toContain('本次投料 200 件 / 20 kg')
   expect(wrapper.text()).not.toContain('本次转出后')
   const [q1, w1, q2, w2] = sourceAmountInputs()
@@ -2054,7 +2038,7 @@ it('assigns two warehouse serials to one processing plan without crediting the i
   w2!.vm.$emit('update:modelValue', 4)
   await flushPromises()
   expect(wrapper.text()).toContain('本次投料 4 件 / 6 kg')
-  expect(wrapper.text()).toContain('排期待交 100 件')
+  expect(wrapper.text()).toContain('库房待转出 226 件')
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
     2,
@@ -2075,4 +2059,114 @@ it('assigns two warehouse serials to one processing plan without crediting the i
           'serial_no' in line || 'production_schedule_id' in line || 'process_route_id' in line,
       ),
   ).toBe(false)
+})
+
+it('shares the source rows across target serials, each with its selected schedule', async () => {
+  const rows = [source(), source(11)]
+  for (const row of rows)
+    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  const planA = { ...warehouseFeedingOption, serial_no: 'A' }
+  const planB = {
+    ...warehouseFeedingOption,
+    serial_no: 'B',
+    schedule_id: 94,
+    task_id: 22,
+    route_id: 9,
+  }
+  vi.mocked(productionScheduleApi.feedingOptions).mockImplementation(async (_, serial) => {
+    if (serial === 'A') return [planA]
+    if (serial === 'X') return [{ ...planB, serial_no: 'X', team_id: 4 }]
+    return [{ ...planB, schedule_id: 93, task_id: 21, task_batch_number: 1 }, planB]
+  })
+  await render('dispatch', rows)
+  await wrapper.get('[aria-label="目标流水号"]').setValue('A')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('库房待转出 226 件'))
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '共投')!
+    .trigger('click')
+  const second = wrapper.get('[aria-label="共投流水号 2"]')
+  await submit()
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  await second.setValue('A')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('共投流水号不能重复'))
+  await second.setValue('X')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('共投排期须由同一班组接收'))
+  await second.setValue('B')
+  await vi.waitFor(() => expect(productionScheduleApi.feedingOptions).toHaveBeenCalledWith(2, 'B'))
+  await flushPromises()
+  wrapper
+    .findAllComponents(ElSelect)
+    .find((p) => p.find('input[aria-label="加工排期 2"]').exists())!
+    .vm.$emit('update:modelValue', 94)
+  await flushPromises()
+  expect(wrapper.getComponent(SerialRouteAttachments).props('items')).toMatchObject([
+    { serialNo: 'A', scheduleTaskId: 6 },
+    { serialNo: 'B', scheduleTaskId: 22 },
+  ])
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '增加流水号')!
+    .trigger('click')
+  await wrapper.get('[aria-label="移除目标流水号 3"]').trigger('click')
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+  const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+  expect(body.feeding_target).toBeUndefined()
+  expect(body.feeding_targets).toEqual([
+    { serial_no: 'A', route_id: 8, route_version: 2, schedule_id: 71 },
+    { serial_no: 'B', route_id: 9, route_version: 2, schedule_id: 94 },
+  ])
+  expect(
+    body.lines.map(({ source_transfer_id, quantity, weight }) => [
+      source_transfer_id,
+      quantity,
+      weight,
+    ]),
+  ).toEqual([
+    [10, 100, 10],
+    [11, 100, 10],
+  ])
+})
+
+it('assigns each source serial to its own destination when issuing separate warehouse documents', async () => {
+  const rows = [source(), source(11)]
+  for (const row of rows)
+    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  vi.mocked(productionScheduleApi.feedingOptions).mockImplementation(async (_, serial) => [
+    {
+      ...warehouseFeedingOption,
+      serial_no: serial,
+      schedule_id: serial === 'X' ? 71 : 72,
+      team_id: serial === 'X' ? 3 : 4,
+      team_name: serial === 'X' ? '退火' : '线切割',
+    },
+  ])
+  await render('dispatch', rows)
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '分别指定目标')!
+    .trigger('click')
+  await wrapper.get('[aria-label="SERIAL10 的目标流水号"]').setValue('X')
+  await submit()
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="SERIAL11 的目标流水号"]').setValue('Y')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('退火 / 线切割'))
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+  const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+  expect(body.next_team_id).toBeUndefined()
+  expect(body.feeding_targets).toBeUndefined()
+  expect(body.feeding_assignments).toEqual([
+    {
+      target: { serial_no: 'X', route_id: 8, route_version: 2, schedule_id: 71 },
+      next_team_id: 3,
+      source_transfer_ids: [10],
+    },
+    {
+      target: { serial_no: 'Y', route_id: 8, route_version: 2, schedule_id: 72 },
+      next_team_id: 4,
+      source_transfer_ids: [11],
+    },
+  ])
 })

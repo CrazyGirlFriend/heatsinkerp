@@ -77,11 +77,22 @@ def search_predicate(
         else False
     )
     if include_source_serial and search_field in ("all", "serial_no"):
+        from .models import WarehouseFeedingSource
         from .serial_search import serial_text_match
 
         origin = MaterialTransfer.__table__.alias("reallocation_origin")
         shared = or_(
             shared,
+            select(WarehouseFeedingSource.transfer_id)
+            .join(origin, origin.c.id == WarehouseFeedingSource.source_transfer_id)
+            .where(
+                WarehouseFeedingSource.transfer_id == MaterialTransfer.id,
+                or_(
+                    serial_text_match(origin.c.serial_no, term, search_mode),
+                    serial_text_match(origin.c.batch_no, term, search_mode),
+                ),
+            )
+            .exists(),
             select(origin.c.id)
             .where(
                 origin.c.id == MaterialTransfer.source_transfer_id,
@@ -119,7 +130,7 @@ class TransferColumnFilters(BaseModel):
     weight_min: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
     weight_max: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
 
-    def predicates(self):
+    def predicates(self, *, amounts=None, include_source_serial=False):
         import re
 
         filters = []
@@ -150,7 +161,10 @@ class TransferColumnFilters(BaseModel):
             if value.strip():
                 filters.append(
                     search_predicate(
-                        value, field, include_source_serial=self.record_kind == "reallocation"
+                        value,
+                        field,
+                        include_source_serial=include_source_serial
+                        or self.record_kind == "reallocation",
                     )
                 )
         if self.purpose_query.strip():
@@ -180,8 +194,9 @@ class TransferColumnFilters(BaseModel):
             lower, upper = getattr(self, field + "_min"), getattr(self, field + "_max")
             if lower is not None and upper is not None and lower > upper:
                 raise HTTPException(422, "最小值不能大于最大值")
+            column = amounts[field] if amounts is not None else getattr(MaterialTransfer, field)
             if lower is not None:
-                filters.append(getattr(MaterialTransfer, field) >= lower)
+                filters.append(column >= lower)
             if upper is not None:
-                filters.append(getattr(MaterialTransfer, field) <= upper)
+                filters.append(column <= upper)
         return filters

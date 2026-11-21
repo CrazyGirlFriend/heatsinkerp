@@ -651,13 +651,13 @@ onBeforeUnmount(() => {
         <SerialRouteAttachments
           :batch-no="snapshot.batch_no"
           :items="
-            (snapshot.shared_unallocated && snapshot.shared_serials?.length
-              ? snapshot.shared_serials
-              : [{ serial_no: snapshot.serial_no }]
-            ).map((item) => ({
-              serialNo: item.serial_no || '',
-              routeId: snapshot!.process_route?.id,
-            }))
+            snapshot.shared_unallocated && snapshot.shared_serials?.length
+              ? snapshot.shared_serials.map((member) => ({
+                  serialNo: member.serial_no,
+                  routeId: member.process_route_id || snapshot!.process_route?.id,
+                  scheduleTaskId: member.schedule_task_id,
+                }))
+              : [{ serialNo: snapshot.serial_no || '', routeId: snapshot.process_route?.id }]
           "
         />
       </template>
@@ -1121,7 +1121,11 @@ onBeforeUnmount(() => {
                                 v-for="member in snapshot.shared_serials"
                                 :key="member.serial_no"
                                 :value="member.serial_no"
-                                :label="member.serial_no"
+                                :label="
+                                  member.task_batch_number
+                                    ? `${member.serial_no} · 第${member.task_batch_number}批`
+                                    : member.serial_no
+                                "
                             /></ElSelect>
                           </div>
                           <span v-else>{{

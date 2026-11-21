@@ -17,6 +17,7 @@ from .models import (
 )
 from .models import (
     ProcessRouteArchive,
+    SharedMaterialMember,
     Team,
     utcnow,
 )
@@ -216,6 +217,11 @@ def link(db, task_id, payload, user):
                 )
                 or db.scalar(select(Work.id).where(Work.production_schedule_id == plan.id).limit(1))
                 or db.scalar(select(Lot.id).where(Lot.processing_schedule_id == plan.id).limit(1))
+                or db.scalar(
+                    select(SharedMaterialMember.id)
+                    .where(SharedMaterialMember.feeding_schedule_id == plan.id)
+                    .limit(1)
+                )
             ):
                 raise HTTPException(409, "已有加工或转出记录的节点须保留原工艺")
             data = {field: getattr(plan, field) for field in schedules.FIELDS}

@@ -414,12 +414,19 @@ def overview(db, team_id, include_summary=False):
         .mappings()
         .all()
     )
+    from .pending_receipts import receipt_keys
+
+    pending_rows = select(
+        func.sum(MaterialTransfer.quantity).label("quantity"),
+        func.sum(MaterialTransfer.weight).label("weight"),
+    ).where(MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending")
+    # Keep physical amounts while counting the same review units as the pending list.
+    keys = (MaterialTransfer.id,) if team.code == WAREHOUSE_TEAM_CODE else receipt_keys()
+    documents = pending_rows.group_by(*keys).subquery()
     pending = db.execute(
         select(
-            func.count(MaterialTransfer.id),
-            func.sum(MaterialTransfer.quantity),
-            func.sum(MaterialTransfer.weight),
-        ).where(MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending")
+            func.count(), func.sum(documents.c.quantity), func.sum(documents.c.weight)
+        ).select_from(documents)
     ).one()
     pending_batches = {}
     if team.code == WAREHOUSE_TEAM_CODE and team.kind == "warehouse":

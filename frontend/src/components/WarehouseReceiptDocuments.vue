@@ -102,25 +102,14 @@ const visibleKinds = computed<ReceiptDocumentKind[]>(() => {
   if (props.documentKind) return [props.documentKind]
   return props.availableOnly ? ['drawing', 'process', 'order'] : ['process', 'drawing', 'order']
 })
-const fileKeys = computed(() => [
-  ...(props.route?.drawings || []).map((item) => `route-${item.id}`),
-  ...drawingDocuments.value.map((item) => `receipt-${item.id}`),
-  ...(wordRoute.value?.filename ? ['process'] : []),
-  ...(orderName.value || orderError.value ? ['order'] : []),
-])
-// An explicit choice wins even if another attachment arrives later.
-const chosenFile = ref<string>()
-const activeFile = computed(() =>
-  chosenFile.value === '' || fileKeys.value.includes(chosenFile.value ?? '')
-    ? chosenFile.value
-    : fileKeys.value[0],
-)
+const collapsedFiles = ref(new Set<string>())
 function previewControls(key: string) {
   if (!props.availableOnly || props.documentKind) return {}
   return {
-    expanded: key === activeFile.value,
+    expanded: !collapsedFiles.value.has(key),
     'onUpdate:expanded': (open: boolean) => {
-      chosenFile.value = open ? key : ''
+      if (open) collapsedFiles.value.delete(key)
+      else collapsedFiles.value.add(key)
     },
   }
 }

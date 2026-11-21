@@ -3,7 +3,12 @@ import { API_BASE, authorizationValue, httpRequest, HttpRequestError } from './h
 
 export type WarehouseLocation = components['schemas']['WarehouseLocationResponse']
 export type WarehouseLocationFilter = 'occupied' | 'available' | 'pending' | 'draft' | 'disabled'
-export type WarehouseMaterial = { serial_no: string; material_name: string; material_type: string }
+export type WarehouseMaterial = {
+  serial_no?: string
+  material_name: string
+  material_type: string
+  transfer_specification?: string
+}
 export type WarehouseLeaseGroup = Map<number, { key: string; owners: Set<symbol> }>
 export type WarehouseLease = components['schemas']['WarehouseLeaseResponse']
 export const locationState = {

@@ -19,6 +19,7 @@ import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
+import WarehouseIncomingReceipt from '@/components/WarehouseIncomingReceipt.vue'
 import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import ReceiptPersonInput from '@/components/ReceiptPersonInput.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
@@ -2114,6 +2115,72 @@ describe('team workspace material ledger', () => {
         page_size: 10,
       })
       expect(wrapper.text()).toContain('OPENING-001')
+    },
+  )
+  it.each(['legacy', 'pooled'])(
+    'reviews all sources in one warehouse feeding from a single pending row (%s)',
+    async (mode) => {
+      const sources = [26, 100, 100].map((quantity, index) => ({
+        batch_no: 'TL-FEED-' + index,
+        source_transfer_batch_no: 'TL-STOCK-' + index,
+        source_serial_no: 'RAW-' + index,
+        quantity,
+        weight: 100,
+        material_type: 'raw_material',
+        material_name: 'Mo70Cu30',
+        is_outsourced: false,
+        version: 1,
+      }))
+      const row = normalizeMaterialTransfer({
+        ...source().transfer,
+        batch_no: sources[0]!.batch_no,
+        status: 'pending',
+        locked: false,
+        allowed_actions: ['confirm'],
+        serial_no: '691236-50',
+        source_serial_no: 'RAW-0 / RAW-1 / RAW-2',
+        pending_receipt_lines: mode === 'legacy' ? sources : null,
+        feeding_sources:
+          mode === 'pooled'
+            ? sources.map((part, index) => ({
+                source_transfer_id: index + 1,
+                batch_no: part.source_transfer_batch_no,
+                serial_no: part.source_serial_no,
+                quantity: part.quantity,
+                weight: part.weight,
+              }))
+            : [],
+        quantity: 226,
+        weight: 300,
+      })
+      vi.mocked(materialTransferApi.list).mockResolvedValue({
+        items: [row],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
+      const confirm = vi.spyOn(materialTransferApi, 'confirmWarehouseReceipt').mockResolvedValue()
+      await render('/team-workspaces/914?tab=pending')
+      expect(materialTransferApi.list).toHaveBeenCalledWith(
+        expect.objectContaining({ group_warehouse_receipts: true }),
+      )
+      expect(wrapper.findAll('.team-table .batch-link')).toHaveLength(1)
+      expect(wrapper.get('.team-table').text()).toContain('RAW-0 / RAW-1 / RAW-2')
+      wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+      await flushPromises()
+      await wrapper.get('.team-table .batch-link').trigger('click')
+      const review = wrapper.getComponent(WarehouseIncomingReceipt)
+      const dialog = document.body.querySelector('[aria-label="来源批次"]') || review.element
+      expect(dialog.textContent).toContain('TL-STOCK-2')
+      const button =
+        Array.from(document.body.querySelectorAll('button')).find(
+          (b) => b.textContent?.trim() === '确认签收',
+        ) || review.findAll('button').find((b) => b.text() === '确认签收')?.element
+      expect(button).toBeTruthy()
+      button!.click()
+      await flushPromises()
+      expect(confirm).toHaveBeenCalledWith(row, receivingPerson.id, expect.any(String))
+      expect(wrapper.findComponent(WarehouseIncomingReceipt).exists()).toBe(false)
     },
   )
   it('shares the page receiver with receipt review and blocks the row action until selected', async () => {

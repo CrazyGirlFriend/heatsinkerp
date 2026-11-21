@@ -331,12 +331,28 @@ def test_warehouse_feeds_two_stock_serials_to_one_processing_commitment(
     client, warehouse, dispatcher
 ):
     from app.models import MaterialStockBalance, MaterialTransfer, ProductionScheduleDelivery
+    from app.models import ProductionSchedule as Plan
 
     body = setup_order(client, warehouse)
     serial = body["serial_no"]
     for key in ("first-job", "second-job"):
         task = post(client, dispatcher, {**body, "idempotency_key": key}, order_file(serial))
         assert task.status_code == 201, task.text
+    with SessionLocal() as db:
+        warehouse_plan = db.scalars(
+            select(Plan).where(
+                Plan.task_id == task.json()["id"],
+                Plan.team_id == warehouse["team"]["id"],
+                Plan.predecessor_id.is_(None),
+            )
+        ).one()
+        warehouse_plan.target_quantity = 226
+        warehouse_plan.target_weight = 40
+        receiving_plan = db.scalars(
+            select(Plan).where(Plan.predecessor_id == warehouse_plan.id)
+        ).one()
+        receiving_plan.target_quantity = 4008
+        db.commit()
     lots = []
     for name in ("SOURCE-A", "SOURCE-B"):
         receipt = intake(client, warehouse, serial_no=name, idempotency_key=name)
@@ -354,6 +370,7 @@ def test_warehouse_feeds_two_stock_serials_to_one_processing_commitment(
     assert len(options.json()) == 2
     option = options.json()[1]
     assert option["team_id"] == target_team and option["task_id"] == task.json()["id"]
+    assert option["remaining_quantity"] == 226 and option["remaining_weight"] == 40
     target = {key: option[key] for key in ("serial_no", "schedule_id", "route_id", "route_version")}
     lines = [
         {"source_transfer_id": lot["id"], "quantity": i, "weight": i * 2}
@@ -372,35 +389,54 @@ def test_warehouse_feeds_two_stock_serials_to_one_processing_commitment(
     response = dispatch(client, warehouse, lines, feeding_target=target)
     assert response.status_code == 201, response.text
     rows = response.json()["items"]
-    assert len(rows) == 2
+    assert len(rows) == 1
+    row = rows[0]
+    document_id = row["warehouse_dispatch_id"]
+    printed = client.get(
+        f"/api/material-dispatches/warehouse/{document_id}", headers=warehouse["other_headers"]
+    )
+    assert printed.status_code == 200, printed.text
+    assert [item["batch_no"] for item in printed.json()["items"]] == [row["batch_no"]]
+    assert row["serial_no"] == serial
+    assert (row["quantity"], row["weight"]) == (3, 6)
+    assert row["feeding_sources"] == [
+        {
+            "source_transfer_id": lot["id"],
+            "serial_no": lot["serial_no"],
+            "batch_no": lot["batch_no"],
+            "quantity": line["quantity"],
+            "weight": line["weight"],
+        }
+        for lot, line in zip(lots, lines, strict=True)
+    ]
     replay = dispatch(client, warehouse, lines, feeding_target=target)
-    assert [r["id"] for r in replay.json()["items"]] == [r["id"] for r in rows]
-    for row, lot, line in zip(rows, lots, lines, strict=True):
-        assert (row["serial_no"], row["source_serial_no"], row["source_transfer_batch_no"]) == (
-            serial,
-            lot["serial_no"],
-            lot["batch_no"],
-        )
-        assert (row["quantity"], row["weight"]) == (line["quantity"], line["weight"])
+    assert [r["id"] for r in replay.json()["items"]] == [row["id"]]
+    pending = client.get(
+        URL + "/warehouse-feeding-options",
+        params={"team_id": warehouse["team"]["id"], "serial_no": serial},
+    ).json()
+    assert pending[0]["remaining_quantity"] == options.json()[0]["remaining_quantity"]
+    assert (pending[1]["remaining_quantity"], pending[1]["remaining_weight"]) == (223, 34)
     confirmed = confirm(client, warehouse, response.json(), workshop=True)
     assert confirmed.status_code == 200, confirmed.text
-    for row, lot, line in zip(rows, lots, lines, strict=True):
-        detail = client.get("/api/material-transfers/" + row["batch_no"]).json()
-        assert detail["status"] == "received" and detail["schedule_task_id"] == option["task_id"]
-        assert detail["source_serial_no"] == lot["serial_no"]
-        context = client.get(base(warehouse, True) + f"/stock/{row['id']}/quantity-adjustments")
-        assert context.status_code == 200, context.text
-        assert context.json()["production_schedule_id"] == option["schedule_id"]
-        assert context.json()["production_schedule_locked"] is True
-        with SessionLocal() as db:
+    detail = client.get("/api/material-transfers/" + row["batch_no"]).json()
+    assert detail["status"] == "received" and detail["schedule_task_id"] == option["task_id"]
+    assert detail["feeding_sources"] == row["feeding_sources"]
+    context = client.get(base(warehouse, True) + f"/stock/{row['id']}/quantity-adjustments")
+    assert context.status_code == 200, context.text
+    assert context.json()["production_schedule_id"] == option["schedule_id"]
+    assert context.json()["production_schedule_locked"] is True
+    with SessionLocal() as db:
+        assert db.get(ProductionScheduleDelivery, row["id"]) is None
+        assert db.get(MaterialStockBalance, row["id"]).on_hand_quantity == 3
+        for lot, line in zip(lots, lines, strict=True):
             original = db.get(MaterialTransfer, lot["id"])
             assert original.serial_no == lot["serial_no"] and original.process_route_id is None
             balance = db.get(MaterialStockBalance, lot["id"])
             assert balance.on_hand_quantity == lot["quantity"] - line["quantity"]
             assert float(balance.on_hand_weight) == lot["weight"] - line["weight"]
-            assert db.get(ProductionScheduleDelivery, row["id"]) is None
     progress = client.get(URL + "/" + str(option["schedule_id"])).json()
-    assert progress["remaining_quantity"] == option["remaining_quantity"]
+    assert progress["remaining_quantity"] == 4008
     assert progress["dispatched_quantity"] == 0
 
     from test_processing_daily import work
@@ -423,12 +459,12 @@ def test_warehouse_feeds_two_stock_serials_to_one_processing_commitment(
         processing_mode="split",
         processing_status="complete",
         quantity=3,
-        input_quantity=1,
+        input_quantity=3,
         outputs=[
             {
                 "role": "produced",
                 "quantity": 3,
-                "weight": 2,
+                "weight": 6,
                 "material_type": "semi_finished",
                 "transfer_specification": "10 × 10 × 5 mm",
             }
@@ -440,7 +476,7 @@ def test_warehouse_feeds_two_stock_serials_to_one_processing_commitment(
     next_move = dispatch(
         client,
         warehouse,
-        [{"source_transfer_id": produced["id"], "quantity": 3, "weight": 2}],
+        [{"source_transfer_id": produced["id"], "quantity": 3, "weight": 6}],
         workshop=True,
     )
     assert next_move.status_code == 201, next_move.text

@@ -414,6 +414,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/material-dispatches/warehouse/{dispatch_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Warehouse Document */
+    get: operations['warehouse_document_api_material_dispatches_warehouse__dispatch_id__get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/material-input-suggestions': {
     parameters: {
       query?: never
@@ -531,6 +548,23 @@ export interface paths {
     put?: never
     /** Confirm Outbound */
     post: operations['confirm_outbound_api_material_transfers__batch_no__confirm_outbound_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/material-transfers/{batch_no}/confirm-warehouse-receipt': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm Warehouse Receipt */
+    post: operations['confirm_warehouse_receipt_api_material_transfers__batch_no__confirm_warehouse_receipt_post']
     delete?: never
     options?: never
     head?: never
@@ -2867,7 +2901,11 @@ export interface components {
       entry_kind: string
       /** External Destination */
       external_destination?: string | null
+      /** Feeding Assignments */
+      feeding_assignments?: components['schemas']['FeedingAssignment'][] | null
       feeding_target?: components['schemas']['FeedingTarget'] | null
+      /** Feeding Targets */
+      feeding_targets?: components['schemas']['FeedingTarget'][] | null
       /** Idempotency Key */
       idempotency_key: string
       inventory_total?: components['schemas']['ShipmentTotal'] | null
@@ -2908,7 +2946,7 @@ export interface components {
       /** Serial No */
       serial_no?: string | null
       /** Shared Serials */
-      shared_serials?: components['schemas']['SharedMaterialSerial-Input'][] | null
+      shared_serials?: components['schemas']['SharedMaterialSerial'][] | null
       /** Sludge Content Percent */
       sludge_content_percent?: number | string | null
       /** Sludge Gross Weight */
@@ -3438,6 +3476,14 @@ export interface components {
       /** Team Id */
       team_id?: number | null
     }
+    /** FeedingAssignment */
+    FeedingAssignment: {
+      /** Next Team Id */
+      next_team_id: number
+      /** Source Transfer Ids */
+      source_transfer_ids: number[]
+      target: components['schemas']['FeedingTarget']
+    }
     /** FeedingOption */
     FeedingOption: {
       /**
@@ -3510,6 +3556,17 @@ export interface components {
       team_id: number
       /** Team Name */
       team_name: string
+    }
+    /** GroupReceiptConfirm */
+    GroupReceiptConfirm: {
+      /** Idempotency Key */
+      idempotency_key: string
+      /** Received Employee Id */
+      received_employee_id: number
+      /** Versions */
+      versions: {
+        [key: string]: number
+      }
     }
     /** HealthResponse */
     HealthResponse: {
@@ -4074,6 +4131,8 @@ export interface components {
       material_type?: string | null
       /** Serial No */
       serial_no?: string | null
+      /** Transfer Specification */
+      transfer_specification?: string | null
     }
     /** LocationWrite */
     LocationWrite: {
@@ -4802,6 +4861,8 @@ export interface components {
       external_destination?: string | null
       /** External Source */
       external_source?: string | null
+      /** Feeding Sources */
+      feeding_sources?: components['schemas']['WarehouseFeedingSourceResponse'][]
       /** Finished Quantity */
       finished_quantity?: number | null
       /** Finished Specification */
@@ -4842,6 +4903,8 @@ export interface components {
       outsourced_unit?: string | null
       /** Part No */
       part_no?: string | null
+      /** Pending Receipt Lines */
+      pending_receipt_lines?: components['schemas']['PendingReceiptLine'][] | null
       /** Process Route */
       process_route?: {
         [key: string]: unknown
@@ -4910,7 +4973,7 @@ export interface components {
       /** Shared Origin Batch No */
       shared_origin_batch_no?: string | null
       /** Shared Serials */
-      shared_serials?: components['schemas']['SharedMaterialSerial-Output'][]
+      shared_serials?: components['schemas']['SharedSerialResponse'][]
       /**
        * Shared Unallocated
        * @default false
@@ -4968,6 +5031,10 @@ export interface components {
       voided_by: string | null
       /** Voided By User Id */
       voided_by_user_id: number | null
+      /** Warehouse Dispatch Id */
+      warehouse_dispatch_id?: number | null
+      /** Warehouse Document No */
+      warehouse_document_no?: string | null
       /** Warehouse Location */
       warehouse_location?: string | null
       /** Weight */
@@ -5529,6 +5596,27 @@ export interface components {
       serial_no: string | null
       /** Source Team Name */
       source_team_name: string | null
+      /** Weight */
+      weight: number
+    }
+    /** PendingReceiptLine */
+    PendingReceiptLine: {
+      /** Batch No */
+      batch_no: string
+      /** Is Outsourced */
+      is_outsourced: boolean
+      /** Material Name */
+      material_name: string | null
+      /** Material Type */
+      material_type: string | null
+      /** Quantity */
+      quantity: number
+      /** Source Serial No */
+      source_serial_no: string | null
+      /** Source Transfer Batch No */
+      source_transfer_batch_no: string | null
+      /** Version */
+      version: number
       /** Weight */
       weight: number
     }
@@ -8784,7 +8872,7 @@ export interface components {
       urgency: components['schemas']['UrgencyResponse']
     }
     /** SharedMaterialSerial */
-    'SharedMaterialSerial-Input': {
+    SharedMaterialSerial: {
       /** Customer Code */
       customer_code?: string | null
       /** Delivery Date */
@@ -8806,29 +8894,6 @@ export interface components {
       /** Serial No */
       serial_no: string
     }
-    /** SharedMaterialSerial */
-    'SharedMaterialSerial-Output': {
-      /** Customer Code */
-      customer_code?: string | null
-      /** Delivery Date */
-      delivery_date?: string | null
-      /** Delivery Quantity */
-      delivery_quantity?: number | null
-      /** Finished Specification */
-      finished_specification?: string | null
-      /** Planned Quantity */
-      planned_quantity?: number | null
-      /** Planned Specification */
-      planned_specification?: string | null
-      /** Planned Weight */
-      planned_weight?: string | null
-      /** Process Route Id */
-      process_route_id?: number | null
-      /** Process Route Version */
-      process_route_version?: number | null
-      /** Serial No */
-      serial_no: string
-    }
     /** SharedSerialResponse */
     SharedSerialResponse: {
       /** Customer Code */
@@ -8837,6 +8902,8 @@ export interface components {
       delivery_date?: string | null
       /** Delivery Quantity */
       delivery_quantity?: number | null
+      /** Feeding Schedule Id */
+      feeding_schedule_id?: number | null
       /** Finished Specification */
       finished_specification?: string | null
       /** Planned Quantity */
@@ -8849,8 +8916,12 @@ export interface components {
       process_route_id?: number | null
       /** Process Route Version */
       process_route_version?: number | null
+      /** Schedule Task Id */
+      schedule_task_id?: number | null
       /** Serial No */
       serial_no: string
+      /** Task Batch Number */
+      task_batch_number?: number | null
     }
     /** ShipmentStockItemResponse */
     ShipmentStockItemResponse: {
@@ -9512,6 +9583,8 @@ export interface components {
       external_destination?: string | null
       /** External Source */
       external_source?: string | null
+      /** Feeding Sources */
+      feeding_sources?: components['schemas']['WarehouseFeedingSourceResponse'][]
       /** Finished Quantity */
       finished_quantity?: number | null
       /** Finished Specification */
@@ -9578,6 +9651,8 @@ export interface components {
       owned_weight: number | null
       /** Part No */
       part_no?: string | null
+      /** Pending Receipt Lines */
+      pending_receipt_lines?: components['schemas']['PendingReceiptLine'][] | null
       /** Process Route */
       process_route?: {
         [key: string]: unknown
@@ -9650,7 +9725,7 @@ export interface components {
       /** Shared Origin Batch No */
       shared_origin_batch_no?: string | null
       /** Shared Serials */
-      shared_serials?: components['schemas']['SharedMaterialSerial-Output'][]
+      shared_serials?: components['schemas']['SharedSerialResponse'][]
       /**
        * Shared Unallocated
        * @default false
@@ -9708,6 +9783,10 @@ export interface components {
       voided_by: string | null
       /** Voided By User Id */
       voided_by_user_id: number | null
+      /** Warehouse Dispatch Id */
+      warehouse_dispatch_id?: number | null
+      /** Warehouse Document No */
+      warehouse_document_no?: string | null
       /** Warehouse Location */
       warehouse_location?: string | null
       /** Weight */
@@ -10009,6 +10088,19 @@ export interface components {
       location: components['schemas']['WarehouseLocationResponse'] | null
       stock: components['schemas']['StockBatchResponse'] | null
     }
+    /** WarehouseFeedingSourceResponse */
+    WarehouseFeedingSourceResponse: {
+      /** Batch No */
+      batch_no: string
+      /** Quantity */
+      quantity: number
+      /** Serial No */
+      serial_no: string
+      /** Source Transfer Id */
+      source_transfer_id: number
+      /** Weight */
+      weight: number
+    }
     /** WarehouseLeaseResponse */
     WarehouseLeaseResponse: {
       /** Expires At */
@@ -10093,6 +10185,8 @@ export interface components {
       shared_unallocated: boolean
       /** Status */
       status: string
+      /** Transfer Specification */
+      transfer_specification?: string | null
       /** Weight */
       weight: number
     }
@@ -10169,7 +10263,7 @@ export interface components {
        */
       serial_no: string
       /** Shared Serials */
-      shared_serials?: components['schemas']['SharedMaterialSerial-Input'][] | null
+      shared_serials?: components['schemas']['SharedMaterialSerial'][] | null
       /** Sludge Content Percent */
       sludge_content_percent?: number | string | null
       /** Sludge Gross Weight */
@@ -11130,6 +11224,37 @@ export interface operations {
       }
     }
   }
+  warehouse_document_api_material_dispatches_warehouse__dispatch_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        dispatch_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MaterialBatchesResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   material_input_suggestions_api_material_input_suggestions_get: {
     parameters: {
       query: {
@@ -11201,6 +11326,7 @@ export interface operations {
         date_from?: string | null
         date_to?: string | null
         direction?: string
+        group_warehouse_receipts?: boolean
         include_summary?: boolean
         internal_only?: boolean
         material_query?: string
@@ -11506,6 +11632,39 @@ export interface operations {
         content: {
           'application/json': components['schemas']['MaterialTransferResponse']
         }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  confirm_warehouse_receipt_api_material_transfers__batch_no__confirm_warehouse_receipt_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        batch_no: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['GroupReceiptConfirm']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Validation Error */
       422: {
@@ -15770,6 +15929,7 @@ export interface operations {
         query?: string | null
         selected?: string | null
         serial_no?: string | null
+        transfer_specification?: string | null
       }
       header?: never
       path: {

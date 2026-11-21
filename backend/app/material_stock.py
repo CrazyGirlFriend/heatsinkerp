@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import nullcontext
 from decimal import Decimal
 from uuid import uuid4
 
@@ -73,6 +74,7 @@ from .models import (
     MaterialTransfer,
     ProcessRoute,
     SerialUrgency,
+    WarehouseFeedingSource,
     utcnow,
 )
 from .schemas import (
@@ -155,7 +157,13 @@ class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
 class DispatchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sent_employee_id: int = Field(ge=1)
+    feeding_assignments: list[warehouse_feeding.FeedingAssignment] | None = Field(
+        default=None, min_length=1, max_length=100
+    )
     feeding_target: warehouse_feeding.FeedingTarget | None = None
+    feeding_targets: list[warehouse_feeding.FeedingTarget] | None = Field(
+        default=None, min_length=2, max_length=20
+    )
     rework_return: bool = False
     next_team_id: int | None = Field(default=None, ge=1)
     entry_kind: str = Field(
@@ -173,7 +181,28 @@ class DispatchCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_destination(self):
-        if self.feeding_target and (
+        if self.feeding_assignments:
+            if self.feeding_target or self.feeding_targets or self.next_team_id is not None:
+                raise ValueError("分别投料时按各目标排期指定接收班组")
+            ids = [lot for group in self.feeding_assignments for lot in group.source_transfer_ids]
+            if len(ids) != len(set(ids)) or set(ids) != {
+                line.source_transfer_id for line in self.lines
+            }:
+                raise ValueError("每个来源批次都必须指定一个投料去向")
+            if len({group.target.schedule_id for group in self.feeding_assignments}) != len(
+                self.feeding_assignments
+            ):
+                raise ValueError("投给同一排期的来源批次须合为一单")
+            if any(row.source_transfer_id not in ids for row in self.quantity_clearances):
+                raise ValueError("清零批次必须属于本次转料")
+        if self.feeding_targets:
+            if self.feeding_target:
+                raise ValueError("请只填写一种投料排期")
+            if len({item.serial_no.casefold() for item in self.feeding_targets}) != len(
+                self.feeding_targets
+            ):
+                raise ValueError("共投流水号不能重复")
+        if (self.feeding_target or self.feeding_targets or self.feeding_assignments) and (
             self.entry_kind != "transfer"
             or self.rework_return
             or self.quantity_adjustments
@@ -187,7 +216,7 @@ class DispatchCreate(BaseModel):
                 for line in self.lines
             )
         ):
-            raise ValueError("库房投料请整单选择一个目标流水号、工艺和加工排期")
+            raise ValueError("库房投料请在整单上选择目标流水号和加工排期")
         if self.inventory_total is not None:
             if (
                 self.entry_kind != "inspection_shipment"
@@ -207,7 +236,9 @@ class DispatchCreate(BaseModel):
         if not self.idempotency_key.strip():
             raise ValueError("idempotency_key cannot be blank")
         if self.entry_kind == "transfer":
-            if self.next_team_id is None or self.external_destination is not None:
+            if (
+                self.next_team_id is None and not self.feeding_assignments
+            ) or self.external_destination is not None:
                 raise ValueError(
                     "internal transfers require next_team_id and no external_destination"
                 )
@@ -408,7 +439,53 @@ def create_loss(db, team_id, payload, user):
         _db_conflict(exc)
 
 
-def create_dispatch(db, team_id, payload, user):
+def create_separate_feeding(db, team_id, payload, user):
+    # Each destination has a real dispatch header. All headers and deductions
+    # belong to the same transaction and the same idempotent submission.
+    request_hash = fingerprint(payload)
+    groups = sorted(payload.feeding_assignments, key=lambda group: group.target.schedule_id)
+    with db.begin():
+        if actor_team(db, user, team_id).code != WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "仅库房可以分别投料")
+    with db.begin():
+        source_serials = {}
+        for lot_id in sorted({line.source_transfer_id for line in payload.lines}):
+            lot = lock_lot(db, lot_id, team_id)
+            source_serials[lot_id] = lot.serial_no.casefold() if lot.serial_no else lot.id
+        seen_serials = set()
+        items = []
+        for index, group in enumerate(groups):
+            ids = set(group.source_transfer_ids)
+            serials = {source_serials[lot_id] for lot_id in ids}
+            if seen_serials & serials:
+                raise HTTPException(422, "同一来源流水号投给多个目标时，请使用共投")
+            seen_serials.update(serials)
+            key = (
+                payload.idempotency_key
+                if index == 0
+                else "feeding:"
+                + hashlib.sha256(
+                    f"{payload.idempotency_key}:{group.target.schedule_id}".encode()
+                ).hexdigest()
+            )
+            document = payload.model_copy(
+                update={
+                    "feeding_assignments": None,
+                    "feeding_target": group.target,
+                    "next_team_id": group.next_team_id,
+                    "idempotency_key": key,
+                    "lines": [line for line in payload.lines if line.source_transfer_id in ids],
+                    "quantity_clearances": [
+                        row for row in payload.quantity_clearances if row.source_transfer_id in ids
+                    ],
+                }
+            )
+            rows = create_dispatch(db, team_id, document, user, submission_hash=request_hash)
+            items.extend(rows["items"])
+        return {"items": items}
+
+
+def create_dispatch(db, team_id, payload, user, *, submission_hash=None):
     from .quantity_adjustments import (
         latest_records,
         record_outbound_clearance,
@@ -418,10 +495,16 @@ def create_dispatch(db, team_id, payload, user):
     from .team_business import purpose_snapshot
 
     require_actor(user, team_id)
+    if payload.feeding_assignments:
+        try:
+            return create_separate_feeding(db, team_id, payload, user)
+        except (IntegrityError, OperationalError) as exc:
+            _db_conflict(exc)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
-    request_hash = fingerprint(payload)
+    request_hash = submission_hash or fingerprint(payload)
+    transaction = nullcontext if submission_hash else db.begin
     try:
-        with db.begin():
+        with transaction():
             source = actor_team(db, user, team_id)
             if external:
                 require_outbound_actor(user, team_id, payload.entry_kind, team=source)
@@ -436,7 +519,7 @@ def create_dispatch(db, team_id, payload, user):
         # Close the preflight snapshot before waiting for source locks. The
         # recheck below is a fresh snapshot; a missing key must not gap-lock
         # independent submissions. The unique constraint remains the arbiter.
-        with db.begin():
+        with transaction():
             # Deterministic lock order also covers a multi-lot submission.
             if payload.inventory_total is not None:
                 from .inventory_shipments import candidates
@@ -494,7 +577,8 @@ def create_dispatch(db, team_id, payload, user):
                 raise HTTPException(422, "source and target teams must be different")
             feeding_plan = feeding_cursor = None
             feeding_fields = {}
-            if selection := payload.feeding_target:
+            joint_members = joint_plans = None
+            if payload.feeding_target or payload.feeding_targets:
                 if source.code != WAREHOUSE_TEAM_CODE:
                     raise HTTPException(422, "仅库房内部转料可以按目标排期投料")
                 if any(
@@ -508,13 +592,17 @@ def create_dispatch(db, team_id, payload, user):
                     raise HTTPException(
                         422, "废料、未分配共投料或工序未完成的库存不能按目标排期投料"
                     )
-                feeding_plan, feeding_cursor, feeding_fields = warehouse_feeding.prepare(
-                    db,
-                    source,
-                    target,
-                    selection,
-                    lots[payload.lines[0].source_transfer_id],
-                )
+                if payload.feeding_targets:
+                    if any(lot.receipt_kind == "return" for lot in lots.values()):
+                        raise HTTPException(422, "退回库存不能共投")
+                    feeding_cursor, joint_members, joint_plans = warehouse_feeding.prepare_joint(
+                        db, source, target, payload.feeding_targets, lots.values()
+                    )
+                    feeding_fields = dict.fromkeys(warehouse_feeding.ORDER_FIELDS)
+                else:
+                    feeding_plan, feeding_cursor, feeding_fields = warehouse_feeding.prepare(
+                        db, source, target, payload.feeding_target, lots.values()
+                    )
             clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
             if (
                 len(clearances) != len(payload.quantity_clearances)
@@ -538,12 +626,14 @@ def create_dispatch(db, team_id, payload, user):
                     fingerprint(adjustment),
                 )
             stock_after = {}
+            withdrawals = {}
             for source_id, lot in lots.items():
                 portions = [line for line in payload.lines if line.source_transfer_id == source_id]
                 quantity, weight = (
                     sum(line.quantity for line in portions),
                     sum((line.weight for line in portions), Decimal(0)),
                 )
+                withdrawals[source_id] = (quantity, weight)
                 available = available_locked(db, lot)
                 require_unallocated_source(db, lot, available)
                 validate_outbound_clearance(
@@ -616,8 +706,8 @@ def create_dispatch(db, team_id, payload, user):
                 ):
                     raise HTTPException(422, "仅未分配流水号的库房来料可在出库时填写流水号")
                 route_lot = lot
-                if feeding_plan:
-                    serial = feeding_plan.serial_no
+                if feeding_cursor:
+                    serial = feeding_plan.serial_no if feeding_plan else ""
                     route_lot = feeding_cursor
                 elif line.shared_serials:
                     from .shared_material import prepare_dispatch
@@ -634,7 +724,7 @@ def create_dispatch(db, team_id, payload, user):
                     kind,
                     serial,
                     route_lot.process_route_id,
-                    bool(line.shared_serials),
+                    bool(joint_members or line.shared_serials),
                 )
                 if route_key not in route_cache:
                     route_cache[route_key] = dispatch_fields(
@@ -667,8 +757,12 @@ def create_dispatch(db, team_id, payload, user):
                         db, target.id if target else None, purpose_id, required=False
                     )
                 purposes.append(purpose_cache[purpose_id])
-            batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))
+            pooled = bool(feeding_cursor and len(payload.lines) > 1)
             processing = latest_records(db, lots)
+            output_lines = payload.lines[:1] if pooled else payload.lines
+            if pooled:
+                warehouse_feeding.require_matching_materials(payload.lines, lots, processing)
+            batch_numbers = next_transfer_batch_numbers(db, len(output_lines))
             submitted_at = utcnow()
             # External exits are final at submission; only internal handoffs wait for receipt.
             completion = (
@@ -724,7 +818,7 @@ def create_dispatch(db, team_id, payload, user):
                 )
                 location_names.append(location_name)
             for line_index, (line, batch_no) in enumerate(
-                zip(payload.lines, batch_numbers, strict=True)
+                zip(output_lines, batch_numbers, strict=True)
             ):
                 lot = lots[line.source_transfer_id]
                 kind = (
@@ -734,11 +828,11 @@ def create_dispatch(db, team_id, payload, user):
                 )
                 location_name = location_names[line_index]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
-                if feeding_plan:
+                if feeding_cursor:
                     fields.update(feeding_fields)
                 elif (
                     not lot.serial_no
-                    and not line.shared_serials
+                    and not (joint_members or line.shared_serials)
                     and route_fields_by_line[line_index].get("process_route_id")
                 ):
                     bound_route = db.get(
@@ -765,11 +859,12 @@ def create_dispatch(db, team_id, payload, user):
                 from .processing_registration import sent_status
 
                 route_fields = route_fields_by_line[line_index]
-                group = None if feeding_plan else lot.shared_group
-                if line.shared_serials:
+                group = None if feeding_cursor else lot.shared_group
+                members = joint_members or line.shared_serials
+                if members:
                     from .shared_material import create_group
 
-                    group = create_group(db, batch_no, line.shared_serials)
+                    group = create_group(db, batch_no, members, feeding_plans=joint_plans)
                     fields.update(
                         customer_code=None, finished_specification=None, finished_quantity=None
                     )
@@ -786,7 +881,7 @@ def create_dispatch(db, team_id, payload, user):
                     else None,
                     sent_process_step_index=(
                         0
-                        if feeding_plan or line.shared_serials or not lot.serial_no
+                        if feeding_cursor or members or not lot.serial_no
                         else lot.process_step_index
                     )
                     if route_fields and not payload.rework_return and not lot.rework_pending
@@ -797,20 +892,21 @@ def create_dispatch(db, team_id, payload, user):
                     processing_schedule_id=processing_plan_id,
                     rework_count=lot.rework_count,
                     batch_no=batch_no,
-                    serial_no=f"共投-{batch_no}" if line.shared_serials else serial,
+                    serial_no=f"共投-{batch_no}" if members else serial,
                     **fields,
                     **purposes[line_index],
                     shared_group=group,
-                    shared_unallocated=bool(line.shared_serials) or lot.shared_unallocated,
+                    shared_unallocated=bool(members) or lot.shared_unallocated,
                     source_transfer_id=lot.id,
                     dispatch_id=dispatch.id,
-                    delivery_origin_id=None if feeding_plan else lot.delivery_origin_id or lot.id,
+                    delivery_origin_id=None if feeding_cursor else lot.delivery_origin_id or lot.id,
                     source_team_id=source.id,
                     source_team_code=source.code,
                     source_team_name=source.name,
                     **destination,
-                    quantity=line.quantity,
-                    weight=line.weight,
+                    quantity=sum(q for q, _ in withdrawals.values()) if pooled else line.quantity,
+                    weight=sum(w for _, w in withdrawals.values()) if pooled else line.weight,
+                    pooled_feeding=pooled,
                     **completion,
                     notes=payload.notes,
                     sludge_gross_weight=line.sludge_gross_weight,
@@ -822,13 +918,30 @@ def create_dispatch(db, team_id, payload, user):
                     created_by_user_id=user.id,
                     history=[],
                 )
+                if pooled:
+                    transfer.feeding_sources = [
+                        WarehouseFeedingSource(source=lots[key], quantity=q, weight=w)
+                        for key, (q, w) in withdrawals.items()
+                    ]
+                    for key in ("source_batch_no", "material_shape", "material_description"):
+                        if len({getattr(source_lot, key) for source_lot in lots.values()}) > 1:
+                            setattr(transfer, key, None)
+                    transfer.is_outsourced = any(
+                        source_lot.is_outsourced for source_lot in lots.values()
+                    )
+                    units = {
+                        source_lot.outsourced_unit
+                        for source_lot in lots.values()
+                        if source_lot.is_outsourced
+                    }
+                    transfer.outsourced_unit = units.pop() if len(units) == 1 else None
                 db.add(transfer)
                 items.append(transfer)
             # Flush the whole set so repeated sources receive one balance delta.
             db.flush()
             from .production_schedules import associate_dispatch
 
-            if not feeding_plan:
+            if not feeding_cursor:
                 associate_dispatch(db, team_id, payload, items)
             for source_id, clearance in clearances.items():
                 record_outbound_clearance(
@@ -837,7 +950,11 @@ def create_dispatch(db, team_id, payload, user):
                     clearance,
                     user,
                     f"dispatch:{dispatch.id}:{source_id}",
-                    [item.batch_no for item in items if item.source_transfer_id == source_id],
+                    [
+                        item.batch_no
+                        for item in items
+                        if pooled or item.source_transfer_id == source_id
+                    ],
                 )
             if clearances:
                 db.flush()
@@ -884,6 +1001,8 @@ def create_dispatch(db, team_id, payload, user):
             result = dispatch_dict(db, dispatch, user, items=items)
         return result
     except (IntegrityError, OperationalError) as exc:
+        if submission_hash:
+            raise
         db.rollback()
         prior = db.scalar(
             select(MaterialDispatch).where(

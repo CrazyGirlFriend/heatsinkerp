@@ -63,6 +63,11 @@ def database(monkeypatch):
                 Column("transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT"))
             ]
         for column, target in {
+            "warehouse_feeding_sources": {
+                "transfer_id": "material_transfers",
+                "source_transfer_id": "material_transfers",
+            },
+            "shared_material_members": {"feeding_schedule_id": "production_schedules"},
             "warehouse_receipt_documents": {"transfer_id": "material_transfers"},
             "material_transfer_amendments": {
                 "transfer_id": "material_transfers",

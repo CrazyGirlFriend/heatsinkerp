@@ -18,12 +18,14 @@ from .material_analytics import (
     serial_predicates,
     serial_table,
 )
+from .material_lineage import source_ids_for
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from .models import (
     MaterialLoss,
     MaterialTransfer,
     Team,
+    WarehouseFeedingSource,
     WarehouseLocation,
     WarehousePlacement,
     utcnow,
@@ -190,6 +192,17 @@ def origin_columns(include_team=False, registered=None, task_bindings=None):
     }
 
 
+def withdrawn_from(sources):
+    return or_(
+        mt.source_transfer_id.in_(sources),
+        mt.id.in_(
+            select(WarehouseFeedingSource.transfer_id).where(
+                WarehouseFeedingSource.source_transfer_id.in_(sources)
+            )
+        ),
+    )
+
+
 def warehouse_groups(team_id, filters):
     from .inspections import hold_column
 
@@ -214,13 +227,19 @@ def warehouse_groups(team_id, filters):
         .group_by(WarehousePlacement.transfer_id)
         .subquery()
     )
+    movement_scope = mt.source_team_id == team_id if team_id is not None else True
+    direct = select(mt.source_transfer_id.label("lot_id"), mt.updated_at).where(
+        movement_scope, mt.source_transfer_id.is_not(None), mt.pooled_feeding.is_(False)
+    )
+    portions = (
+        select(WarehouseFeedingSource.source_transfer_id, mt.updated_at)
+        .join(mt, mt.id == WarehouseFeedingSource.transfer_id)
+        .where(movement_scope)
+    )
+    movements = direct.union_all(portions).subquery()
     moves = (
-        select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at"))
-        .where(
-            mt.source_team_id == team_id if team_id is not None else True,
-            mt.source_transfer_id.is_not(None),
-        )
-        .group_by(mt.source_transfer_id)
+        select(movements.c.lot_id, func.max(movements.c.updated_at).label("at"))
+        .group_by(movements.c.lot_id)
         .subquery()
     )
     losses = (
@@ -255,7 +274,7 @@ def warehouse_groups(team_id, filters):
     calendar.dates(mt.received_at)  # Validate the range even for an empty ledger.
     matching_dates = True
     if filters.date_from or filters.date_to:
-        movement_matches = select(mt.source_transfer_id).where(
+        movement_matches = select(mt.id).where(
             mt.source_team_id == team_id if team_id is not None else True,
             or_(
                 *(
@@ -270,7 +289,7 @@ def warehouse_groups(team_id, filters):
         )
         matching_dates = or_(
             and_(*calendar.dates(mt.received_at)),
-            mt.id.in_(movement_matches),
+            mt.id.in_(source_ids_for(movement_matches)),
             mt.id.in_(loss_matches),
         )
     return (
@@ -916,7 +935,7 @@ def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
     conditions = [
         mt.source_team_id == team_id,
         mt.status == "pending",
-        mt.source_transfer_id.in_(sources),
+        withdrawn_from(sources),
     ]
     total = db.scalar(select(func.count()).select_from(mt).where(*conditions)) or 0
     items = (
@@ -949,7 +968,7 @@ def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
         mt.entry_kind.not_in(("processing_output", "rework_split")),
         or_(
             mt.id.in_(sources),
-            and_(mt.source_team_id == team_id, mt.source_transfer_id.in_(sources)),
+            and_(mt.source_team_id == team_id, withdrawn_from(sources)),
         ),
     )
     occurred_at = case(

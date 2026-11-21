@@ -10,6 +10,7 @@ from test_transfer_list_loading import read_statements
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -74,6 +75,7 @@ def test_reused_totals_preserve_scrap_decimal_precision_and_legacy_boundaries(cl
         json={
             "next_team_id": warehouse["team"]["id"],
             "serial_no": "LEGACY-SUMMARY",
+            **select_location(client, warehouse, headers=warehouse["other_headers"]),
             "transfer_specification": "20×10×2 mm",
             "material_type": "finished",
             "quantity": 100,

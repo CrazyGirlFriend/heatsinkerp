@@ -101,6 +101,39 @@ def select_plan(db, lot, payload):
     return selected
 
 
+def split_plan_id(db, member, team_id, index):
+    # The selected task follows this member through common steps before the cut.
+    route = member.process_route
+    end = index
+    while (following := next_index(route, end, member.serial_no)) is not None:
+        if route.steps[following]["team_id"] != team_id:
+            break
+        end = following
+    anchor = member.feeding_schedule
+    if (
+        anchor.team_id == team_id
+        and anchor.process_step_index is not None
+        and index <= anchor.process_step_index <= end
+    ):
+        if anchor.cancelled_at is not None:
+            raise HTTPException(409, f"{member.serial_no} 选择的排期已取消")
+        return anchor.id
+    plan_id = db.scalar(
+        select(Plan.id)
+        .where(
+            Plan.task_id == anchor.task_id,
+            Plan.process_route_id == route.id,
+            Plan.team_id == team_id,
+            Plan.process_step_index.between(index, end),
+            Plan.cancelled_at.is_(None),
+        )
+        .order_by(Plan.process_step_index)
+    )
+    if plan_id is None:
+        raise HTTPException(409, f"{member.serial_no} 的拆料工序没有有效排期，请核对目标排期")
+    return plan_id
+
+
 def bind_outputs(lot, items, selected):
     if items:
         for item in items:

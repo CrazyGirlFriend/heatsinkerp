@@ -9,7 +9,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal, engine
 from app.material_stock import stock_table
-from app.models import MaterialLoss, MaterialStockBalance, MaterialTransfer
+from app.models import MaterialLoss, MaterialStockBalance, MaterialTransfer, WarehouseFeedingSource
 from sqlalchemy import delete, select, update
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
@@ -24,6 +24,7 @@ def reconcile():
             select(
                 MaterialTransfer.id,
                 MaterialTransfer.source_transfer_id,
+                MaterialTransfer.pooled_feeding,
                 MaterialTransfer.next_team_id,
                 MaterialTransfer.status,
                 MaterialTransfer.stock_tracked,
@@ -35,6 +36,15 @@ def reconcile():
         losses = db.execute(
             select(MaterialLoss.source_transfer_id, MaterialLoss.quantity, MaterialLoss.weight)
         ).all()
+        portions = db.execute(
+            select(
+                WarehouseFeedingSource.source_transfer_id,
+                WarehouseFeedingSource.quantity,
+                WarehouseFeedingSource.weight,
+                MaterialTransfer.status,
+                MaterialTransfer.entry_kind,
+            ).join(MaterialTransfer, MaterialTransfer.id == WarehouseFeedingSource.transfer_id)
+        ).all()
         saved = {row.transfer_id: row for row in db.scalars(select(MaterialStockBalance))}
         assert set(saved) == {
             row.id for row in transfers if row.status == "received" and row.stock_tracked
@@ -42,7 +52,12 @@ def reconcile():
         for lot_id, balance in saved.items():
             lot = next(row for row in transfers if row.id == lot_id)
             assert balance.team_id == lot.next_team_id
-            outgoing = [row for row in transfers if row.source_transfer_id == lot_id]
+            outgoing = [
+                row
+                for row in transfers
+                if row.source_transfer_id == lot_id and not row.pooled_feeding
+            ]
+            outgoing.extend(row for row in portions if row.source_transfer_id == lot_id)
             categories = {
                 "received": [lot],
                 "reserved": [row for row in outgoing if row.status == "pending"],

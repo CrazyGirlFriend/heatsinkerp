@@ -32,6 +32,7 @@ const props = withDefaults(
     serialNo?: string
     materialName?: string
     materialType?: string
+    specification?: string
     leaseGroup?: WarehouseLeaseGroup
   }>(),
   { active: true, reservationKey: '', showStockPreview: true },
@@ -57,9 +58,12 @@ const loading = ref(false),
   error = ref('')
 const now = ref(Date.now())
 const material = computed<WarehouseMaterial | undefined>(() =>
-  props.serialNo?.trim() && props.materialName?.trim() && props.materialType
+  props.materialName?.trim() && props.materialType
     ? {
-        serial_no: props.serialNo.trim(),
+        ...(props.serialNo?.trim() ? { serial_no: props.serialNo.trim() } : {}),
+        ...(props.specification !== undefined
+          ? { transfer_specification: props.specification.trim() }
+          : {}),
         material_name: props.materialName.trim(),
         material_type: props.materialType,
       }

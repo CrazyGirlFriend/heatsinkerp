@@ -188,6 +188,7 @@ const form = reactive({
   notes: '',
   reason: '',
 })
+const notesOpen = ref(false)
 const sender = ref<TeamEmployee | null>(null)
 const activeLineKey = ref('')
 const activeLine = computed(
@@ -263,12 +264,27 @@ const warehouseDispatch = computed(
   () => !isLoss.value && externalOption.value === 'warehouse_outbound',
 )
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
-const useFeeding = ref(false)
-const feedingPlan = ref<components['schemas']['FeedingOption']>()
-const canFeed = computed(
+const warehouseMaterialTable = computed(() => sourceWarehouse.value && !isLoss.value)
+type FeedingPlan = components['schemas']['FeedingOption']
+let nextTargetKey = 0
+const feedingRows = ref<{ key: number; plan?: FeedingPlan; sourceKey?: string }[]>([])
+const separateFeeding = computed(() => feedingRows.value[0]?.sourceKey !== undefined)
+function feedingSource(line: (typeof lines.value)[number]) {
+  return line.source.transfer.serial_no || line.source.transfer.batch_no
+}
+const feedingSources = computed(() => [...new Set(lines.value.map(feedingSource))])
+function switchFeeding() {
+  feedingRows.value = separateFeeding.value
+    ? [{ key: ++nextTargetKey }]
+    : feedingSources.value.map((sourceKey) => ({ key: ++nextTargetKey, sourceKey }))
+}
+const feedingPlans = computed(() =>
+  feedingRows.value.flatMap((row) => (row.plan ? [row.plan] : [])),
+)
+const feeding = computed(
   () =>
-    sourceWarehouse.value &&
-    !isLoss.value &&
+    !props.initialSchedule &&
+    warehouseMaterialTable.value &&
     !external.value &&
     lines.value.length > 0 &&
     lines.value.every(
@@ -281,7 +297,6 @@ const canFeed = computed(
         (!lot.process_route || lot.process_route.complete),
     ),
 )
-const feeding = computed(() => canFeed.value && useFeeding.value)
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const dialogTitle = computed(() =>
   isLoss.value
@@ -322,7 +337,12 @@ function lineNextTeamId(line: (typeof lines.value)[number]) {
 }
 const routeDestination = computed(() => {
   if (isLoss.value || external.value) return
-  if (feeding.value) return { teamId: feedingPlan.value?.team_id ?? '', error: '' }
+  if (feeding.value) {
+    const teamIds = new Set(feedingPlans.value.map((plan) => plan.team_id))
+    if (!separateFeeding.value && teamIds.size > 1)
+      return { teamId: '', error: '共投排期须由同一班组接收' }
+    return { teamId: feedingPlans.value[0]?.team_id ?? '', error: '' }
+  }
   const targets = lines.value.flatMap<number | null | undefined>((line) => {
     if (isScrapType(line.materialType)) return []
     if (line.shared) {
@@ -619,11 +639,24 @@ const validation = useDialogValidation(() => {
   if (!isLoss.value && !external.value) {
     if (routeDestination.value?.error) issues.nextTeamId = routeDestination.value.error
     else if (!destinationTeam.value)
-      issues.nextTeamId = routeDestination.value ? '请先确认各批次的工艺' : '请选择接收班组'
+      issues.nextTeamId = feeding.value
+        ? '请选择加工排期'
+        : routeDestination.value
+          ? '请先确认各批次的工艺'
+          : '请选择接收班组'
   }
   if (form.notes.trim().length > 2000) issues.notes = '内容过长'
   if (isLoss.value && form.reason.trim().length > 2000) issues.reason = '内容过长'
-  if (feeding.value && !feedingPlan.value) issues.feeding = '请选择目标流水号和加工排期'
+  if (feeding.value) {
+    const serials = new Set<string>()
+    for (const row of feedingRows.value) {
+      const serial = row.plan?.serial_no.toLowerCase()
+      if (!serial) issues[`feeding.${row.key}`] = '请选择目标流水号和加工排期'
+      else if (!separateFeeding.value && serials.has(serial))
+        issues[`feeding.${row.key}`] = '共投流水号不能重复'
+      else serials.add(serial)
+    }
+  }
   for (const line of lines.value) {
     const add = (field: string, message: string) => {
       issues[`${line.key}.${field}`] = message
@@ -734,10 +767,7 @@ watch(
       line.percent = line.source.transfer.sludge_content_percent ?? undefined
       if (!isLoss.value) fillAll(index)
     })
-    feedingPlan.value = undefined
-    useFeeding.value =
-      !props.initialSchedule &&
-      new Set(props.sources.map(({ transfer }) => transfer.serial_no).filter(Boolean)).size > 1
+    feedingRows.value = [{ key: ++nextTargetKey }]
     validation.reset()
     form.manualNextTeamId = ''
     form.entryKind = 'transfer'
@@ -750,6 +780,7 @@ watch(
         form.externalDestination = props.initialSchedule.external_destination
       }
     }
+    notesOpen.value = !isLoss.value
     form.notes = ''
     form.reason = ''
     sender.value = null
@@ -783,8 +814,8 @@ const {
       : undefined
   },
 )
-function selectFeedingPlan(plan?: components['schemas']['FeedingOption']) {
-  feedingPlan.value = plan
+function selectFeedingPlan(row: (typeof feedingRows.value)[number], plan?: FeedingPlan) {
+  row.plan = plan
   if (plan) scheduleError.value = ''
 }
 const scheduleEstimates = computed(() => {
@@ -970,21 +1001,46 @@ async function submit() {
     weight: Number(first.weight),
     reason: form.reason.trim(),
   }
+  const assignments = new Map<number, components['schemas']['FeedingAssignment']>()
+  if (feeding.value && separateFeeding.value) {
+    for (const row of feedingRows.value) {
+      const { serial_no, schedule_id, route_id, route_version, team_id } = row.plan!
+      const group = assignments.get(schedule_id) || {
+        target: { serial_no, schedule_id, route_id, route_version },
+        next_team_id: team_id,
+        source_transfer_ids: [],
+      }
+      group.source_transfer_ids.push(
+        ...new Set(
+          lines.value
+            .filter((line) => feedingSource(line) === row.sourceKey)
+            .map((line) => Number(line.source.transfer.id)),
+        ),
+      )
+      assignments.set(schedule_id, group)
+    }
+  }
+  const targets =
+    feeding.value && !separateFeeding.value
+      ? feedingPlans.value.map(({ serial_no, schedule_id, route_id, route_version }) => ({
+          serial_no,
+          schedule_id,
+          route_id,
+          route_version,
+        }))
+      : []
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = {
     sent_employee_id: sender.value?.id ?? 0,
-    ...(feeding.value && feedingPlan.value
-      ? {
-          feeding_target: {
-            serial_no: feedingPlan.value.serial_no,
-            schedule_id: feedingPlan.value.schedule_id,
-            route_id: feedingPlan.value.route_id,
-            route_version: feedingPlan.value.route_version,
-          },
-        }
-      : {}),
+    ...(targets.length > 1
+      ? { feeding_targets: targets }
+      : targets.length
+        ? { feeding_target: targets[0] }
+        : {}),
     ...(isExternalEntryKind(form.entryKind)
       ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() }
-      : { next_team_id: Number(form.nextTeamId) }),
+      : assignments.size
+        ? { feeding_assignments: [...assignments.values()] }
+        : { next_team_id: Number(form.nextTeamId) }),
     notes: form.notes.trim() || null,
     lines: lines.value.map((line) => ({
       ...(warehouse.value && line.warehouseLocation
@@ -1135,10 +1191,11 @@ const attachmentItems = computed(() => {
   if (!props.modelValue || isLoss.value || !line || isScrapType(line.materialType)) return []
   const lot = line.source.transfer
   if (feeding.value) {
-    const plan = feedingPlan.value
-    return plan
-      ? [{ serialNo: plan.serial_no, routeId: plan.route_id, scheduleTaskId: plan.task_id }]
-      : []
+    return feedingPlans.value.map((plan) => ({
+      serialNo: plan.serial_no,
+      routeId: plan.route_id,
+      scheduleTaskId: plan.task_id,
+    }))
   }
   if (line.shared) {
     const member = line.sharedMembers[line.activeMember ?? 0]
@@ -1155,6 +1212,7 @@ const attachmentItems = computed(() => {
     return lot.shared_serials.map((member) => ({
       serialNo: member.serial_no,
       routeId: member.process_route_id,
+      scheduleTaskId: member.schedule_task_id,
     }))
   if (needsRoute(line) && line.serialNo.trim() && !line.selectedRoute) return []
   return [
@@ -1278,81 +1336,135 @@ watch(
             }}</ElRadioButton>
           </ElRadioGroup>
         </div>
-        <div v-if="canFeed" class="dispatch-mode">
-          <WatermelonSegmented
-            label="投料方式"
-            :model-value="feeding ? 'target' : 'original'"
-            :options="[
-              { value: 'original', label: '按原流水号', disabled: busy || !canWrite },
-              { value: 'target', label: '按目标排期投料', disabled: busy || !canWrite },
-            ]"
-            @change="useFeeding = $event === 'target'"
+        <CompactFormSection v-if="feeding && modelValue" title="投料排期">
+          <template #actions>
+            <ElButton v-if="feedingSources.length > 1" size="small" @click="switchFeeding">
+              {{ separateFeeding ? '统一指定目标' : '分别指定目标' }}
+            </ElButton>
+            <ElButton
+              v-if="
+                !separateFeeding &&
+                lines.every((line) => line.source.transfer.receipt_kind !== 'return')
+              "
+              size="small"
+              :disabled="feedingRows.length >= 20"
+              @click="feedingRows.push({ key: ++nextTargetKey })"
+            >
+              {{ feedingRows.length > 1 ? '增加流水号' : '共投' }}
+            </ElButton>
+          </template>
+          <WarehouseFeedingFields
+            v-for="(row, index) in feedingRows"
+            :key="row.key"
+            :position="index + 1"
+            :removable="!separateFeeding && feedingRows.length > 1"
+            :source-label="row.sourceKey"
+            class="form-field--full"
+            :team-id="teamId"
+            :error="fieldErrors[`feeding.${row.key}`]"
+            :refresh="scheduleRefresh"
+            @select="selectFeedingPlan(row, $event)"
+            @remove="feedingRows.splice(index, 1)"
           />
-        </div>
-        <WarehouseFeedingFields
-          v-if="feeding && modelValue"
-          :team-id="teamId"
-          :quantity="totalQuantity"
-          :weight="totalWeight"
-          :error="fieldErrors.feeding"
-          :refresh="scheduleRefresh"
-          @select="selectFeedingPlan"
-        />
-        <div class="source-lines" :class="{ 'dispatch-lines': !isLoss }">
+        </CompactFormSection>
+        <component
+          :is="warehouseMaterialTable ? CompactFormSection : 'div'"
+          :title="warehouseMaterialTable ? '转出物料' : undefined"
+          class="source-lines"
+          :class="{ 'dispatch-lines': !isLoss, 'warehouse-materials': warehouseMaterialTable }"
+        >
+          <template v-if="feeding" #actions>
+            <span class="dialog-field-hint"
+              >本次投料
+              <strong
+                >{{ formatAmount(totalQuantity) }} 件 / {{ formatAmount(totalWeight) }} kg</strong
+              ></span
+            >
+          </template>
+          <div
+            v-if="warehouseMaterialTable"
+            class="materials-head form-field--full"
+            aria-hidden="true"
+          >
+            <span>流水号</span><span>账面库存</span><span>出库件数</span><span>出库重量</span>
+          </div>
           <article
             v-for="(line, index) in lines"
             :key="line.key"
-            class="source-line"
+            class="source-line form-field--full"
             @focusin="activeLineKey = line.key"
             @pointerdown.capture="activeLineKey = line.key"
           >
             <header>
-              <div class="source-identity">
-                <span v-if="lines.length > 1" class="source-index">{{
-                  String(index + 1).padStart(2, '0')
-                }}</span>
-                <strong>{{
-                  line.source.transfer.serial_no || line.source.transfer.shared_unallocated
-                    ? sharedSerialLabel(line.source.transfer)
-                    : line.source.transfer.batch_no
-                }}</strong
-                ><span class="source-material">{{
-                  line.source.transfer.material_name || '未填写材质'
-                }}</span>
-                <WatermelonBadge
-                  v-if="
-                    !isLoss && (sourceWarehouse || line.source.transfer.material_type === 'sludge')
-                  "
-                  tone="info"
+              <div v-if="warehouseMaterialTable" class="warehouse-serial">
+                <ElFormItem
+                  v-if="needsRoute(line) && !line.source.transfer.serial_no"
+                  label="流水号"
+                  :error="lineError(line, 'route')"
+                  required
                 >
-                  {{ materialTypeLabel(line.source.transfer.material_type) }}
-                </WatermelonBadge>
-                <ProcessingStockStatus
-                  v-if="
-                    isProcessingTeamCode(line.source.transfer.next_team.code) &&
-                    line.latest?.processing_state
-                  "
-                  :state="line.latest.processing_state"
-                  :material-type="line.source.transfer.material_type"
-                />
+                  <MaterialInput
+                    v-model="line.serialNo"
+                    field="serial_no"
+                    aria-label="出库流水号"
+                    label="出库流水号"
+                    :disabled="busy"
+                    placeholder="输入或选择流水号"
+                  />
+                </ElFormItem>
+                <strong v-else>{{ sharedSerialLabel(line.source.transfer) }}</strong>
               </div>
-              <div class="source-meta">
-                <span v-if="line.source.transfer.is_outsourced">外委产品</span>
-                <span v-if="line.source.transfer.task_batch_number && !lineSchedules(line).length">
-                  排期批次 {{ formatScheduleBatch(line.source.transfer) }}
-                </span>
-                <span
-                  v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
-                  >批次 {{ line.source.transfer.batch_no }}</span
-                >
-                <span>来自 {{ line.source.transfer.source_team.name }}</span
-                ><span v-if="line.source.transfer.purpose_name"
-                  >业务 {{ line.source.transfer.purpose_name }}</span
-                ><span v-if="line.source.transfer.source_batch_no"
-                  >原单批号 {{ line.source.transfer.source_batch_no }}</span
-                ><span v-if="sourceWarehouse"
-                  >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
-                >
+              <div v-else class="source-description">
+                <div class="source-identity">
+                  <span v-if="lines.length > 1" class="source-index">{{
+                    String(index + 1).padStart(2, '0')
+                  }}</span>
+                  <strong>{{
+                    line.source.transfer.serial_no || line.source.transfer.shared_unallocated
+                      ? sharedSerialLabel(line.source.transfer)
+                      : line.source.transfer.batch_no
+                  }}</strong
+                  ><span class="source-material">{{
+                    line.source.transfer.material_name || '未填写材质'
+                  }}</span>
+                  <WatermelonBadge
+                    v-if="
+                      !isLoss &&
+                      (sourceWarehouse || line.source.transfer.material_type === 'sludge')
+                    "
+                    tone="info"
+                  >
+                    {{ materialTypeLabel(line.source.transfer.material_type) }}
+                  </WatermelonBadge>
+                  <ProcessingStockStatus
+                    v-if="
+                      isProcessingTeamCode(line.source.transfer.next_team.code) &&
+                      line.latest?.processing_state
+                    "
+                    :state="line.latest.processing_state"
+                    :material-type="line.source.transfer.material_type"
+                  />
+                </div>
+                <div class="source-meta">
+                  <span v-if="line.source.transfer.is_outsourced">外委产品</span>
+                  <span
+                    v-if="line.source.transfer.task_batch_number && !lineSchedules(line).length"
+                  >
+                    排期批次 {{ formatScheduleBatch(line.source.transfer) }}
+                  </span>
+                  <span
+                    v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
+                    >批次 {{ line.source.transfer.batch_no }}</span
+                  >
+                  <span>来自 {{ line.source.transfer.source_team.name }}</span
+                  ><span v-if="line.source.transfer.purpose_name"
+                    >业务 {{ line.source.transfer.purpose_name }}</span
+                  ><span v-if="line.source.transfer.source_batch_no"
+                    >原单批号 {{ line.source.transfer.source_batch_no }}</span
+                  ><span v-if="sourceWarehouse"
+                    >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
+                  >
+                </div>
               </div>
               <div class="source-balance">
                 <span>账面库存</span>
@@ -1363,7 +1475,7 @@ watch(
                   :weight="dispatchableAmounts(line.latest).weight"
                 />
                 <ElButton
-                  v-if="!isLoss"
+                  v-if="!isLoss && !warehouseMaterialTable"
                   size="small"
                   link
                   :disabled="!line.latest"
@@ -1371,7 +1483,7 @@ watch(
                   >全部填入</ElButton
                 >
               </div>
-              <div class="source-actions">
+              <div v-if="!warehouseMaterialTable" class="source-actions">
                 <ElButton
                   v-if="isLoss"
                   size="small"
@@ -1381,19 +1493,8 @@ watch(
                   @click="fillAll(index)"
                   >全部填入</ElButton
                 >
-                <ElButton
-                  v-if="canShare(line) || line.shared"
-                  size="small"
-                  :aria-pressed="line.shared"
-                  :disabled="busy"
-                  @click="toggleShared(line)"
-                  >{{ line.shared ? '取消共投' : '共投' }}</ElButton
-                >
                 <AppPopover
-                  v-if="
-                    !isLoss &&
-                    (!sourceWarehouse || !line.source.transfer.serial_no || lines.length > 1)
-                  "
+                  v-if="!isLoss"
                   :visible="activeActions === line.key"
                   @update:visible="setLineActions(line.key, $event)"
                   trigger="click"
@@ -1415,7 +1516,6 @@ watch(
                   </template>
                   <div class="source-action-menu" @click="activeActions = ''">
                     <ElButton
-                      v-if="!isLoss && (!sourceWarehouse || !line.source.transfer.serial_no)"
                       link
                       type="primary"
                       :disabled="lines.length >= 100"
@@ -1638,22 +1738,6 @@ watch(
               }"
             >
               <ElFormItem
-                v-if="needsRoute(line) && !line.source.transfer.serial_no"
-                class="source-serial-field"
-                label="流水号"
-                :error="lineError(line, 'route')"
-                required
-              >
-                <MaterialInput
-                  v-model="line.serialNo"
-                  field="serial_no"
-                  aria-label="出库流水号"
-                  label="出库流水号"
-                  :disabled="busy"
-                  placeholder="输入或选择流水号"
-                />
-              </ElFormItem>
-              <ElFormItem
                 class="source-quantity-field"
                 v-if="!isWeightOnlyType(line.materialType)"
                 :label="isLoss ? '丢失件数' : `${actionLabel}件数`"
@@ -1750,7 +1834,12 @@ watch(
                 /></ElSelect>
               </ElFormItem>
               <div
-                v-if="lineSchedules(line).length === 1 || scheduleEstimates[line.key]"
+                v-if="
+                  lineSchedules(line).length === 1 ||
+                  scheduleEstimates[line.key] ||
+                  canShare(line) ||
+                  line.shared
+                "
                 class="dispatch-schedule-row dialog-field-wide"
               >
                 <span
@@ -1784,6 +1873,15 @@ watch(
                     >本次转出后 <b>{{ scheduleEstimates[line.key].estimate }}</b></span
                   >
                 </p>
+                <ElButton
+                  v-if="canShare(line) || line.shared"
+                  size="small"
+                  link
+                  :aria-pressed="line.shared"
+                  :disabled="busy"
+                  @click="toggleShared(line)"
+                  >{{ line.shared ? '取消共投' : '共投' }}</ElButton
+                >
               </div>
               <ElFormItem
                 v-if="
@@ -1807,7 +1905,7 @@ watch(
                     :value="type.value" /></ElSelect
               ></ElFormItem>
               <AppDisclosure
-                v-if="!isLoss && !isScrapType(line.materialType)"
+                v-if="!isLoss && !sourceWarehouse && !isScrapType(line.materialType)"
                 class="source-specification-field"
                 v-model:open="line.specificationOpen"
               >
@@ -1850,6 +1948,7 @@ watch(
                   :serial-no="line.serialNo.trim()"
                   :material-name="line.source.transfer.material_name || ''"
                   :material-type="line.materialType"
+                  :specification="line.specification ?? undefined"
                   :lease-group="locationLeases"
                   :active="modelValue"
                   :disabled="busy || !canWrite"
@@ -1873,7 +1972,7 @@ watch(
               @update:reason="clearanceReasons[item.id] = $event"
             />
           </article>
-        </div>
+        </component>
         <div :class="{ 'dispatch-context': !isLoss }">
           <CompactFormSection v-if="!isLoss" title="收发信息" class="dispatch-context-fields">
             <ElFormItem
@@ -1919,11 +2018,17 @@ watch(
               required
               class="destination-field form-field--long"
             >
-              <span v-if="routeDestination" class="dialog-readonly" role="status">{{
+              <span v-if="feeding && separateFeeding" class="dialog-readonly" role="status">{{
+                [...new Set(feedingPlans.map((plan) => plan.team_name))].join(' / ') ||
+                '选择加工排期后带出'
+              }}</span>
+              <span v-else-if="routeDestination" class="dialog-readonly" role="status">{{
                 routeDestination.error ||
                 (destinationTeam
                   ? teamWorkspaceProfile(destinationTeam.code)?.name || destinationTeam.name
-                  : '填写流水号后按工艺带出')
+                  : feeding
+                    ? '选择加工排期后带出'
+                    : '填写流水号后按工艺带出')
               }}</span>
               <ElSelect
                 v-else
@@ -1939,7 +2044,7 @@ watch(
               /></ElSelect>
             </ElFormItem>
           </CompactFormSection>
-          <AppDisclosure class="action-notes-section">
+          <AppDisclosure v-model:open="notesOpen" class="action-notes-section">
             <template #summary>
               <span>
                 {{
@@ -2259,10 +2364,8 @@ watch(
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--form-field-gap);
 }
-.source-inputs-dispatch > :is(.source-serial-field, .source-specification-field) {
-  grid-column: 1 / -1;
-}
 .source-inputs-dispatch > .source-specification-field {
+  grid-column: 1 / -1;
   padding-top: 8px;
   border-top: 1px solid var(--line-light);
 }
@@ -2483,6 +2586,82 @@ watch(
   .source-balance {
     margin-left: 0;
     flex-basis: 100%;
+  }
+}
+.source-description {
+  display: contents;
+}
+.warehouse-serial {
+  grid-area: identity;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.warehouse-materials {
+  display: block;
+  margin-top: 16px;
+  border: 0;
+}
+.materials-head {
+  display: none;
+}
+@container form-fields (min-width: 690px) {
+  .warehouse-materials {
+    --material-columns: clamp(110px, 15%, 150px) clamp(112px, 16%, 160px) minmax(144px, 1fr)
+      minmax(184px, 1.35fr);
+  }
+
+  .warehouse-materials .materials-head,
+  .warehouse-materials .source-line {
+    display: grid;
+    grid-template-columns: subgrid;
+    column-gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+  }
+  .warehouse-materials > :deep(.compact-form-grid) {
+    grid-template-columns: var(--material-columns);
+    gap: 0 12px;
+  }
+  .warehouse-materials .materials-head {
+    background: var(--table-header-bg);
+    color: var(--muted);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
+  }
+  .warehouse-materials .source-line + .source-line {
+    padding-top: 10px;
+    border-color: var(--line-light);
+  }
+  .warehouse-materials .source-line > header,
+  .warehouse-materials .source-inputs-dispatch {
+    display: contents;
+  }
+  .warehouse-materials .warehouse-serial {
+    grid-area: 1 / 1;
+  }
+  .warehouse-materials :is(.warehouse-serial, .materials-head > :first-child) {
+    padding-left: 10px;
+  }
+  .warehouse-materials .source-balance > span:first-child,
+  .warehouse-materials
+    :is(.source-quantity-field, .source-weight-field)
+    :deep(.el-form-item__label) {
+    display: none;
+  }
+  .warehouse-materials .source-balance {
+    grid-area: 1 / 2;
+    margin: 0;
+    justify-self: start;
+  }
+  .warehouse-materials .source-quantity-field {
+    grid-area: 1 / 3;
+  }
+  .warehouse-materials .source-weight-field {
+    grid-area: 1 / 4;
+  }
+  .warehouse-materials .source-inputs-dispatch > :not(.source-quantity-field, .source-weight-field),
+  .warehouse-materials .source-line > :not(header, .source-inputs-dispatch) {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 640px) {

@@ -52,6 +52,7 @@ class LeaseRequest(BaseModel):
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
     material_name: str | None = Field(default=None, min_length=1, max_length=160)
     material_type: str | None = Field(default=None, min_length=1, max_length=40)
+    transfer_specification: str | None = Field(default=None, max_length=240)
 
 
 def material_identity(value):
@@ -109,6 +110,9 @@ def place_stock(db, location_id, payload, user):
             )
             if payload.quantity > free_q or payload.weight > free_w:
                 raise HTTPException(409, "未分配仓位的库存已变化，请刷新后重试")
+            from .warehouse_placements import require_slot_material
+
+            require_slot_material(db.connection(), location.id, lot)
             placement = db.get(WarehousePlacement, (location.id, lot.id))
             if placement:
                 placement.quantity += payload.quantity
@@ -201,6 +205,7 @@ def occupants(db, ids, *, locking=False):
             Transfer.shared_unallocated,
             Transfer.material_name,
             Transfer.material_type,
+            Transfer.transfer_specification,
             Transfer.status,
             Transfer.created_at,
             Transfer.received_at,
@@ -277,6 +282,7 @@ def list_locations(
     available_only=False,
     selected=None,
     identity=None,
+    specification=None,
     state=None,
 ):
     from .material_stock import literal_query
@@ -296,6 +302,45 @@ def list_locations(
         # draft locks. Reservation still checks ownership when a slot is chosen.
         active = WarehouseLocation.active.is_(True)
         conditions.append(or_(active, WarehouseLocation.name == selected) if selected else active)
+    if available_only and identity:
+        _, material_name, material_type = identity
+        mismatches = [
+            func.coalesce(column, "") != value
+            for column, value in (
+                (Transfer.material_name, material_name),
+                (Transfer.material_type, material_type),
+            )
+            if value
+        ]
+        if specification is not None:
+            from .warehouse_placements import physical_value
+
+            spec = func.coalesce(Transfer.transfer_specification, "")
+            sizes = db.scalars(
+                select(spec)
+                .select_from(WarehousePlacement)
+                .join(Transfer, Transfer.id == WarehousePlacement.transfer_id)
+                .distinct()
+            )
+            requested = physical_value("transfer_specification", specification)
+            allowed = [
+                value
+                for value in sizes
+                if physical_value("transfer_specification", value) == requested
+            ]
+            mismatches.append(spec.not_in(allowed))
+        if mismatches:
+            occupied_by_another_material = (
+                select(WarehousePlacement.transfer_id)
+                .join(Transfer, Transfer.id == WarehousePlacement.transfer_id)
+                .where(
+                    WarehousePlacement.location_id == WarehouseLocation.id,
+                    or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+                    or_(*mismatches),
+                )
+                .exists()
+            )
+            conditions.append(~occupied_by_another_material)
     if query and query.strip():
         material_match = (
             select(WarehousePlacement.transfer_id)
@@ -384,7 +429,7 @@ def clear_lease(location):
     location.reserved_deadline = None
 
 
-def reserve(db, location_id, key, user, identity=None):
+def reserve(db, location_id, key, user, identity=None, specification=None):
     from .material_stock import _db_conflict
     from .material_transfer_workflow import _require_team_actor
 
@@ -399,6 +444,20 @@ def reserve(db, location_id, key, user, identity=None):
             same = location.reservation_key == key and location.reserved_by_user_id == user.id
             if leased(location) and not same:
                 raise HTTPException(409, "该仓位已被其他表单锁定，请重新选择仓位")
+            if identity and (any(identity[1:]) or specification is not None):
+                from .warehouse_placements import physical_value
+
+                for row in occupants(db, [location_id], locking=True):
+                    if specification is not None and physical_value(
+                        "transfer_specification", row["transfer_specification"]
+                    ) != physical_value("transfer_specification", specification):
+                        raise HTTPException(409, "同一仓位物料的尺寸不一致")
+                    for field, label, value in (
+                        ("material_name", "材质", identity[1]),
+                        ("material_type", "物料类型", identity[2]),
+                    ):
+                        if value and value != row[field]:
+                            raise HTTPException(409, f"同一仓位物料的{label}不一致")
             # These lease columns store whole seconds in MySQL. Floor before
             # returning a deadline so a reread cannot round it up on heartbeat.
             now = utcnow().replace(microsecond=0)
@@ -555,7 +614,14 @@ def edit(*, location_id: int, payload: LocationWrite, user: User, db: Session):
 
 
 def claim(*, location_id: int, payload: LeaseRequest, user: User, db: Session):
-    return reserve(db, location_id, payload.key, user, material_identity(payload))
+    return reserve(
+        db,
+        location_id,
+        payload.key,
+        user,
+        material_identity(payload),
+        payload.transfer_specification,
+    )
 
 
 def assign(*, location_id: int, payload: PlacementWrite, user: User, db: Session):

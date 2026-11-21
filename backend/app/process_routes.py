@@ -346,7 +346,7 @@ def processing_fields(lot, index):
     }
 
 
-def finish_processing(lot, payload, index, outputs):
+def finish_processing(db, lot, payload, index, outputs):
     if index is None:
         if lot.process_route_id:
             for child in outputs:
@@ -392,6 +392,12 @@ def finish_processing(lot, payload, index, outputs):
                 if member.process_route_id:
                     child.process_route = member.process_route
                     child.process_route_id = member.process_route_id
+                if member.feeding_schedule_id:
+                    from .processing_schedules import split_plan_id
+
+                    child.processing_schedule_id = split_plan_id(
+                        db, member, lot.next_team_id, index
+                    )
     elif payload.processing_status == "complete":
         lot.process_step_index, lot.process_step_complete = index, True
         if (

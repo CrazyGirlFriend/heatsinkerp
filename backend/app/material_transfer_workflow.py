@@ -25,6 +25,7 @@ from .models import (
     Team,
     TeamEmployee,
     User,
+    WarehouseFeedingSource,
     utcnow,
 )
 from .schemas import SCRAP_MATERIAL_TYPES, MaterialTransferDocumentFields
@@ -146,13 +147,18 @@ def _record_event(db, transfer, user, action, before=None, *, flush=True, stock_
         for field, value in _snapshot(transfer).items()
         if previous.get(field) != value
     }
-    if transfer.source_transfer_id is not None and action in {
-        "created",
-        "updated",
-        "voided",
-        "dispatched",
-        "reallocated",
-    }:
+    if (
+        transfer.source_transfer_id is not None
+        and not transfer.pooled_feeding
+        and action
+        in {
+            "created",
+            "updated",
+            "voided",
+            "dispatched",
+            "reallocated",
+        }
+    ):
         from .material_stock import available_locked
 
         quantity, weight = (
@@ -237,10 +243,12 @@ def validate_material_route(source_type, material_type, target, entry_kind, note
 
 
 def _locked_transfer(db, batch_no: str) -> MaterialTransfer:
-    source_id = db.scalar(
-        select(MaterialTransfer.source_transfer_id).where(MaterialTransfer.batch_no == batch_no)
-    )
-    if source_id is not None:
+    from .material_lineage import source_ids_for
+
+    sources = db.scalars(
+        source_ids_for(select(MaterialTransfer.id).where(MaterialTransfer.batch_no == batch_no))
+    ).all()
+    for source_id in sorted(key for key in sources if key is not None):
         # Lock the received source before the outbound line, like new dispatch
         # and loss creation. Deductions later use current/locking reads.
         from .material_stock import lock_lot
@@ -335,6 +343,10 @@ def material_transfer_list_options(*, include_history=False):
     # Lists need only the immediate source's identity, not its own relationships.
     # All joins are scalar/unique, so they preserve page limits and row counts.
     return (
+        selectinload(MaterialTransfer.feeding_sources)
+        .joinedload(WarehouseFeedingSource.source)
+        .load_only(MaterialTransfer.batch_no, MaterialTransfer.serial_no)
+        .raiseload("*"),
         selectinload(MaterialTransfer.process_route),
         joinedload(MaterialTransfer.urgency),
         joinedload(MaterialTransfer.delivery_origin)
@@ -366,6 +378,7 @@ def material_transfer_dict(
     from .shared_material import document as shared_document
 
     locked_at = transfer.received_at or transfer.dispatched_at or transfer.voided_at
+    parts = transfer.feeding_sources if transfer.pooled_feeding else ()
     return {
         "id": transfer.id,
         "batch_no": transfer.batch_no,
@@ -397,21 +410,39 @@ def material_transfer_dict(
         "version": transfer.version,
         "stock_tracked": transfer.stock_tracked,
         "source_transfer_id": transfer.source_transfer_id,
-        "source_transfer_batch_no": transfer.stock_source.batch_no
+        "feeding_sources": [
+            {
+                "source_transfer_id": part.source_transfer_id,
+                "batch_no": part.source.batch_no,
+                "serial_no": part.source.serial_no,
+                "quantity": part.quantity,
+                "weight": float(part.weight),
+            }
+            for part in parts
+        ],
+        "source_transfer_batch_no": " / ".join(part.source.batch_no for part in parts)
+        if parts
+        else transfer.stock_source.batch_no
         if transfer.source_transfer_id
         else None,
-        "source_serial_no": transfer.stock_source.serial_no
+        "source_serial_no": " / ".join(
+            dict.fromkeys(part.source.serial_no for part in parts if part.source.serial_no)
+        )
+        if parts
+        else transfer.stock_source.serial_no
         if transfer.source_transfer_id
         and (
             transfer.entry_kind == "serial_reallocation"
             or (
                 transfer.entry_kind == "transfer"
                 and transfer.source_team_code == WAREHOUSE_TEAM_CODE
-                and transfer.processing_schedule_id is not None
             )
         )
         else None,
         "dispatch_no": transfer.dispatch.dispatch_no if transfer.dispatch_id else None,
+        "warehouse_dispatch_id": transfer.dispatch_id
+        if transfer.entry_kind == "transfer" and transfer.source_team_code == WAREHOUSE_TEAM_CODE
+        else None,
         "loss_records": [material_loss_dict(loss) for loss in transfer.losses]
         if include_history
         else [],
@@ -628,6 +659,8 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         if quantity == 0 and weight == 0:
             raise HTTPException(422, "quantity or weight must be positive")
         amounts_changed = quantity != transfer.quantity or weight != transfer.weight
+        if amounts_changed and transfer.pooled_feeding:
+            raise HTTPException(422, "合批转料须按来源登记数量，请作废后重新出库")
         clearance = payload.quantity_clearance
         if clearance is not None and (not transfer.source_transfer_id or not amounts_changed):
             raise HTTPException(422, "剩余件数清零必须随来源批次的最后一次出库修改一起提交")
@@ -654,12 +687,14 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     422,
                     "a stock-linked batch's destination cannot be changed; void this batch and recreate",
                 )
-            available = available_locked(db, transfer.stock_source, exclude_transfer_id=transfer.id)
             if quantity > transfer.quantity or weight > transfer.weight:
                 from .inspections import require_clear
 
                 require_clear(db, transfer.source_transfer_id)
             if amounts_changed:
+                available = available_locked(
+                    db, transfer.stock_source, exclude_transfer_id=transfer.id
+                )
                 validate_outbound_clearance(
                     transfer.stock_source, quantity, weight, available, clearance
                 )
@@ -809,65 +844,67 @@ def _check_receipt_location(transfer, payload, *, replay=False):
         raise _conflict("同一接收请求的仓位不一致，请刷新单据")
 
 
+def confirm_locked_receipt(db, transfer, payload, user):
+    _assert_receiver(user, transfer)
+    _check_receipt_location(transfer, payload)
+    if (
+        transfer.status == "received"
+        and transfer.receipt_idempotency_key == payload.idempotency_key
+    ):
+        _check_receipt_location(transfer, payload, replay=True)
+        return
+    key_owner = db.scalar(
+        select(MaterialTransfer.id).where(
+            MaterialTransfer.receipt_idempotency_key == payload.idempotency_key
+        )
+    )
+    if key_owner is not None and key_owner != transfer.id:
+        raise _conflict("idempotency key was used for another receipt")
+    if transfer.status != "pending":
+        raise _conflict("only a pending transfer can be confirmed")
+    _assert_version(transfer, payload)
+    if transfer.rejection_reason is not None:
+        raise _conflict("该明细已退回核对，须上序修改后再接收")
+    _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
+    validate_material_route(
+        transfer.stock_source.material_type if transfer.source_transfer_id else None,
+        transfer.material_type,
+        transfer.next_team,
+        transfer.entry_kind,
+        transfer.notes,
+    )
+    before = _snapshot(transfer)
+    now = utcnow()
+    if "warehouse_location" in payload.model_fields_set:
+        if transfer.warehouse_location:
+            if payload.warehouse_location != transfer.warehouse_location:
+                raise _conflict("转料单已锁定仓位，不能在签收时更换")
+        elif payload.warehouse_location:
+            from .warehouse_locations import consume, material_identity
+
+            transfer.warehouse_location = consume(
+                db, transfer.next_team, payload, user, identity=material_identity(transfer)
+            )
+    employee = require_team_employee(db, transfer.next_team_id, payload.received_employee_id)
+    transfer.received_employee_id = employee.id
+    transfer.received_employee_name = employee.name
+    transfer.status = "received"
+    transfer.stock_tracked = True
+    transfer.received_by = actor_name(user)
+    transfer.received_by_user_id = user.id
+    transfer.receipt_idempotency_key = payload.idempotency_key
+    transfer.received_at = now
+    transfer.updated_at = now
+    transfer.version += 1
+    db.flush()
+    _record_event(db, transfer, user, "received", before)
+
+
 def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     try:
         with db.begin():
             transfer = _locked_transfer(db, batch_no)
-            _assert_receiver(user, transfer)
-            _check_receipt_location(transfer, payload)
-            if (
-                transfer.status == "received"
-                and transfer.receipt_idempotency_key == payload.idempotency_key
-            ):
-                _check_receipt_location(transfer, payload, replay=True)
-                return with_schedule(db, [material_transfer_dict(transfer, user)])[0]
-            key_owner = db.scalar(
-                select(MaterialTransfer.id).where(
-                    MaterialTransfer.receipt_idempotency_key == payload.idempotency_key
-                )
-            )
-            if key_owner is not None and key_owner != transfer.id:
-                raise _conflict("idempotency key was used for another receipt")
-            if transfer.status != "pending":
-                raise _conflict("only a pending transfer can be confirmed")
-            _assert_version(transfer, payload)
-            if transfer.rejection_reason is not None:
-                raise _conflict("该明细已退回核对，须上序修改后再接收")
-            _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
-            validate_material_route(
-                transfer.stock_source.material_type if transfer.source_transfer_id else None,
-                transfer.material_type,
-                transfer.next_team,
-                transfer.entry_kind,
-                transfer.notes,
-            )
-            before = _snapshot(transfer)
-            now = utcnow()
-            if "warehouse_location" in payload.model_fields_set:
-                if transfer.warehouse_location:
-                    if payload.warehouse_location != transfer.warehouse_location:
-                        raise _conflict("转料单已锁定仓位，不能在签收时更换")
-                elif payload.warehouse_location:
-                    from .warehouse_locations import consume, material_identity
-
-                    transfer.warehouse_location = consume(
-                        db, transfer.next_team, payload, user, identity=material_identity(transfer)
-                    )
-            employee = require_team_employee(
-                db, transfer.next_team_id, payload.received_employee_id
-            )
-            transfer.received_employee_id = employee.id
-            transfer.received_employee_name = employee.name
-            transfer.status = "received"
-            transfer.stock_tracked = True
-            transfer.received_by = actor_name(user)
-            transfer.received_by_user_id = user.id
-            transfer.receipt_idempotency_key = payload.idempotency_key
-            transfer.received_at = now
-            transfer.updated_at = now
-            transfer.version += 1
-            db.flush()
-            _record_event(db, transfer, user, "received", before)
+            confirm_locked_receipt(db, transfer, payload, user)
             result = with_schedule(db, [material_transfer_dict(transfer, user)])[0]
         return result
     except IntegrityError as exc:

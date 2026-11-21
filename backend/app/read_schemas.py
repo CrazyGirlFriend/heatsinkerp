@@ -2,7 +2,7 @@
 
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 Item = TypeVar("Item")
 
@@ -19,6 +19,9 @@ class PageResponse(ReadResponse, Generic[Item]):
 
 
 class SharedSerialResponse(ReadResponse):
+    feeding_schedule_id: int | None = None
+    schedule_task_id: int | None = None
+    task_batch_number: int | None = None
     serial_no: str
     process_route_id: int | None = None
     process_route_version: int | None = None
@@ -29,6 +32,14 @@ class SharedSerialResponse(ReadResponse):
     planned_weight: float | None = None
     planned_quantity: int | None = None
     planned_specification: str | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_member(self, handler):
+        fields = handler(self)
+        if self.feeding_schedule_id is None:
+            for key in ("feeding_schedule_id", "schedule_task_id", "task_batch_number"):
+                fields.pop(key, None)
+        return fields
 
 
 class SharedMaterialResponse(ReadResponse):

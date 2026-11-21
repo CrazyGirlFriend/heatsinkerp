@@ -59,40 +59,35 @@ it('shows only available files in the outbound sidebar', async () => {
   ).toEqual(['drawing'])
 })
 
-it('previews one outbound file at a time, prioritizing drawings including supplemental files', async () => {
+it('expands each available outbound file by default and lets users collapse them independently', async () => {
   const route = { ...routeFixture, drawings: [{ id: 4, filename: '加工.pdf', size_bytes: 100 }] }
   render({
     availableOnly: true,
     editable: false,
     route,
-    documents: [document('drawing', 4), document('order')],
+    documents: [document('drawing', 4)],
   })
-  const cards = wrapper.findAll('[data-document-kind]')
-  expect(cards.map((card) => card.attributes('data-document-kind'))).toEqual([
+  const cards = () => wrapper.findAll('[data-document-kind]')
+  const expanded = () =>
+    cards().map((card) => card.get('button[aria-expanded]').attributes('aria-expanded'))
+  expect(expanded()).toEqual(['true', 'true', 'true'])
+  expect(wrapper.findAllComponents(ProcessRouteDrawingPreview)).toHaveLength(2)
+  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(true)
+
+  await cards()[0]!.get('button[aria-expanded]').trigger('click')
+  await wrapper.setProps({ documents: [document('drawing', 4), document('order')] })
+  expect(cards().map((card) => card.attributes('data-document-kind'))).toEqual([
     'drawing',
     'drawing',
     'process',
     'order',
   ])
-  const toggles = cards.map((card) => card.get('button[aria-expanded]'))
-  const expanded = () => toggles.map((button) => button.attributes('aria-expanded'))
-  expect(expanded()).toEqual(['true', 'false', 'false', 'false'])
-  expect(wrapper.findAllComponents(ProcessRouteDrawingPreview)).toHaveLength(1)
-  expect(wrapper.getComponent(ProcessRouteDrawingPreview).props('drawing')).toEqual(
-    route.drawings[0],
-  )
-  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
-  await toggles[1]!.trigger('click')
+  expect(expanded()).toEqual(['false', 'true', 'true', 'true'])
   expect(wrapper.getComponent(ProcessRouteDrawingPreview).props('filename')).toBe('drawing.pdf')
-  await toggles[2]!.trigger('click')
-  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(true)
-  expect(wrapper.findComponent(ProcessRouteDrawingPreview).exists()).toBe(false)
-  await toggles[3]!.trigger('click')
-  expect(expanded()).toEqual(['false', 'false', 'false', 'true'])
-  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
   expect(wrapper.findComponent(OrderDocumentPreview).exists()).toBe(true)
-  await wrapper.setProps({ route: undefined, documents: [document('process')] })
-  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(true)
+
+  await cards()[0]!.get('button[aria-expanded]').trigger('click')
+  expect(expanded()).toEqual(['true', 'true', 'true', 'true'])
 })
 
 it('inherits engineering originals, drawings and the serial-specific dispatch order', async () => {

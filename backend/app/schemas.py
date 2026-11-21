@@ -17,6 +17,7 @@ from pydantic import (
 
 from .process_route_schemas import RouteIntakeWrite
 from .quality_schemas import InspectionResults, ReportTemplate
+from .read_schemas import SharedSerialResponse
 
 DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
@@ -511,7 +512,29 @@ class MaterialTransferEventResponse(APIModel):
     changes: dict[str, dict[str, Any]]
 
 
+class PendingReceiptLine(APIModel):
+    batch_no: str
+    source_serial_no: str | None
+    source_transfer_batch_no: str | None
+    material_name: str | None
+    material_type: str | None
+    is_outsourced: bool
+    quantity: int
+    weight: float
+    version: int
+
+
+class WarehouseFeedingSourceResponse(APIModel):
+    source_transfer_id: int
+    batch_no: str
+    serial_no: str
+    quantity: int
+    weight: float
+
+
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    feeding_sources: list[WarehouseFeedingSourceResponse] = Field(default_factory=list)
+    pending_receipt_lines: list[PendingReceiptLine] | None = None
     schedule_task_id: int | None = None
     schedule_due_at: str | None = None
     task_batch_number: int | None = None
@@ -521,7 +544,7 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     shared_group_id: int | None = None
     shared_unallocated: bool = False
     shared_origin_batch_no: str | None = None
-    shared_serials: list[SharedMaterialSerial] = Field(default_factory=list)
+    shared_serials: list[SharedSerialResponse] = Field(default_factory=list)
     sludge_gross_weight: float | None = None
     sludge_content_percent: float | None = None
     sludge_percent_locked: bool = False
@@ -582,6 +605,8 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     source_transfer_batch_no: str | None = None
     source_serial_no: str | None = None
     dispatch_no: str | None = None
+    warehouse_dispatch_id: int | None = None
+    warehouse_document_no: str | None = None
     loss_records: list[dict[str, Any]] = Field(default_factory=list)
     history: list[MaterialTransferEventResponse] = Field(default_factory=list)
 

@@ -30,7 +30,11 @@ export function transferExportFields(
     ...(section === 'receipts' && warehouse
       ? [field('warehouse_location', '仓位', (row) => row.warehouse_location || '未填写')]
       : []),
-    field('batch_no', '批次号', (row) => row.batch_no),
+    field(
+      'batch_no',
+      '批次号',
+      (row) => row.pending_receipt_lines?.map((line) => line.batch_no).join(' / ') || row.batch_no,
+    ),
     field('serial_no', '流水号', sharedSerialLabel),
     ...(section === 'outgoing'
       ? [field('task_batch_number', '排期批次', formatScheduleBatch)]
@@ -42,8 +46,20 @@ export function transferExportFields(
           field('source', '来源', materialSourceLabel),
         ]
       : []),
-    field('material_name', '材质', (row) => row.material_name),
-    field('material_type', '物料类型', (row) => materialTypeLabel(row.material_type)),
+    field('material_name', '材质', (row) =>
+      row.pending_receipt_lines
+        ? [...new Set(row.pending_receipt_lines.map((line) => line.material_name))].join(' / ')
+        : row.material_name,
+    ),
+    field('material_type', '物料类型', (row) =>
+      row.pending_receipt_lines
+        ? [
+            ...new Set(
+              row.pending_receipt_lines.map((line) => materialTypeLabel(line.material_type)),
+            ),
+          ].join(' / ')
+        : materialTypeLabel(row.material_type),
+    ),
     ...(section === 'outgoing'
       ? [
           field('entry_kind', '出库方式', (row) => materialEntryLabel(row.entry_kind)),

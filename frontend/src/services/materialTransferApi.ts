@@ -171,6 +171,15 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
             finished_specification: textValue(member.finished_specification) || null,
             delivery_date: textValue(member.delivery_date) || null,
             delivery_quantity: optionalInteger(member.delivery_quantity, 1),
+            ...(member.feeding_schedule_id
+              ? {
+                  process_route_id: optionalInteger(member.process_route_id, 1),
+                  process_route_version: optionalInteger(member.process_route_version, 1),
+                  feeding_schedule_id: optionalInteger(member.feeding_schedule_id, 1),
+                  schedule_task_id: optionalInteger(member.schedule_task_id, 1),
+                  task_batch_number: optionalInteger(member.task_batch_number, 1),
+                }
+              : {}),
             planned_weight:
               member.planned_weight == null ? null : numberValue(member.planned_weight),
             planned_quantity: optionalInteger(member.planned_quantity, 1),
@@ -231,6 +240,12 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     source_transfer_id: optionalInteger(raw.source_transfer_id, 1),
     source_transfer_batch_no: textValue(raw.source_transfer_batch_no) || null,
     source_serial_no: textValue(raw.source_serial_no) || null,
+    feeding_sources: Array.isArray(raw.feeding_sources) ? raw.feeding_sources : [],
+    pending_receipt_lines: Array.isArray(raw.pending_receipt_lines)
+      ? raw.pending_receipt_lines
+      : null,
+    warehouse_document_no: textValue(raw.warehouse_document_no) || null,
+    warehouse_dispatch_id: optionalInteger(raw.warehouse_dispatch_id, 1),
     dispatch_no: textValue(raw.dispatch_no) || null,
     stock_tracked: raw.stock_tracked === true,
     loss_records: Array.isArray(raw.loss_records)
@@ -413,6 +428,29 @@ export const materialTransferApi = {
       page_size: Number(raw.page_size ?? params.page_size ?? 20),
       summary: normalizeSummary(raw.summary),
     }
+  },
+
+  async confirmWarehouseReceipt(row: MaterialTransfer, receiverId: number | string, key: string) {
+    return request<void>(
+      `/material-transfers/${encodeURIComponent(row.batch_no)}/confirm-warehouse-receipt`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          received_employee_id: receiverId,
+          idempotency_key: key,
+          versions: Object.fromEntries(
+            (row.pending_receipt_lines || [row]).map((line) => [line.batch_no, line.version]),
+          ),
+        }),
+      },
+    )
+  },
+
+  async warehouseDocument(id: number): Promise<MaterialTransfer[]> {
+    const result = await request<{ items: MaterialTransfer[] }>(
+      `/material-dispatches/warehouse/${id}`,
+    )
+    return result.items.map(normalizeMaterialTransfer)
   },
 
   async get(batchNo: string): Promise<MaterialTransfer> {

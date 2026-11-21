@@ -115,7 +115,7 @@ def serial_condition(item):
     )
 
 
-def apply_record_headers(db, columns, filters, kind, *, source_team=None):
+def apply_record_headers(db, columns, filters, kind, *, source_team=None, base=None):
     query = current_table_query.get()
     if not query:
         return
@@ -151,7 +151,7 @@ def apply_record_headers(db, columns, filters, kind, *, source_team=None):
             ),
         )
     filters.extend(table_predicates(columns, matches={"serial_no": serial_condition}))
-    statement = select(Transfer).where(*filters)
+    statement = (select(Transfer) if base is None else base).where(*filters)
     if kind == "outgoing" and query.options and query.options.field == "record_entry_kind":
         statement = statement.where(Transfer.entry_kind.in_(outbound_kinds(source_team)))
     if query.options and query.options.field == "serial_no":

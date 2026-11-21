@@ -3,6 +3,7 @@
 from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import and_, case, func, or_, select, union
+from sqlalchemy.orm import aliased
 
 from .delivery_quality import credit_events, quantity_columns
 from .models import (
@@ -241,12 +242,24 @@ def status_expression(db, progress, now, *, include_warehouse=True):
 
 
 def shared_order_lot():
+    anchor = aliased(Plan)
     return and_(
         Transfer.shared_unallocated.is_(True),
         select(SharedMaterialMember.id)
+        .outerjoin(anchor, anchor.id == SharedMaterialMember.feeding_schedule_id)
         .where(
             SharedMaterialMember.group_id == Transfer.shared_group_id,
             SharedMaterialMember.serial_no == Plan.serial_no,
+            or_(
+                and_(
+                    SharedMaterialMember.feeding_schedule_id.is_(None),
+                    Transfer.process_route_id == Plan.process_route_id,
+                ),
+                and_(
+                    anchor.task_id == Plan.task_id,
+                    SharedMaterialMember.process_route_id == Plan.process_route_id,
+                ),
+            ),
         )
         .correlate(Transfer, Plan)
         .exists(),
@@ -267,7 +280,7 @@ def linked_lots(ids):
         .join(Transfer, Transfer.process_route_id == Plan.process_route_id)
         .where(
             Plan.id.in_(ids),
-            Plan.process_route_id.is_not(None),
+            Transfer.serial_no == Plan.serial_no,
             Transfer.next_team_id == Plan.team_id,
             or_(
                 Transfer.processing_schedule_id == Plan.id,
@@ -276,10 +289,36 @@ def linked_lots(ids):
                     Transfer.process_step_index == Plan.process_step_index,
                 ),
             ),
-            or_(Transfer.serial_no == Plan.serial_no, shared_order_lot()),
         )
     )
-    return union(direct, inherited, routed).subquery()
+    anchor = aliased(Plan)
+    pooled = (
+        select(Plan.id.label("schedule_id"), Transfer.id.label("source_transfer_id"))
+        .join(SharedMaterialMember, SharedMaterialMember.serial_no == Plan.serial_no)
+        .join(Transfer, Transfer.shared_group_id == SharedMaterialMember.group_id)
+        .outerjoin(anchor, anchor.id == SharedMaterialMember.feeding_schedule_id)
+        .where(
+            Plan.id.in_(ids),
+            Transfer.shared_unallocated.is_(True),
+            Transfer.next_team_id == Plan.team_id,
+            or_(
+                and_(
+                    SharedMaterialMember.feeding_schedule_id.is_(None),
+                    Transfer.process_route_id == Plan.process_route_id,
+                    Transfer.process_step_index == Plan.process_step_index,
+                ),
+                and_(
+                    anchor.task_id == Plan.task_id,
+                    SharedMaterialMember.process_route_id == Plan.process_route_id,
+                    or_(
+                        Transfer.process_step_index == Plan.process_step_index,
+                        and_(anchor.id == Plan.id, Transfer.sent_process_step_index == 0),
+                    ),
+                ),
+            ),
+        )
+    )
+    return union(direct, inherited, routed, pooled).subquery()
 
 
 def execution_lots(ids):
@@ -293,10 +332,7 @@ def execution_lots(ids):
             Transfer.next_team_id == Plan.team_id,
             or_(
                 Transfer.serial_no == Plan.serial_no,
-                and_(
-                    Plan.process_route_id == Transfer.process_route_id,
-                    shared_order_lot(),
-                ),
+                shared_order_lot(),
             ),
         )
         .cte("schedule_execution_lots", recursive=True)

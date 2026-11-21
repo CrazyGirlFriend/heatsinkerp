@@ -31,6 +31,7 @@ import MaterialDeliveryDialog from './MaterialDeliveryDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import ReceiptPersonInput from './ReceiptPersonInput.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
+import { selectedWarehouseDocuments } from '@/utils/materialTransferPrint'
 import MaterialTransferPrintSheet from '@/components/MaterialTransferPrintSheet.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import { isDispatchNumber } from '@/types/teamMaterials'
@@ -122,6 +123,7 @@ let amendmentsVersion = 0
 const deliveryOpen = ref(false),
   deliveryBusy = ref(false)
 const printReady = ref(false)
+const printDocumentRows = ref<MaterialTransfer[]>([])
 const printSheet = ref<InstanceType<typeof MaterialTransferPrintSheet> | null>(null)
 const reviewNotice = ref('')
 const warehouseLocation = ref(''),
@@ -592,7 +594,15 @@ async function printTransfer(): Promise<void> {
   try {
     const latest = await materialTransferApi.get(batchNo)
     if (!props.modelValue || epoch !== requestVersion || current.value?.batch_no !== batchNo) return
+    const items = latest.warehouse_dispatch_id
+      ? selectedWarehouseDocuments(
+          await materialTransferApi.warehouseDocument(latest.warehouse_dispatch_id),
+          [latest],
+        )
+      : [latest]
+    if (!props.modelValue || epoch !== requestVersion || current.value?.batch_no !== batchNo) return
     current.value = latest
+    printDocumentRows.value = items
     await nextTick()
     await nextTick()
     await printSheet.value?.prepare?.()
@@ -767,14 +777,19 @@ watch(
           v-if="receipt || current.serial_no || current.shared_serials?.length"
           :batch-no="current.batch_no"
           :items="
-            (current.shared_unallocated && current.shared_serials?.length
-              ? current.shared_serials
-              : [{ serial_no: current.serial_no }]
-            ).map((item) => ({
-              serialNo: item.serial_no,
-              routeId: current!.process_route?.id,
-              scheduleTaskId: current!.schedule_task_id,
-            }))
+            current.shared_unallocated && current.shared_serials?.length
+              ? current.shared_serials.map((member) => ({
+                  serialNo: member.serial_no,
+                  routeId: member.process_route_id || current!.process_route?.id,
+                  scheduleTaskId: member.schedule_task_id,
+                }))
+              : [
+                  {
+                    serialNo: current.serial_no || '',
+                    routeId: current.process_route?.id,
+                    scheduleTaskId: current.schedule_task_id,
+                  },
+                ]
           "
         />
         <MaterialTransferDocumentFields :transfer="current" group="all">
@@ -783,7 +798,8 @@ watch(
               共投 ·
               <template v-for="(member, index) in current.shared_serials" :key="member.serial_no">
                 <span v-if="index"> / </span>
-                <RouterLink :to="tracePath(member.serial_no)">{{ member.serial_no }}</RouterLink>
+                <RouterLink :to="tracePath(member.serial_no)">{{ member.serial_no }}</RouterLink
+                ><span v-if="member.task_batch_number"> · 第{{ member.task_batch_number }}批</span>
               </template>
             </template>
             <RouterLink v-else :to="tracePath(current.serial_no)">{{
@@ -817,6 +833,7 @@ watch(
           :serial-no="current.serial_no"
           :material-name="current.material_name || ''"
           :material-type="current.material_type || ''"
+          :specification="current.transfer_specification ?? undefined"
           :active="modelValue && !groupOpen"
           :disabled="confirming"
           @busy-change="locationBusy = $event"
@@ -1045,7 +1062,11 @@ watch(
     @saved="updateCurrent"
   />
   <Teleport to="body"
-    ><MaterialTransferPrintSheet v-if="current && printReady" ref="printSheet" :transfer="current"
+    ><MaterialTransferPrintSheet
+      v-if="current && printReady"
+      ref="printSheet"
+      :transfer="current"
+      :items="printDocumentRows"
   /></Teleport>
 </template>
 

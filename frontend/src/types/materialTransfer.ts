@@ -257,6 +257,10 @@ export interface MaterialTransfer
   source_transfer_id?: number | null
   source_transfer_batch_no?: string | null
   source_serial_no?: string | null
+  feeding_sources?: components['schemas']['WarehouseFeedingSourceResponse'][]
+  pending_receipt_lines?: components['schemas']['PendingReceiptLine'][] | null
+  warehouse_dispatch_id?: number | null
+  warehouse_document_no?: string | null
   dispatch_no?: string | null
   stock_tracked?: boolean
   loss_records?: MaterialLoss[]
@@ -275,6 +279,7 @@ export interface MaterialTransferColumnParams {
 }
 
 export interface MaterialTransferListParams extends MaterialTransferColumnParams {
+  group_warehouse_receipts?: boolean
   table_query?: string
   record_kind?: 'shared' | 'reallocation'
   date_from?: string
@@ -397,6 +402,14 @@ export function materialEntryLabel(kind?: MaterialEntryKind): string {
         ? '检验发货'
         : '内部转料'
 }
+export function warehouseTransferDocumentNumber(transfer: MaterialTransfer) {
+  return transfer.warehouse_dispatch_id
+    ? transfer.warehouse_document_no ||
+        transfer.dispatch_no ||
+        `KF-${transfer.warehouse_dispatch_id}`
+    : null
+}
+
 export function materialDocumentTitle(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'processing_output') return '加工实物登记单'
   if (transfer.entry_kind === 'serial_reallocation') return '流水号转投单'

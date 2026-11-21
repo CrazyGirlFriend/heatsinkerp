@@ -89,7 +89,9 @@ const totals = computed(() => transferPrintTotals(props.group.items))
           <td>
             {{
               block.transfer.shared_unallocated
-                ? '共投（关联流水号见明细）'
+                ? block.transfer.warehouse_dispatch_id && block.transfer.shared_serials?.length
+                  ? block.transfer.shared_serials.map((member) => member.serial_no).join(' / ')
+                  : '共投（关联流水号见明细）'
                 : block.transfer.serial_no
             }}
           </td>

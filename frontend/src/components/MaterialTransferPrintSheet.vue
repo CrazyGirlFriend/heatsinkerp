@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import MaterialTransferPrintDocument from './MaterialTransferPrintDocument.vue'
 import { materialDocumentTitle, type MaterialTransfer } from '@/types/materialTransfer'
-defineProps<{ transfer: MaterialTransfer }>()
+defineProps<{ transfer: MaterialTransfer; items?: MaterialTransfer[] }>()
 const documentRef = ref<InstanceType<typeof MaterialTransferPrintDocument> | null>(null)
 defineExpose({ prepare: () => documentRef.value?.prepare() })
 </script>
@@ -12,7 +12,7 @@ defineExpose({ prepare: () => documentRef.value?.prepare() })
     class="material-transfer-print-sheet"
     :aria-label="`A4 双联${materialDocumentTitle(transfer)}`"
   >
-    <MaterialTransferPrintDocument ref="documentRef" :items="[transfer]" />
+    <MaterialTransferPrintDocument ref="documentRef" :items="items || [transfer]" />
   </article>
 </template>
 

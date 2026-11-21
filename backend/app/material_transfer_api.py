@@ -15,6 +15,7 @@ from .database import get_db
 from .inventory_read_schemas import FactoryInventoryPageResponse
 from .material_transfer_query import TransferColumnFilters, search_predicate, team_scope_predicate
 from .models import MaterialTransfer, Team, User
+from .pending_receipts import GroupReceiptConfirm
 from .read_schemas import PageResponse
 from .record_filters import RecordFilters
 from .schedule_task_identity import transfer_batch_number_column
@@ -179,14 +180,20 @@ def list_material_transfers(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     include_summary: bool = Query(default=False),
+    group_warehouse_receipts: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     if next_team_id is not None and target_team_id is not None and next_team_id != target_team_id:
         raise HTTPException(422, "next_team_id and target_team_id must match")
     target_id = next_team_id if next_team_id is not None else target_team_id
+    if group_warehouse_receipts and (
+        not team_id or direction != "incoming" or status_filter != "pending" or include_summary
+    ):
+        raise HTTPException(422, "按转料单查看仅适用于班组来料待签收列表")
     filters = [MaterialTransfer.entry_kind != "processing_output"]
-    filters.extend(column_filters.predicates())
+    if not group_warehouse_receipts:
+        filters.extend(column_filters.predicates())
     if direction != "all" and team_id is None:
         raise HTTPException(422, "team_id is required when direction is incoming or outgoing")
     if team_id is not None:
@@ -199,7 +206,8 @@ def list_material_transfers(
                 query,
                 search_field,
                 search_mode,
-                include_source_serial=column_filters.record_kind == "reallocation",
+                include_source_serial=group_warehouse_receipts
+                or column_filters.record_kind == "reallocation",
             )
         )
     if material_type is not None:
@@ -221,6 +229,12 @@ def list_material_transfers(
 
     columns = dict(MaterialTransfer.__table__.columns.items())
     columns["task_batch_number"] = transfer_batch_number_column()
+    if group_warehouse_receipts:
+        from .pending_receipts import list_pending_documents
+
+        return list_pending_documents(
+            db, team_id, columns, filters, column_filters, page, page_size, current_user
+        )
     if direction == "incoming" and status_filter == "pending":
         from .transfer_record_filters import apply_record_headers
 
@@ -294,6 +308,19 @@ def get_material_transfer(
     db: Session = Depends(get_db),
 ) -> dict:
     return material_transfer_workflow.get_material_transfer(db, batch_no, current_user)
+
+
+@router.post("/material-transfers/{batch_no}/confirm-warehouse-receipt", status_code=204)
+def confirm_warehouse_receipt(
+    batch_no: str,
+    payload: GroupReceiptConfirm,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .pending_receipts import confirm_document
+
+    confirm_document(db, batch_no, payload, current_user)
+    return Response(status_code=204)
 
 
 @router.patch(

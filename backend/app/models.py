@@ -269,6 +269,12 @@ class SharedMaterialMember(Base):
     )
     process_route_version: Mapped[int | None] = mapped_column(Integer)
     process_route: Mapped[ProcessRoute | None] = relationship(lazy="selectin")
+    feeding_schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedules.id", name="fk_shared_feeding_plan", ondelete="RESTRICT"),
+        index=True,
+    )
+    feeding_schedule: Mapped[ProductionSchedule | None] = relationship(lazy="joined")
+    task_batch_number: Mapped[int | None] = mapped_column(Integer)
     customer_code: Mapped[str | None] = mapped_column(String(80))
     finished_specification: Mapped[str | None] = mapped_column(String(240))
     delivery_date: Mapped[date | None] = mapped_column(Date)
@@ -528,6 +534,12 @@ class MaterialTransfer(Base):
 
     source_team: Mapped[Team | None] = relationship(foreign_keys=[source_team_id], lazy="joined")
     next_team: Mapped[Team | None] = relationship(foreign_keys=[next_team_id], lazy="joined")
+    pooled_feeding: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    feeding_sources: Mapped[list[WarehouseFeedingSource]] = relationship(
+        foreign_keys="WarehouseFeedingSource.transfer_id",
+        order_by="WarehouseFeedingSource.source_transfer_id",
+        cascade="all, delete-orphan",
+    )
     stock_source: Mapped[MaterialTransfer | None] = relationship(
         remote_side=[id], foreign_keys=[source_transfer_id], lazy="selectin"
     )
@@ -541,6 +553,23 @@ class MaterialTransfer(Base):
     )
     history: Mapped[list[MaterialTransferEvent]] = relationship(
         back_populates="transfer", order_by="MaterialTransferEvent.id", lazy="select"
+    )
+
+
+class WarehouseFeedingSource(Base):
+    """Actual withdrawal from each warehouse lot contributing to one outgoing batch."""
+
+    __tablename__ = "warehouse_feeding_sources"
+    transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), primary_key=True, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer)
+    weight: Mapped[Decimal] = mapped_column(Numeric(17, 6))
+    source: Mapped[MaterialTransfer] = relationship(
+        foreign_keys=[source_transfer_id], lazy="joined"
     )
 
 

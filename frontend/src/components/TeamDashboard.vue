@@ -168,7 +168,7 @@ const metrics = computed(() => [
   {
     label: '待签收',
     value: props.overview?.pending_incoming.count ?? null,
-    unit: '批',
+    unit: '单',
     icon: IconTruckDelivery,
     tone: 'warning' as const,
     detail: props.overview
