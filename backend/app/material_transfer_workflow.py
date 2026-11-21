@@ -401,7 +401,15 @@ def material_transfer_dict(
         if transfer.source_transfer_id
         else None,
         "source_serial_no": transfer.stock_source.serial_no
-        if transfer.entry_kind == "serial_reallocation" and transfer.source_transfer_id
+        if transfer.source_transfer_id
+        and (
+            transfer.entry_kind == "serial_reallocation"
+            or (
+                transfer.entry_kind == "transfer"
+                and transfer.source_team_code == WAREHOUSE_TEAM_CODE
+                and transfer.processing_schedule_id is not None
+            )
+        )
         else None,
         "dispatch_no": transfer.dispatch.dispatch_no if transfer.dispatch_id else None,
         "loss_records": [material_loss_dict(loss) for loss in transfer.losses]

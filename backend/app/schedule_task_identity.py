@@ -42,10 +42,18 @@ def schedule_batch_number_column(schedule_id):
 def transfer_batch_number_column():
     return (
         select(task_batch_number_column())
-        .select_from(Delivery)
-        .join(Plan, Plan.id == Delivery.schedule_id)
+        .select_from(Plan)
         .join(Task, Task.id == Plan.task_id)
-        .where(Delivery.transfer_id == Transfer.id)
+        .where(
+            Plan.id
+            == func.coalesce(
+                Transfer.processing_schedule_id,
+                select(Delivery.schedule_id)
+                .where(Delivery.transfer_id == Transfer.id)
+                .correlate(Transfer)
+                .scalar_subquery(),
+            )
+        )
         .correlate(Transfer)
         .scalar_subquery()
     )

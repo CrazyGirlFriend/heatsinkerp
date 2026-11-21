@@ -67,7 +67,11 @@ def dispatch_dict(
                 # response relationships in batches, without locking joined teams
                 # or recursively following the source's own history/relationships.
                 selectinload(MaterialTransfer.stock_source)
-                .load_only(MaterialTransfer.batch_no, MaterialTransfer.sludge_content_percent)
+                .load_only(
+                    MaterialTransfer.batch_no,
+                    MaterialTransfer.serial_no,
+                    MaterialTransfer.sludge_content_percent,
+                )
                 .raiseload("*"),
                 selectinload(MaterialTransfer.delivery_origin)
                 .load_only(

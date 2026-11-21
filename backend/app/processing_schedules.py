@@ -60,7 +60,7 @@ def choices(db, lot, *, lock=False):
             (
                 p.process_route_id == lot.process_route_id
                 and p.process_step_index in indices
-                and (p.id not in allocated or p.id in matched)
+                and (p.id == lot.processing_schedule_id or p.id not in allocated or p.id in matched)
             )
             if context
             else p.process_route_id is None and p.id in matched

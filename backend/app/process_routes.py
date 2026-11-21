@@ -434,11 +434,37 @@ def require_dispatch_documents(db, route, lot, serial, task_id=None):
             raise HTTPException(422, "缺少交期，请调度补充本批排期后再出库")
 
 
+def warehouse_dispatch_portion(db, selected_route, source, serial):
+    if (
+        selected_route is None
+        or selected_route.route_kind != "normal"
+        or selected_route.state != "published"
+        or selected_route.steps[0]["team_id"] != source.id
+    ):
+        raise HTTPException(422, "流水号或起始库房与工艺不一致")
+    from .process_route_paths import require_order_route
+
+    require_order_route(db, selected_route, serial)
+    # Bind this outbound portion only; the remaining raw stock stays unassigned.
+    return SimpleNamespace(
+        process_route_id=selected_route.id,
+        process_route=selected_route,
+        process_step_index=0,
+        process_step_complete=True,
+        next_team_id=source.id,
+        next_team_code=source.code,
+        serial_no=serial,
+        shared_unallocated=False,
+        rework_route_id=None,
+        rework_pending=False,
+        rework_count=0,
+    )
+
+
 def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
     """Validate the serial's documents and preserve the reviewed route cursor."""
     from .process_route_binding import bind_lot
 
-    route_lot = lot
     if not serial:
         raise HTTPException(422, "出库必须填写流水号")
     if line.process_route_id is not None:
@@ -461,33 +487,10 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
         )
         require_dispatch_documents(db, selected_route, lot, serial, plan.task_id if plan else None)
     if anonymous:
-        if (
-            selected_route is None
-            or selected_route.route_kind != "normal"
-            or selected_route.state != "published"
-            or selected_route.steps[0]["team_id"] != source.id
-        ):
-            raise HTTPException(422, "流水号或起始库房与工艺不一致")
-        from .process_route_paths import require_order_route
-
-        require_order_route(db, selected_route, serial)
-        # Bind this outbound portion only; the remaining raw stock stays unassigned.
-        route_lot = SimpleNamespace(
-            process_route_id=selected_route.id,
-            process_route=selected_route,
-            process_step_index=0,
-            process_step_complete=True,
-            next_team_id=source.id,
-            next_team_code=source.code,
-            serial_no=serial,
-            shared_unallocated=False,
-            rework_route_id=None,
-            rework_pending=False,
-            rework_count=0,
-        )
-    elif line.process_route_id is not None or (not lot.process_route_id and selected_route):
+        return warehouse_dispatch_portion(db, selected_route, source, serial)
+    if line.process_route_id is not None or (not lot.process_route_id and selected_route):
         bind_lot(db, selected_route, lot, user)
-    return route_lot
+    return lot
 
 
 def dispatch_fields(db, lot, target, kind, rework_return=False, policy=None):

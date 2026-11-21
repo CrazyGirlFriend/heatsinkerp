@@ -1330,6 +1330,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/production-schedules/warehouse-feeding-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Warehouse Feeding Options */
+    get: operations['warehouse_feeding_options_api_production_schedules_warehouse_feeding_options_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/quality-feedback': {
     parameters: {
       query?: never
@@ -2850,6 +2867,7 @@ export interface components {
       entry_kind: string
       /** External Destination */
       external_destination?: string | null
+      feeding_target?: components['schemas']['FeedingTarget'] | null
       /** Idempotency Key */
       idempotency_key: string
       inventory_total?: components['schemas']['ShipmentTotal'] | null
@@ -3419,6 +3437,45 @@ export interface components {
       notes: string
       /** Team Id */
       team_id?: number | null
+    }
+    /** FeedingOption */
+    FeedingOption: {
+      /**
+       * Due At
+       * Format: date-time
+       */
+      due_at: string
+      /** Remaining Quantity */
+      remaining_quantity: number | null
+      /** Remaining Weight */
+      remaining_weight: number | null
+      /** Route Id */
+      route_id: number
+      /** Route Version */
+      route_version: number
+      /** Schedule Id */
+      schedule_id: number
+      /** Serial No */
+      serial_no: string
+      /** Task Batch Number */
+      task_batch_number: number
+      /** Task Id */
+      task_id: number
+      /** Team Id */
+      team_id: number
+      /** Team Name */
+      team_name: string
+    }
+    /** FeedingTarget */
+    FeedingTarget: {
+      /** Route Id */
+      route_id: number
+      /** Route Version */
+      route_version: number
+      /** Schedule Id */
+      schedule_id: number
+      /** Serial No */
+      serial_no: string
     }
     /** GroupQualityResponse */
     GroupQualityResponse: {
@@ -13365,6 +13422,38 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ScheduleRouteOptionResponse'][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  warehouse_feeding_options_api_production_schedules_warehouse_feeding_options_get: {
+    parameters: {
+      query: {
+        serial_no: string
+        team_id: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['FeedingOption'][]
         }
       }
       /** @description Validation Error */

@@ -103,6 +103,9 @@ const columnKeys = {
         <span class="record-serial"
           ><span :title="sharedSerialLabel(row)">{{ sharedSerialLabel(row) }}</span></span
         >
+        <small v-if="row.entry_kind === 'transfer' && row.source_serial_no">
+          来源 {{ row.source_serial_no }} · {{ row.source_transfer_batch_no }}
+        </small>
       </template>
     </ElTableColumn>
     <ElTableColumn

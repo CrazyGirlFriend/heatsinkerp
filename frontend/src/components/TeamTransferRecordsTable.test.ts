@@ -36,6 +36,30 @@ function headings() {
 }
 
 describe('shared team transfer records', () => {
+  it('shows each material origin next to the target serial before receipt', async () => {
+    const stocks = ['SOURCE-A', 'SOURCE-B'].map((serial, index) =>
+      normalizeMaterialTransfer({
+        ...row(index + 1),
+        serial_no: 'ORDER-C',
+        source_serial_no: serial,
+        source_transfer_batch_no: `RAW-${index + 1}`,
+      }),
+    )
+    wrapper = mount(TeamTransferRecordsTable, {
+      props: { kind: 'pending', rows: stocks, emptyTitle: '' },
+    })
+    await flushPromises()
+    const displayed = wrapper.findAll('.el-table__body tbody tr')
+    expect(displayed.map((item) => item.get('.record-serial').text())).toEqual([
+      'ORDER-C',
+      'ORDER-C',
+    ])
+    expect(displayed.map((item) => item.get('small').text())).toEqual([
+      '来源 SOURCE-A · RAW-1',
+      '来源 SOURCE-B · RAW-2',
+    ])
+  })
+
   it.each(['pending', 'receipts', 'outgoing'] as const)(
     'shows the associated serials directly in the %s list until allocation',
     async (kind) => {

@@ -16,6 +16,7 @@ from . import (
     schedule_batches,
     schedule_reworks,
     schedule_routes,
+    warehouse_feeding,
 )
 from . import production_schedule_tasks as tasks
 from . import production_schedules as schedules
@@ -128,6 +129,15 @@ def source_options(
     return schedules.source_options(
         db, team_id, serial_no.strip(), query, page, page_size, schedule_id
     )
+
+
+@router.get("/warehouse-feeding-options", response_model=list[warehouse_feeding.FeedingOption])
+def warehouse_feeding_options(
+    team_id: int = Query(ge=1),
+    serial_no: str = Query(min_length=1, max_length=80),
+    db: Session = Depends(get_db),
+):
+    return warehouse_feeding.options(db, team_id, serial_no.strip())
 
 
 @router.get(

@@ -1,4 +1,5 @@
 import { httpClient, httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
+import type { components } from '@/types/generated/api'
 import type { RouteOrderDocument } from '@/types/processRoute'
 import type { MaterialPage } from '@/types/teamMaterials'
 import type {
@@ -159,6 +160,10 @@ export const productionScheduleApi = {
       method: 'DELETE',
       body: { expected_version },
     }),
+  feedingOptions: (teamId: number, serial: string) =>
+    request<components['schemas']['FeedingOption'][]>(
+      `/production-schedules/warehouse-feeding-options?${queryString({ team_id: teamId, serial_no: serial })}`,
+    ),
   candidates: (params: {
     serial_no?: string
     process_route_id?: number

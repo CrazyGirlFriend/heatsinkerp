@@ -80,6 +80,9 @@ const fields = computed<DocumentField[]>(() => {
       value: materialSourceLabel(t),
     },
     { label: '流水号', key: 'serial', value: sharedSerialLabel(t) },
+    ...(t.entry_kind === 'transfer' && t.source_serial_no
+      ? [{ label: '来源流水号', value: t.source_serial_no }]
+      : []),
     {
       label: processed
         ? '加工班组'

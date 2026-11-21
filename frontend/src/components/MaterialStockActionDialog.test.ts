@@ -2002,3 +2002,77 @@ it('opens the process, drawing and order belonging to the clicked joint producti
     orderDocument: { filename: 'ORDER-A.xlsx' },
   })
 })
+
+it('assigns two warehouse serials to one processing plan without crediting the input pieces', async () => {
+  const rows = [source(), source(11)]
+  rows.forEach((row) => {
+    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  })
+  const option = {
+    serial_no: 'ORDER-C',
+    schedule_id: 71,
+    route_id: 8,
+    route_version: 2,
+    task_id: 6,
+    task_batch_number: 2,
+    team_id: 3,
+    team_name: '退火',
+    remaining_quantity: 100,
+    remaining_weight: null,
+    due_at: '2026-12-03T00:00:00Z',
+  }
+  vi.spyOn(productionScheduleApi, 'feedingOptions').mockResolvedValue([
+    { ...option, schedule_id: 70, task_batch_number: 1 },
+    option,
+  ])
+  vi.spyOn(productionScheduleApi, 'serialOptions').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 30,
+  })
+  await render('dispatch', rows)
+  await wrapper.get('input[aria-label="目标流水号"]').setValue('ORDER-C')
+  await vi.waitFor(() =>
+    expect(productionScheduleApi.feedingOptions).toHaveBeenCalledWith(2, 'ORDER-C'),
+  )
+  await flushPromises()
+  const planPickers = wrapper
+    .findAllComponents(ElSelect)
+    .filter((picker) => picker.find('input[aria-label="加工排期"]').exists())
+  expect(planPickers).toHaveLength(1)
+  await submit()
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  planPickers[0]!.vm.$emit('update:modelValue', 71)
+  await vi.waitFor(() => expect(wrapper.text()).toContain('排期待交 100 件'))
+  expect(wrapper.text()).toContain('本次投料 200 件 / 20 kg')
+  expect(wrapper.text()).not.toContain('本次转出后')
+  const [q1, w1, q2, w2] = sourceAmountInputs()
+  q1!.vm.$emit('update:modelValue', 1)
+  w1!.vm.$emit('update:modelValue', 2)
+  q2!.vm.$emit('update:modelValue', 3)
+  w2!.vm.$emit('update:modelValue', 4)
+  await flushPromises()
+  expect(wrapper.text()).toContain('本次投料 4 件 / 6 kg')
+  expect(wrapper.text()).toContain('排期待交 100 件')
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      next_team_id: 3,
+      feeding_target: { serial_no: 'ORDER-C', schedule_id: 71, route_id: 8, route_version: 2 },
+      lines: [
+        expect.objectContaining({ source_transfer_id: 10, quantity: 1, weight: 2 }),
+        expect.objectContaining({ source_transfer_id: 11, quantity: 3, weight: 4 }),
+      ],
+    }),
+  )
+  expect(
+    vi
+      .mocked(teamMaterialApi.createDispatch)
+      .mock.calls[0]![1].lines.some(
+        (line) =>
+          'serial_no' in line || 'production_schedule_id' in line || 'process_route_id' in line,
+      ),
+  ).toBe(false)
+})

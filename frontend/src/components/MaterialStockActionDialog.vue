@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WarehouseFeedingFields from './WarehouseFeedingFields.vue'
+import type { components } from '@/types/generated/api'
 import ProcessingParameterFields from './ProcessingParameterFields.vue'
 import ProcessingSelfCheckFields from './ProcessingSelfCheckFields.vue'
 import {
@@ -103,6 +105,7 @@ const emit = defineEmits<{
 }>()
 function needsRoute(line: (typeof lines.value)[number]) {
   return (
+    !feeding.value &&
     !line.shared &&
     !isLoss.value &&
     sourceWarehouse.value &&
@@ -260,6 +263,25 @@ const warehouseDispatch = computed(
   () => !isLoss.value && externalOption.value === 'warehouse_outbound',
 )
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
+const useFeeding = ref(false)
+const feedingPlan = ref<components['schemas']['FeedingOption']>()
+const canFeed = computed(
+  () =>
+    sourceWarehouse.value &&
+    !isLoss.value &&
+    !external.value &&
+    lines.value.length > 0 &&
+    lines.value.every(
+      ({ source: { transfer: lot }, shared }) =>
+        !shared &&
+        !isScrapType(lot.material_type) &&
+        !lot.shared_unallocated &&
+        !lot.rework_route_id &&
+        !lot.rework_pending &&
+        (!lot.process_route || lot.process_route.complete),
+    ),
+)
+const feeding = computed(() => canFeed.value && useFeeding.value)
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const dialogTitle = computed(() =>
   isLoss.value
@@ -300,6 +322,7 @@ function lineNextTeamId(line: (typeof lines.value)[number]) {
 }
 const routeDestination = computed(() => {
   if (isLoss.value || external.value) return
+  if (feeding.value) return { teamId: feedingPlan.value?.team_id ?? '', error: '' }
   const targets = lines.value.flatMap<number | null | undefined>((line) => {
     if (isScrapType(line.materialType)) return []
     if (line.shared) {
@@ -600,6 +623,7 @@ const validation = useDialogValidation(() => {
   }
   if (form.notes.trim().length > 2000) issues.notes = '内容过长'
   if (isLoss.value && form.reason.trim().length > 2000) issues.reason = '内容过长'
+  if (feeding.value && !feedingPlan.value) issues.feeding = '请选择目标流水号和加工排期'
   for (const line of lines.value) {
     const add = (field: string, message: string) => {
       issues[`${line.key}.${field}`] = message
@@ -710,6 +734,10 @@ watch(
       line.percent = line.source.transfer.sludge_content_percent ?? undefined
       if (!isLoss.value) fillAll(index)
     })
+    feedingPlan.value = undefined
+    useFeeding.value =
+      !props.initialSchedule &&
+      new Set(props.sources.map(({ transfer }) => transfer.serial_no).filter(Boolean)).size > 1
     validation.reset()
     form.manualNextTeamId = ''
     form.entryKind = 'transfer'
@@ -744,10 +772,21 @@ const {
   selectedScheduleBatch,
   scheduleRemaining,
   scheduleLabel,
-} = useStockActionSchedules(props, form, lines, (line) => {
-  const nextTeamId = lineNextTeamId(line)
-  return destinations.value.some((team) => Number(team.id) === nextTeamId) ? nextTeamId : undefined
-})
+} = useStockActionSchedules(
+  props,
+  form,
+  computed(() => (feeding.value ? [] : lines.value)),
+  (line) => {
+    const nextTeamId = lineNextTeamId(line)
+    return destinations.value.some((team) => Number(team.id) === nextTeamId)
+      ? nextTeamId
+      : undefined
+  },
+)
+function selectFeedingPlan(plan?: components['schemas']['FeedingOption']) {
+  feedingPlan.value = plan
+  if (plan) scheduleError.value = ''
+}
 const scheduleEstimates = computed(() => {
   const allocations = new Map<
     string,
@@ -933,6 +972,16 @@ async function submit() {
   }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = {
     sent_employee_id: sender.value?.id ?? 0,
+    ...(feeding.value && feedingPlan.value
+      ? {
+          feeding_target: {
+            serial_no: feedingPlan.value.serial_no,
+            schedule_id: feedingPlan.value.schedule_id,
+            route_id: feedingPlan.value.route_id,
+            route_version: feedingPlan.value.route_version,
+          },
+        }
+      : {}),
     ...(isExternalEntryKind(form.entryKind)
       ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() }
       : { next_team_id: Number(form.nextTeamId) }),
@@ -944,7 +993,7 @@ async function submit() {
             warehouse_location_reservation_key: line.warehouseLocationKey,
           }
         : {}),
-      ...(line.selectedRoute && !line.shared
+      ...(!feeding.value && line.selectedRoute && !line.shared
         ? {
             process_route_id: line.selectedRoute.id,
             process_route_version: line.selectedRoute.version,
@@ -952,7 +1001,10 @@ async function submit() {
         : {}),
       source_transfer_id: Number(line.source.transfer.id),
       ...(line.shared ? { shared_serials: line.sharedMembers } : {}),
-      ...(!line.shared && !line.source.transfer.serial_no && !isScrapType(line.materialType)
+      ...(!feeding.value &&
+      !line.shared &&
+      !line.source.transfer.serial_no &&
+      !isScrapType(line.materialType)
         ? { serial_no: line.serialNo.trim() }
         : {}),
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
@@ -1056,6 +1108,7 @@ function canShare(line: (typeof lines.value)[number]) {
   const lot = line.source.transfer
   return (
     !isLoss.value &&
+    !feeding.value &&
     sourceWarehouse.value &&
     !external.value &&
     !isScrapType(line.materialType) &&
@@ -1081,6 +1134,12 @@ const attachmentItems = computed(() => {
   const line = activeLine.value
   if (!props.modelValue || isLoss.value || !line || isScrapType(line.materialType)) return []
   const lot = line.source.transfer
+  if (feeding.value) {
+    const plan = feedingPlan.value
+    return plan
+      ? [{ serialNo: plan.serial_no, routeId: plan.route_id, scheduleTaskId: plan.task_id }]
+      : []
+  }
   if (line.shared) {
     const member = line.sharedMembers[line.activeMember ?? 0]
     if (!member?.process_route_id) return []
@@ -1113,6 +1172,7 @@ watch(
   () => [
     props.modelValue,
     isLoss.value,
+    feeding.value,
     lines.value
       .map((line) => `${line.key}:${line.serialNo}:${line.materialType}:${line.shared}`)
       .join('|'),
@@ -1218,6 +1278,26 @@ watch(
             }}</ElRadioButton>
           </ElRadioGroup>
         </div>
+        <div v-if="canFeed" class="dispatch-mode">
+          <WatermelonSegmented
+            label="投料方式"
+            :model-value="feeding ? 'target' : 'original'"
+            :options="[
+              { value: 'original', label: '按原流水号', disabled: busy || !canWrite },
+              { value: 'target', label: '按目标排期投料', disabled: busy || !canWrite },
+            ]"
+            @change="useFeeding = $event === 'target'"
+          />
+        </div>
+        <WarehouseFeedingFields
+          v-if="feeding && modelValue"
+          :team-id="teamId"
+          :quantity="totalQuantity"
+          :weight="totalWeight"
+          :error="fieldErrors.feeding"
+          :refresh="scheduleRefresh"
+          @select="selectFeedingPlan"
+        />
         <div class="source-lines" :class="{ 'dispatch-lines': !isLoss }">
           <article
             v-for="(line, index) in lines"

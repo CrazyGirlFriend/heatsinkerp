@@ -269,7 +269,13 @@ def linked_lots(ids):
             Plan.id.in_(ids),
             Plan.process_route_id.is_not(None),
             Transfer.next_team_id == Plan.team_id,
-            Transfer.process_step_index == Plan.process_step_index,
+            or_(
+                Transfer.processing_schedule_id == Plan.id,
+                and_(
+                    Transfer.processing_schedule_id.is_(None),
+                    Transfer.process_step_index == Plan.process_step_index,
+                ),
+            ),
             or_(Transfer.serial_no == Plan.serial_no, shared_order_lot()),
         )
     )
