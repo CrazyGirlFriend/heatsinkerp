@@ -231,9 +231,9 @@ def intake_route(db, team, payload, user):
         "review_note": submitted.review_note.strip(),
         "version": submitted.version,
     }
-    existing = RouteWrite.model_validate({key: getattr(route, key) for key in content}).model_dump(
-        include=set(content)
-    )
+    stored = {key: getattr(route, key) for key in content}
+    stored["review_note"] = (route.review_note or "").strip()
+    existing = RouteWrite.model_validate(stored).model_dump(include=set(content))
     if content != existing:
         raise HTTPException(409, "已发布工艺不能随入库修改，请重新关联已发布版本")
     if route.steps[0]["team_id"] != team.id:

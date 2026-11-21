@@ -3,6 +3,7 @@
 from sqlalchemy import select
 
 from .models import ProcessRouteDrawing, TeamProcessingTask, TeamPurpose
+from .process_route_orders import with_dispatch_quantity
 from .process_routes import missing_route_documents
 from .rework_routes import request_document
 
@@ -60,7 +61,7 @@ def document(row, *, detail=True, db=None, missing_documents=None):
         **(
             {
                 "steps": row.steps,
-                "source_data": row.source_data,
+                "source_data": with_dispatch_quantity(row.source_data, row.filename),
                 "review_note": row.review_note,
                 "source_sha256": row.source_sha256,
                 "execution_labels": execution_labels(row, db),

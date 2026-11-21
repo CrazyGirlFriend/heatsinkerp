@@ -15,7 +15,7 @@ from .models import MaterialTransfer, User, WarehouseReceiptDocument, utcnow
 from .order_document_preview import order_document_preview
 from .process_route_drawings import MAX_DRAWINGS, drawing_preview, validate_drawing
 from .process_route_import import parse_docx
-from .process_route_orders import merge_materials, parse_order
+from .process_route_orders import merge_materials, parse_order, with_dispatch_quantity
 
 MEDIA_TYPES = {
     "process": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -31,7 +31,9 @@ def document(row):
         "filename": row.filename,
         "size_bytes": row.size_bytes,
         "sha256": row.sha256,
-        "parsed": row.parsed,
+        "parsed": with_dispatch_quantity(row.parsed, row.filename)
+        if row.kind == "process"
+        else row.parsed,
         "transfer_id": row.transfer_id,
         "created_at": row.created_at.isoformat() + "Z",
         "confirmed_at": row.confirmed_at.isoformat() + "Z" if row.confirmed_at else None,

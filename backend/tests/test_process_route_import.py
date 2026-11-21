@@ -160,6 +160,7 @@ def test_word_form_matches_real_dispatch_labels_without_guessing_stock_or_units(
         "customer_code": "11600-T3",
         "quantity": 41,
         "delivery_date": "2026-11-05",
+        "delivery_quantity": 18100,
         "technical_requirements": "外观级别:加工态A级;按图纸要求加工",
     }
     assert result[0]["receipt_fields"]["quantity"] == {
@@ -169,12 +170,28 @@ def test_word_form_matches_real_dispatch_labels_without_guessing_stock_or_units(
         "source_label": "来料数量：",
     }
     assert result[1] == ["691236-50"]
+    assert result[0]["receipt_fields"]["delivery_quantity"] == {
+        "value": 18100,
+        "label": "应发成品件数",
+        "source_row": "1:5",
+        "source_label": "数 量/单位",
+    }
+    assert not any("数 量/单位" in warning for warning in result[0]["field_warnings"])
     assert result[2][0]["instructions"] == "691236-49,691236-50,691236-51共投"
     assert any("未标明重量单位" in text for text in result[0]["field_warnings"])
     assert len(result[0]["original_steps"]) == 2
     assert result[0]["tables"][0][4][3] == "18100"
     # The document/form identifier and an unlabelled product code are distinct.
     assert "product_code" not in values(result) and "part_no" not in values(result)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("36 件", 36), ("10 kg", None), ("1.5", None), ("", None)]
+)
+def test_dispatch_header_quantity_accepts_only_piece_counts(raw, expected):
+    result = parser.parse_docx(docx([["生产流水号", "数 量／单位"], ["A-1", raw], *PROCESS]))
+    assert values(result).get("delivery_quantity") == expected
+    assert "quantity" not in values(result)
 
 
 @pytest.mark.parametrize(

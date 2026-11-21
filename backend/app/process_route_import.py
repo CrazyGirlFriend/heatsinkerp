@@ -200,7 +200,7 @@ AMBIGUOUS_LABELS = {"数量", "数量/单位", "订单数量", "计划加工数�
 
 
 def normalize_label(value):
-    return re.sub(r"\s+", "", value).rstrip("：:").replace("（", "(").replace("）", ")")
+    return re.sub(r"\s+", "", value).rstrip("：:").translate(str.maketrans("（）／", "()/"))
 
 
 def field_label(value):
@@ -312,8 +312,13 @@ def extract_receipt_fields(tables):
                 and len(rows[row_index + 1]) == len(row)
                 and not any(field_label(value) for value in rows[row_index + 1])
             )
+            product_header = vertical and any(
+                label in FIELD_LABELS["serial_no"] for label in normalized
+            )
             for index, cell in enumerate(row):
                 key = field_label(cell)
+                if product_header and normalized[index] == "数量/单位":
+                    key = "delivery_quantity"
                 if key:
                     candidate = (
                         rows[row_index + 1][index]

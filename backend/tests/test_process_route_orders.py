@@ -5,7 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 from app import order_document_response
 from app.database import SessionLocal
-from app.models import ProcessRouteOrderFile
+from app.models import ProcessRoute, ProcessRouteOrderFile
 from app.process_route_orders import merge_materials, parse_order
 from fastapi import HTTPException
 from sender_helpers import sender_post
@@ -13,6 +13,7 @@ from test_engineering_team import engineering as engineering  # noqa: F401
 from test_order_document_preview import pdf
 from test_process_route_creation import manual, upload
 from test_process_route_import import HEADERS, docx
+from test_process_route_intake import publish_payload, route_payload
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -130,6 +131,42 @@ def test_word_wins_in_either_upload_order_and_order_serial_is_independent():
     changed = merge_materials(first, order=parse_order(xlsx(["OTHER", *VALUES[1:]]), "其他.xlsx"))
     assert changed["receipt_fields"]["serial_no"]["value"] == "691236-50"
     assert changed["order_document"]["serial_no"] == "OTHER"
+
+
+@pytest.mark.parametrize("old_value,edited", [(None, False), (12000, False), (15000, True)])
+def test_existing_published_dispatch_supplies_receipt_quantity(
+    client, warehouse, old_value, edited
+):
+    route = publish_payload(client, route_payload(client, warehouse))
+    serial = route["serial_nos"][0]
+    fields = {}
+    if old_value is not None:
+        fields["delivery_quantity"] = {
+            "value": old_value,
+            "label": "应发成品件数",
+            "source_label": "数量",
+            "source_kind": "excel",
+            "source_row": "2",
+            **({"parsed_value": 12000} if edited else {}),
+        }
+    with SessionLocal.begin() as db:
+        row = db.get(ProcessRoute, route["id"])
+        row.source_data = {
+            **row.source_data,
+            "tables": [[["流水号", "数量/单位"], [serial, "18100"]]],
+            "word_fields": {},
+            "receipt_fields": fields,
+        }
+    result = client.get(f"{URL}/{route['id']}", headers=warehouse["headers"])
+    assert result.status_code == 200, result.text
+    source = result.json()["source_data"]
+    assert source["word_fields"]["delivery_quantity"]["value"] == 18100
+    quantity = source["receipt_fields"]["delivery_quantity"]
+    assert quantity["value"] == (old_value if edited else 18100)
+    if old_value and not edited:
+        assert quantity["alternative"]["value"] == old_value
+    with SessionLocal() as db:
+        assert db.get(ProcessRoute, route["id"]).source_data["receipt_fields"] == fields
 
 
 @pytest.mark.parametrize(

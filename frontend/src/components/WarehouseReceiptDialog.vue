@@ -25,6 +25,7 @@ import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
 import { useDocumentImport } from '@/composables/useDocumentImport'
 import { processRouteApi } from '@/services/processRouteApi'
+import { HttpRequestError } from '@/services/httpClient'
 import type { ProcessRoute, RouteMaterialField, RouteOrderDocument } from '@/types/processRoute'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 
@@ -97,8 +98,8 @@ const documentSections = materialDocumentFormSections.map((section) => ({
 }))
 const importedRoute = ref<ProcessRoute | null>(null)
 const importBusy = ref(false),
-  routeEditorOpen = ref(false),
-  routeReviewed = ref(false)
+  routeEditorOpen = ref(false)
+const routeLookupError = ref('')
 const routePickerOpen = ref(false)
 const documentImport = useDocumentImport()
 const documents = ref<ReceiptDocument[]>([])
@@ -116,7 +117,6 @@ const readonly = computed(
     !props.modelValue ||
     !canWrite.value ||
     saving.value ||
-    importBusy.value ||
     documentsBusy.value ||
     Boolean(attempt.value) ||
     recoveryBlocked.value,
@@ -171,7 +171,7 @@ function documentSource(key: string) {
     (documentImport.original(key) !== undefined ? '工艺资料' : '')
   )
 }
-function applyImportFields() {
+function applyImportFields(keepSerial = false) {
   const route = importedRoute.value
   const fields: Record<string, RouteMaterialField> = Object.fromEntries(
     Object.entries(route?.source_data.receipt_fields || {})
@@ -204,6 +204,7 @@ function applyImportFields() {
     }
   }
   for (const key of new Set([...Object.keys(importFields.value), ...Object.keys(fields)])) {
+    if (keepSerial && key === 'serial_no') continue
     const value = importedValues.value[key]
     const state = documentImport.state(key, value)
     if (
@@ -260,66 +261,105 @@ function importedClass(key: string) {
     'document-field--edited': state === 'edited',
   }
 }
-async function selectRoute(route: ProcessRoute) {
-  if (readonly.value || !props.modelValue) return
+const intakeSerials = computed(() => [form.serialNo.trim()])
+const routeEligible = computed(
+  () =>
+    !editing.value && form.receiptKind === 'external' && !isScrapType(form.materialType || null),
+)
+const lookupSerial = computed(() => (routeEligible.value ? form.serialNo.trim() : ''))
+const checkedSerial = ref('')
+let lookupVersion = 0
+let pendingLookup: Promise<void> | undefined
+
+function resetLookup() {
+  ++lookupVersion
+  pendingLookup = undefined
+  importBusy.value = false
+  checkedSerial.value = ''
+  routeLookupError.value = ''
+}
+
+function applyRoute(route: ProcessRoute, keepSerial: boolean) {
+  importedRoute.value = route
+  inheritedOrder.value = null
+  applyImportFields(keepSerial)
+  if (!keepSerial && !form.serialNo.trim() && route.serial_nos.length === 1)
+    form.serialNo = route.serial_nos[0]!
+  checkedSerial.value = form.serialNo.trim()
+  validation.reset()
+}
+
+function selectRoute(route: ProcessRoute) {
+  if (readonly.value || !routeEligible.value) return
   if (route.state !== 'published') {
     error.value = '请选择工艺班组已发布的工艺'
     return
   }
-  const current = ++importGeneration
-  importBusy.value = true
+  resetLookup()
   error.value = ''
-  try {
-    if (current !== importGeneration || !props.modelValue) return
-    const fields = Object.fromEntries(
-      Object.entries(route.source_data.receipt_fields || {}).filter(
-        ([key, field]) =>
-          field.value !== '' &&
-          (!route.source_data.review_required ||
-            !['quantity', 'weight', 'finished_quantity'].includes(key)),
-      ),
-    )
-    const replace = (key: string) => {
-      const value = importedValues.value[key]
-      return (
-        value == null ||
-        value === '' ||
-        (['quantity', 'weight'].includes(key) && value === 0) ||
-        !!autofill.source(key) ||
-        documentImport.state(key, value) === 'imported'
-      )
-    }
-    const replaceable = new Set(
-      Object.keys({ ...importedRoute.value?.source_data.receipt_fields, ...fields }).filter(
-        replace,
-      ),
-    )
-    autofill.reset()
-    for (const key of Object.keys(importedRoute.value?.source_data.receipt_fields || {})) {
-      if (!(key in fields) && replaceable.has(key)) assignImportedField(key, undefined)
-    }
-    for (const [key, field] of Object.entries(fields)) {
-      if (replaceable.has(key)) assignImportedField(key, field.value)
-    }
-    if (route.serial_nos.length === 1 && !fields.serial_no && replace('serial_no'))
-      assignImportedField('serial_no', route.serial_nos[0])
-    if (route.filename)
-      documents.value = documents.value.filter((document) => document.kind !== 'process')
-    importedRoute.value = route
-    inheritedOrder.value = null
-    applyImportFields()
-    routeReviewed.value = true
-    validation.reset()
-  } catch (failure) {
-    if (current === importGeneration)
-      error.value = failure instanceof Error ? failure.message : '工艺关联失败'
-  } finally {
-    if (current === importGeneration) importBusy.value = false
-  }
+  if (route.filename)
+    documents.value = documents.value.filter((document) => document.kind !== 'process')
+  applyRoute(route, false)
 }
-const intakeSerials = computed(() => [form.serialNo.trim()])
-watch(intakeSerials, () => {
-  routeReviewed.value = importedRoute.value?.state === 'published'
+
+function matchRoute() {
+  const serial = lookupSerial.value
+  if (
+    !serial ||
+    serial.length > 80 ||
+    serial === checkedSerial.value ||
+    !props.modelValue ||
+    !canWrite.value ||
+    attempt.value
+  )
+    return
+  if (pendingLookup) return pendingLookup
+  const version = ++lookupVersion
+  importBusy.value = true
+  routeLookupError.value = ''
+  pendingLookup = processRouteApi
+    .resolve(serial)
+    .then((route) => {
+      if (version !== lookupVersion || serial !== lookupSerial.value) return
+      if (route.steps[0]?.team_id !== props.teamId) throw new Error('该工艺的起始工序不在当前库房')
+      applyRoute(route, true)
+    })
+    .catch((failure: unknown) => {
+      if (version !== lookupVersion || serial !== lookupSerial.value) return
+      const response = failure instanceof Error ? (failure.cause ?? failure) : failure
+      if (response instanceof HttpRequestError && response.status === 404) {
+        checkedSerial.value = serial
+      } else {
+        routeLookupError.value = failure instanceof Error ? failure.message : '工艺查询失败，请重试'
+      }
+    })
+    .finally(() => {
+      if (version === lookupVersion) {
+        importBusy.value = false
+        pendingLookup = undefined
+      }
+    })
+  return pendingLookup
+}
+
+watch(lookupSerial, (serial, _, onCleanup) => {
+  if (
+    !props.modelValue ||
+    editing.value ||
+    attempt.value ||
+    (serial && serial === checkedSerial.value)
+  )
+    return
+  resetLookup()
+  if (importedRoute.value) {
+    importedRoute.value = null
+    inheritedOrder.value = null
+    applyImportFields(true)
+  }
+  if (serial) {
+    const timer = setTimeout(matchRoute, 250)
+    onCleanup(() => clearTimeout(timer))
+  }
 })
 const detailsOpen = ref(false)
 const serialRequired = computed(
@@ -354,7 +394,7 @@ function fill(
   > | null = null,
 ) {
   ++importGeneration
-  importBusy.value = false
+  resetLookup()
   importedRoute.value = null
   documents.value = []
   documentsBusy.value = false
@@ -364,7 +404,6 @@ function fill(
   previewSerial.value = ''
   routeEditorOpen.value = false
   routePickerOpen.value = false
-  routeReviewed.value = false
   documentImport.reset()
   autofill.reset()
   dimensionValid.value = true
@@ -432,7 +471,7 @@ function restoreAttempt() {
         importedRoute.value = { ...route, ...pending }
         importFields.value = route.source_data.receipt_fields || {}
         documentImport.record(importFields.value)
-        routeReviewed.value = true
+        checkedSerial.value = form.serialNo.trim()
       })
       .catch(() => {
         if (current === importGeneration)
@@ -447,7 +486,6 @@ const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (needsConfirmation.value && !confirmedImports.value)
     issues.confirmedImports = '请核对文件带入的信息，并勾选确认'
-  if (importedRoute.value && !routeReviewed.value) issues.processRoute = '请重新关联已发布工艺'
   if (
     importedRoute.value &&
     (form.receiptKind !== 'external' || isScrapType(form.materialType || null))
@@ -587,7 +625,7 @@ function payload(): CreateWarehouseReceipt {
             title: importedRoute.value.title,
             serial_nos: importedRoute.value.serial_nos,
             steps: importedRoute.value.steps,
-            review_note: importedRoute.value.review_note,
+            review_note: importedRoute.value.review_note || '',
           },
         }
       : {}),
@@ -599,14 +637,28 @@ function payload(): CreateWarehouseReceipt {
   }
 }
 async function submit() {
-  if (routePickerOpen.value) return
   if (
+    routePickerOpen.value ||
     locationBusy.value ||
-    importBusy.value ||
     documentsBusy.value ||
     saving.value ||
     recoveryBlocked.value ||
-    !canWrite.value ||
+    !canWrite.value
+  )
+    return
+  const formGeneration = generation
+  const match = matchRoute()
+  const currentLookup = lookupVersion
+  if (match) await match
+  if (
+    formGeneration !== generation ||
+    currentLookup !== lookupVersion ||
+    !props.modelValue ||
+    saving.value ||
+    routePickerOpen.value ||
+    documentsBusy.value ||
+    locationBusy.value ||
+    routeLookupError.value ||
     (!attempt.value && !validation.validate())
   )
     return
@@ -661,15 +713,15 @@ async function submit() {
       if (current !== generation || scope !== identity.value || !props.modelValue) return
       if (definitive) {
         attempt.value = null
-        if (failure.message.includes('工艺') && importedRoute.value) {
-          routeReviewed.value = false
-          try {
-            const latest = await processRouteApi.detail(importedRoute.value.id)
-            if (current === generation && scope === identity.value && props.modelValue)
-              importedRoute.value = latest
-          } catch {
-            /* Keep the local comparison available if refresh is unavailable. */
-          }
+        if (failure.status === 409 && failure.message.includes('工艺') && importedRoute.value) {
+          resetLookup()
+          importedRoute.value = null
+          inheritedOrder.value = null
+          applyImportFields(true)
+          await matchRoute()
+          if (current !== generation || scope !== identity.value || !props.modelValue) return
+          validation.validate()
+          return
         }
         if (failure.message.includes('仓位')) {
           form.warehouseLocation = ''
@@ -710,7 +762,7 @@ watch(
   (open) => {
     ++generation
     ++importGeneration
-    importBusy.value = false
+    resetLookup()
     saving.value = false
     if (!open) return
     original.value = props.receipt || null
@@ -740,6 +792,7 @@ watch(identity, () => {
   emit('update:modelValue', false)
 })
 onBeforeUnmount(() => {
+  resetLookup()
   ++generation
   ++importGeneration
 })
@@ -766,7 +819,12 @@ onBeforeUnmount(() => {
         >
       </div></template
     >
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+    <ElAlert
+      v-if="error || (!watermelon && routeLookupError)"
+      :title="error || routeLookupError"
+      type="error"
+      :closable="false"
+    />
     <ElAlert
       v-if="!canWrite"
       type="warning"
@@ -1006,14 +1064,21 @@ onBeforeUnmount(() => {
           </ElFormItem>
         </CompactFormSection>
         <ElFormItem
-          v-if="!editing && (form.receiptKind === 'external' || importedRoute)"
+          v-if="routeEligible"
           label="关联工艺"
-          :error="fieldErrors.processRoute"
+          :error="routeLookupError || fieldErrors.processRoute"
           class="receipt-route-choice"
         >
           <div class="receipt-route-choice-content">
-            <strong>{{ importedRoute?.serial_nos.join('、') || '未关联' }}</strong>
-            <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
+            <strong>{{
+              importedRoute?.serial_nos.join('、') ||
+              (importBusy
+                ? '正在匹配工艺'
+                : checkedSerial
+                  ? '未找到工艺，可手工填写'
+                  : '按流水号匹配')
+            }}</strong>
+            <ElButton :disabled="readonly" @click="routePickerOpen = true">
               <IconLink :size="16" />{{ importedRoute ? '更换工艺' : '选择工艺' }}
             </ElButton>
             <ElButton v-if="importedRoute" link :disabled="readonly" @click="routeEditorOpen = true"

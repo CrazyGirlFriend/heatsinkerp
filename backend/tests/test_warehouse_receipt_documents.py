@@ -149,9 +149,16 @@ def test_order_serial_must_be_present_and_match(client, warehouse):
 
 def test_receipt_route_needs_confirmation_but_supplements_do_not_change_it(client, warehouse):
     route = publish_payload(client, route_payload(client, warehouse))
-    original = docx([["流水号", "DIFFERENT-PROCESS-NUMBER"], ["材质", "铜钼"], *PROCESS])
+    original = docx(
+        [
+            ["流水号", "材质", "数量/单位"],
+            ["DIFFERENT-PROCESS-NUMBER", "铜钼", "18100"],
+            *PROCESS,
+        ]
+    )
     process = upload(client, warehouse, "process", original).json()
     assert process["parsed"]["receipt_fields"]["material_name"]["source_kind"] == "word"
+    assert process["parsed"]["receipt_fields"]["delivery_quantity"]["value"] == 18100
     assert process["parsed"]["serial_nos"] == ["DIFFERENT-PROCESS-NUMBER"]
     response = intake(client, warehouse, process_route=route, confirmed_imports=False)
     assert response.status_code == 422 and "确认后入库" in response.text

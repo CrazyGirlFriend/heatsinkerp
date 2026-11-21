@@ -13,7 +13,12 @@ from zipfile import BadZipFile, ZipFile
 
 from fastapi import HTTPException
 
-from .process_route_import import MAX_FILE_BYTES, receipt_value
+from .process_route_import import (
+    MAX_FILE_BYTES,
+    extract_receipt_fields,
+    normalize_label,
+    receipt_value,
+)
 
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 # Only explicit equivalents become stock-document fields. Other columns remain in the source.
@@ -192,6 +197,43 @@ def parse_order(content, filename):
         raise HTTPException(422, f"无法导入订单表：{exc}") from exc
 
 
+def prefer_word(field, excel):
+    if excel and str(excel["value"]) != str(field["value"]):
+        return {**field, "alternative": excel}
+    return field
+
+
+def with_dispatch_quantity(data, filename):
+    """Read older Word imports from their saved table without altering the approved route."""
+    fields = data.get("receipt_fields", {})
+    word = data.get("word_fields", fields)
+    if "delivery_quantity" in word or not any(
+        normalize_label(cell) == "数量/单位"
+        for table in data.get("tables", [])
+        for row in table
+        for cell in row
+        if "/" in cell or "／" in cell
+    ):
+        return data
+    parsed, warnings, _ = extract_receipt_fields(data["tables"])
+    quantity = parsed.get("delivery_quantity")
+    if not quantity or normalize_label(quantity["source_label"]) != "数量/单位":
+        return data
+    field = {**quantity, "source_kind": "word", "source_filename": filename}
+    existing = fields.get("delivery_quantity")
+    selected = (
+        existing
+        if existing and ("parsed_value" in existing or existing.get("source_kind") != "excel")
+        else prefer_word(field, existing)
+    )
+    return {
+        **data,
+        "word_fields": {**word, "delivery_quantity": field},
+        "receipt_fields": {**fields, "delivery_quantity": selected},
+        "field_warnings": warnings,
+    }
+
+
 def merge_materials(data, *, word=None, order=None, filename=None):
     result = deepcopy(data)
     if word is not None:
@@ -208,9 +250,7 @@ def merge_materials(data, *, word=None, order=None, filename=None):
     word_fields = result["word_fields"]
     fields = deepcopy(excel)
     for key, field in word_fields.items():
-        fields[key] = deepcopy(field)
-        if key in excel and str(excel[key]["value"]) != str(field["value"]):
-            fields[key]["alternative"] = excel[key]
+        fields[key] = deepcopy(prefer_word(field, excel.get(key)))
     result["receipt_fields"] = fields
     result["review_required"] = True
     result.pop("material_confirmation", None)
@@ -220,7 +260,7 @@ def merge_materials(data, *, word=None, order=None, filename=None):
 def apply_material_values(row, values):
     if values is None:
         return
-    data = deepcopy(row.source_data)
+    data = deepcopy(with_dispatch_quantity(row.source_data, row.filename))
     fields = data.setdefault("receipt_fields", {})
     for key, value in values.items():
         if key == "material_name" and key not in fields:

@@ -11,6 +11,7 @@ import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
 import type { ReceiptDocument } from '@/types/warehouseReceiptDocuments'
+import { HttpRequestError } from '@/services/httpClient'
 import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 import type { ProcessRoute } from '@/types/processRoute'
@@ -66,6 +67,9 @@ beforeEach(() => {
   })
   vi.spyOn(teamMaterialApi, 'createReceipt').mockResolvedValue(receipt())
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(importedDocument())
+  vi.spyOn(processRouteApi, 'resolve').mockRejectedValue(
+    new HttpRequestError('未找到该流水号的正常工艺', 404),
+  )
   vi.spyOn(processRouteApi, 'list').mockResolvedValue({
     items: [importedDocument()],
     total: 1,
@@ -708,6 +712,66 @@ async function reviewImportedRoute() {
 }
 
 describe('库房关联已发布工艺', () => {
+  it('matches the entered serial, fills delivery fields and submits the route without opening a picker', async () => {
+    const route = importedDocument()
+    route.review_note = null
+    route.source_data.review_required = true
+    route.steps[0]!.team_id = 901
+    vi.mocked(processRouteApi.resolve).mockResolvedValue(route)
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="流水号"]').setValue('IMPORT-01')
+    await vi.waitFor(() => expect(currentValues().delivery_quantity).toBe(18100))
+    expect(currentValues().material_name.trim()).toBe('铜钼')
+    expect(currentValues()).toMatchObject({ quantity: 0, weight: 0.005 })
+    await confirmImported()
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.lastCall?.[1]).toMatchObject({
+      serial_no: 'IMPORT-01',
+      delivery_quantity: 18100,
+      process_route: { id: route.id, review_note: '' },
+    })
+    expect(processRouteApi.list).not.toHaveBeenCalled()
+  })
+
+  it('discards a late match after the serial changes and lets an unmatched serial be entered manually', async () => {
+    let finish!: (route: ProcessRoute) => void
+    vi.mocked(processRouteApi.resolve).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await render()
+    const input = wrapper.get('input[aria-label="流水号"]')
+    await input.setValue('IMPORT-01')
+    await vi.waitFor(() => expect(processRouteApi.resolve).toHaveBeenCalledWith('IMPORT-01'))
+    await input.setValue('NEW-01')
+    finish(importedDocument())
+    await vi.waitFor(() => expect(wrapper.text()).toContain('未找到工艺，可手工填写'))
+    expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')).toBeUndefined()
+    expect(currentValues().serial_no).toBe('NEW-01')
+  })
+
+  it('distinguishes a lookup failure from a missing route and retries on submit', async () => {
+    vi.mocked(processRouteApi.resolve).mockRejectedValue(
+      new HttpRequestError('工艺查询暂不可用', 503),
+    )
+    await render()
+    await fill()
+    await submit()
+    expect(wrapper.text()).toContain('工艺查询暂不可用')
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    vi.mocked(processRouteApi.resolve).mockRejectedValue(
+      new Error('未找到工艺', {
+        cause: new HttpRequestError('Not Found', 404),
+      }),
+    )
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.lastCall?.[1]).not.toHaveProperty(
+      'process_route',
+    )
+  })
+
   it('inherits confirmed engineering metadata but leaves actual batch quantity and weight for receipt', async () => {
     const route = importedDocument()
     route.source_data.review_required = true
@@ -914,12 +978,13 @@ describe('库房关联已发布工艺', () => {
     expect(wrapper.find('input[type="file"]').exists()).toBe(false)
   })
 
-  it('clears a definitive route-version conflict, refreshes the draft and requires another review', async () => {
+  it('clears a definitive route-version conflict, automatically matches the latest route and requires another confirmation', async () => {
     const latest = importedDocument()
     latest.version = 2
     latest.steps[1]!.instructions = '更新后的工艺要求'
     vi.spyOn(processRouteApi, 'detail').mockResolvedValue(importedDocument())
-    vi.mocked(processRouteApi.detail).mockResolvedValue(latest)
+    latest.steps[0]!.team_id = 901
+    vi.mocked(processRouteApi.resolve).mockResolvedValue(latest)
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
       new TeamMaterialApiError('工艺版本已更新，请重新核对', 409),
     )
@@ -942,8 +1007,8 @@ describe('库房关联已发布工艺', () => {
     expect(wrapper.get('.receipt-route-choice').text()).toContain('IMPORT-01')
     await submit()
     expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
-    expect(wrapper.get('.receipt-route-choice').classes()).toContain('is-error')
-    await importFile()
+    expect(wrapper.text()).not.toContain('请重新关联已发布工艺')
+    expect(processRouteApi.resolve).toHaveBeenCalledWith('IMPORT-01')
     await confirmImported()
     await submit()
     const corrected = vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]
@@ -952,7 +1017,7 @@ describe('库房关联已发布工艺', () => {
     expect(corrected.idempotency_key).not.toBe(rejected.idempotency_key)
   })
 
-  it('keeps source provenance attached to the receipt after renaming its serial', async () => {
+  it('clears data from the previous route when the new serial has no published route', async () => {
     const route = importedDocument()
     route.serial_nos = ['IMPORT-02', 'IMPORT-01']
     vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
@@ -973,17 +1038,15 @@ describe('库房关联已发布工艺', () => {
       'value',
       '2026-12-01',
     )
-    expect(preview.props('route')!.source_data.receipt_fields).toMatchObject({
-      serial_no: { value: 'IMPORT-01' },
-      customer_code: { value: 'C-11600' },
-      delivery_date: { value: '2026-11-01' },
-    })
-    expect(
-      customer.element.closest('.el-form-item')!.classList.contains('document-field--edited'),
-    ).toBe(true)
+    expect(preview.props('route')).toBeUndefined()
+    expect(currentValues().delivery_quantity).toBeUndefined()
+    expect(customer.element.closest('.el-form-item')!.textContent).not.toContain('文件带入')
   })
 
   it('keeps the order serial independent without modifying the published process serial', async () => {
+    const route = importedDocument()
+    route.steps[0]!.team_id = 901
+    vi.mocked(processRouteApi.resolve).mockResolvedValue(route)
     await render()
     await importFile()
     wrapper
@@ -991,6 +1054,9 @@ describe('库房关联已发布工艺', () => {
       .find((item) => item.find('input[aria-label="物料类型"]').exists())!
       .vm.$emit('update:modelValue', 'raw_material')
     await wrapper.get('input[aria-label="流水号"]').setValue('ORDER-01')
+    await vi.waitFor(() =>
+      expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')?.id).toBe(route.id),
+    )
     await chooseLocation()
     await confirmImported()
     await submit()

@@ -99,6 +99,22 @@ def publish_payload(client, payload):
     return {key: published.json()[key] for key in payload}
 
 
+def test_intake_accepts_resolved_route_with_no_review_note(client, warehouse):
+    published = publish_payload(client, route_payload(client, warehouse))
+    with SessionLocal.begin() as db:
+        db.get(ProcessRoute, published["id"]).review_note = None
+    serial = published["serial_nos"][0]
+    result = client.get(
+        URL + "/resolve", params={"serial_no": serial}, headers=warehouse["headers"]
+    )
+    assert result.status_code == 200, result.text
+    snapshot = {key: result.json()[key] for key in published}
+    snapshot["review_note"] = snapshot["review_note"] or ""
+    receipt = intake(client, warehouse, serial_no=serial, process_route=snapshot)
+    assert receipt.status_code == 201, receipt.text
+    assert receipt.json()["process_route"]["id"] == published["id"]
+
+
 def test_intake_binds_published_route_once_and_preserves_original(client, warehouse):
     payload = publish_payload(client, route_payload(client, warehouse))
     result = intake(client, warehouse, process_route=payload)
