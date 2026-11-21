@@ -7,7 +7,6 @@ import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import AppDisclosure from './AppDisclosure.vue'
 import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
-import { IconLink } from '@tabler/icons-vue'
 import AppNumberInput from './AppNumberInput.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
@@ -21,8 +20,6 @@ import AutofillBadge from './AutofillBadge.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
 import type { ReceiptDocument } from '@/types/warehouseReceiptDocuments'
-import ProcessRouteEditor from './ProcessRouteEditor.vue'
-import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
 import { useDocumentImport } from '@/composables/useDocumentImport'
 import { processRouteApi } from '@/services/processRouteApi'
 import { HttpRequestError } from '@/services/httpClient'
@@ -31,7 +28,7 @@ import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
 import { ElForm, ElFormItem, ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -97,10 +94,8 @@ const documentSections = materialDocumentFormSections.map((section) => ({
   ),
 }))
 const importedRoute = ref<ProcessRoute | null>(null)
-const importBusy = ref(false),
-  routeEditorOpen = ref(false)
+const importBusy = ref(false)
 const routeLookupError = ref('')
-const routePickerOpen = ref(false)
 const documentImport = useDocumentImport()
 const documents = ref<ReceiptDocument[]>([])
 const documentsBusy = ref(false)
@@ -279,29 +274,6 @@ function resetLookup() {
   routeLookupError.value = ''
 }
 
-function applyRoute(route: ProcessRoute, keepSerial: boolean) {
-  importedRoute.value = route
-  inheritedOrder.value = null
-  applyImportFields(keepSerial)
-  if (!keepSerial && !form.serialNo.trim() && route.serial_nos.length === 1)
-    form.serialNo = route.serial_nos[0]!
-  checkedSerial.value = form.serialNo.trim()
-  validation.reset()
-}
-
-function selectRoute(route: ProcessRoute) {
-  if (readonly.value || !routeEligible.value) return
-  if (route.state !== 'published') {
-    error.value = '请选择工艺班组已发布的工艺'
-    return
-  }
-  resetLookup()
-  error.value = ''
-  if (route.filename)
-    documents.value = documents.value.filter((document) => document.kind !== 'process')
-  applyRoute(route, false)
-}
-
 function matchRoute() {
   const serial = lookupSerial.value
   if (
@@ -322,7 +294,11 @@ function matchRoute() {
     .then((route) => {
       if (version !== lookupVersion || serial !== lookupSerial.value) return
       if (route.steps[0]?.team_id !== props.teamId) throw new Error('该工艺的起始工序不在当前库房')
-      applyRoute(route, true)
+      importedRoute.value = route
+      inheritedOrder.value = null
+      applyImportFields(true)
+      checkedSerial.value = serial
+      validation.reset()
     })
     .catch((failure: unknown) => {
       if (version !== lookupVersion || serial !== lookupSerial.value) return
@@ -361,7 +337,8 @@ watch(lookupSerial, (serial, _, onCleanup) => {
     onCleanup(() => clearTimeout(timer))
   }
 })
-const detailsOpen = ref(false)
+const stockPreviewTarget = useTemplateRef<HTMLElement>('stockPreview')
+const detailsOpen = ref(true)
 const serialRequired = computed(
   () => form.receiptKind === 'return' || !isScrapType(form.materialType),
 )
@@ -402,8 +379,6 @@ function fill(
   inheritedOrder.value = null
   importFields.value = {}
   previewSerial.value = ''
-  routeEditorOpen.value = false
-  routePickerOpen.value = false
   documentImport.reset()
   autofill.reset()
   dimensionValid.value = true
@@ -638,7 +613,6 @@ function payload(): CreateWarehouseReceipt {
 }
 async function submit() {
   if (
-    routePickerOpen.value ||
     locationBusy.value ||
     documentsBusy.value ||
     saving.value ||
@@ -655,7 +629,6 @@ async function submit() {
     currentLookup !== lookupVersion ||
     !props.modelValue ||
     saving.value ||
-    routePickerOpen.value ||
     documentsBusy.value ||
     locationBusy.value ||
     routeLookupError.value ||
@@ -765,6 +738,7 @@ watch(
     resetLookup()
     saving.value = false
     if (!open) return
+    detailsOpen.value = true
     original.value = props.receipt || null
     if (!original.value) {
       restoreAttempt()
@@ -952,7 +926,7 @@ onBeforeUnmount(() => {
           ></ElFormItem>
           <ElFormItem
             label="流水号"
-            :error="fieldErrors.serialNo"
+            :error="fieldErrors.serialNo || routeLookupError || fieldErrors.processRoute"
             :class="['receipt-identity-field', importedClass('serial_no')]"
             :required="serialRequired"
             ><template #label
@@ -984,6 +958,7 @@ onBeforeUnmount(() => {
               :active="modelValue"
               :disabled="readonly"
               :show-stock-preview="!editing"
+              :stock-preview-target="stockPreviewTarget"
               @busy-change="locationBusy = $event"
           /></ElFormItem>
 
@@ -1038,6 +1013,7 @@ onBeforeUnmount(() => {
             :percent-error="fieldErrors.percent"
             @update:weight="form.weight = $event"
           />
+          <div ref="stockPreview" class="form-field--full receipt-location-stock" />
           <ElFormItem
             label="尺寸（选填）"
             class="form-field--long"
@@ -1064,55 +1040,28 @@ onBeforeUnmount(() => {
             />
           </ElFormItem>
         </CompactFormSection>
-        <ElFormItem
-          v-if="routeEligible"
-          label="关联工艺"
-          :error="routeLookupError || fieldErrors.processRoute"
-          class="receipt-route-choice"
-        >
-          <div class="receipt-route-choice-content">
-            <strong>{{
-              importedRoute?.serial_nos.join('、') ||
-              (importBusy
-                ? '正在匹配工艺'
-                : checkedSerial
-                  ? '未找到工艺，可手工填写'
-                  : '按流水号匹配')
-            }}</strong>
-            <ElButton :disabled="readonly" @click="routePickerOpen = true">
-              <IconLink :size="16" />{{ importedRoute ? '更换工艺' : '选择工艺' }}
-            </ElButton>
-            <ElButton v-if="importedRoute" link :disabled="readonly" @click="routeEditorOpen = true"
-              >查看工艺</ElButton
-            >
-          </div>
-        </ElFormItem>
         <AppDisclosure v-model:open="detailsOpen" class="receipt-optional-details">
           <template #summary>
-            <strong>{{ editing ? '物料资料' : '交期与物料资料' }}</strong
-            ><span>选填</span>
+            <strong class="receipt-details-title">{{
+              editing ? '物料资料' : '交期与物料资料'
+            }}</strong>
           </template>
-          <CompactFormSection
+          <MaterialDeliveryFields
             v-if="!editing && form.receiptKind === 'external' && !weightOnly"
-            title="交期信息"
-          >
-            <MaterialDeliveryFields
-              class="form-field--long"
-              v-if="form.receiptKind === 'external' && !weightOnly"
-              v-model:date="form.deliveryDate"
-              v-model:quantity="form.deliveryQuantity"
-              :disabled="readonly"
-              :date-error="fieldErrors.deliveryDate"
-              :quantity-error="fieldErrors.deliveryQuantity"
-              :document-source="importedRoute?.filename"
-              :date-source="documentSource('delivery_date')"
-              :quantity-source="documentSource('delivery_quantity')"
-              :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
-              :quantity-state="
-                documentImport.state('delivery_quantity', importedValues.delivery_quantity)
-              "
-            />
-          </CompactFormSection>
+            section-title="交期信息"
+            v-model:date="form.deliveryDate"
+            v-model:quantity="form.deliveryQuantity"
+            :disabled="readonly"
+            :date-error="fieldErrors.deliveryDate"
+            :quantity-error="fieldErrors.deliveryQuantity"
+            :document-source="importedRoute?.filename"
+            :date-source="documentSource('delivery_date')"
+            :quantity-source="documentSource('delivery_quantity')"
+            :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
+            :quantity-state="
+              documentImport.state('delivery_quantity', importedValues.delivery_quantity)
+            "
+          />
           <template v-for="section in documentSections" :key="section.name">
             <CompactFormSection
               :title="section.label"
@@ -1141,7 +1090,6 @@ onBeforeUnmount(() => {
               <ElFormItem
                 v-if="section.name === 'document' && !weightOnly"
                 label="成品件数"
-                class="form-field--short"
                 :error="fieldErrors.finishedQuantity"
                 ><template #label
                   >成品件数<AutofillBadge
@@ -1188,31 +1136,13 @@ onBeforeUnmount(() => {
         />
       </ElForm>
     </FormWorkspace>
-    <PublishedProcessRoutePicker
-      v-if="routePickerOpen && modelValue"
-      :serial-no="form.serialNo"
-      @selected="selectRoute"
-      @close="routePickerOpen = false"
-    />
-    <ProcessRouteEditor
-      v-if="importedRoute && routeEditorOpen"
-      :route="importedRoute"
-      view-only
-      @close="routeEditorOpen = false"
-    />
     <template #footer
       ><ElButton :disabled="saving" @click="close">{{ attempt ? '稍后核对' : '取消' }}</ElButton
       ><ElButton
         type="primary"
         :loading="saving"
         :disabled="
-          !canWrite ||
-          saving ||
-          importBusy ||
-          documentsBusy ||
-          routePickerOpen ||
-          recoveryBlocked ||
-          locationBusy
+          !canWrite || saving || importBusy || documentsBusy || recoveryBlocked || locationBusy
         "
         @click="submit"
         >{{ editing ? '保存修改' : attempt ? '重试核对入库' : '确认入库' }}</ElButton
@@ -1222,6 +1152,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.receipt-location-stock:empty {
+  display: none;
+}
 .receipt-heading {
   display: flex;
   align-items: center;
@@ -1249,27 +1182,14 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 10px;
 }
-.receipt-route-choice {
-  margin-top: 14px;
+.receipt-optional-details :deep(.el-button.app-disclosure-trigger) {
+  padding-inline: 0;
 }
-.receipt-optional-details :deep(.app-disclosure-label > span) {
-  color: var(--muted);
-  font-size: var(--font-size-meta);
-}
-.receipt-route-choice-content {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-.receipt-route-choice-content strong {
+.receipt-details-title {
   color: var(--text);
-  margin-right: auto;
-  overflow-wrap: anywhere;
-}
-.receipt-route-choice-content :deep(.el-button > span) {
-  gap: 6px;
+  font-size: var(--font-size-section);
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
 }
 .receipt-form {
   container: receipt-form / inline-size;

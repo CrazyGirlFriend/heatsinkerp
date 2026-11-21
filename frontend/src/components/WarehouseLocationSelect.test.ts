@@ -134,6 +134,19 @@ describe('warehouse location selector', () => {
     expect(wrapper.text()).not.toContain('此仓位已有')
   })
 
+  it('renders occupied batches once in the receipt preview and clears it with the selection', async () => {
+    const stockPreviewTarget = document.createElement('div')
+    vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [filled] })
+    await render({ modelValue: filled.name, stockPreviewTarget })
+    expect(wrapper.find('.location-stock').exists()).toBe(false)
+    expect(stockPreviewTarget.querySelectorAll('tbody tr')).toHaveLength(2)
+    expect(stockPreviewTarget.textContent).toContain('当前库存 20 件 · 3 kg')
+    expect(stockPreviewTarget.querySelector('button')).toBeNull()
+
+    await choose('')
+    expect(stockPreviewTarget.querySelector('table')).toBeNull()
+  })
+
   it('requires an explicit list selection and shows existing batches before choosing an occupied slot', async () => {
     vi.mocked(teamMaterialApi.warehouseLocations).mockResolvedValue({ items: [slot, filled] })
     vi.mocked(warehouseLocationApi.reserve).mockImplementation(async (id, key) => ({

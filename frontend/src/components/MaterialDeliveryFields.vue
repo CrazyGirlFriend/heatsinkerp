@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import ElInput from '@/components/AppInput.vue'
 import { ElFormItem } from 'element-plus'
+import CompactFormSection from './CompactFormSection.vue'
 import AppNumberInput from './AppNumberInput.vue'
 import WatermelonDateInput from './watermelon/WatermelonDateInput.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 const watermelon = useWatermelonAppearance()
 import AutofillBadge from './AutofillBadge.vue'
 defineProps<{
+  sectionTitle?: string
   disabled?: boolean
   dateError?: string
   quantityError?: string
@@ -21,7 +23,15 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
 </script>
 
 <template>
-  <div class="delivery-fields dialog-form-grid dialog-field-wide form-field--group">
+  <component
+    :is="sectionTitle ? CompactFormSection : 'div'"
+    :title="sectionTitle"
+    :class="
+      sectionTitle
+        ? undefined
+        : 'delivery-fields dialog-form-grid dialog-field-wide form-field--group'
+    "
+  >
     <ElFormItem
       label="要求发货日期"
       :required="quantity != null"
@@ -71,7 +81,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
         ><template #suffix><span class="dialog-input-unit">件</span></template></AppNumberInput
       ></ElFormItem
     >
-  </div>
+  </component>
 </template>
 
 <style scoped>

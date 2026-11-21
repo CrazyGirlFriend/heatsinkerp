@@ -29,6 +29,7 @@ const props = withDefaults(
     disabled?: boolean
     required?: boolean
     showStockPreview?: boolean
+    stockPreviewTarget?: HTMLElement | null
     serialNo?: string
     materialName?: string
     materialType?: string
@@ -436,36 +437,46 @@ onBeforeUnmount(() => {
         @current-change="changePage"
       />
     </WatermelonDialog>
-    <div v-if="showStockPreview && selectedStock?.batches.length" class="location-stock">
-      <strong>当前库存 {{ currentQuantity }} 件 · {{ currentWeight }} kg</strong>
-      <span>此仓位已有 {{ selectedStock.batches.length }} 批物料</span>
-      <div class="location-batches">
-        <AppDetailTable columns-key="WarehouseLocationSelect-1" class="business-table">
-          <thead>
-            <tr>
-              <th>批次号</th>
-              <th>流水号</th>
-              <th>材质</th>
-              <th>物料类型</th>
-              <th>件数</th>
-              <th>重量（kg）</th>
-              <th>状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="batch in selectedStock.batches" :key="batch.id">
-              <td>{{ batch.batch_no }}</td>
-              <td>{{ batch.serial_no || '—' }}</td>
-              <td>{{ batch.material_name || '—' }}</td>
-              <td>{{ materialTypeLabel(batch.material_type) }}</td>
-              <td>{{ amount(batch.quantity) }}</td>
-              <td>{{ amount(batch.weight) }}</td>
-              <td>{{ batch.status === 'received' ? '在库' : '待签收' }}</td>
-            </tr>
-          </tbody>
-        </AppDetailTable>
+    <Teleport :to="stockPreviewTarget" :disabled="!stockPreviewTarget">
+      <div
+        v-if="showStockPreview && selectedStock?.batches.length"
+        class="location-stock"
+        :class="{ 'location-stock--wide': stockPreviewTarget }"
+      >
+        <strong>当前库存 {{ currentQuantity }} 件 · {{ currentWeight }} kg</strong>
+        <span>此仓位已有 {{ selectedStock.batches.length }} 批物料</span>
+        <div class="location-batches">
+          <AppDetailTable
+            columns-key="WarehouseLocationSelect-1"
+            :column-settings="!stockPreviewTarget"
+            :class="{ 'business-table': !stockPreviewTarget }"
+          >
+            <thead>
+              <tr>
+                <th>批次号</th>
+                <th>流水号</th>
+                <th>材质</th>
+                <th>物料类型</th>
+                <th>件数</th>
+                <th>重量（kg）</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="batch in selectedStock.batches" :key="batch.id">
+                <td>{{ batch.batch_no }}</td>
+                <td>{{ batch.serial_no || '—' }}</td>
+                <td>{{ batch.material_name || '—' }}</td>
+                <td>{{ materialTypeLabel(batch.material_type) }}</td>
+                <td>{{ amount(batch.quantity) }}</td>
+                <td>{{ amount(batch.weight) }}</td>
+                <td>{{ batch.status === 'received' ? '在库' : '待签收' }}</td>
+              </tr>
+            </tbody>
+          </AppDetailTable>
+        </div>
       </div>
-    </div>
+    </Teleport>
     <small
       v-if="lease && remainingSeconds > 0"
       class="location-countdown"
@@ -574,5 +585,34 @@ onBeforeUnmount(() => {
 .location-batches th[data-column-index='1'],
 .location-batches td[data-column-index='1'] {
   text-align: left;
+}
+.location-stock--wide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+.location-stock--wide > strong {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+}
+.location-stock--wide > span {
+  margin: 0;
+}
+.location-stock--wide .location-batches {
+  width: 100%;
+  min-width: 0;
+}
+.location-stock--wide :is(th, td) {
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.location-stock--wide :is(th, td):nth-child(5),
+.location-stock--wide :is(th, td):nth-child(6) {
+  text-align: end;
 }
 </style>
