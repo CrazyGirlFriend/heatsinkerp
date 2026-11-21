@@ -57,6 +57,8 @@ WarehouseSearchField = Literal[
     "oldest_received_at",
     "on_hand_quantity",
     "on_hand_weight",
+    "stock_total_quantity",
+    "stock_total_weight",
     "owned_quantity",
     "owned_weight",
     "in_transit_quantity",
@@ -130,7 +132,9 @@ class WarehouseInventoryFilters(SerialFilters):
             "task_batch_number": "available_quantity",
             "shortage_weight": "available_weight",
         }.get(self.search_field, self.search_field)
-        if field.startswith(("owned_", "in_transit_", "external_pending_", "processing_")):
+        if field.startswith(
+            ("owned_", "in_transit_", "external_pending_", "processing_", "stock_total_")
+        ):
             field = "available_weight" if field.endswith("_weight") else "available_quantity"
         if field in ("source_batch_no", "batch_no", "previous_batch_no", "warehouse_location"):
             field = "serial_no"
@@ -387,6 +391,10 @@ def list_inventory(db, team_id, filters):
         require_team(db, team_id)
     now = utcnow()
     table = warehouse_groups(team_id, filters)
+    stock_totals = {
+        f"stock_total_{unit}": table.c[f"on_hand_{unit}"] + table.c[f"in_transit_{unit}"]
+        for unit in ("quantity", "weight")
+    }
     conditions = [table.c.matches_date == 1]
     processing_state = processing_state_column(table, team_id)
     if filters.processing_state:
@@ -571,7 +579,7 @@ def list_inventory(db, team_id, filters):
                 if field == "pending_outgoing_weight"
                 else table.c[field]
                 if field in table.c
-                else None
+                else stock_totals.get(field)
             )
             if column is None:
                 conditions.append(False)
@@ -674,6 +682,7 @@ def list_inventory(db, team_id, filters):
 
     columns = {
         **dict(table.c.items()),
+        **stock_totals,
         "processing_state": processing_state,
         "pending_outgoing_quantity": table.c.reserved_quantity,
         "pending_outgoing_weight": table.c.reserved_weight,

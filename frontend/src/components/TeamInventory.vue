@@ -57,6 +57,7 @@ import {
   inventorySourceLabel,
   warehouseSourceNames,
   inventoryAmount,
+  inventoryQuantity,
   inventoryDispatchable,
   inventoryCanDispatch,
   inventoryHasPending,
@@ -261,6 +262,9 @@ const dates = computed(() => ({
 const sourceOptions = computed(() =>
   Object.entries(warehouseSourceNames).filter(([key]) => props.processing || key !== 'processing'),
 )
+const inventoryTeamName = computed(
+  () => directory.items.find((team) => team.id === props.teamId)?.name,
+)
 const sourceTeams = computed(() => directory.items.filter((team) => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const selfCheckTeam = computed(() => isSelfCheckTeamCode(props.teamCode))
@@ -284,7 +288,7 @@ const columns = computed(() =>
     )
     .map((column) => ({
       ...column,
-      defaultVisible: column.key === 'in_transit_quantity' || column.defaultVisible,
+      defaultVisible: column.key === 'on_hand_weight' || column.defaultVisible,
       label:
         props.processing && column.key === 'stock_status'
           ? '加工状态'
@@ -308,16 +312,22 @@ const columns = computed(() =>
             process_route: 150,
           } as Partial<Record<TeamColumnKey, number>>
         )[column.key] || column.width,
-      format: (row: TeamInventoryRow) =>
-        column.key === 'source'
-          ? sourceLabel(row)
-          : column.key === 'stock_status' && props.processing
-            ? isScrapMaterialType(row.material_type)
-              ? '—'
-              : row.processing_state && row.processing_state !== 'not_required'
-                ? processingStates[row.processing_state]
-                : column.format(row)
-            : column.format(row),
+      format: (row: TeamInventoryRow) => {
+        if (column.key === 'on_hand_quantity' || column.key === 'on_hand_weight') {
+          const unit = column.key === 'on_hand_quantity' ? 'quantity' : 'weight'
+          const total = stockTotal(row, unit)
+          return unit === 'quantity'
+            ? inventoryQuantity(total, row.material_type)
+            : inventoryAmount(total)
+        }
+        if (column.key === 'source') return sourceLabel(row)
+        if (column.key === 'stock_status' && props.processing) {
+          if (isScrapMaterialType(row.material_type)) return '—'
+          if (row.processing_state && row.processing_state !== 'not_required')
+            return processingStates[row.processing_state]
+        }
+        return column.format(row)
+      },
     })),
 )
 const requiredColumnKeys = computed(() =>
@@ -343,11 +353,7 @@ const searchColumns = computed(() =>
     .filter((column) => !['owned_quantity', 'owned_weight'].includes(column.key))
     .filter((column) => !props.warehouse || column.key !== 'purpose_name')
     .filter((column) => props.warehouse || column.key !== 'warehouse_location')
-    .map((column) =>
-      column.key === 'source'
-        ? { ...column, label: props.warehouse ? '来源' : '上序班组' }
-        : column,
-    ),
+    .map((search) => columns.value.find((column) => column.key === search.key) ?? search),
 )
 const fixedColumns = ref<string[] | null>(null)
 const fixedColumnOptions = ref<{ key: string; label: string }[]>([])
@@ -356,7 +362,7 @@ const columnChoices = ref<InventoryColumnChoice<TeamColumnKey>[]>(
     .filter((column) => column.key !== 'material_name')
     .map((column) => ({
       key: column.key,
-      visible: column.key === 'in_transit_quantity' || column.defaultVisible,
+      visible: column.key === 'on_hand_weight' || column.defaultVisible,
     })),
 )
 const storageKey = computed(() =>
@@ -399,13 +405,41 @@ const separateSpecification = computed(() =>
   visibleColumns.value.some((column) => column.key === 'transfer_specification'),
 )
 const hasPending = computed(() => rows.value.some(inventoryHasPending))
+function stockAmount(
+  row: TeamInventoryRow,
+  quantity: number | null | undefined,
+  weight: number | null | undefined,
+) {
+  return `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
+}
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   const external =
     Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0
-  const amount = (quantity: number | null | undefined, weight: number | null | undefined) =>
-    `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
-  return `当前剩余 ${amount(row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${amount(row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${amount(row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${amount(available.quantity, available.weight)}`
+  return `当前剩余 ${stockAmount(row, row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${stockAmount(row, row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${stockAmount(row, row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${stockAmount(row, available.quantity, available.weight)}`
+}
+function stockTotal(row: TeamInventoryRow, unit: 'quantity' | 'weight') {
+  const current = row[`on_hand_${unit}`]
+  const transit = row[`in_transit_${unit}`]
+  return current == null || transit == null ? null : current + transit
+}
+function stockBreakdown(row: TeamInventoryRow) {
+  const complete = row.processing_state === 'complete'
+  return [
+    { label: '合计', quantity: stockTotal(row, 'quantity'), weight: stockTotal(row, 'weight') },
+    { label: '在库', quantity: row.on_hand_quantity, weight: row.on_hand_weight },
+    ...(!props.warehouse
+      ? [
+          {
+            label: '其中已加工完成',
+            detail: true,
+            quantity: complete ? row.on_hand_quantity : 0,
+            weight: complete ? row.on_hand_weight : 0,
+          },
+        ]
+      : []),
+    { label: '已转出待签收', quantity: row.in_transit_quantity, weight: row.in_transit_weight },
+  ]
 }
 const pilot = computed(() => ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(props.teamCode || ''))
 const searchAnchor = ref<HTMLElement>()
@@ -437,7 +471,10 @@ const tableQuery = useTableQuery(
     if (!pilot.value && page.value !== 1) apply({ ...filters.value, page: 1 })
   },
   (table_query) =>
-    teamMaterialApi.inventoryFilterOptions(props.teamId, { ...filters.value, table_query }),
+    teamMaterialApi.inventoryFilterOptions(
+      props.teamId,
+      stockRequestParams({ ...filters.value, table_query }),
+    ),
   columnState,
 )
 const filters = computed<TeamInventoryParams>(() => {
@@ -491,9 +528,25 @@ const filters = computed<TeamInventoryParams>(() => {
   if (pilot.value) return withInventoryQuery(params as TeamInventoryParams, columnState.value)
   return { ...params, ...tableQuery.params.value } as TeamInventoryParams
 })
+// Keep saved column keys in the URL; all inventory requests use the amounts displayed.
+function stockApiField(field: WarehouseSearchField) {
+  if (field === 'on_hand_quantity') return 'stock_total_quantity'
+  if (field === 'on_hand_weight') return 'stock_total_weight'
+  return field
+}
+function stockRequestParams(params: TeamInventoryParams): TeamInventoryParams {
+  const result = { ...params }
+  if (params.search_field) result.search_field = stockApiField(params.search_field)
+  if (params.table_query)
+    result.table_query = JSON.stringify(JSON.parse(params.table_query), (key, value) =>
+      key === 'field' ? stockApiField(value) : value,
+    )
+  return result
+}
+const requestFilters = computed(() => stockRequestParams(filters.value))
 function exportSource() {
   const id = props.teamId,
-    params = { ...filters.value }
+    params = { ...requestFilters.value }
   const fields = [
     columns.value.find((column) => column.key === 'batch_no')!,
     warehouseSerialColumn,
@@ -814,7 +867,7 @@ async function load(background = false) {
   }
   refreshError.value = ''
   try {
-    const result = await teamMaterialApi.teamInventory(props.teamId, filters.value)
+    const result = await teamMaterialApi.teamInventory(props.teamId, requestFilters.value)
     if (current !== version) return
     if (
       page.value > 1 &&
@@ -1337,7 +1390,7 @@ onBeforeUnmount(() => {
               : '批次号、流水号、数量和材质始终显示。'
           "
           :columns="selectableColumns"
-          :new-visible-keys="['task_batch_number', 'in_transit_quantity']"
+          :new-visible-keys="['task_batch_number', 'on_hand_weight']"
           :fixed-column-options="fixedColumnOptions"
           @fixed-change="fixedColumns = $event"
           :legacy-keys="warehouseLegacyColumnKeys"
@@ -1588,11 +1641,30 @@ onBeforeUnmount(() => {
           </template>
           <ElTooltip
             v-else-if="column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'"
-            :content="'本班组尚未转出的数量和重量'"
+            popper-class="stock-breakdown-tooltip"
             :trigger="['hover', 'focus']"
-            popper-class="inventory-balance-tooltip"
             placement="top"
           >
+            <template #content>
+              <table class="stock-breakdown" aria-label="库存明细">
+                <thead>
+                  <tr>
+                    <th scope="col">{{ inventoryTeamName || '库存明细' }}</th>
+                    <th scope="col">件数</th>
+                    <th scope="col">重量（kg）</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="line in stockBreakdown(asRow(row))" :key="line.label">
+                    <th scope="row" :class="{ 'stock-breakdown__detail': line.detail }">
+                      {{ line.label }}
+                    </th>
+                    <td>{{ inventoryQuantity(line.quantity, row.material_type) }}</td>
+                    <td>{{ inventoryAmount(line.weight) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
             <span
               class="inventory-balance"
               :class="{ 'inventory-balance--shortage': column.format(asRow(row)).startsWith('-') }"
@@ -1759,6 +1831,46 @@ onBeforeUnmount(() => {
 :global(.inventory-balance-tooltip) {
   white-space: pre-line;
   line-height: 1.7;
+}
+.stock-breakdown {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stock-breakdown th,
+.stock-breakdown td {
+  padding: 3px 0;
+  text-align: start;
+  font-weight: var(--font-weight-regular);
+}
+.stock-breakdown th:first-child {
+  padding-inline-start: 0.8em;
+}
+.stock-breakdown th:not(:first-child),
+.stock-breakdown td {
+  padding-inline-start: 20px;
+  text-align: end;
+}
+.stock-breakdown thead th {
+  opacity: 0.8;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+.stock-breakdown tbody tr:first-child > * {
+  font-weight: var(--font-weight-semibold);
+}
+.stock-breakdown__detail {
+  position: relative;
+  opacity: 0.8;
+}
+.stock-breakdown__detail::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-end: 50%;
+  inline-size: 0.45em;
+  block-size: 0.55em;
+  border-inline-start: 1px solid currentColor;
+  border-block-end: 1px solid currentColor;
 }
 .inventory-row-actions {
   display: flex;

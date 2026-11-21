@@ -1,5 +1,6 @@
 """Read-only ownership fields must never change transactional stock semantics."""
 
+import json
 from datetime import datetime
 
 import pytest
@@ -83,6 +84,48 @@ def test_ownership_stays_with_sender_until_receipt_in_every_balance_view(client,
         json={"quantity": 10, "expected_version": edited.json()["version"]},
     ).status_code in (403, 409)
     assert client.get(base(s) + f"/inventory/{origin['id']}/pending-outbound").json()["total"] == 0
+
+
+def test_team_stock_totals_follow_each_handoff_and_match_numeric_filters(client, warehouse):
+    setup = warehouse
+    lot = intake(client, setup, quantity=100, weight=50).json()
+    group = dispatch(
+        client, setup, [{"source_transfer_id": lot["id"], "quantity": 20, "weight": 3}]
+    )
+    assert group.status_code == 201, group.text
+
+    def rows(receiver=False, **params):
+        result = client.get(
+            base(setup, receiver) + "/inventory",
+            params={"availability": "current_or_transit", **params},
+        )
+        assert result.status_code == 200, result.text
+        return result.json()["items"]
+
+    def amounts(row):
+        return tuple(
+            row[f"on_hand_{unit}"] + row[f"in_transit_{unit}"] for unit in ("quantity", "weight")
+        )
+
+    assert rows(True) == []
+    for unit, total, current in (("quantity", 100, 80), ("weight", 50, 47)):
+        field = f"stock_total_{unit}"
+        (row,) = rows(search_field=field, query=total)
+        assert amounts(row) == (100, 50)
+        assert rows(search_field=field, query=current) == []
+        query = {
+            "filters": [{"field": field, "kind": "number", "operator": "eq", "value": str(total)}]
+        }
+        assert [r["group_id"] for r in rows(table_query=json.dumps(query))] == [row["group_id"]]
+        query["filters"][0]["value"] = str(current)
+        assert rows(table_query=json.dumps(query)) == []
+    for _ in range(2):
+        assert confirm(client, setup, group.json(), workshop=True).status_code == 200
+        (upstream,) = rows()
+        (downstream,) = rows(True)
+        assert amounts(upstream) == (80, 47)
+        assert amounts(downstream) == (20, 3)
+        assert upstream["in_transit_quantity"] == upstream["in_transit_weight"] == 0
 
 
 def test_fully_pending_rows_remain_selectable_and_void_restores_signed_stock(client, warehouse):

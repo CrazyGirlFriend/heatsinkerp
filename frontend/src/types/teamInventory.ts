@@ -428,11 +428,16 @@ export const warehouseSearchColumns = [
       ].includes(column.key),
   ),
 ]
-export type WarehouseSearchField = 'all' | (typeof warehouseSearchColumns)[number]['key']
+export type WarehouseSearchField =
+  | 'all'
+  | 'stock_total_quantity'
+  | 'stock_total_weight'
+  | (typeof warehouseSearchColumns)[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) =>
   field === 'last_activity_at'
     ? 'date'
-    : warehouseColumns.some((column) => column.key === field && 'numeric' in column)
+    : field.startsWith('stock_total_') ||
+        warehouseColumns.some((column) => column.key === field && 'numeric' in column)
       ? 'number'
       : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
