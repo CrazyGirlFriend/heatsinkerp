@@ -660,7 +660,7 @@ describe('warehouse grouped stock', () => {
     expect(stockTooltipRows().at(-1)).toEqual([
       ['合计', '—', '4.456'],
       ['在库', '—', '3.456'],
-      ['其中已加工完成', '—', '0'],
+      ['在库已加工完成', '—', '0'],
       ['已转出待签收', '—', '1'],
     ])
     expect(wrapper.findAllComponents(ProcessingStockStatus).at(-1)!.text()).toBe('—')
@@ -1269,7 +1269,7 @@ describe('warehouse grouped stock', () => {
         const expected = [
           ['合计', String(owned), String(owned)],
           ['在库', String(available), String(available)],
-          ...(warehouse ? [] : [['其中已加工完成', String(available), String(available)]]),
+          ...(warehouse ? [] : [['在库已加工完成', String(available), String(available)]]),
           ['已转出待签收', String(pending), String(pending)],
         ]
         expect(stockTooltipRows()).toEqual([expected, expected])
@@ -1343,7 +1343,7 @@ describe('warehouse grouped stock', () => {
       expect(table).toEqual([
         ['合计', '80', '9.5'],
         ['在库', '60', '7.5'],
-        ['其中已加工完成', ...completed[i]!],
+        ['在库已加工完成', ...completed[i]!],
         ['已转出待签收', '20', '2'],
       ])
     })

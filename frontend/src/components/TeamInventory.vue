@@ -431,8 +431,7 @@ function stockBreakdown(row: TeamInventoryRow) {
     ...(!props.warehouse
       ? [
           {
-            label: '其中已加工完成',
-            detail: true,
+            label: '在库已加工完成',
             quantity: complete ? row.on_hand_quantity : 0,
             weight: complete ? row.on_hand_weight : 0,
           },
@@ -1656,9 +1655,7 @@ onBeforeUnmount(() => {
                 </thead>
                 <tbody>
                   <tr v-for="line in stockBreakdown(asRow(row))" :key="line.label">
-                    <th scope="row" :class="{ 'stock-breakdown__detail': line.detail }">
-                      {{ line.label }}
-                    </th>
+                    <th scope="row">{{ line.label }}</th>
                     <td>{{ inventoryQuantity(line.quantity, row.material_type) }}</td>
                     <td>{{ inventoryAmount(line.weight) }}</td>
                   </tr>
@@ -1843,9 +1840,6 @@ onBeforeUnmount(() => {
   text-align: start;
   font-weight: var(--font-weight-regular);
 }
-.stock-breakdown th:first-child {
-  padding-inline-start: 0.8em;
-}
 .stock-breakdown th:not(:first-child),
 .stock-breakdown td {
   padding-inline-start: 20px;
@@ -1857,20 +1851,6 @@ onBeforeUnmount(() => {
 }
 .stock-breakdown tbody tr:first-child > * {
   font-weight: var(--font-weight-semibold);
-}
-.stock-breakdown__detail {
-  position: relative;
-  opacity: 0.8;
-}
-.stock-breakdown__detail::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 0;
-  inset-block-end: 50%;
-  inline-size: 0.45em;
-  block-size: 0.55em;
-  border-inline-start: 1px solid currentColor;
-  border-block-end: 1px solid currentColor;
 }
 .inventory-row-actions {
   display: flex;
