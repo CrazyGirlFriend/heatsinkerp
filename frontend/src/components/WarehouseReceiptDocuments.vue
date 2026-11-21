@@ -21,6 +21,7 @@ const props = withDefaults(
     serialNo?: string
     scheduleTaskId?: number | null
     documents: ReceiptDocument[]
+    availableOnly?: boolean
     documentKind?: ReceiptDocumentKind
     editable?: boolean
     disabled?: boolean
@@ -97,6 +98,32 @@ const orderLoader = computed(() => {
 })
 const inheritedOrder = computed(() => dispatchOrder.value?.document ?? legacyOrder.value)
 const orderName = computed(() => orderDocument.value?.filename || inheritedOrder.value?.filename)
+const visibleKinds = computed<ReceiptDocumentKind[]>(() => {
+  if (props.documentKind) return [props.documentKind]
+  return props.availableOnly ? ['drawing', 'process', 'order'] : ['process', 'drawing', 'order']
+})
+const fileKeys = computed(() => [
+  ...(props.route?.drawings || []).map((item) => `route-${item.id}`),
+  ...drawingDocuments.value.map((item) => `receipt-${item.id}`),
+  ...(wordRoute.value?.filename ? ['process'] : []),
+  ...(orderName.value || orderError.value ? ['order'] : []),
+])
+// An explicit choice wins even if another attachment arrives later.
+const chosenFile = ref<string>()
+const activeFile = computed(() =>
+  chosenFile.value === '' || fileKeys.value.includes(chosenFile.value ?? '')
+    ? chosenFile.value
+    : fileKeys.value[0],
+)
+function previewControls(key: string) {
+  if (!props.availableOnly || props.documentKind) return {}
+  return {
+    expanded: key === activeFile.value,
+    'onUpdate:expanded': (open: boolean) => {
+      chosenFile.value = open ? key : ''
+    },
+  }
+}
 let orderGeneration = 0
 let uploadGeneration = 0
 let active = true
@@ -225,7 +252,10 @@ onBeforeUnmount(() => {
 <template>
   <aside
     class="receipt-documents"
-    :class="{ 'receipt-documents--single-kind': documentKind }"
+    :class="{
+      'receipt-documents--single-kind': documentKind,
+      'receipt-documents--picker': availableOnly,
+    }"
     aria-label="入库附件缩略图"
     :aria-busy="uploading || orderLoading"
   >
@@ -236,155 +266,163 @@ onBeforeUnmount(() => {
       aria-label="上传入库资料"
       @change="upload"
     />
-    <DocumentCard
-      v-if="!documentKind || documentKind === 'process'"
-      class="receipt-document-card"
-      data-document-kind="process"
-      title="工艺原件"
-      :source="processDocument ? '本次补传' : wordRoute?.filename ? '来自工艺' : undefined"
-      :filename="wordRoute?.filename || undefined"
-      :missing="wordRoute?.filename ? undefined : '未上传工艺原件'"
-    >
-      <WordDocumentPreview
-        v-if="wordRoute?.filename"
-        ref="wordPreview"
-        :route="wordRoute"
-        :load-source="processLoader"
-        thumbnail
-      />
-      <template #actions>
-        <ElButton v-if="wordRoute?.filename" link @click="wordPreview?.download()"
-          >下载原件</ElButton
-        >
-        <ElButton
-          v-if="editable && (processDocument || !wordRoute?.filename)"
-          link
-          :icon="Upload"
-          :disabled="disabled || uploading"
-          @click="choose('process')"
-          >{{ wordRoute?.filename ? '替换' : '上传' }}</ElButton
-        >
-        <ElButton
-          v-if="editable && processDocument"
-          link
-          type="danger"
-          :disabled="disabled || uploading"
-          @click="emit('remove', processDocument.id)"
-          >移除</ElButton
-        >
-      </template>
-    </DocumentCard>
-    <template v-if="!documentKind || documentKind === 'drawing'">
+    <template v-for="kind in visibleKinds" :key="kind">
       <DocumentCard
-        v-for="drawing in route?.drawings || []"
-        :key="`route-${drawing.id}`"
+        v-if="kind === 'process' && (!availableOnly || wordRoute?.filename)"
         class="receipt-document-card"
-        data-document-kind="drawing"
-        title="图纸"
-        source="来自工艺"
+        data-document-kind="process"
+        v-bind="previewControls('process')"
+        title="工艺原件"
+        :source="processDocument ? '本次补传' : wordRoute?.filename ? '来自工艺' : undefined"
+        :filename="wordRoute?.filename || undefined"
+        :missing="wordRoute?.filename ? undefined : '未上传工艺原件'"
       >
-        <ProcessRouteDrawingPreview :route-id="route!.id" :drawing="drawing" thumbnail />
-      </DocumentCard>
-      <DocumentCard
-        v-for="drawing in drawingDocuments"
-        :key="`receipt-${drawing.id}`"
-        class="receipt-document-card"
-        data-document-kind="drawing"
-        title="图纸"
-        source="本次补传"
-      >
-        <ProcessRouteDrawingPreview
-          :route-id="0"
-          :filename="drawing.filename"
-          :load-preview="drawing.preview"
-          :load-original="drawing.original"
+        <WordDocumentPreview
+          v-if="wordRoute?.filename"
+          ref="wordPreview"
+          :route="wordRoute"
+          :load-source="processLoader"
           thumbnail
         />
-        <template v-if="editable" #actions
-          ><ElButton
-            link
-            type="danger"
-            :disabled="disabled || uploading"
-            :aria-label="`移除 ${drawing.filename}`"
-            @click="emit('remove', drawing.id)"
-            >移除</ElButton
-          ></template
-        >
-      </DocumentCard>
-      <DocumentCard
-        v-if="!route?.drawings?.length && !drawingDocuments.length"
-        class="receipt-document-card"
-        data-document-kind="drawing"
-        title="图纸"
-        missing="未上传图纸"
-      >
-        <template v-if="editable" #actions
-          ><ElButton
+        <template #actions>
+          <ElButton v-if="wordRoute?.filename" link @click="wordPreview?.download()"
+            >下载原件</ElButton
+          >
+          <ElButton
+            v-if="editable && (processDocument || !wordRoute?.filename)"
             link
             :icon="Upload"
             :disabled="disabled || uploading"
-            @click="choose('drawing')"
-            >上传图纸</ElButton
-          ></template
-        >
+            @click="choose('process')"
+            >{{ wordRoute?.filename ? '替换' : '上传' }}</ElButton
+          >
+          <ElButton
+            v-if="editable && processDocument"
+            link
+            type="danger"
+            :disabled="disabled || uploading"
+            @click="emit('remove', processDocument.id)"
+            >移除</ElButton
+          >
+        </template>
       </DocumentCard>
-      <ElButton
-        v-else-if="editable"
-        :icon="Upload"
-        :disabled="disabled || uploading"
-        size="small"
-        @click="choose('drawing')"
-        >补充图纸</ElButton
-      >
-    </template>
-    <DocumentCard
-      v-if="!documentKind || documentKind === 'order'"
-      class="receipt-document-card"
-      data-document-kind="order"
-      title="订单表"
-      :source="
-        orderDocument
-          ? '本次补传'
-          : inheritedOrder
-            ? dispatchOrder
-              ? '来自排期'
-              : '来自工艺'
-            : undefined
-      "
-      :filename="orderName"
-      :missing="!orderName && !orderLoading && !orderError ? '未上传订单表' : undefined"
-    >
-      <OrderDocumentPreview
-        v-if="orderName"
-        :route-id="route?.id || 0"
-        :task-id="dispatchOrder?.task_id"
-        :load-preview="orderLoader"
-        thumbnail
-      />
-      <p v-else-if="orderLoading" class="receipt-document-state" role="status">正在读取订单…</p>
-      <p v-else-if="orderError" class="receipt-document-state" role="alert">
-        {{ orderError }} <ElButton link @click="loadOrder">重试</ElButton>
-      </p>
-      <template #actions>
-        <ElButton v-if="orderName" link @click="downloadOrder">下载原件</ElButton>
+      <template v-if="kind === 'drawing'">
+        <DocumentCard
+          v-for="drawing in route?.drawings || []"
+          :key="`route-${drawing.id}`"
+          v-bind="previewControls(`route-${drawing.id}`)"
+          :summary-filename="drawing.filename"
+          class="receipt-document-card"
+          data-document-kind="drawing"
+          title="图纸"
+          source="来自工艺"
+        >
+          <ProcessRouteDrawingPreview :route-id="route!.id" :drawing="drawing" thumbnail />
+        </DocumentCard>
+        <DocumentCard
+          v-for="drawing in drawingDocuments"
+          :key="`receipt-${drawing.id}`"
+          v-bind="previewControls(`receipt-${drawing.id}`)"
+          :summary-filename="drawing.filename"
+          class="receipt-document-card"
+          data-document-kind="drawing"
+          title="图纸"
+          source="本次补传"
+        >
+          <ProcessRouteDrawingPreview
+            :route-id="0"
+            :filename="drawing.filename"
+            :load-preview="drawing.preview"
+            :load-original="drawing.original"
+            thumbnail
+          />
+          <template v-if="editable" #actions
+            ><ElButton
+              link
+              type="danger"
+              :disabled="disabled || uploading"
+              :aria-label="`移除 ${drawing.filename}`"
+              @click="emit('remove', drawing.id)"
+              >移除</ElButton
+            ></template
+          >
+        </DocumentCard>
+        <DocumentCard
+          v-if="!availableOnly && !route?.drawings?.length && !drawingDocuments.length"
+          class="receipt-document-card"
+          data-document-kind="drawing"
+          title="图纸"
+          missing="未上传图纸"
+        >
+          <template v-if="editable" #actions
+            ><ElButton
+              link
+              :icon="Upload"
+              :disabled="disabled || uploading"
+              @click="choose('drawing')"
+              >上传图纸</ElButton
+            ></template
+          >
+        </DocumentCard>
         <ElButton
-          v-if="editable && (orderDocument || !inheritedOrder)"
-          link
+          v-else-if="editable"
           :icon="Upload"
           :disabled="disabled || uploading"
-          @click="choose('order')"
-          >{{ orderName ? '替换' : '上传' }}</ElButton
-        >
-        <ElButton
-          v-if="editable && orderDocument"
-          link
-          type="danger"
-          :disabled="disabled || uploading"
-          @click="emit('remove', orderDocument.id)"
-          >移除</ElButton
+          size="small"
+          @click="choose('drawing')"
+          >补充图纸</ElButton
         >
       </template>
-    </DocumentCard>
+      <DocumentCard
+        v-if="kind === 'order' && (!availableOnly || orderName || orderError)"
+        class="receipt-document-card"
+        data-document-kind="order"
+        v-bind="previewControls('order')"
+        title="订单表"
+        :source="
+          orderDocument
+            ? '本次补传'
+            : inheritedOrder
+              ? dispatchOrder
+                ? '来自排期'
+                : '来自工艺'
+              : undefined
+        "
+        :filename="orderName"
+        :missing="!orderName && !orderLoading && !orderError ? '未上传订单表' : undefined"
+      >
+        <OrderDocumentPreview
+          v-if="orderName"
+          :route-id="route?.id || 0"
+          :task-id="dispatchOrder?.task_id"
+          :load-preview="orderLoader"
+          thumbnail
+        />
+        <p v-else-if="orderLoading" class="receipt-document-state" role="status">正在读取订单…</p>
+        <p v-else-if="orderError" class="receipt-document-state" role="alert">
+          {{ orderError }} <ElButton link @click="loadOrder">重试</ElButton>
+        </p>
+        <template #actions>
+          <ElButton v-if="orderName" link @click="downloadOrder">下载原件</ElButton>
+          <ElButton
+            v-if="editable && (orderDocument || !inheritedOrder)"
+            link
+            :icon="Upload"
+            :disabled="disabled || uploading"
+            @click="choose('order')"
+            >{{ orderName ? '替换' : '上传' }}</ElButton
+          >
+          <ElButton
+            v-if="editable && orderDocument"
+            link
+            type="danger"
+            :disabled="disabled || uploading"
+            @click="emit('remove', orderDocument.id)"
+            >移除</ElButton
+          >
+        </template>
+      </DocumentCard>
+    </template>
     <AsyncStatus v-if="uploading" :label="`正在导入${labels[uploadKind]}…`" />
     <AsyncStatus
       v-else-if="uploadState"
@@ -404,6 +442,9 @@ onBeforeUnmount(() => {
   gap: 10px;
   min-width: 0;
 }
+.receipt-documents--picker {
+  gap: 0;
+}
 .receipt-document-input {
   display: none;
 }
@@ -415,7 +456,7 @@ onBeforeUnmount(() => {
   height: 160px;
 }
 @media (max-width: 760px) {
-  .receipt-documents:not(.receipt-documents--single-kind) {
+  .receipt-documents:not(.receipt-documents--single-kind, .receipt-documents--picker) {
     flex-direction: row;
     align-items: flex-start;
     overflow-x: auto;

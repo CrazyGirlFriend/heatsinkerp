@@ -219,8 +219,12 @@ describe('source batch dispatch and loss drafts', () => {
     await render('dispatch', [lot])
     expect(wrapper.get('.source-specification-field').text()).toContain('选填')
     await destination()
-    if (dimensions)
+    const editor = wrapper.get('.source-specification-field button[aria-expanded]')
+    expect(editor.attributes('aria-expanded')).toBe('false')
+    if (dimensions) {
+      await editor.trigger('click')
       wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', dimensions)
+    }
     await flushPromises()
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
@@ -266,7 +270,14 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render('dispatch', [source()])
     await destination()
-    expect(wrapper.text()).toContain('已自动关联')
+    const scheduleRow = wrapper.get('.dispatch-schedule-row')
+    expect(scheduleRow.text()).toContain('排期')
+    expect(wrapper.get('.source-weight-field').element.nextElementSibling).toBe(scheduleRow.element)
+    expect(
+      wrapper
+        .get('.source-specification-field')
+        .element.compareDocumentPosition(scheduleRow.element) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy()
     expect(wrapper.find('[aria-label="TL10交货排期"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="TL10交货批次"]').exists()).toBe(false)
     expect(wrapper.get('.source-schedule-estimate').text()).toContain('交期 2026-10-24 16:00')
@@ -510,6 +521,9 @@ describe('source batch dispatch and loss drafts', () => {
     row.transfer.next_team.code = code
     if (code === 'FACTORY-WAREHOUSE') row.transfer.process_route = warehouseRoute()
     await render('dispatch', [row])
+    expect(
+      wrapper.get('.form-workspace-documents').getComponent(SerialRouteAttachments).props('items'),
+    ).toMatchObject([{ batchNo: 'TL10', serialNo: 'SERIAL10' }])
     const menu = wrapper.find('button[aria-label$="更多操作"]')
     if (menu.exists()) await openSourceActions()
     expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
@@ -1726,15 +1740,12 @@ it('automatically resolves a warehouse serial and submits its complete documents
       process_route_id: routeFixture.id,
     }),
   )
-  expect(wrapper.find('.form-workspace-documents').exists()).toBe(false)
-  expect(wrapper.findComponent(SerialRouteAttachments).exists()).toBe(false)
-  await wrapper.get('.source-line button[aria-label="查看 SERIAL10 订单表"]').trigger('click')
-  expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
-    documentKind: 'order',
-    items: [expect.objectContaining({ scheduleTaskId: 31 })],
+  expect(
+    wrapper.get('.form-workspace-documents').findComponent(SerialRouteAttachments).props(),
+  ).toMatchObject({
+    availableOnly: true,
+    items: [expect.objectContaining({ serialNo: 'SERIAL10', scheduleTaskId: 31 })],
   })
-  wrapper.findAllComponents(AppDialog).at(-1)!.vm.$emit('close')
-  await flushPromises()
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
     2,
@@ -1836,14 +1847,12 @@ it('routes multiple outbound serials together only when their next teams agree',
   await vi.waitFor(() => expect(receiver()).toBe('退火'))
   await flushPromises()
   const sourceCards = wrapper.findAll('.source-line')
-  await sourceCards[0]!.get('button[aria-label="查看 ORDER-A 工艺原件"]').trigger('click')
+  await sourceCards[0]!.trigger('focusin')
   expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
-    documentKind: 'process',
     items: [expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8, batchNo: 'TL10' })],
   })
-  await sourceCards[1]!.get('button[aria-label="查看 ORDER-B 图纸"]').trigger('click')
+  await sourceCards[1]!.trigger('pointerdown')
   expect(wrapper.getComponent(SerialRouteAttachments).props()).toMatchObject({
-    documentKind: 'drawing',
     items: [expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9, batchNo: 'TL11' })],
   })
   await submit()
@@ -1909,6 +1918,10 @@ it.each([null, 'ORDER-A', 'ORDER-B'])(
     fields.vm.$emit('update:modelValue', [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }])
     await vi.waitFor(() => expect(fields.emitted('validation-change')?.at(-1)).toEqual(['']))
     await flushPromises()
+    const sidebar = () => wrapper.getComponent(SerialRouteAttachments).props('items')
+    expect(sidebar()).toMatchObject([{ serialNo: 'ORDER-A', routeId: 8 }])
+    await fields.get('[aria-label="共投流水号 2"]').trigger('focusin')
+    expect(sidebar()).toMatchObject([{ serialNo: 'ORDER-B', routeId: 9 }])
     await submit()
     expect(wrapper.findAll('[role="alert"]').map((node) => node.text())).toEqual([])
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()

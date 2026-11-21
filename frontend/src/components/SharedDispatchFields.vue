@@ -22,6 +22,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:modelValue': [SharedMaterialSerial[]]
+  'activate-member': [number]
   'routes-change': [ProcessRoute[]]
   'validation-change': [string]
 }>()
@@ -158,6 +159,7 @@ watch(
       >
     </div>
     <WorkspaceTable
+      @row-click="(row: SharedMaterialSerial) => emit('activate-member', modelValue.indexOf(row))"
       columns-key="SharedDispatchFields-1"
       class="shared-dispatch-table"
       :column-settings="false"
@@ -175,6 +177,7 @@ watch(
             :label="`共投流水号 ${$index + 1}`"
             :disabled="disabled"
             placeholder="输入或选择流水号"
+            @focusin="emit('activate-member', $index)"
             @update:model-value="update($index, { serial_no: $event })"
           />
         </template>

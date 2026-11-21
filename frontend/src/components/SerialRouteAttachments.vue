@@ -15,6 +15,7 @@ import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 
 const props = defineProps<{
   batchNo?: string
+  availableOnly?: boolean
   documentKind?: ReceiptDocumentKind
   items: {
     serialNo: string
@@ -126,7 +127,11 @@ async function load() {
       if (version !== generation) return
       sourceRoute.value = original
     }
-    if (!selectedBatch.value && (!props.documentKind || props.documentKind === 'order')) {
+    if (
+      !props.availableOnly &&
+      !selectedBatch.value &&
+      (!props.documentKind || props.documentKind === 'order')
+    ) {
       const order = await processRouteApi.dispatchOrder(
         sourceRoute.value?.id || result.id,
         serialNo.value,
@@ -167,7 +172,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="serial-attachments" aria-label="流水号附件">
+  <aside
+    class="serial-attachments"
+    :class="{ 'serial-attachments--interactive': options.length > 1 || error || documentsError }"
+    aria-label="流水号附件"
+  >
     <ElSelect v-if="options.length > 1" v-model="selected" aria-label="切换附件流水号">
       <ElOption
         v-for="item in options"
@@ -181,8 +190,8 @@ onBeforeUnmount(() => {
     <strong
       v-else-if="current && !documentKind"
       class="serial-attachments-label"
-      :title="current.serialNo"
-      >{{ current.serialNo }}</strong
+      :title="current.serialNo || current.batchNo"
+      >{{ current.serialNo || current.batchNo }}</strong
     >
     <span v-if="loading" class="serial-attachments-state" role="status">读取资料…</span>
     <template v-if="error">
@@ -197,7 +206,9 @@ onBeforeUnmount(() => {
       <ElButton size="small" @click="loadReceiptDocuments">重试附件</ElButton>
     </template>
     <WarehouseReceiptDocuments
-      v-if="selectedBatch && !documentsLoading"
+      v-if="(selectedBatch || (availableOnly && route)) && !documentsLoading"
+      :key="availableOnly ? selected : undefined"
+      :available-only="availableOnly"
       :route="route"
       :source-route="sourceRoute"
       :serial-no="serialNo"

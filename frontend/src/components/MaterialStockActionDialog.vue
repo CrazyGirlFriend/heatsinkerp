@@ -16,6 +16,7 @@ import AppDialog from '@/components/AppDialog.vue'
 import SharedDispatchFields from './SharedDispatchFields.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import MaterialInput from './MaterialInput.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
@@ -87,7 +88,6 @@ import {
 } from '@/utils/materialStock'
 import type { WarehouseLeaseGroup } from '@/services/warehouseLocationApi'
 import { currentLocations } from '@/utils/warehousePlacement'
-import type { ReceiptDocumentKind } from '@/types/warehouseReceiptDocuments'
 
 const props = defineProps<{
   modelValue: boolean
@@ -137,6 +137,7 @@ const lines = ref<
     selectedRoute?: ProcessRoute
     dispatchOrder?: Awaited<ReturnType<typeof processRouteApi.dispatchOrder>>
     shared: boolean
+    activeMember?: number
     sharedMembers: SharedMaterialSerial[]
     sharedRoutes: ProcessRoute[]
     sharedProblem: string
@@ -185,8 +186,10 @@ const form = reactive({
   reason: '',
 })
 const sender = ref<TeamEmployee | null>(null)
-const attachmentLabels = { process: '工艺原件', drawing: '图纸', order: '订单表' } as const
-const attachmentPreview = ref<{ lineKey: string; kind: ReceiptDocumentKind }>()
+const activeLineKey = ref('')
+const activeLine = computed(
+  () => lines.value.find((line) => line.key === activeLineKey.value) || lines.value[0],
+)
 const activeActions = ref('')
 function setLineActions(key: string, open: boolean) {
   if (open) activeActions.value = key
@@ -679,7 +682,7 @@ watch(
     ++generation
     saving.value = false
     refreshing.value = false
-    attachmentPreview.value = undefined
+    activeLineKey.value = ''
     Object.keys(processing).forEach((key) => delete processing[Number(key)])
     if (!open) return
     lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map((source) => ({
@@ -701,7 +704,7 @@ watch(
       originalSpecification:
         source.current_specification ?? source.transfer.transfer_specification ?? '',
       specificationValid: true,
-      specificationOpen: !(source.current_specification ?? source.transfer.transfer_specification),
+      specificationOpen: false,
     }))
     lines.value.forEach((line, index) => {
       line.percent = line.source.transfer.sludge_content_percent ?? undefined
@@ -1064,6 +1067,7 @@ function canShare(line: (typeof lines.value)[number]) {
   )
 }
 function toggleShared(line: (typeof lines.value)[number]) {
+  line.activeMember = 0
   line.shared = !line.shared
   line.selectedRoute = undefined
   line.sharedRoutes = []
@@ -1073,39 +1077,37 @@ function toggleShared(line: (typeof lines.value)[number]) {
   if (line.shared && !line.sharedMembers.length)
     line.sharedMembers = [{ serial_no: line.serialNo }, { serial_no: '' }]
 }
-function hasAttachments(line: (typeof lines.value)[number]) {
-  return (
-    !isLoss.value &&
-    !line.shared &&
-    !isScrapType(line.materialType) &&
-    (line.selectedRoute || !needsRoute(line))
-  )
-}
-const previewLine = computed(
-  () =>
-    props.modelValue &&
-    lines.value.find(
-      (line) => line.key === attachmentPreview.value?.lineKey && hasAttachments(line),
-    ),
-)
-function attachmentTaskId(line: (typeof lines.value)[number]) {
-  return selectedSchedule(line)?.task_id || line.source.transfer.schedule_task_id
-}
-function attachmentName(line: (typeof lines.value)[number], kind: ReceiptDocumentKind) {
-  if (kind === 'process')
-    return line.selectedRoute?.title || line.source.transfer.process_route?.title
-  if (kind === 'drawing') {
-    const drawings = line.selectedRoute?.drawings ?? []
-    return drawings.length > 1 ? `${drawings.length} 张` : drawings[0]?.filename
+const attachmentItems = computed(() => {
+  const line = activeLine.value
+  if (!props.modelValue || isLoss.value || !line || isScrapType(line.materialType)) return []
+  const lot = line.source.transfer
+  if (line.shared) {
+    const member = line.sharedMembers[line.activeMember ?? 0]
+    if (!member?.process_route_id) return []
+    return [
+      {
+        serialNo: member.serial_no.trim(),
+        routeId: member.process_route_id,
+        route: line.sharedRoutes.find((route) => route.id === member.process_route_id),
+      },
+    ]
   }
-  const taskId = attachmentTaskId(line)
-  if (taskId && taskId !== line.dispatchOrder?.task_id) return selectedSchedule(line)?.task_title
-  const legacyOrder = line.selectedRoute?.source_data.order_document
-  return (
-    line.dispatchOrder?.document.filename ||
-    (legacyOrder?.serial_no === line.serialNo.trim() ? legacyOrder.filename : undefined)
-  )
-}
+  if (lot.shared_unallocated && lot.shared_serials?.length)
+    return lot.shared_serials.map((member) => ({
+      serialNo: member.serial_no,
+      routeId: member.process_route_id,
+    }))
+  if (needsRoute(line) && line.serialNo.trim() && !line.selectedRoute) return []
+  return [
+    {
+      serialNo: line.serialNo.trim(),
+      batchNo: lot.batch_no,
+      routeId: lot.process_route?.id || line.selectedRoute?.id,
+      route: line.selectedRoute,
+      scheduleTaskId: selectedSchedule(line)?.task_id || lot.schedule_task_id,
+    },
+  ]
+})
 
 watch(
   () => [
@@ -1197,7 +1199,10 @@ watch(
     <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
       <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
     </ElAlert>
-    <FormWorkspace>
+    <FormWorkspace class="dispatch-workspace" :documents="attachmentItems.length > 0">
+      <template #documents>
+        <SerialRouteAttachments :items="attachmentItems" available-only />
+      </template>
       <ElForm
         ref="formRef"
         label-position="top"
@@ -1213,11 +1218,19 @@ watch(
             }}</ElRadioButton>
           </ElRadioGroup>
         </div>
-        <div class="source-lines">
-          <article v-for="(line, index) in lines" :key="line.key" class="source-line">
+        <div class="source-lines" :class="{ 'dispatch-lines': !isLoss }">
+          <article
+            v-for="(line, index) in lines"
+            :key="line.key"
+            class="source-line"
+            @focusin="activeLineKey = line.key"
+            @pointerdown.capture="activeLineKey = line.key"
+          >
             <header>
               <div class="source-identity">
-                <span class="source-index">{{ String(index + 1).padStart(2, '0') }}</span>
+                <span v-if="lines.length > 1" class="source-index">{{
+                  String(index + 1).padStart(2, '0')
+                }}</span>
                 <strong>{{
                   line.source.transfer.serial_no || line.source.transfer.shared_unallocated
                     ? sharedSerialLabel(line.source.transfer)
@@ -1226,6 +1239,14 @@ watch(
                 ><span class="source-material">{{
                   line.source.transfer.material_name || '未填写材质'
                 }}</span>
+                <WatermelonBadge
+                  v-if="
+                    !isLoss && (sourceWarehouse || line.source.transfer.material_type === 'sludge')
+                  "
+                  tone="info"
+                >
+                  {{ materialTypeLabel(line.source.transfer.material_type) }}
+                </WatermelonBadge>
                 <ProcessingStockStatus
                   v-if="
                     isProcessingTeamCode(line.source.transfer.next_team.code) &&
@@ -1234,31 +1255,24 @@ watch(
                   :state="line.latest.processing_state"
                   :material-type="line.source.transfer.material_type"
                 />
-                <div class="source-meta">
-                  <span v-if="line.source.transfer.is_outsourced">外委产品</span>
-                  <span
-                    >排期批次
-                    {{
-                      selectedSchedule(line)?.task_batch_number
-                        ? formatScheduleBatch(selectedSchedule(line)!)
-                        : line.source.transfer.task_batch_number
-                          ? formatScheduleBatch(line.source.transfer)
-                          : '未关联排期'
-                    }}</span
-                  >
-                  <span
-                    v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
-                    >批次 {{ line.source.transfer.batch_no }}</span
-                  >
-                  <span>来自 {{ line.source.transfer.source_team.name }}</span
-                  ><span v-if="line.source.transfer.purpose_name"
-                    >业务 {{ line.source.transfer.purpose_name }}</span
-                  ><span v-if="line.source.transfer.source_batch_no"
-                    >原单批号 {{ line.source.transfer.source_batch_no }}</span
-                  ><span v-if="sourceWarehouse"
-                    >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
-                  >
-                </div>
+              </div>
+              <div class="source-meta">
+                <span v-if="line.source.transfer.is_outsourced">外委产品</span>
+                <span v-if="line.source.transfer.task_batch_number && !lineSchedules(line).length">
+                  排期批次 {{ formatScheduleBatch(line.source.transfer) }}
+                </span>
+                <span
+                  v-if="line.source.transfer.serial_no || line.source.transfer.shared_unallocated"
+                  >批次 {{ line.source.transfer.batch_no }}</span
+                >
+                <span>来自 {{ line.source.transfer.source_team.name }}</span
+                ><span v-if="line.source.transfer.purpose_name"
+                  >业务 {{ line.source.transfer.purpose_name }}</span
+                ><span v-if="line.source.transfer.source_batch_no"
+                  >原单批号 {{ line.source.transfer.source_batch_no }}</span
+                ><span v-if="sourceWarehouse"
+                  >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
+                >
               </div>
               <div class="source-balance">
                 <span>账面库存</span>
@@ -1268,8 +1282,25 @@ watch(
                   :quantity="dispatchableAmounts(line.latest).quantity"
                   :weight="dispatchableAmounts(line.latest).weight"
                 />
+                <ElButton
+                  v-if="!isLoss"
+                  size="small"
+                  link
+                  :disabled="!line.latest"
+                  @click="fillAll(index)"
+                  >全部填入</ElButton
+                >
               </div>
               <div class="source-actions">
+                <ElButton
+                  v-if="isLoss"
+                  size="small"
+                  type="primary"
+                  plain
+                  :disabled="!line.latest"
+                  @click="fillAll(index)"
+                  >全部填入</ElButton
+                >
                 <ElButton
                   v-if="canShare(line) || line.shared"
                   size="small"
@@ -1277,14 +1308,6 @@ watch(
                   :disabled="busy"
                   @click="toggleShared(line)"
                   >{{ line.shared ? '取消共投' : '共投' }}</ElButton
-                >
-                <ElButton
-                  size="small"
-                  type="primary"
-                  plain
-                  :disabled="!line.latest"
-                  @click="fillAll(index)"
-                  >全部填入</ElButton
                 >
                 <AppPopover
                   v-if="
@@ -1349,6 +1372,7 @@ watch(
                 v-model="line.sharedMembers"
                 :team-id="teamId"
                 :disabled="busy"
+                @activate-member="line.activeMember = $event"
                 @routes-change="line.sharedRoutes = $event"
                 @validation-change="line.sharedProblem = $event"
               />
@@ -1528,7 +1552,7 @@ watch(
             <div
               class="source-inputs dialog-form-grid"
               :class="{
-                'source-inputs-inline': !isLoss && !isWeightOnlyType(line.materialType),
+                'source-inputs-dispatch': !isLoss,
                 'source-inputs-weight-only': isWeightOnlyType(line.materialType),
                 'source-inputs-sludge': converted(line),
               }"
@@ -1609,17 +1633,87 @@ watch(
                 丢失重量按有效材料计算，不填废泥实重。
               </p>
               <ElFormItem
-                v-if="!isLoss"
+                v-if="!isLoss && lineSchedules(line).length > 1"
+                class="dialog-field-wide"
+                label="排期批次"
+                :error="lineError(line, 'scheduleId')"
+                required
+              >
+                <ElSelect
+                  v-model="line.scheduleId"
+                  :aria-label="`${line.source.transfer.batch_no}交货排期`"
+                  placeholder="选择本次转出对应的排期批次"
+                >
+                  <ElOption
+                    v-for="schedule in lineSchedules(line)"
+                    :key="schedule.id"
+                    :value="schedule.id"
+                    :label="scheduleLabel(schedule)"
+                  />
+                </ElSelect>
+              </ElFormItem>
+              <ElFormItem
+                v-if="!isLoss && lineScheduleBatches(line).length > 1"
+                label="历史交货批次"
+                :error="lineError(line, 'scheduleBatchId')"
+                required
+              >
+                <ElSelect
+                  v-model="line.scheduleBatchId"
+                  placeholder="选择交货批次"
+                  :aria-label="`${line.source.transfer.batch_no}交货批次`"
+                  ><ElOption
+                    v-for="batch in lineScheduleBatches(line)"
+                    :key="batch.id"
+                    :value="batch.id"
+                    :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
+                /></ElSelect>
+              </ElFormItem>
+              <div
+                v-if="lineSchedules(line).length === 1 || scheduleEstimates[line.key]"
+                class="dispatch-schedule-row dialog-field-wide"
+              >
+                <span
+                  v-if="lineSchedules(line).length === 1"
+                  class="schedule-reference"
+                  title="已自动关联排期"
+                >
+                  排期
+                  {{
+                    [
+                      lineSchedules(line)[0]!.serial_no,
+                      lineSchedules(line)[0]!.task_batch_number &&
+                        formatScheduleBatch(lineSchedules(line)[0]!),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  }}
+                </span>
+                <p
+                  v-if="scheduleEstimates[line.key]"
+                  class="source-schedule-estimate"
+                  aria-live="polite"
+                >
+                  <span
+                    >交期 <b>{{ scheduleEstimates[line.key].dueAt }}</b></span
+                  >
+                  <span v-if="scheduleEstimates[line.key].remaining" class="schedule-remaining"
+                    >待交 {{ scheduleEstimates[line.key].remaining }}</span
+                  >
+                  <span v-if="scheduleEstimates[line.key].estimate"
+                    >本次转出后 <b>{{ scheduleEstimates[line.key].estimate }}</b></span
+                  >
+                </p>
+              </div>
+              <ElFormItem
+                v-if="
+                  !isLoss && !sourceWarehouse && line.source.transfer.material_type !== 'sludge'
+                "
                 class="source-material-type-field"
                 :label="`${actionLabel}物料类型`"
                 :error="lineError(line, 'materialType')"
                 :required="warehouse"
-                ><span
-                  class="dialog-readonly"
-                  v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'"
-                  >{{ materialTypeLabel(line.source.transfer.material_type) }}</span
                 ><ElSelect
-                  v-else
                   v-model="line.materialType"
                   :aria-label="`${line.source.transfer.batch_no}物料类型`"
                   :placeholder="materialTypeLabel(line.source.transfer.material_type)"
@@ -1662,83 +1756,6 @@ watch(
               >
                 {{ routeProblem(line) }}
               </p>
-              <div
-                v-if="hasAttachments(line)"
-                class="source-attachments dialog-field-wide"
-                role="group"
-                aria-label="本批关联资料"
-              >
-                <ElButton
-                  v-for="(label, kind) in attachmentLabels"
-                  :key="kind"
-                  size="small"
-                  :title="attachmentName(line, kind)"
-                  :aria-label="`查看 ${line.serialNo.trim() || line.source.transfer.batch_no} ${label}`"
-                  @click="attachmentPreview = { lineKey: line.key, kind }"
-                >
-                  <span>{{ label }}</span>
-                  <span v-if="attachmentName(line, kind)" class="source-attachment-name">
-                    {{ attachmentName(line, kind) }}
-                  </span>
-                </ElButton>
-              </div>
-              <ElFormItem
-                v-if="!isLoss && lineSchedules(line).length"
-                class="dialog-field-wide"
-                label="排期批次"
-                :error="lineError(line, 'scheduleId')"
-                :required="lineSchedules(line).length > 1"
-              >
-                <span v-if="lineSchedules(line).length === 1" class="dialog-readonly">
-                  {{ lineSchedules(line)[0]!.serial_no }} ·
-                  {{ formatScheduleBatch(lineSchedules(line)[0]!) }} · 已自动关联
-                </span>
-                <ElSelect
-                  v-else
-                  v-model="line.scheduleId"
-                  :aria-label="`${line.source.transfer.batch_no}交货排期`"
-                  placeholder="选择本次转出对应的排期批次"
-                >
-                  <ElOption
-                    v-for="schedule in lineSchedules(line)"
-                    :key="schedule.id"
-                    :value="schedule.id"
-                    :label="scheduleLabel(schedule)"
-                  />
-                </ElSelect>
-              </ElFormItem>
-              <ElFormItem
-                v-if="!isLoss && lineScheduleBatches(line).length > 1"
-                label="历史交货批次"
-                :error="lineError(line, 'scheduleBatchId')"
-                required
-              >
-                <ElSelect
-                  v-model="line.scheduleBatchId"
-                  placeholder="选择交货批次"
-                  :aria-label="`${line.source.transfer.batch_no}交货批次`"
-                  ><ElOption
-                    v-for="batch in lineScheduleBatches(line)"
-                    :key="batch.id"
-                    :value="batch.id"
-                    :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
-                /></ElSelect>
-              </ElFormItem>
-              <p
-                v-if="scheduleEstimates[line.key]"
-                class="source-schedule-estimate dialog-field-wide"
-                aria-live="polite"
-              >
-                <span
-                  >交期 <b>{{ scheduleEstimates[line.key].dueAt }}</b></span
-                >
-                <span v-if="scheduleEstimates[line.key].remaining" class="schedule-remaining"
-                  >待交 {{ scheduleEstimates[line.key].remaining }}</span
-                >
-                <span v-if="scheduleEstimates[line.key].estimate"
-                  >预计本次转出后 <b>{{ scheduleEstimates[line.key].estimate }}</b></span
-                >
-              </p>
               <ElFormItem
                 v-if="!isLoss && warehouse"
                 label="入库仓位"
@@ -1777,10 +1794,14 @@ watch(
             />
           </article>
         </div>
-        <section v-if="!isLoss" class="dispatch-context">
-          <h3>收发信息</h3>
-          <div class="dialog-form-grid dispatch-context-fields">
-            <ElFormItem label="转料人" :error="fieldErrors.sender" required>
+        <div :class="{ 'dispatch-context': !isLoss }">
+          <CompactFormSection v-if="!isLoss" title="收发信息" class="dispatch-context-fields">
+            <ElFormItem
+              class="form-field--long"
+              label="转料人"
+              :error="fieldErrors.sender"
+              required
+            >
               <TeamEmployeeInput
                 v-if="modelValue"
                 v-model="sender"
@@ -1791,7 +1812,7 @@ watch(
               />
             </ElFormItem>
             <ElFormItem
-              class="external-destination-field"
+              class="external-destination-field form-field--long"
               v-if="external"
               :label="`${actionLabel}去向`"
               :error="fieldErrors.externalDestination"
@@ -1816,7 +1837,7 @@ watch(
               label="接收班组"
               :error="fieldErrors.nextTeamId"
               required
-              class="destination-field"
+              class="destination-field form-field--long"
             >
               <span v-if="routeDestination" class="dialog-readonly" role="status">{{
                 routeDestination.error ||
@@ -1837,84 +1858,66 @@ watch(
                   :label="teamWorkspaceProfile(team.code)?.name || team.name"
               /></ElSelect>
             </ElFormItem>
-          </div>
-        </section>
-        <AppDisclosure class="action-notes-section">
-          <template #summary>
-            <span>
-              {{
-                isLoss
-                  ? '丢失原因'
-                  : containsScrap
-                    ? '废料处理原因'
-                    : external
-                      ? `${actionLabel}说明`
-                      : warehouse
-                        ? '入库说明'
-                        : '出库说明'
-              }}
-            </span>
-            <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
-          </template>
-          <div class="dialog-form-grid">
-            <ElFormItem
-              v-if="isLoss"
-              class="dialog-field-wide"
-              label-width="0"
-              :error="fieldErrors.reason"
-              ><ElInput
-                v-model="form.reason"
-                aria-label="丢失原因"
-                type="textarea"
-                :rows="3"
-                maxlength="2000"
-                show-word-limit
-                placeholder="选填：填写实际情况和原因"
-            /></ElFormItem>
-            <ElFormItem v-else class="dialog-field-wide" label-width="0" :error="fieldErrors.notes"
-              ><ElInput
-                v-model="form.notes"
-                :aria-label="
-                  containsScrap
-                    ? '废料处理原因'
-                    : external
-                      ? `${actionLabel}说明`
-                      : warehouse
-                        ? '入库说明'
-                        : '出库说明'
-                "
-                type="textarea"
-                :rows="2"
-                maxlength="2000"
-                show-word-limit
-                placeholder="选填"
-            /></ElFormItem>
-          </div>
-        </AppDisclosure>
+          </CompactFormSection>
+          <AppDisclosure class="action-notes-section">
+            <template #summary>
+              <span>
+                {{
+                  isLoss
+                    ? '丢失原因'
+                    : containsScrap
+                      ? '废料处理原因'
+                      : external
+                        ? `${actionLabel}说明`
+                        : warehouse
+                          ? '入库说明'
+                          : '出库说明'
+                }}
+              </span>
+              <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
+            </template>
+            <div class="dialog-form-grid">
+              <ElFormItem
+                v-if="isLoss"
+                class="dialog-field-wide"
+                label-width="0"
+                :error="fieldErrors.reason"
+                ><ElInput
+                  v-model="form.reason"
+                  aria-label="丢失原因"
+                  type="textarea"
+                  :rows="3"
+                  maxlength="2000"
+                  show-word-limit
+                  placeholder="选填：填写实际情况和原因"
+              /></ElFormItem>
+              <ElFormItem
+                v-else
+                class="dialog-field-wide"
+                label-width="0"
+                :error="fieldErrors.notes"
+                ><ElInput
+                  v-model="form.notes"
+                  :aria-label="
+                    containsScrap
+                      ? '废料处理原因'
+                      : external
+                        ? `${actionLabel}说明`
+                        : warehouse
+                          ? '入库说明'
+                          : '出库说明'
+                  "
+                  type="textarea"
+                  :rows="2"
+                  maxlength="2000"
+                  show-word-limit
+                  placeholder="选填"
+              /></ElFormItem>
+            </div>
+          </AppDisclosure>
+        </div>
       </ElForm>
     </FormWorkspace>
-    <AppDialog
-      v-if="attachmentPreview && previewLine"
-      :model-value="true"
-      :title="`${previewLine.serialNo.trim() || previewLine.source.transfer.batch_no} · ${attachmentLabels[attachmentPreview.kind]}`"
-      width="min(960px, 94vw)"
-      append-to-body
-      @close="attachmentPreview = undefined"
-    >
-      <SerialRouteAttachments
-        class="source-attachment-preview"
-        :document-kind="attachmentPreview.kind"
-        :items="[
-          {
-            serialNo: previewLine.serialNo.trim(),
-            batchNo: previewLine.source.transfer.batch_no,
-            routeId: previewLine.source.transfer.process_route?.id || previewLine.selectedRoute?.id,
-            route: previewLine.selectedRoute,
-            scheduleTaskId: attachmentTaskId(previewLine),
-          },
-        ]"
-      />
-    </AppDialog>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
       v-if="balanceNotice"
@@ -1987,23 +1990,21 @@ watch(
   flex-wrap: wrap;
 }
 .dispatch-context {
-  margin-top: 16px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.dispatch-context .action-notes-section {
+  padding: 0;
+  margin-top: 4px;
+}
+.dispatch-context-fields {
+  padding-top: 0;
 }
 .dispatch-mode {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
-}
-.dispatch-context h3 {
-  margin: 0 0 10px;
-  color: var(--wm-muted, #65786e);
-  font-size: var(--font-size-section);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 1px;
-}
-.dispatch-context-fields {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
 }
 .dispatch-context-fields :deep(.team-employee) {
   width: 100%;
@@ -2034,6 +2035,42 @@ watch(
   border: 1px solid var(--wm-border, var(--line));
   border-radius: 12px;
   background: var(--wm-surface, var(--surface));
+}
+.dispatch-lines {
+  gap: 18px;
+  padding: 0;
+}
+.dispatch-lines .source-line {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.dispatch-lines .source-line + .source-line {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.dispatch-lines .source-line > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'identity actions' 'meta balance';
+  border: 0;
+  padding-bottom: 0;
+  align-items: center;
+}
+.dispatch-lines .source-identity {
+  grid-area: identity;
+}
+.dispatch-lines .source-meta {
+  grid-area: meta;
+}
+.dispatch-lines .source-balance {
+  grid-area: balance;
+  justify-self: end;
+}
+.dispatch-lines .source-actions {
+  grid-area: actions;
+  justify-self: end;
 }
 .source-line > header {
   margin-bottom: 16px;
@@ -2138,32 +2175,21 @@ watch(
 .source-inputs.source-inputs-sludge {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.source-inputs-inline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 12px;
+.source-inputs.source-inputs-dispatch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--form-field-gap);
 }
-.source-inputs-inline > .source-serial-field,
-.source-inputs-inline > .source-quantity-field {
-  flex: 1 1 154px;
+.source-inputs-dispatch > :is(.source-serial-field, .source-specification-field) {
+  grid-column: 1 / -1;
 }
-.source-inputs-inline > .source-weight-field {
-  flex: 1 1 224px;
-}
-.source-inputs-inline > .source-material-type-field {
-  flex: 1 1 104px;
-}
-.source-inputs-inline > .source-specification-field {
-  flex: 2 1 338px;
-}
-.source-inputs-inline > .dialog-field-wide {
-  flex: 1 0 100%;
+.source-inputs-dispatch > .source-specification-field {
+  padding-top: 8px;
+  border-top: 1px solid var(--line-light);
 }
 .source-route-status {
   margin: 0;
 }
-.source-attachments,
+.dispatch-schedule-row,
 .source-schedule-estimate {
   display: flex;
   flex-wrap: wrap;
@@ -2171,26 +2197,38 @@ watch(
   gap: 6px 10px;
   min-width: 0;
 }
-.source-attachments :deep(.el-button) {
-  max-width: 100%;
-  margin: 0;
+/* Keep the loader mounted so late-arriving documents can open the rail. */
+.dispatch-workspace:not(
+  :has(.serial-attachments [data-document-kind], .serial-attachments--interactive)
+) {
+  grid-template-columns: minmax(0, 1fr);
 }
-.source-attachments :deep(.el-button > span) {
-  min-width: 0;
-  gap: 6px;
+.dispatch-workspace:not(
+    :has(.serial-attachments [data-document-kind], .serial-attachments--interactive)
+  )
+  :deep(.form-workspace-documents) {
+  display: none;
 }
-.source-attachment-name {
-  max-width: 180px;
-  min-width: 0;
-  overflow: hidden;
+@media (min-width: 761px) {
+  .dispatch-workspace.form-workspace--documents:has(
+      .serial-attachments [data-document-kind],
+      .serial-attachments--interactive
+    ) {
+    grid-template-columns: clamp(200px, 20%, 260px) minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .dispatch-workspace :deep(.form-workspace-documents) {
+    padding-right: 16px;
+    border-right: 1px solid var(--line-light);
+    position: sticky;
+    top: 0;
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
+  }
+}
+.dispatch-schedule-row {
   color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.source-attachment-preview :deep(.word-document-preview--thumbnail),
-.source-attachment-preview :deep(.route-drawing-preview--thumbnail .drawing-preview-sheet),
-.source-attachment-preview :deep(.route-order-thumbnail) {
-  height: min(55dvh, 440px);
+  font-size: var(--font-size-meta);
 }
 .source-schedule-estimate {
   margin: 0;
@@ -2233,7 +2271,7 @@ watch(
   max-width: none;
 }
 .source-inputs .dialog-readonly,
-.destination-field .dialog-readonly {
+.dispatch-context-fields .dialog-readonly {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -2346,14 +2384,18 @@ watch(
   .source-line {
     padding-inline: 12px;
   }
-  .dispatch-context-fields,
+  .source-inputs.source-inputs-dispatch,
   .source-inputs,
   .source-inputs.source-inputs-weight-only,
   .source-inputs.source-inputs-sludge {
     grid-template-columns: minmax(0, 1fr);
   }
-  .source-inputs-inline > :is(.el-form-item, .source-specification-field) {
-    flex-basis: 100%;
+  .dispatch-lines .source-line > header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'identity' 'meta' 'balance' 'actions';
+  }
+  .dispatch-lines :is(.source-actions, .source-balance) {
+    justify-self: start;
   }
   .source-identity {
     flex-basis: 100%;

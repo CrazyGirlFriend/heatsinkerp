@@ -2,13 +2,20 @@
 import { Document } from '@element-plus/icons-vue'
 import { ElIcon } from 'element-plus'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps<{
-  title?: string
-  source?: string
-  filename?: string
-  missing?: string
-  lazy?: boolean
-}>()
+import AppDisclosure from './AppDisclosure.vue'
+const props = withDefaults(
+  defineProps<{
+    title?: string
+    source?: string
+    filename?: string
+    missing?: string
+    lazy?: boolean
+    expanded?: boolean
+    summaryFilename?: string
+  }>(),
+  { expanded: undefined },
+)
+const emit = defineEmits<{ 'update:expanded': [open: boolean] }>()
 const card = ref<HTMLElement>()
 const previewVisible = ref(!props.lazy)
 let observer: IntersectionObserver | undefined
@@ -32,31 +39,77 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <section ref="card" class="document-card" :class="{ 'document-card--missing': missing }">
-    <header v-if="title || source" class="document-card-heading">
-      <strong v-if="title">{{ title }}</strong
-      ><span v-if="source">{{ source }}</span>
-    </header>
-    <div v-if="missing" class="document-card-empty">
-      <ElIcon><Document /></ElIcon><span>{{ missing }}</span>
-    </div>
-    <slot v-else-if="previewVisible" />
-    <div v-else class="document-card-preview-placeholder" aria-label="附件预览待加载" />
-    <span v-if="filename" class="document-card-filename" :title="filename">{{ filename }}</span>
-    <div v-if="$slots.actions" class="document-card-actions"><slot name="actions" /></div>
+  <section
+    ref="card"
+    class="document-card"
+    :class="{
+      'document-card--missing': missing,
+      'document-card--disclosure': expanded !== undefined,
+    }"
+  >
+    <component
+      :is="expanded === undefined ? 'div' : AppDisclosure"
+      class="document-card-body"
+      :open="expanded"
+      @update:open="emit('update:expanded', $event)"
+    >
+      <template v-if="expanded !== undefined" #summary>
+        <strong>{{ title }}</strong>
+        <span class="document-card-filename" :title="summaryFilename || filename">{{
+          expanded ? source : summaryFilename || filename
+        }}</span>
+      </template>
+      <template v-if="expanded !== false">
+        <header v-if="expanded === undefined && (title || source)" class="document-card-heading">
+          <strong v-if="title">{{ title }}</strong
+          ><span v-if="source">{{ source }}</span>
+        </header>
+        <div v-if="missing" class="document-card-empty">
+          <ElIcon><Document /></ElIcon><span>{{ missing }}</span>
+        </div>
+        <slot v-else-if="previewVisible" />
+        <div v-else class="document-card-preview-placeholder" aria-label="附件预览待加载" />
+        <span v-if="filename" class="document-card-filename" :title="filename">{{ filename }}</span>
+        <div v-if="$slots.actions" class="document-card-actions"><slot name="actions" /></div>
+      </template>
+    </component>
   </section>
 </template>
 
 <style scoped>
-.document-card {
+.document-card-body,
+.document-card--disclosure :deep(.app-disclosure-inner) {
   display: flex;
   flex-direction: column;
   min-width: 0;
   gap: 6px;
+}
+.document-card {
+  min-width: 0;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--document-card-bg, #ffffffc9);
+}
+.document-card--disclosure {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-light);
+  border-radius: 0;
+  background: transparent;
+}
+.document-card--disclosure .document-card-body {
+  display: block;
+}
+.document-card--disclosure .document-card-filename {
+  font-weight: var(--font-weight-regular);
+}
+.document-card--disclosure :deep(.app-disclosure-label strong) {
+  flex-shrink: 0;
+  font-weight: var(--font-weight-medium);
+}
+.document-card--disclosure :deep([data-open] .app-disclosure-inner) {
+  padding-bottom: 10px;
 }
 .document-card-heading,
 .document-card-actions {
