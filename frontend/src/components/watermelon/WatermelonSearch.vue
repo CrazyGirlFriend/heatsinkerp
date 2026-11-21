@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { ref, type InputHTMLAttributes } from 'vue'
 import { IconSearch, IconX } from '@tabler/icons-vue'
 
 const props = withDefaults(
   defineProps<{
     label: string
     placeholder?: string
+    inputAttrs?: InputHTMLAttributes
     disabled?: boolean
     maxlength?: number | string
     searchOnClear?: boolean
@@ -13,6 +15,8 @@ const props = withDefaults(
 )
 const value = defineModel<string>({ default: '' })
 const emit = defineEmits<{ search: []; clear: [] }>()
+const input = ref<HTMLInputElement>()
+defineExpose({ focus: () => input.value?.focus() })
 function clear() {
   value.value = ''
   emit('clear')
@@ -28,7 +32,10 @@ function searchOnEnter(event: KeyboardEvent) {
 <template>
   <div class="wm-search">
     <IconSearch :size="18" />
+    <slot name="prefix" />
     <input
+      ref="input"
+      v-bind="inputAttrs"
       v-model="value"
       :aria-label="label"
       :placeholder="placeholder"

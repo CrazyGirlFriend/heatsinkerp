@@ -1,4 +1,4 @@
-import { computed, ref, toValue, type MaybeRefOrGetter } from 'vue'
+import { computed, ref, toValue, type Ref, type MaybeRefOrGetter } from 'vue'
 
 import type {
   TableQueryColumn,
@@ -13,8 +13,8 @@ export function useTableQuery(
   columns: MaybeRefOrGetter<Record<string, TableQueryColumn>>,
   reload: () => void,
   optionsSource?: (tableQuery: string) => Promise<unknown>,
+  state: Ref<TableQueryState> = ref({ filters: [] }),
 ) {
-  const state = ref<TableQueryState>({ filters: [] })
   const params = computed(() =>
     state.value.filters.length || state.value.sort
       ? { table_query: JSON.stringify(state.value) }

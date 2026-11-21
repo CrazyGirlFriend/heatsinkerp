@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import InventorySearch from './InventorySearch.vue'
+import type { TableQueryState } from '@/types/tableQuery'
+import {
+  describeCondition,
+  readInventoryQuery,
+  withInventoryQuery,
+} from '@/utils/inventoryPilotFilters'
 import { useTableQuery } from '@/composables/useTableQuery'
 import { useInventorySchedules } from '@/composables/useInventorySchedules'
 import { useBatchSelection } from '@/composables/useBatchSelection'
@@ -400,13 +407,38 @@ function ownershipHint(row: TeamInventoryRow) {
     `${isWeightOnlyType(row.material_type) ? '' : `${inventoryAmount(quantity)} 件 / `}${inventoryAmount(weight)} kg`
   return `当前剩余 ${amount(row.on_hand_quantity, row.on_hand_weight)}\n转出待签收 ${amount(row.in_transit_quantity, row.in_transit_weight)}${external ? `\n对外待确认 ${amount(row.external_pending_quantity, row.external_pending_weight)}` : ''}\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${amount(available.quantity, available.weight)}`
 }
+const pilot = computed(() => ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(props.teamCode || ''))
+const searchAnchor = ref<HTMLElement>()
+function showStockConditions(anchor: HTMLElement) {
+  searchAnchor.value = anchor
+  openFilters()
+  filtersOpen.value = true
+}
+const localColumns = ref<TableQueryState>({ filters: [] })
+const columnState = computed({
+  get: () =>
+    pilot.value ? readInventoryQuery(route.query as TeamInventoryParams) : localColumns.value,
+  set: (state: TableQueryState) => {
+    if (pilot.value) apply(withInventoryQuery({ ...filters.value, page: 1 }, state))
+    else localColumns.value = state
+  },
+})
+function setUsableRemainders(value: boolean) {
+  apply({
+    ...filters.value,
+    ...(value ? { query: undefined, search_field: undefined, search_operator: undefined } : {}),
+    usable_remainders_only: value || undefined,
+    page: 1,
+  })
+}
 const tableQuery = useTableQuery(
   inventoryQueryColumns,
   () => {
-    if (page.value !== 1) apply({ ...filters.value, page: 1 })
+    if (!pilot.value && page.value !== 1) apply({ ...filters.value, page: 1 })
   },
   (table_query) =>
     teamMaterialApi.inventoryFilterOptions(props.teamId, { ...filters.value, table_query }),
+  columnState,
 )
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = {
@@ -456,6 +488,7 @@ const filters = computed<TeamInventoryParams>(() => {
   if (!props.warehouse && text('purpose_id')) params.purpose_id = Number(text('purpose_id'))
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
   if (text('has_loss') === 'true') params.has_loss = true
+  if (pilot.value) return withInventoryQuery(params as TeamInventoryParams, columnState.value)
   return { ...params, ...tableQuery.params.value } as TeamInventoryParams
 })
 function exportSource() {
@@ -530,12 +563,12 @@ const activeFilters = computed(() => {
       key: 'source_team_id',
       label: `${props.warehouse ? '来源' : '上序'}：${sourceTeams.value.find((team) => team.id === Number(text('source_team_id')))?.name || text('source_team_id')}`,
     })
-  if (text('material_type'))
+  if (!pilot.value && text('material_type'))
     chips.push({
       key: 'material_type',
       label: `类型：${text('material_type') === 'unknown' ? '未分类' : materialTypeLabel(text('material_type'))}`,
     })
-  if (text('material_name'))
+  if (!pilot.value && text('material_name'))
     chips.push({ key: 'material_name', label: `材质：${text('material_name')}` })
   if (!props.warehouse && text('purpose_id'))
     chips.push({
@@ -552,6 +585,80 @@ const activeFilters = computed(() => {
   if (filters.value.availability && filters.value.availability !== 'current_or_transit')
     chips.push({ key: 'availability', label: availabilityLabels[filters.value.availability] })
   return chips
+})
+const pilotChips = computed(() => {
+  const chips = activeFilters.value.map(({ key, label }) => ({
+    key,
+    label,
+    remove: () => apply({ ...filters.value, [key]: undefined, page: 1 }),
+  }))
+  // A visible column owns its filter. Keep a way to clear conditions on hidden columns and incoming links.
+  const visibleFields = new Set(
+    visibleColumns.value.map(
+      (col) =>
+        tableQuery.controller.value.columns[col.key]?.field ??
+        tableQuery.controller.value.columns[col.label]?.field,
+    ),
+  )
+  const extras = columnState.value.filters
+    .filter((item) => !visibleFields.has(item.field))
+    .map((item) => {
+      const label =
+        columns.value.find((col) => col.key === item.field)?.label ||
+        Object.entries(inventoryQueryColumns).find(
+          ([key, col]) => col.field === item.field && /[一-龥]/.test(key),
+        )?.[0] ||
+        item.field
+      return {
+        key: item.field,
+        label: label + ' · ' + describeCondition(item),
+        remove: () => {
+          columnState.value = {
+            ...columnState.value,
+            filters: columnState.value.filters.filter((col) => col.field !== item.field),
+          }
+        },
+      }
+    })
+  if (dates.value.from || dates.value.to)
+    extras.push({
+      key: 'dates',
+      label: '流转日期 · ' + [dates.value.from, dates.value.to].filter(Boolean).join(' 至 '),
+      remove: () =>
+        apply(
+          {
+            ...filters.value,
+            date_from: undefined,
+            date_to: undefined,
+            activity_day: undefined,
+            page: 1,
+          },
+          '',
+        ),
+    })
+  if (analysisLabel.value)
+    extras.push({
+      key: 'analysis',
+      label: analysisLabel.value,
+      remove: () =>
+        apply(
+          {
+            ...filters.value,
+            stock_age: undefined,
+            waiting_age: undefined,
+            waiting_direction: undefined,
+            has_loss: undefined,
+            activity_day: undefined,
+            activity_kind: undefined,
+            flow_direction: undefined,
+            peer: undefined,
+            days: undefined,
+            page: 1,
+          },
+          '',
+        ),
+    })
+  return [...chips, ...extras]
 })
 function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
   void router.replace({
@@ -633,19 +740,36 @@ function validSearch() {
   return true
 }
 function search() {
-  if (validSearch()) apply(draftFilters())
+  if (pilot.value) {
+    apply({
+      ...filters.value,
+      page: 1,
+      query: queryDraft.value.trim() || undefined,
+      search_field: undefined,
+      search_operator: undefined,
+    })
+  } else if (validSearch()) apply(draftFilters())
 }
 function applyDialogFilters() {
-  if (!validSearch()) return
+  if (!pilot.value && !validSearch()) return
   const [kind, age] = analysisDraft.value.split(':')
   const params: TeamInventoryParams = {
-    ...draftFilters(),
+    ...(pilot.value
+      ? {
+          ...filters.value,
+          page: 1,
+          availability: availabilityDraft.value,
+          receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined,
+          rework: reworkDraft.value || undefined,
+          route_status: routeStatusDraft.value || undefined,
+        }
+      : draftFilters()),
     date_from: dateDraft.value.from || undefined,
     date_to: dateDraft.value.to || undefined,
     activity_day: undefined,
     activity_kind: undefined,
     location_status: props.warehouse && locationDraft.value ? 'unassigned' : undefined,
-    days: daysDraft.value === 7 ? 7 : undefined,
+    days: daysDraft.value === 7 && (!pilot.value || kind === 'loss') ? 7 : undefined,
     stock_age: kind === 'age' ? (age as AgeBand) : undefined,
     waiting_direction: kind === 'incoming' || kind === 'outgoing' ? kind : undefined,
     waiting_age: kind === 'incoming' || kind === 'outgoing' ? (age as AgeBand) : undefined,
@@ -847,7 +971,13 @@ function syncFilterDrafts() {
   analysisDraft.value = analysisChoice.value
   daysDraft.value = days.value
 }
-watch(() => props.teamId, tableQuery.reset, { flush: 'sync' })
+watch(
+  () => props.teamId,
+  () => {
+    localColumns.value = { filters: [] }
+  },
+  { flush: 'sync' },
+)
 watch(
   [() => props.teamId, filters],
   () => {
@@ -886,7 +1016,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <WorkspaceDataPanel class="warehouse-inventory serial-ledger workspace-data-panel">
+  <WorkspaceDataPanel
+    class="warehouse-inventory serial-ledger workspace-data-panel"
+    :class="{ 'inventory-search-pilot': pilot }"
+  >
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <WorkspaceDataToolbar
       :loading="loading"
@@ -897,51 +1030,63 @@ onBeforeUnmount(() => {
       @columns="columnSettings?.open($event)"
     >
       <template #search>
-        <ElSelect
-          v-if="searchKind === 'number'"
-          v-model="operatorDraft"
-          class="numeric-operator"
-          aria-label="库存数值比较"
-          ><ElOption value="eq" label="等于" /><ElOption value="gte" label="不少于" /><ElOption
-            value="lte"
-            label="不多于"
-        /></ElSelect>
-        <ElDatePicker
-          v-if="searchKind === 'date'"
-          :model-value="queryDraft || null"
-          type="date"
-          value-format="YYYY-MM-DD"
-          placeholder="选择日期"
-          aria-label="库存日期搜索"
-          @update:model-value="queryDraft = $event || ''"
-          @clear="
-            () => {
-              queryDraft = ''
-              search()
-            }
-          " />
-        <ElInput
-          v-else
+        <InventorySearch
+          v-if="pilot"
           v-model="queryDraft"
-          :prefix-icon="searchKind === 'text' ? Search : undefined"
-          aria-label="库存明细搜索"
-          :placeholder="
-            fieldDraft === 'all'
-              ? warehouse
-                ? '批次号、流水号、仓库或材质'
-                : '批次号、流水号或材质'
-              : `搜索${searchColumns.find((column) => column.key === fieldDraft)?.label}`
-          "
-          clearable
-          @keydown.enter.prevent
-          @keyup.enter="search"
-          @clear="search"
-      /></template>
-      <template #filters
-        ><FilterDialog
+          :filters-open="filtersOpen"
+          :remainders="!!filters.usable_remainders_only"
+          :placeholder="warehouse ? '批次号、流水号、仓库或材质' : '批次号、流水号或材质'"
+          @search="search"
+          @remainder="setUsableRemainders"
+          @conditions="showStockConditions" />
+        <template v-else>
+          <ElSelect
+            v-if="searchKind === 'number'"
+            v-model="operatorDraft"
+            class="numeric-operator"
+            aria-label="库存数值比较"
+            ><ElOption value="eq" label="等于" /><ElOption value="gte" label="不少于" /><ElOption
+              value="lte"
+              label="不多于"
+          /></ElSelect>
+          <ElDatePicker
+            v-if="searchKind === 'date'"
+            :model-value="queryDraft || null"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择日期"
+            aria-label="库存日期搜索"
+            @update:model-value="queryDraft = $event || ''"
+            @clear="
+              () => {
+                queryDraft = ''
+                search()
+              }
+            " />
+          <ElInput
+            v-else
+            v-model="queryDraft"
+            :prefix-icon="searchKind === 'text' ? Search : undefined"
+            aria-label="库存明细搜索"
+            :placeholder="
+              fieldDraft === 'all'
+                ? warehouse
+                  ? '批次号、流水号、仓库或材质'
+                  : '批次号、流水号或材质'
+                : `搜索${searchColumns.find((column) => column.key === fieldDraft)?.label}`
+            "
+            clearable
+            @keydown.enter.prevent
+            @keyup.enter="search"
+            @clear="search" /></template
+      ></template>
+      <template #filters>
+        <FilterDialog
+          v-if="!pilot || searchAnchor"
+          :external-trigger="pilot ? searchAnchor : undefined"
           v-model="filtersOpen"
           #default="{ appendTo }"
-          title="库存筛选"
+          :title="pilot ? '库存与流转条件' : '库存筛选'"
           :count="filterCount"
           @open="openFilters"
           @cancel="cancelFilters"
@@ -949,7 +1094,7 @@ onBeforeUnmount(() => {
           @reset="resetDialogFilters"
         >
           <div class="filter-fields">
-            <label
+            <label v-if="!pilot"
               >搜索字段<ElSelect
                 :append-to="appendTo"
                 v-model="fieldDraft"
@@ -968,7 +1113,7 @@ onBeforeUnmount(() => {
                   :value="column.key"
                   :label="column.label" /></ElSelect
             ></label>
-            <label v-if="fieldDraft === 'task_batch_number'"
+            <label v-if="!pilot && fieldDraft === 'task_batch_number'"
               >比较方式<ElSelect
                 :append-to="appendTo"
                 v-model="operatorDraft"
@@ -979,7 +1124,7 @@ onBeforeUnmount(() => {
                 <ElOption value="lte" label="不多于" />
               </ElSelect>
             </label>
-            <label
+            <label v-if="!pilot"
               >搜索内容<ElInput
                 v-model="queryDraft"
                 aria-label="库存筛选搜索内容"
@@ -989,7 +1134,8 @@ onBeforeUnmount(() => {
                 "
             /></label>
             <label v-if="warehouse"
-              >来源<ElSelect
+              >{{ pilot ? '来源类别' : '来源'
+              }}<ElSelect
                 :append-to="appendTo"
                 v-model="sourceDraft"
                 class="warehouse-source-filter"
@@ -1002,7 +1148,7 @@ onBeforeUnmount(() => {
                   :value="value"
                   :label="label" /></ElSelect
             ></label>
-            <label v-else
+            <label v-else-if="!pilot"
               >上序班组<ElSelect
                 :append-to="appendTo"
                 v-model="sourceTeamDraft"
@@ -1028,7 +1174,7 @@ onBeforeUnmount(() => {
                   label="有返工历史"
                   value="worked" /></ElSelect
             ></label>
-            <label v-if="warehouse && sourceDraft === 'internal'"
+            <label v-if="!pilot && warehouse && sourceDraft === 'internal'"
               >来源班组<ElSelect
                 :append-to="appendTo"
                 v-model="sourceTeamDraft"
@@ -1042,7 +1188,7 @@ onBeforeUnmount(() => {
                   :value="team.id"
                   :label="team.name" /></ElSelect
             ></label>
-            <label
+            <label v-if="!pilot"
               >物料类型<ElSelect
                 :append-to="appendTo"
                 v-model="typeDraft"
@@ -1056,7 +1202,7 @@ onBeforeUnmount(() => {
                   :value="item.value"
                   :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect
             ></label>
-            <label v-if="processing && !isScrapMaterialType(typeDraft)"
+            <label v-if="!pilot && processing && !isScrapMaterialType(typeDraft)"
               >加工状态<ElSelect
                 :append-to="appendTo"
                 v-model="processingStateDraft"
@@ -1080,7 +1226,7 @@ onBeforeUnmount(() => {
                   label="未关联"
                   value="unlinked" /></ElSelect
             ></label>
-            <label v-if="!warehouse"
+            <label v-if="!pilot && !warehouse"
               >加工任务<ElSelect
                 :append-to="appendTo"
                 v-model="purposeDraft"
@@ -1096,7 +1242,7 @@ onBeforeUnmount(() => {
                   :value="purpose.id"
                   :label="`${purpose.name}${purpose.active ? '' : '（已停用）'}`" /></ElSelect
             ></label>
-            <label
+            <label v-if="!pilot"
               >材质<ElSelect
                 :append-to="appendTo"
                 v-model="materialDraft"
@@ -1147,7 +1293,7 @@ onBeforeUnmount(() => {
                     :label="`${direction === 'incoming' ? '来料待签收' : '转出待确认'} ${label}`" /></ElOptionGroup
                 ><ElOption value="loss" :label="`近${daysDraft}天有丢失记录`" /></ElSelect
             ></label>
-            <label
+            <label v-if="!pilot || analysisDraft === 'loss'"
               >事件周期<ElSelect
                 :append-to="appendTo"
                 v-model="daysDraft"
@@ -1171,6 +1317,7 @@ onBeforeUnmount(() => {
       ></template>
       <template #tools>
         <ElCheckbox
+          v-if="!pilot"
           :model-value="!!filters.usable_remainders_only"
           @change="
             (value) =>
@@ -1232,11 +1379,22 @@ onBeforeUnmount(() => {
       ><span>{{ purposesError }}</span
       ><ElButton link type="primary" @click="loadPurposes">重试</ElButton></ElAlert
     >
-    <div v-if="analysisLabel" class="warehouse-search-context">
+    <div v-if="pilot && pilotChips.length" class="inventory-filter-chips" aria-label="已选条件">
+      <ElTag
+        v-for="chip in pilotChips"
+        :key="chip.key"
+        type="info"
+        effect="plain"
+        closable
+        @close="chip.remove"
+        >{{ chip.label }}</ElTag
+      >
+    </div>
+    <div v-if="!pilot && analysisLabel" class="warehouse-search-context">
       <ElTag closable @close="selectAnalysis('')">{{ analysisLabel }}</ElTag
       ><span v-if="!text('stock_age')"> 符合条件流水号的分类库存</span>
     </div>
-    <div v-if="searchedColumn" class="warehouse-search-context">
+    <div v-if="!pilot && searchedColumn" class="warehouse-search-context">
       <ElTag
         closable
         @close="
@@ -1528,6 +1686,27 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.inventory-search-pilot :deep(.table-column-filter.is-filtered > span) {
+  padding: 2px 6px;
+  border-radius: var(--radius-control);
+  background: var(--wm-filter-active-bg, var(--glass-selected-fill));
+  color: var(--wm-filter-active-text, var(--primary));
+}
+.inventory-filter-chips {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.inventory-filter-chips :deep(.el-tag) {
+  max-width: 100%;
+}
+.inventory-filter-chips :deep(.el-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .warehouse-inventory {
   container-type: inline-size;
 }

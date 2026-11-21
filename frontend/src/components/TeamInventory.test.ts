@@ -13,6 +13,7 @@ import {
   ElTooltip,
 } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
+import InventorySearch from './InventorySearch.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
 import TeamInventory from './TeamInventory.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -2196,4 +2197,80 @@ it('shows failed counts alongside stock quantity for self-check teams', async ()
   ).toEqual(['2', '0', '—'])
   await wrapper.setProps({ teamCode: 'FACTORY-ROLL' })
   expect(wrapper.find('.el-table__header').text()).not.toContain('不合格数')
+})
+
+describe('库存筛选样板', () => {
+  it.each([
+    ['FACTORY-WAREHOUSE', '物料类型', 'material_type', 'raw_material'],
+    ['FACTORY-WIRE', '加工状态', 'processing_state', 'unregistered'],
+  ])(
+    'combines the search shortcut with the column filter for %s',
+    async (code, label, field, value) => {
+      const warehouse = code === 'FACTORY-WAREHOUSE'
+      const router = await render('/team-workspaces/901?tab=stock&page=2', true, warehouse, false)
+      await wrapper.setProps({ teamCode: code, processing: !warehouse })
+      await flushPromises()
+      if (warehouse) await showColumns('material_type')
+      const box = () => wrapper.getComponent(InventorySearch)
+      const input = () => box().get('input')
+      const header = () =>
+        wrapper.findAllComponents(TableColumnFilter).find((c) => c.props('label') === label)!
+      expect(wrapper.findComponent(FilterDialog).exists()).toBe(false)
+      expect(wrapper.findAll('input[aria-label="库存明细搜索"]')).toHaveLength(1)
+      header().vm.$emit('apply', '', '', { operator: 'in', values: [value] })
+      await flushPromises()
+      await input().trigger('keydown', { key: 'ArrowDown' })
+      await input().trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(router.currentRoute.value.query).toMatchObject({
+        page: '1',
+        usable_remainders_only: 'true',
+      })
+      expect(header().props('condition')?.values).toEqual([value])
+      await input().setValue('691236')
+      await input().trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall![1]).toMatchObject({
+        query: '691236',
+        usable_remainders_only: true,
+        table_query: expect.stringContaining(field),
+      })
+      const link = router.currentRoute.value.fullPath
+      await box().get('button[aria-label="清除可用余料筛选"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.query.usable_remainders_only).toBeUndefined()
+      expect(router.currentRoute.value.query.query).toBe('691236')
+      expect(header().props('condition')?.values).toEqual([value])
+      await router.push(link)
+      await flushPromises()
+      expect(box().props('remainders')).toBe(true)
+      expect(header().props('condition')?.values).toEqual([value])
+      await input().setValue('')
+      await input().trigger('keydown', { key: 'ArrowDown' })
+      await input().trigger('keydown', { key: 'Escape' })
+      expect(input().attributes('aria-expanded')).toBe('false')
+    },
+  )
+  it('preserves a legacy column condition when a stock range is selected', async () => {
+    const router = await render(
+      '/team-workspaces/901?tab=stock&material_type=finished&usable_remainders_only=true',
+      true,
+      true,
+      false,
+    )
+    await wrapper.setProps({ teamCode: 'FACTORY-WAREHOUSE' })
+    const search = wrapper.getComponent(InventorySearch)
+    search.vm.$emit('conditions', search.get('input').element)
+    await flushPromises()
+    select('库存范围').vm.$emit('update:modelValue', 'current')
+    await applyModal()
+    expect(router.currentRoute.value.query).toMatchObject({
+      availability: 'current',
+      usable_remainders_only: 'true',
+    })
+    expect(
+      JSON.parse(String(router.currentRoute.value.query.table_query)).filters[0],
+    ).toMatchObject({ field: 'material_type', values: ['finished'] })
+    expect(select('库存物料类型筛选')).toBeUndefined()
+  })
 })

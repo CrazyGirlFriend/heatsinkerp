@@ -12,6 +12,7 @@ const props = withDefaults(
     modelValue: boolean
     count?: number
     title?: string
+    externalTrigger?: HTMLElement
     appendTo?: HTMLElement
     suspended?: boolean
   }>(),
@@ -37,10 +38,11 @@ function cancel() {
   emit('update:modelValue', false)
 }
 function fitPanel() {
-  if (!trigger.value) return
+  const anchor = props.externalTrigger || trigger.value?.$el
+  if (!anchor) return
   panelHeight.value = Math.max(
     160,
-    Math.min(640, window.innerHeight - trigger.value.$el.getBoundingClientRect().bottom - 20),
+    Math.min(640, window.innerHeight - anchor.getBoundingClientRect().bottom - 20),
   )
 }
 function escapePanel(event: KeyboardEvent) {
@@ -54,7 +56,9 @@ function escapePanel(event: KeyboardEvent) {
     return
   event.preventDefault()
   cancel()
-  void nextTick(() => trigger.value?.$el.focus())
+  void nextTick(() =>
+    (props.externalTrigger?.querySelector('input') || trigger.value?.$el)?.focus(),
+  )
 }
 function outsidePanel(event: PointerEvent) {
   if (!props.modelValue || props.suspended) return
@@ -75,6 +79,9 @@ onBeforeUnmount(() => {
 <template>
   <AppPopover
     :visible="modelValue"
+    :virtual-triggering="!!externalTrigger"
+    :virtual-ref="externalTrigger"
+    @show="fitPanel"
     trigger="click"
     role="dialog"
     :aria-label="title"
@@ -88,7 +95,7 @@ onBeforeUnmount(() => {
       modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }],
     }"
   >
-    <template #reference>
+    <template v-if="!externalTrigger" #reference>
       <WatermelonButton
         ref="trigger"
         class="filter-dialog-trigger"
