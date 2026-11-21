@@ -1,5 +1,7 @@
 """A shared physical lot is counted once and allocated only at actual processing."""
 
+import json
+
 import pytest
 from receipt_helpers import receipt_post
 from sender_helpers import sender_post
@@ -61,7 +63,6 @@ def shared_intake(client, setup, **extra):
         group = create_group(db, lot.batch_no, members)
         lot.serial_no = "共投-" + lot.batch_no
         lot.shared_group_id, lot.shared_unallocated = group.id, True
-        import json
 
         lot.request_hash = _creation_fingerprint(
             WarehouseReceiptCreate.model_validate(json.loads(response.request.content))
@@ -116,6 +117,21 @@ def test_shared_intake_and_queries_count_one_physical_lot(client, warehouse):
         rows = client.get(base(s) + "/inventory", params={"query": serial}).json()
         assert rows["total"] == 1 and rows["items"][0]["on_hand_weight"] == 100
         assert rows["items"][0]["shared_unallocated"]
+        header = json.dumps({"filters": [{"field": "serial_no", "value": serial[2:]}]})
+        summaries = client.get(
+            base(s) + "/inventory-serials", params={"table_query": header}
+        ).json()
+        assert summaries["total"] == 1
+        assert summaries["items"][0]["shared_serials"] == lot["shared_serials"]
+        assert summaries["items"][0]["stock_total_weight"] == 100
+        assert (
+            client.get(
+                base(s) + "/stock", params={"serial_no": serial, "exact_serial": True}
+            ).json()["total"]
+            == 0
+        )
+        matches = client.get(base(s) + "/inventory", params={"table_query": header}).json()
+        assert matches["total"] == 1 and matches["items"][0]["group_id"] == lot["id"]
         assert rows["items"][0]["shared_serials"] == [
             {**member, "process_route_id": None, "process_route_version": None}
             for member in MEMBERS
@@ -144,6 +160,12 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     assert lot["shared_serials"] == [
         {**member, "process_route_id": None, "process_route_version": None} for member in MEMBERS
     ]
+    for serial in ("ORDER-A", "DER-B"):
+        filters = [{"field": "serial_no", "value": serial}]
+        rows = client.get(
+            base(s, True) + "/inventory", params={"table_query": json.dumps({"filters": filters})}
+        ).json()
+        assert rows["total"] == 1 and rows["items"][0]["group_id"] == lot["id"]
     outputs = [
         {"role": "remaining", "quantity": 1, "weight": 40, "material_type": "semi_finished"},
         {
@@ -204,7 +226,6 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert totals["on_hand_weight"] == 100 and totals["received_weight"] == 100
     assert totals["on_hand_quantity"] == 50 and totals["scrap_weight"] == 7
-    import json
     import os
     from pathlib import Path
 
@@ -378,7 +399,6 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
 
 def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, warehouse):
     import hashlib
-    import json
 
     from app.database import SessionLocal
     from app.material_transfer_workflow import _creation_fingerprint

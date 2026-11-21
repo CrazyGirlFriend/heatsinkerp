@@ -1,8 +1,36 @@
 import type { TeamInventoryParams } from '@/types/teamInventory'
 import type { TableColumnCondition, TableQueryColumn, TableQueryState } from '@/types/tableQuery'
+import { materialTypeLabel } from '@/types/materialTransfer'
+import { processingStateLabels } from '@/types/materialProcessing'
 import { inventoryQueryColumns } from '@/utils/tableQueryColumns'
 
 const columns: Record<string, TableQueryColumn> = inventoryQueryColumns
+// The query kind describes the stored value; the editor describes how staff find it.
+const choiceFields = new Set([
+  'task_batch_number',
+  'warehouse_location',
+  'material_name',
+  'purpose_name',
+  'team_name',
+])
+export const inventoryHeaderColumns: Record<string, TableQueryColumn> = Object.fromEntries(
+  Object.entries(columns).map(([key, column]) => {
+    if (column.field === 'source_name')
+      return [key, { ...column, field: 'inventory_source_label', editor: 'choices' }]
+    const editor = column.kind === 'select' || choiceFields.has(column.field) ? 'choices' : 'input'
+    let valueLabel = column.valueLabel
+    if (column.field === 'material_name' || column.field === 'purpose_name')
+      valueLabel = (value) => value || '—'
+    if (column.field === 'material_type') valueLabel = materialTypeLabel
+    if (column.field === 'processing_state')
+      valueLabel = (value) =>
+        value === 'mixed'
+          ? '部分批次有加工记录'
+          : processingStateLabels[value as keyof typeof processingStateLabels] || '—'
+    return [key, { ...column, editor, valueLabel }]
+  }),
+)
+inventoryHeaderColumns.inventory_source_label = inventoryHeaderColumns.source_name!
 const linkedFields = [
   'material_type',
   'processing_state',
@@ -26,7 +54,10 @@ function withChoice(state: TableQueryState, field: string, value: string) {
   return { ...state, filters }
 }
 
-export function readInventoryQuery(params: TeamInventoryParams): TableQueryState {
+export function readInventoryQuery(
+  params: TeamInventoryParams,
+  headers = inventoryHeaderColumns,
+): TableQueryState {
   let state: TableQueryState = { filters: [] }
   if (params.table_query) {
     try {
@@ -35,17 +66,11 @@ export function readInventoryQuery(params: TeamInventoryParams): TableQueryState
         state.filters = parsed.filters.filter(
           (item: TableColumnCondition) =>
             item &&
-            Object.hasOwn(columns, item.field) &&
+            Object.hasOwn(headers, item.field) &&
             typeof item.value === 'string' &&
             typeof item.end === 'string' &&
             (!item.values || Array.isArray(item.values)),
         )
-        if (
-          parsed.sort &&
-          Object.hasOwn(columns, parsed.sort.field) &&
-          ['asc', 'desc'].includes(parsed.sort.direction)
-        )
-          state.sort = parsed.sort
       }
     } catch {
       /* Older links may have no usable column query. */

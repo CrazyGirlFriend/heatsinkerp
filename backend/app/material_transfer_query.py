@@ -58,6 +58,7 @@ def search_predicate(
     search_field: str = "all",
     search_mode: str = "contains",
     include_source_serial: bool = False,
+    include_source_batch: bool = True,
 ):
     """Never infer a mode or silently narrow an existing contains search."""
     if search_field == "all":
@@ -88,15 +89,17 @@ def search_predicate(
             .where(
                 WarehouseFeedingSource.transfer_id == MaterialTransfer.id,
                 or_(
-                    serial_text_match(origin.c.serial_no, term, search_mode),
-                    serial_text_match(origin.c.batch_no, term, search_mode),
+                    serial_match(origin.c.serial_no, term, search_mode),
+                    serial_text_match(origin.c.batch_no, term, search_mode)
+                    if include_source_batch
+                    else False,
                 ),
             )
             .exists(),
             select(origin.c.id)
             .where(
                 origin.c.id == MaterialTransfer.source_transfer_id,
-                serial_text_match(origin.c.serial_no, term, search_mode),
+                serial_match(origin.c.serial_no, term, search_mode),
             )
             .exists(),
         )

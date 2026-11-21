@@ -6,6 +6,7 @@ from receipt_helpers import receipt_post
 from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_material_transfers import _create, _setup_three_teams
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -452,6 +453,7 @@ def test_weight_only_stock_and_explicit_warehouse_classification(client, stock_s
             "quantity": 0,
             "weight": "0.235",
             "material_type": "scrap_chips",
+            **select_location(client, setup, headers=setup["stock_headers"]),
         }
     ]
     assert (

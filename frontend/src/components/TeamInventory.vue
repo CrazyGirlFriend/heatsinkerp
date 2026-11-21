@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import InventorySearch from './InventorySearch.vue'
+import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
+import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import {
+  serialStockColumns,
+  serialStockHeaders,
+  serialStockValue,
+  type InventorySerial,
+} from '@/utils/inventorySerialSummary'
 import type { TableQueryState } from '@/types/tableQuery'
 import {
   describeCondition,
+  inventoryHeaderColumns,
   readInventoryQuery,
   withInventoryQuery,
 } from '@/utils/inventoryPilotFilters'
@@ -73,7 +82,7 @@ import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
 import type { TeamPurpose } from '@/types/teamBusiness'
 import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
-import { stockSelectable } from '@/utils/materialStock'
+import { stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { inventoryScheduleBaseline, inventoryScheduleTone } from '@/utils/inventorySchedule'
 import { scheduleBatchSearch } from '@/utils/scheduleBatch'
@@ -87,6 +96,7 @@ const props = defineProps<{
   warehouse?: boolean
   fullscreen?: boolean
   processing?: boolean
+  serialOverview?: boolean
   processingLoadingGroupId?: number
 }>()
 const emit = defineEmits<{
@@ -268,6 +278,31 @@ const inventoryTeamName = computed(
 const sourceTeams = computed(() => directory.items.filter((team) => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const selfCheckTeam = computed(() => isSelfCheckTeamCode(props.teamCode))
+const pilot = computed(() => ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(props.teamCode || ''))
+const bySerial = computed(() =>
+  Boolean(props.serialOverview && pilot.value && text('stock_pick') !== '1'),
+)
+const serialRows = ref<InventorySerial[]>([])
+const openSerial = ref<InventorySerial | null>(null)
+const serialColumns = computed(() =>
+  serialStockColumns.filter((c) => props.processing || c.key !== 'processing_state'),
+)
+const serialChoices = ref<InventoryColumnChoice<keyof InventorySerial>[]>([])
+const visibleSerialColumns = computed(() => [
+  serialColumns.value[0]!,
+  ...serialChoices.value.flatMap(({ key, visible }) => {
+    const column = serialColumns.value.find((c) => c.key === key)
+    return visible && column && key !== 'serial_no' ? [column] : []
+  }),
+])
+const serialQueryColumns = { ...inventoryHeaderColumns, ...serialStockHeaders }
+function showBatchPicker(show: boolean) {
+  void router.push({
+    path: route.path,
+    query: { tab: 'stock', ...(show ? { stock_pick: '1' } : {}) },
+  })
+}
+
 const failedQuantityColumn = {
   key: 'failed_quantity',
   label: '不合格数',
@@ -328,6 +363,9 @@ const columns = computed(() =>
         }
         return column.format(row)
       },
+      ...(pilot.value && column.key === 'last_activity_at'
+        ? { label: '变动时间', defaultVisible: true }
+        : {}),
     })),
 )
 const requiredColumnKeys = computed(() =>
@@ -440,7 +478,6 @@ function stockBreakdown(row: TeamInventoryRow) {
     { label: '已转出待签收', quantity: row.in_transit_quantity, weight: row.in_transit_weight },
   ]
 }
-const pilot = computed(() => ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(props.teamCode || ''))
 const searchAnchor = ref<HTMLElement>()
 function showStockConditions(anchor: HTMLElement) {
   searchAnchor.value = anchor
@@ -450,7 +487,12 @@ function showStockConditions(anchor: HTMLElement) {
 const localColumns = ref<TableQueryState>({ filters: [] })
 const columnState = computed({
   get: () =>
-    pilot.value ? readInventoryQuery(route.query as TeamInventoryParams) : localColumns.value,
+    pilot.value
+      ? readInventoryQuery(
+          route.query as TeamInventoryParams,
+          bySerial.value ? serialQueryColumns : inventoryHeaderColumns,
+        )
+      : localColumns.value,
   set: (state: TableQueryState) => {
     if (pilot.value) apply(withInventoryQuery({ ...filters.value, page: 1 }, state))
     else localColumns.value = state
@@ -465,15 +507,21 @@ function setUsableRemainders(value: boolean) {
   })
 }
 const tableQuery = useTableQuery(
-  inventoryQueryColumns,
+  () =>
+    bySerial.value
+      ? serialQueryColumns
+      : pilot.value
+        ? inventoryHeaderColumns
+        : inventoryQueryColumns,
   () => {
     if (!pilot.value && page.value !== 1) apply({ ...filters.value, page: 1 })
   },
-  (table_query) =>
-    teamMaterialApi.inventoryFilterOptions(
-      props.teamId,
-      stockRequestParams({ ...filters.value, table_query }),
-    ),
+  (table_query) => {
+    const params = stockRequestParams({ ...filters.value, table_query })
+    return bySerial.value
+      ? teamMaterialApi.inventoryFilterOptions(props.teamId, params, true)
+      : teamMaterialApi.inventoryFilterOptions(props.teamId, params)
+  },
   columnState,
 )
 const filters = computed<TeamInventoryParams>(() => {
@@ -536,7 +584,7 @@ function stockApiField(field: WarehouseSearchField) {
 function stockRequestParams(params: TeamInventoryParams): TeamInventoryParams {
   const result = { ...params }
   if (params.search_field) result.search_field = stockApiField(params.search_field)
-  if (params.table_query)
+  if (!bySerial.value && params.table_query)
     result.table_query = JSON.stringify(JSON.parse(params.table_query), (key, value) =>
       key === 'field' ? stockApiField(value) : value,
     )
@@ -546,6 +594,24 @@ const requestFilters = computed(() => stockRequestParams(filters.value))
 function exportSource() {
   const id = props.teamId,
     params = { ...requestFilters.value }
+  if (bySerial.value) {
+    return tableExportSource(
+      '库存明细',
+      total.value,
+      serialColumns.value.map((col) => ({
+        key: col.key,
+        label: col.label,
+        selected: visibleSerialColumns.value.includes(col),
+        value: (row: InventorySerial) => serialStockValue(row, col.key),
+      })),
+      (signal, progress) =>
+        loadExportPages(
+          (page, page_size) => teamMaterialApi.inventorySerials(id, { ...params, page, page_size }),
+          signal,
+          progress,
+        ),
+    )
+  }
   const fields = [
     columns.value.find((column) => column.key === 'batch_no')!,
     warehouseSerialColumn,
@@ -646,7 +712,7 @@ const pilotChips = computed(() => {
   }))
   // A visible column owns its filter. Keep a way to clear conditions on hidden columns and incoming links.
   const visibleFields = new Set(
-    visibleColumns.value.map(
+    (bySerial.value ? visibleSerialColumns.value : visibleColumns.value).map(
       (col) =>
         tableQuery.controller.value.columns[col.key]?.field ??
         tableQuery.controller.value.columns[col.label]?.field,
@@ -656,6 +722,7 @@ const pilotChips = computed(() => {
     .filter((item) => !visibleFields.has(item.field))
     .map((item) => {
       const label =
+        (bySerial.value && serialColumns.value.find((c) => c.key === item.field)?.label) ||
         columns.value.find((col) => col.key === item.field)?.label ||
         Object.entries(inventoryQueryColumns).find(
           ([key, col]) => col.field === item.field && /[一-龥]/.test(key),
@@ -717,6 +784,7 @@ function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
     path: route.path,
     query: {
       tab: 'stock',
+      ...(text('stock_pick') === '1' ? { stock_pick: '1' } : {}),
       ...(label ? { filter_label: label } : {}),
       ...Object.fromEntries(
         Object.entries(params)
@@ -866,7 +934,16 @@ async function load(background = false) {
   }
   refreshError.value = ''
   try {
-    const result = await teamMaterialApi.teamInventory(props.teamId, requestFilters.value)
+    const response = bySerial.value
+      ? {
+          serials: true as const,
+          result: await teamMaterialApi.inventorySerials(props.teamId, requestFilters.value),
+        }
+      : {
+          serials: false as const,
+          result: await teamMaterialApi.teamInventory(props.teamId, requestFilters.value),
+        }
+    const result = response.result
     if (current !== version) return
     if (
       page.value > 1 &&
@@ -876,14 +953,29 @@ async function load(background = false) {
       paginate(Math.max(1, Math.ceil(result.total / pageSize.value)))
       return
     }
-    rows.value = result.items.map((row) => ({
-      ...row,
-      delivery_schedule: inventoryScheduleBaseline(row.material_type),
-    }))
-    expandedScheduleGroups.value = expandedScheduleGroups.value.filter((id) =>
-      result.items.some((row) => row.group_id === id),
-    )
-    void loadSchedules()
+    if (response.serials) {
+      rows.value = []
+      serialRows.value = response.result.items
+      if (openSerial.value) {
+        const selected = openSerial.value
+        openSerial.value =
+          serialRows.value.find(
+            (row) =>
+              row.serial_no === selected.serial_no &&
+              row.unnumbered_batch_no === selected.unnumbered_batch_no,
+          ) ?? selected
+      }
+    } else {
+      serialRows.value = []
+      rows.value = response.result.items.map((row) => ({
+        ...row,
+        delivery_schedule: inventoryScheduleBaseline(row.material_type),
+      }))
+      expandedScheduleGroups.value = expandedScheduleGroups.value.filter((id) =>
+        response.result.items.some((row) => row.group_id === id),
+      )
+      void loadSchedules()
+    }
     total.value = result.total
     asOf.value = result.as_of || ''
     error.value = ''
@@ -935,7 +1027,10 @@ async function dispatchSelected() {
     return
   }
   if (!canDispatchSelection.value) return
-  const ids = [...batchSelection.selected.keys()]
+  await dispatchBatches([...batchSelection.selected.keys()])
+}
+async function dispatchBatches(ids: string[], serial?: string) {
+  if (!props.canWrite || !ids.length || preparingDispatch.value) return
   const current = ++sourceVersion
   preparingDispatch.value = true
   try {
@@ -945,8 +1040,15 @@ async function dispatchSelected() {
       page_size: 100,
     })
     if (current !== sourceVersion || !props.canWrite) return
+    if (serial && openSerial.value?.serial_no !== serial) return
     const available = new Map(
-      result.items.filter(stockSelectable).map((batch) => [String(batch.transfer.id), batch]),
+      result.items
+        .filter(
+          (batch) =>
+            stockSelectable(batch) &&
+            (!serial || (batch.transfer.serial_no === serial && stockAvailable(batch))),
+        )
+        .map((batch) => [String(batch.transfer.id), batch]),
     )
     const sources = ids.flatMap((id) => {
       const batch = available.get(id)
@@ -959,6 +1061,7 @@ async function dispatchSelected() {
       void load(true)
       return
     }
+    if (serial) openSerial.value = null
     emit('action', 'dispatch', sources)
   } catch (failure) {
     if (current === sourceVersion)
@@ -971,6 +1074,7 @@ function asRow(row: unknown) {
   return row as TeamInventoryRow
 }
 function resetDetails() {
+  openSerial.value = null
   ++sourceVersion
   preparingDispatch.value = false
   clearBatchSelection()
@@ -1031,7 +1135,7 @@ watch(
   { flush: 'sync' },
 )
 watch(
-  [() => props.teamId, filters],
+  [() => props.teamId, filters, bySerial],
   () => {
     syncFilterDrafts()
     void load()
@@ -1053,7 +1157,10 @@ watch(
     void loadPurposes()
   },
 )
-watch([() => props.teamId, () => props.canWrite, () => auth.currentUser?.id], resetDetails)
+watch(
+  [bySerial, () => props.teamId, () => props.canWrite, () => auth.currentUser?.id],
+  resetDetails,
+)
 onMounted(() => {
   syncScheduleClock()
   document.addEventListener('visibilitychange', resumeScheduleClock)
@@ -1087,7 +1194,13 @@ onBeforeUnmount(() => {
           v-model="queryDraft"
           :filters-open="filtersOpen"
           :remainders="!!filters.usable_remainders_only"
-          :placeholder="warehouse ? '批次号、流水号、仓库或材质' : '批次号、流水号或材质'"
+          :placeholder="
+            bySerial
+              ? '搜索流水号、材质'
+              : warehouse
+                ? '批次号、流水号、仓库或材质'
+                : '批次号、流水号或材质'
+          "
           @search="search"
           @remainder="setUsableRemainders"
           @conditions="showStockConditions" />
@@ -1378,6 +1491,14 @@ onBeforeUnmount(() => {
           >只看可用余料</ElCheckbox
         >
         <InventoryColumnSettings
+          v-if="bySerial"
+          ref="columnSettings"
+          :show-trigger="false"
+          :storage-key="storageKey ? storageKey + ':serials' : null"
+          :columns="serialColumns.filter((c) => c.key !== 'serial_no')"
+          @change="serialChoices = $event" />
+        <InventoryColumnSettings
+          v-else
           ref="columnSettings"
           :key="`${teamId}:${Boolean(processing)}`"
           :previous-defaults="warehousePreviousDefaults"
@@ -1389,13 +1510,23 @@ onBeforeUnmount(() => {
               : '批次号、流水号、数量和材质始终显示。'
           "
           :columns="selectableColumns"
-          :new-visible-keys="['task_batch_number', 'on_hand_weight']"
+          :new-visible-keys="
+            pilot
+              ? ['task_batch_number', 'on_hand_weight', 'last_activity_at']
+              : ['task_batch_number', 'on_hand_weight']
+          "
           :fixed-column-options="fixedColumnOptions"
           @fixed-change="fixedColumns = $event"
           :legacy-keys="warehouseLegacyColumnKeys"
           @change="columnChoices = $event"
       /></template>
       <template #primary-actions>
+        <ElButton
+          v-if="props.serialOverview && pilot && !bySerial"
+          text
+          @click="showBatchPicker(false)"
+          >返回流水号库存</ElButton
+        >
         <ElButton
           v-if="canWrite && batchSelection.selected.size"
           text
@@ -1463,6 +1594,36 @@ onBeforeUnmount(() => {
     </div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
+    <WorkspaceTable
+      v-else-if="bySerial"
+      columns-key="TeamInventory-serials"
+      :data="serialRows"
+      :column-settings="false"
+      :column-query="tableQuery.controller.value"
+      empty-text="暂无符合条件的库存"
+    >
+      <ElTableColumn
+        v-for="col in visibleSerialColumns"
+        :key="col.key"
+        :prop="col.key"
+        :label="col.label"
+        :min-width="col.width"
+        :fixed="col.key === 'serial_no' ? 'left' : undefined"
+        align="center"
+      >
+        <template #default="{ row }">
+          <ElButton
+            v-if="col.key === 'serial_no'"
+            link
+            type="primary"
+            @click="openSerial = row as InventorySerial"
+            >{{ serialStockValue(row as InventorySerial, col.key) }}</ElButton
+          >
+          <span v-else-if="col.kind === 'number'">{{ inventoryAmount(row[col.key]) }}</span>
+          <span v-else>{{ serialStockValue(row as InventorySerial, col.key) || '—' }}</span>
+        </template>
+      </ElTableColumn>
+    </WorkspaceTable>
     <WorkspaceTable
       columns-key="TeamInventory-1"
       :column-query="tableQuery.controller.value"
@@ -1728,6 +1889,39 @@ onBeforeUnmount(() => {
         >重试排期</ElButton
       >
     </div>
+    <SerialMaterialDrawer
+      v-if="openSerial?.serial_no"
+      :model-value="true"
+      :team-id="teamId"
+      :serial-no="openSerial.serial_no"
+      :inventory-row="openSerial"
+      :processing="processing"
+      :can-write="canWrite"
+      @update:model-value="openSerial = null"
+      @changed="emit('changed')"
+      @action="
+        (mode, sources) => {
+          if (mode === 'dispatch' && openSerial)
+            dispatchBatches(
+              sources.map((source) => String(source.transfer.id)),
+              openSerial.serial_no,
+            )
+        }
+      "
+      @process="
+        (id) => {
+          openSerial = null
+          emit('process', id)
+        }
+      "
+    />
+    <MaterialTransferDrawer
+      v-else-if="openSerial?.unnumbered_batch_no"
+      :model-value="true"
+      :batch-no="openSerial.unnumbered_batch_no"
+      :trace-scope="{ team_id: teamId }"
+      @update:model-value="openSerial = null"
+    />
     <WorkspacePagination
       v-if="!error"
       :current-page="page"
@@ -1735,7 +1929,8 @@ onBeforeUnmount(() => {
       :total="total"
       @current-change="paginate($event)"
       @size-change="paginate(1, $event)"
-      >共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of"
+      >共 {{ total }} {{ bySerial ? '条流水号库存' : '条库存记录'
+      }}<small v-if="asOf" class="inventory-as-of"
         >系统记录 · {{ formatDateTime(asOf) }}</small
       ></WorkspacePagination
     >

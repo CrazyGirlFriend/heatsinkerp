@@ -368,12 +368,14 @@ def test_unsplit_processing_keeps_receipt_clock_despite_work_and_later_updates(
     lot, employee = setup_lot(client, s, code="FACTORY-WIRE")
     with SessionLocal() as db:
         row = db.get(MaterialTransfer, lot["id"])
-        row.received_at = NOW - timedelta(days=10)
+        row.updated_at = row.received_at = NOW - timedelta(days=10)
         db.commit()
     monkeypatch.setattr("app.warehouse_inventory.utcnow", lambda: NOW)
     monkeypatch.setattr("app.quantity_adjustments.utcnow", lambda: NOW - timedelta(hours=5))
     done = work(client, s, lot, employee, input_quantity=10, processing_status="complete")
     assert done.status_code == 201, done.text
+    processed = stock(client, team_id=s["other"]["id"])["items"][0]
+    assert processed["last_activity_at"] == "2026-11-05T07:00:00+00:00"
     with SessionLocal() as db:
         db.get(MaterialTransfer, lot["id"]).updated_at = NOW
         db.commit()

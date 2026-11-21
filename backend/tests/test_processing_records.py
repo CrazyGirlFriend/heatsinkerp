@@ -67,6 +67,14 @@ def test_one_to_twenty_then_eight_leaves_twelve_registered_pieces(client, proces
     )
     assert record["on_hand_weight"] == 60 and record["in_transit_quantity"] == 0
     assert record["weight"] == 100 and record["processing_state"] == "registered"
+    exact = client.get(
+        url + "/processing-records",
+        params={"serial_no": lot["serial_no"], "include_summary": False},
+    ).json()
+    assert [row["id"] for row in exact["items"]] == [record["id"]]
+    assert (
+        client.get(url + "/processing-records", params={"serial_no": "OTHER"}).json()["total"] == 0
+    )
     assert client.get("/api/material-transfers/" + lot["batch_no"]).json()["quantity"] == 1
 
 

@@ -16,12 +16,14 @@ import FilterDialog from './FilterDialog.vue'
 import InventorySearch from './InventorySearch.vue'
 import TableColumnFilter from './TableColumnFilter.vue'
 import TeamInventory from './TeamInventory.vue'
+import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
+import { materialTransferApi } from '@/services/materialTransferApi'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { warehouseColumns } from '@/types/teamInventory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { warehouseFixture } from '@/testFixtures/teamInventory'
+import { warehouseFixture, serialInventoryFixture } from '@/testFixtures/teamInventory'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -152,6 +154,52 @@ async function showColumns(...keys: string[]) {
 }
 
 describe('warehouse grouped stock', () => {
+  it.each(['FACTORY-WAREHOUSE', 'FACTORY-WIRE'])(
+    'opens team history from a serial summary in %s',
+    async (teamCode) => {
+      const page = { items: [], total: 0, page: 1, page_size: 10 }
+      const serial = serialInventoryFixture()
+      vi.spyOn(teamMaterialApi, 'inventorySerials').mockResolvedValue({
+        ...page,
+        items: [serial],
+        total: 1,
+      })
+      const stock = vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue(page)
+      const movements = vi.spyOn(materialTransferApi, 'list').mockResolvedValue(page)
+      const work = vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue(page)
+      const warehouse = teamCode === 'FACTORY-WAREHOUSE'
+      await render(undefined, true, warehouse, false)
+      await wrapper.setProps({ teamCode, serialOverview: true, processing: !warehouse })
+      await flushPromises()
+      expect(headers()).toContain('变动时间')
+      expect(headers()).not.toContain('批次号')
+      expect(wrapper.get('tbody tr').text()).toContain('部分在途')
+      await wrapper.get('tbody tr button').trigger('click')
+      await flushPromises()
+      const drawer = wrapper.getComponent(SerialMaterialDrawer)
+      const params = { serial_no: '000128', page: 1, page_size: 10 }
+      expect(stock).toHaveBeenCalledWith(901, {
+        ...params,
+        availability: 'all',
+        exact_serial: true,
+      })
+      const tabs = drawer.getComponent({ name: 'ElTabs' })
+      for (const direction of ['incoming', 'outgoing']) {
+        tabs.vm.$emit('update:modelValue', direction)
+        await flushPromises()
+        expect(movements).toHaveBeenLastCalledWith({ ...params, team_id: 901, direction })
+      }
+      if (!warehouse) {
+        tabs.vm.$emit('update:modelValue', 'processing')
+        await flushPromises()
+        expect(work).toHaveBeenCalledWith(901, { ...params, include_summary: false })
+      } else {
+        expect(
+          tabs.findAllComponents({ name: 'ElTabPane' }).map((pane) => pane.props('name')),
+        ).not.toContain('processing')
+      }
+    },
+  )
   it.each([
     { warehouse: true, processing: false },
     { warehouse: false, processing: true },
@@ -2302,6 +2350,35 @@ it('shows failed counts alongside stock quantity for self-check teams', async ()
 })
 
 describe('库存筛选样板', () => {
+  it.each(['FACTORY-WAREHOUSE', 'FACTORY-WIRE'])(
+    'shows and filters the latest inventory change for %s',
+    async (teamCode) => {
+      const warehouse = teamCode === 'FACTORY-WAREHOUSE'
+      await render('/team-workspaces/901?tab=stock', true, warehouse, false)
+      await wrapper.setProps({ teamCode, processing: !warehouse })
+      await flushPromises()
+      const index = headers().indexOf('变动时间')
+      expect(index).toBeGreaterThanOrEqual(0)
+      expect(wrapper.get('tbody tr').findAll('td')[index]!.text()).toBe('2026-09-12 08:00')
+      const header = wrapper
+        .findAllComponents(TableColumnFilter)
+        .find((c) => c.props('label') === '变动时间')!
+      expect(header.props()).toMatchObject({ kind: 'date', editor: 'input', sortable: false })
+      header.vm.$emit('apply', '2026-09-01', '2026-09-02')
+      await flushPromises()
+      const query = JSON.parse(
+        vi.mocked(teamMaterialApi.teamInventory).mock.lastCall![1]!.table_query!,
+      )
+      expect(query.filters).toContainEqual(
+        expect.objectContaining({
+          field: 'last_activity_at',
+          kind: 'date',
+          value: '2026-09-01',
+          end: '2026-09-02',
+        }),
+      )
+    },
+  )
   it.each([
     ['FACTORY-WAREHOUSE', '物料类型', 'material_type', 'raw_material'],
     ['FACTORY-WIRE', '加工状态', 'processing_state', 'unregistered'],
@@ -2319,6 +2396,13 @@ describe('库存筛选样板', () => {
         wrapper.findAllComponents(TableColumnFilter).find((c) => c.props('label') === label)!
       expect(wrapper.findComponent(FilterDialog).exists()).toBe(false)
       expect(wrapper.findAll('input[aria-label="库存明细搜索"]')).toHaveLength(1)
+      expect(header().props()).toMatchObject({ editor: 'choices', sortable: false })
+      expect(
+        wrapper
+          .findAllComponents(TableColumnFilter)
+          .find((c) => c.props('label') === '数量（件）')
+          ?.props(),
+      ).toMatchObject({ editor: 'input', integer: true, sortable: false })
       header().vm.$emit('apply', '', '', { operator: 'in', values: [value] })
       await flushPromises()
       await input().trigger('keydown', { key: 'ArrowDown' })
@@ -2340,15 +2424,20 @@ describe('库存筛选样板', () => {
       const quantity = wrapper
         .findAllComponents(TableColumnFilter)
         .find((c) => c.props('label') === '数量（件）')!
-      quantity.vm.$emit('sort', 'desc')
+      quantity.vm.$emit('apply', '', '100')
       await flushPromises()
-      expect(JSON.parse(String(router.currentRoute.value.query.table_query)).sort.field).toBe(
-        'on_hand_quantity',
+      const saved = JSON.parse(String(router.currentRoute.value.query.table_query))
+      expect(saved.sort).toBeUndefined()
+      expect(saved.filters).toContainEqual(
+        expect.objectContaining({ field: 'on_hand_quantity', end: '100' }),
       )
-      expect(
-        JSON.parse(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall![1]!.table_query!).sort
-          .field,
-      ).toBe('stock_total_quantity')
+      const sent = JSON.parse(
+        vi.mocked(teamMaterialApi.teamInventory).mock.lastCall![1]!.table_query!,
+      )
+      expect(sent.sort).toBeUndefined()
+      expect(sent.filters).toContainEqual(
+        expect.objectContaining({ field: 'stock_total_quantity', end: '100' }),
+      )
       const link = router.currentRoute.value.fullPath
       await box().get('button[aria-label="清除可用余料筛选"]').trigger('click')
       await flushPromises()

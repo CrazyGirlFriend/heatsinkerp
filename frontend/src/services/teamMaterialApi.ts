@@ -80,6 +80,7 @@ function stock(value: unknown): StockBatch {
   return {
     ...balance(value),
     transfer: normalizeMaterialTransfer(raw.transfer),
+    ...(raw.has_next_processing_task ? { has_next_processing_task: true } : {}),
     inspection_hold_id: numeric(raw.inspection_hold_id),
     ...(numeric(raw.weight_root_transfer_id) != null
       ? { weight_root_transfer_id: Number(raw.weight_root_transfer_id) }
@@ -368,8 +369,15 @@ export const teamMaterialApi = {
       (value) => ({ ...record(value), ...balance(value) }) as unknown as TeamInventoryRow,
     )
   },
-  inventoryFilterOptions(teamId: number, params: TeamInventoryParams) {
-    return request<import('@/types/tableQuery').TableOptionPage>(path(teamId, 'inventory', params))
+  inventorySerials(teamId: number, params: TeamInventoryParams) {
+    return request<MaterialPage<import('@/utils/inventorySerialSummary').InventorySerial>>(
+      path(teamId, 'inventory-serials', params),
+    )
+  },
+  inventoryFilterOptions(teamId: number, params: TeamInventoryParams, bySerial = false) {
+    return request<import('@/types/tableQuery').TableOptionPage>(
+      path(teamId, bySerial ? 'inventory-serials' : 'inventory', params),
+    )
   },
   inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) {
     return page(path(teamId, `inventory/${groupId}/sources`, params), stock)

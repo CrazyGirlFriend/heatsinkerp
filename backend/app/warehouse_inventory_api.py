@@ -9,7 +9,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
-from .inventory_read_schemas import TeamInventoryPageResponse
+from .inventory_read_schemas import InventorySerialPage, TeamInventoryPageResponse
 from .models import User
 from .record_filters import RecordFilters
 from .stock_read_schemas import StockMovementsResponse, StockPageResponse
@@ -59,6 +59,20 @@ def movements_endpoint(
             session, team_id, group_id, user, page=page, page_size=page_size
         ),
         schema=StockMovementsResponse,
+    )
+
+
+@router.get("/{team_id}/inventory-serials", response_model=InventorySerialPage)
+def inventory_serials_endpoint(
+    filters: Annotated[WarehouseInventoryFilters, Query()],
+    team_id: int = Path(ge=1),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return team_read_response(
+        db,
+        lambda session: list_inventory(session, team_id, filters, by_serial=True),
+        schema=InventorySerialPage,
     )
 
 

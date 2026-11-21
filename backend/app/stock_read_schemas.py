@@ -26,6 +26,7 @@ class StockPositionResponse(AmountResponse):
 
 
 class StockBatchResponse(StockBalanceResponse):
+    has_next_processing_task: bool = False
     transfer: MaterialTransferResponse
     inspection_hold_id: int | None
     processing_state: ProcessingState

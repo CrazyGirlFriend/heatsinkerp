@@ -15,6 +15,9 @@ import {
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import MaterialAmount from './MaterialAmount.vue'
+import { serialStockValue, type InventorySerial } from '@/utils/inventorySerialSummary'
+import type { ProcessingRecord } from '@/types/materialProcessing'
+import { isScrapType } from '@/types/materialTransfer'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
@@ -37,10 +40,13 @@ const props = defineProps<{
   modelValue: boolean
   teamId: number
   serialNo: string
+  inventoryRow?: InventorySerial
+  processing?: boolean
   canWrite?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  process: [id: number]
   changed: []
   closed: []
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
@@ -51,18 +57,27 @@ const tab = ref('stock'),
 const summary = ref<SerialSummary | null>(null),
   stock = ref<StockBatch[]>([]),
   records = ref<MaterialTransfer[]>([]),
-  losses = ref<MaterialLoss[]>([])
+  losses = ref<MaterialLoss[]>([]),
+  work = ref<ProcessingRecord[]>([])
 const loading = ref(false),
   error = ref(''),
   total = ref(0)
 const checked = ref<string[]>([])
-const availableRows = computed(() => stock.value.filter(stockSelectable))
+function mayDispatch(row: StockBatch) {
+  return stockSelectable(row) && (!props.inventoryRow || stockAvailable(row))
+}
+const availableRows = computed(() => stock.value.filter(mayDispatch))
 const selectedRows = computed(() =>
   availableRows.value.filter((row) => checked.value.includes(String(row.transfer.id))),
 )
 const allChecked = computed(
   () => availableRows.value.length > 0 && selectedRows.value.length === availableRows.value.length,
 )
+function processors(row: ProcessingRecord) {
+  return (
+    row.processors?.map((person) => person.name).join('、') || row.processor_name || row.created_by
+  )
+}
 function asStock(row: unknown) {
   return row as StockBatch
 }
@@ -72,7 +87,7 @@ function asTransfer(row: unknown) {
 function toggle(row: StockBatch, value: string | number | boolean) {
   const id = String(row.transfer.id)
   checked.value =
-    value && stockSelectable(row)
+    value && mayDispatch(row)
       ? [...new Set([...checked.value, id])]
       : checked.value.filter((key) => key !== id)
 }
@@ -85,7 +100,7 @@ function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
     loading.value ||
     error.value ||
     !sources.length ||
-    sources.some((row) => !(mode === 'loss' ? stockAvailable(row) : stockSelectable(row)))
+    sources.some((row) => !(mode === 'loss' ? stockAvailable(row) : mayDispatch(row)))
   )
     return
   emit('action', mode, sources)
@@ -123,26 +138,36 @@ async function load(background = false) {
     stock.value = []
     records.value = []
     losses.value = []
+    work.value = []
   }
   error.value = ''
   const params = { serial_no: props.serialNo, page: page.value, page_size: pageSize.value }
   try {
     const [info, result] = await Promise.all([
-      teamMaterialApi.serials(props.teamId, { serial_no: props.serialNo, page_size: 1 }),
+      props.inventoryRow
+        ? null
+        : teamMaterialApi.serials(props.teamId, { serial_no: props.serialNo, page_size: 1 }),
       tab.value === 'stock'
-        ? teamMaterialApi.stock(props.teamId, { ...params, availability: 'all' })
-        : tab.value === 'losses'
-          ? teamMaterialApi.losses(props.teamId, params)
-          : materialTransferApi.list({
-              ...params,
-              team_id: props.teamId,
-              direction: tab.value as 'incoming' | 'outgoing',
-            }),
+        ? teamMaterialApi.stock(props.teamId, {
+            ...params,
+            availability: 'all',
+            ...(props.inventoryRow ? { exact_serial: true } : {}),
+          })
+        : tab.value === 'processing'
+          ? teamMaterialApi.processingRecords(props.teamId, { ...params, include_summary: false })
+          : tab.value === 'losses'
+            ? teamMaterialApi.losses(props.teamId, params)
+            : materialTransferApi.list({
+                ...params,
+                team_id: props.teamId,
+                direction: tab.value as 'incoming' | 'outgoing',
+              }),
     ])
     if (current !== version) return
-    summary.value = info.items[0] || null
+    summary.value = info?.items[0] || null
     total.value = result.total
     if (tab.value === 'stock') stock.value = result.items as StockBatch[]
+    else if (tab.value === 'processing') work.value = result.items as ProcessingRecord[]
     else if (tab.value === 'losses') losses.value = result.items as MaterialLoss[]
     else records.value = result.items as MaterialTransfer[]
   } catch (e) {
@@ -225,12 +250,37 @@ onBeforeUnmount(() => {
   >
     <template #header
       ><div class="serial-title">
-        <span>流水号详情</span><strong>{{ serialNo }}</strong>
+        <span>流水号详情</span
+        ><strong>{{
+          inventoryRow ? serialStockValue(inventoryRow, 'serial_no') : serialNo
+        }}</strong>
       </div></template
     >
     <div class="serial-detail-body">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-      <template v-if="summary">
+      <ElDescriptions v-if="inventoryRow" :column="3" border>
+        <ElDescriptionsItem label="库存状态">{{ inventoryRow.stock_status }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="材质">{{ inventoryRow.material_name }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="变动时间">{{
+          formatDateTime(inventoryRow.last_activity_at)
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="库存合计"
+          ><MaterialAmount
+            :quantity="inventoryRow.stock_total_quantity"
+            :weight="inventoryRow.stock_total_weight"
+        /></ElDescriptionsItem>
+        <ElDescriptionsItem label="在库"
+          ><MaterialAmount
+            :quantity="inventoryRow.on_hand_quantity"
+            :weight="inventoryRow.on_hand_weight"
+        /></ElDescriptionsItem>
+        <ElDescriptionsItem label="转出待签收"
+          ><MaterialAmount
+            :quantity="inventoryRow.in_transit_quantity"
+            :weight="inventoryRow.in_transit_weight"
+        /></ElDescriptionsItem>
+      </ElDescriptions>
+      <template v-else-if="summary">
         <ElDescriptions :column="3" border>
           <ElDescriptionsItem v-for="[key, label] in meta" :key="key" :label="label">{{
             field(key)
@@ -287,7 +337,9 @@ onBeforeUnmount(() => {
       <ElTabs v-model="tab" class="serial-detail-tabs"
         ><ElTabPane name="stock" label="当前库存" /><ElTabPane
           name="incoming"
-          label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane
+          :label="inventoryRow ? '来料记录' : '转入明细'" />
+        <ElTabPane v-if="processing" name="processing" label="加工记录" />
+        <ElTabPane name="outgoing" :label="inventoryRow ? '转料记录' : '转出明细'" /><ElTabPane
           name="losses"
           label="丢失记录"
       /></ElTabs>
@@ -316,7 +368,7 @@ onBeforeUnmount(() => {
               ><ElCheckbox
                 :aria-label="'选择 ' + row.transfer.batch_no"
                 :model-value="selectedRows.some((item) => item.transfer.id === row.transfer.id)"
-                :disabled="!stockSelectable(asStock(row))"
+                :disabled="!mayDispatch(asStock(row))"
                 @change="toggle(asStock(row), $event)"
             /></template>
           </ElTableColumn>
@@ -406,16 +458,68 @@ onBeforeUnmount(() => {
               ><ElButton
                 link
                 type="primary"
-                :disabled="!stockSelectable(asStock(row))"
+                :disabled="!mayDispatch(asStock(row))"
                 @click="action('dispatch', [asStock(row)])"
                 >出库</ElButton
               ><ElButton
                 link
+                v-if="!inventoryRow"
                 :disabled="!stockAvailable(asStock(row))"
                 @click="action('loss', [asStock(row)])"
                 >登记丢失</ElButton
+              >
+              <ElButton
+                v-if="
+                  processing &&
+                  !row.inspection_hold_id &&
+                  (row.processing_state !== 'complete' || row.has_next_processing_task) &&
+                  !isScrapType(row.transfer.material_type) &&
+                  (row.on_hand_quantity > 0 || row.on_hand_weight > 0)
+                "
+                link
+                type="primary"
+                @click="emit('process', row.transfer.id)"
+                >{{ row.processing_state === 'complete' ? '登记下一工序' : '加工登记' }}</ElButton
               ></template
             ></ElTableColumn
+          >
+        </ElTable>
+        <ElTable
+          v-else-if="tab === 'processing'"
+          columns-key="SerialMaterialDrawer-processing"
+          class="business-table"
+          :data="work"
+          stripe
+          size="small"
+          empty-text="暂无加工记录"
+        >
+          <ElTableColumn label="加工日期" min-width="135"
+            ><template #default="{ row }">{{
+              row.processing_date || formatDateTime(row.created_at)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn prop="batch_no" label="加工批次" min-width="175" />
+          <ElTableColumn label="工艺工序" min-width="115"
+            ><template #default="{ row }">{{
+              row.process_step_name || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="加工任务" min-width="125"
+            ><template #default="{ row }">{{
+              row.processing_task_name || row.purpose_name || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="加工人" min-width="115"
+            ><template #default="{ row }"
+              ><PersonName :name="processors(row as ProcessingRecord)" /></template
+          ></ElTableColumn>
+          <ElTableColumn label="加工前件数" prop="before_quantity" min-width="115" />
+          <ElTableColumn label="加工后件数" prop="after_quantity" min-width="115" />
+          <ElTableColumn label="不合格数" min-width="100"
+            ><template #default="{ row }">{{ row.failed_quantity ?? '—' }}</template></ElTableColumn
+          >
+          <ElTableColumn label="备注" min-width="150"
+            ><template #default="{ row }">{{ row.reason || '—' }}</template></ElTableColumn
           >
         </ElTable>
         <ElTable
@@ -543,7 +647,13 @@ onBeforeUnmount(() => {
             }
           "
           >共 {{ total }} 条{{
-            tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细'
+            tab === 'stock'
+              ? '来源记录'
+              : tab === 'losses'
+                ? '丢失记录'
+                : tab === 'processing'
+                  ? '加工记录'
+                  : '交接明细'
           }}</WorkspacePagination
         >
         <div v-if="tab === 'stock' && canWrite" class="serial-detail-actions">

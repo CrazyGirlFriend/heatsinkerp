@@ -206,3 +206,127 @@ it('keeps loading errors visible instead of offering current-page values', async
   await wrapper.get('form').trigger('submit')
   expect(wrapper.emitted('apply')?.[0]).toEqual(['铜', ''])
 })
+
+describe('direct inventory column editors', () => {
+  it.each([
+    ['text', '流水号'],
+    ['number', '数量（件）'],
+    ['date', '最近流转时间'],
+  ] as const)('opens the %s editor directly without fetching options', async (kind, label) => {
+    const loadOptions = vi.fn()
+    wrapper = mount(TableColumnFilter, {
+      props: { editor: 'input', kind, label, loadOptions, integer: kind === 'number' },
+      global: { stubs: { ElPopover: popover } },
+    })
+    await open()
+    expect(loadOptions).not.toHaveBeenCalled()
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.text()).not.toMatch(/升序|条件筛选|按值选择|清除本列/)
+    if (kind === 'number') {
+      await wrapper.get('input[placeholder="最多"]').setValue('0.5')
+      await wrapper.get('form').trigger('submit')
+      expect(wrapper.emitted('apply')).toBeUndefined()
+      await wrapper.get('input[placeholder="最多"]').setValue('9')
+    } else if (kind === 'date') {
+      wrapper.findAllComponents(ElDatePicker)[1]!.vm.$emit('update:modelValue', '2026-11-21')
+    } else await wrapper.get('input').setValue(' 691236 ')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[0]).toEqual(
+      kind === 'date' ? ['', '2026-11-21'] : kind === 'number' ? ['', '9'] : ['691236', ''],
+    )
+  })
+
+  it('can find the displayed blank label in a paginated choice list', async () => {
+    const loadOptions = vi.fn(async (term: string) =>
+      term
+        ? { values: [], has_more: false, next_offset: 0 }
+        : { values: [null, '1'], has_more: true, next_offset: 2 },
+    )
+    wrapper = mount(TableColumnFilter, {
+      props: {
+        editor: 'choices',
+        label: '排期批次',
+        kind: 'number',
+        loadOptions,
+        valueLabel: (value) => (value ? '第' + value + '批' : '未关联排期'),
+      },
+      global: { stubs: { ElPopover: popover } },
+    })
+    await open()
+    await wrapper.get('input[aria-label="查找排期批次选项"]').setValue('未关联')
+    await vi.waitFor(() => expect(loadOptions).toHaveBeenCalledWith('未关联', 0))
+    await flushPromises()
+    expect(wrapper.findAll('label.el-checkbox').map((choice) => choice.text())).toEqual([
+      '未关联排期',
+    ])
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[0]).toEqual(['', '', { operator: 'in', values: [null] }])
+  })
+
+  it('retains a bookmarked comparison until it is explicitly replaced or cleared', async () => {
+    wrapper = mount(TableColumnFilter, {
+      props: {
+        label: '数量',
+        kind: 'number',
+        editor: 'input',
+        condition: {
+          field: 'on_hand_quantity',
+          kind: 'number',
+          value: '7',
+          end: '',
+          operator: 'gt',
+        },
+      },
+      global: { stubs: { ElPopover: popover } },
+    })
+    await open()
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')).toBeUndefined()
+    await open()
+    await wrapper.get('input[placeholder="最少"]').setValue('8')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[0]).toEqual(['8', ''])
+  })
+
+  it('selects real values directly, searches larger lists by label and clears an active column', async () => {
+    const values: (string | null)[] = [null, '1']
+    const loadOptions = vi.fn(async () => ({ values, has_more: false, next_offset: values.length }))
+    wrapper = mount(TableColumnFilter, {
+      props: {
+        editor: 'choices',
+        label: '排期批次',
+        kind: 'number',
+        loadOptions,
+        valueLabel: (v) => (v ? '第' + v + '批' : '未关联排期'),
+      },
+      global: { stubs: { ElPopover: popover } },
+    })
+    await open()
+    expect(wrapper.text()).not.toMatch(/全选|条件筛选/)
+    expect(wrapper.find('input[aria-label="查找排期批次选项"]').exists()).toBe(false)
+    await wrapper.findAll('input[type="checkbox"]')[0]!.setValue(true)
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[0]).toEqual(['', '', { operator: 'in', values: [null] }])
+    await wrapper.setProps({
+      condition: {
+        field: 'task_batch_number',
+        kind: 'number',
+        value: '',
+        end: '',
+        operator: 'in',
+        values: [null],
+      },
+    })
+    values.push('2', '3', '4', '5', '6', '7', '8')
+    await open()
+    await wrapper.get('input[aria-label="查找排期批次选项"]').setValue('第7批')
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(1)
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('apply')?.[1]).toEqual(['', '', { operator: 'in', values: [null, '7'] }])
+    await open()
+    await click('清除本列')
+    expect(wrapper.emitted('apply')?.[2]).toEqual(['', ''])
+  })
+})

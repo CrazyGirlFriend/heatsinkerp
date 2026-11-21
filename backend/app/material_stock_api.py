@@ -60,6 +60,7 @@ def shipment_stock(
 @router.get("/{team_id}/processing-records", response_model=ProcessingRecordPageResponse)
 def list_processing_records(
     include_summary: bool = Query(default=True),
+    serial_no: str | None = Query(default=None, min_length=1, max_length=80),
     report_template: Literal["FACTORY-QC", "QC-SANDBLAST", "QC-DEBURR"] | None = None,
     processor_id: int | None = Query(default=None, ge=1),
     processing_task_id: int | None = Query(default=None, ge=1),
@@ -80,6 +81,7 @@ def list_processing_records(
             session,
             team_id,
             include_summary=include_summary,
+            serial_no=serial_no,
             report_template=report_template,
             record_filters=record_filters,
             processor_id=processor_id,
@@ -331,6 +333,7 @@ def list_stock(
     team_id: int = Path(ge=1),
     query: str | None = Query(default=None, max_length=160),
     serial_no: str | None = Query(default=None, max_length=80),
+    exact_serial: bool = False,
     material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
     availability: str = Query(default="available", pattern="^(available|dispatchable|all)$"),
     location_status: str | None = Query(default=None, pattern="^unassigned$"),
@@ -349,6 +352,7 @@ def list_stock(
         record_filters=record_filters,
         query=query,
         serial_no=serial_no,
+        exact_serial=exact_serial,
         material_type=material_type,
         availability=availability,
         location_status=location_status,

@@ -85,6 +85,25 @@ class InventoryGroupResponse(StockBalanceResponse, SharedMaterialResponse):
     urgency: UrgencyResponse
 
 
+class InventorySerialRow(SharedMaterialResponse):
+    serial_no: str
+    unnumbered_batch_no: str | None
+    material_name: str
+    stock_total_quantity: int | None
+    stock_total_weight: float
+    on_hand_quantity: int | None
+    on_hand_weight: float
+    in_transit_quantity: int | None
+    in_transit_weight: float
+    stock_status: str
+    processing_state: str
+    last_activity_at: str
+
+
+class InventorySerialPage(PageResponse[InventorySerialRow]):
+    as_of: str
+
+
 class TeamInventoryPageResponse(PageResponse[InventoryGroupResponse]):
     as_of: str
 

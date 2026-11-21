@@ -268,6 +268,7 @@ def list_stock(
     record_filters=None,
     query=None,
     serial_no=None,
+    exact_serial=False,
     material_type=None,
     availability="available",
     location_status=None,
@@ -275,7 +276,7 @@ def list_stock(
     page=1,
     page_size=20,
 ):
-    from .processing_records import annotate_source, source_metadata
+    from .processing_records import annotate_source, next_local_work, source_metadata
     from .record_filters import RecordFilters
     from .schedule_task_identity import stock_batch_number_column
 
@@ -296,7 +297,11 @@ def list_stock(
     if serial_no is not None:
         from .shared_material import serial_match
 
-        filters.append(serial_match(stock.c.serial_no, serial_no))
+        filters.append(
+            stock.c.serial_no == serial_no
+            if exact_serial
+            else serial_match(stock.c.serial_no, serial_no)
+        )
     if availability == "available":
         filters.append(or_(stock.c.available_quantity != 0, stock.c.available_weight != 0))
     child = aliased(MaterialTransfer)
@@ -375,6 +380,20 @@ def list_stock(
         )
         for row in rows
     ]
+    if exact_serial:
+        completed = [
+            item["transfer"]["id"] for item in items if item["processing_state"] == "complete"
+        ]
+        if completed:
+            pending = set(
+                db.scalars(
+                    select(MaterialTransfer.id).where(
+                        MaterialTransfer.id.in_(completed), next_local_work(team_id, completed)
+                    )
+                )
+            )
+            for item in items:
+                item["has_next_processing_task"] = item["transfer"]["id"] in pending
     with_schedule(db, [item["transfer"] for item in items])
     return {
         "items": stock_positions(db, stock_sludge_measurements(db, items)),

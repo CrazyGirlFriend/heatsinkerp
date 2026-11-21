@@ -658,6 +658,7 @@ def list_records(
     purpose_id=None,
     report_template=None,
     include_summary=True,
+    serial_no=None,
     page=1,
     page_size=20,
 ):
@@ -674,6 +675,10 @@ def list_records(
         processing_task_id,
         purpose_id,
     )
+    if serial_no is not None:
+        from .shared_material import serial_match
+
+        conditions.append(serial_match(Transfer.serial_no, serial_no))
     if report_template:
         if team.code != "FACTORY-QC":
             raise HTTPException(422, "请选择本班组的产量表")

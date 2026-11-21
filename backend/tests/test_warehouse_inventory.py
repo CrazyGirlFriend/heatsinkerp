@@ -1,5 +1,6 @@
 """Warehouse grouping must never blend source/nature/specification balances."""
 
+import json
 from datetime import datetime
 
 import pytest
@@ -74,6 +75,148 @@ def test_grouping_pagination_and_exact_source_drilldown(client, warehouse):
     )
     assert inventory(client, s, search_field="source", query="供应商 B")["total"] == 1
     assert inventory(client, s, query="000128")["total"] == 6
+
+    def header(field, kind="text", **values):
+        return inventory(
+            client,
+            s,
+            table_query=json.dumps({"filters": [{"field": field, "kind": kind, **values}]}),
+        )
+
+    for size in ("100×80", "100*80", "100 X 80"):
+        assert header("transfer_specification", value=size)["total"] == 5
+    assert header("transfer_specification", value="%_")["total"] == 0
+    assert header("stock_total_quantity", "number", end="9")["total"] == 0
+    assert header("stock_total_quantity", "number", value="10", end="10")["total"] == 5
+    assert header("stock_total_weight", "number", end="0.6")["total"] == 1
+    assert (
+        header("inventory_source_label", operator="in", values=["外部来料 · 供应商 B"])["total"]
+        == 1
+    )
+    assert header("task_batch_number", "number", operator="in", values=[None])["total"] == 6
+
+
+def test_serial_inventory_sums_lots_before_filter_and_pagination(client, warehouse):
+    s = warehouse
+    for index, (serial, pieces) in enumerate([("ORDER-A", 10), ("ORDER-B", 7), ("ORDER-A", 10)]):
+        response = intake(
+            client,
+            s,
+            serial_no=serial,
+            quantity=pieces,
+            weight=1,
+            material_name=f"铜材{index}",
+            idempotency_key=f"serial-stock-{index}",
+        )
+        assert response.status_code == 201, response.text
+
+    url = base(s) + "/inventory-serials"
+
+    def page(**params):
+        response = client.get(url, params=params)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    pages = [page(page_size=1, page=p) for p in (1, 2)]
+    assert page(query="铜材2")["items"][0]["stock_total_quantity"] == 20
+    assert [page["total"] for page in pages] == [2, 2]
+    by_serial = {row["serial_no"]: row for page in pages for row in page["items"]}
+    assert by_serial["ORDER-A"]["stock_total_quantity"] == 20
+    assert by_serial["ORDER-A"]["stock_total_weight"] == 2
+    assert by_serial["ORDER-A"]["stock_status"] == "在库"
+    assert by_serial["ORDER-A"]["last_activity_at"] == max(
+        row["last_activity_at"]
+        for row in inventory(client, s)["items"]
+        if row["serial_no"] == "ORDER-A"
+    )
+    assert client.get(base(s, True) + "/inventory-serials").json()["total"] == 0
+    threshold = {"filters": [{"field": "stock_total_quantity", "kind": "number", "value": "15"}]}
+    assert client.get(url, params={"table_query": json.dumps(threshold)}).json()["total"] == 1
+
+
+def test_serial_dispatch_deducts_selected_sources_and_preserves_transit(client, warehouse):
+    s = warehouse
+    serial = "SERIAL-12"
+    lots = [
+        intake(client, s, serial_no=serial, quantity=10, weight=10, idempotency_key=key).json()
+        for key in ("dispatch-from-A", "dispatch-from-B")
+    ]
+    lines = [
+        {"source_transfer_id": lot["id"], "quantity": n, "weight": n}
+        for lot, n in zip(lots, (10, 2), strict=True)
+    ]
+    response = dispatch(client, s, lines)
+    assert response.status_code == 201, response.text
+    document = response.json()
+
+    def summary(workshop=False):
+        return client.get(
+            base(s, workshop) + "/inventory-serials",
+            params={"serial_no": serial, "availability": "current_or_transit"},
+        ).json()["items"]
+
+    outgoing = summary()[0]
+    assert (
+        outgoing["on_hand_quantity"],
+        outgoing["in_transit_quantity"],
+        outgoing["stock_status"],
+    ) == (8, 12, "部分在途")
+    assert summary(True) == []
+    current = client.get(
+        base(s) + "/stock",
+        params={"serial_no": serial, "exact_serial": True, "availability": "all"},
+    ).json()["items"]
+    assert {item["transfer"]["id"]: item["available_quantity"] for item in current} == {
+        lots[0]["id"]: 0,
+        lots[1]["id"]: 8,
+    }
+    replay = dispatch(client, s, lines)
+    assert replay.status_code == 201, replay.text
+    assert [item["id"] for item in replay.json()["items"]] == [
+        item["id"] for item in document["items"]
+    ]
+    assert confirm(client, s, document, workshop=True).status_code == 200
+    assert (summary()[0]["on_hand_quantity"], summary()[0]["in_transit_quantity"]) == (8, 0)
+    assert summary(True)[0]["on_hand_quantity"] == 12
+
+    # The latest action can concern a lot whose own balance is already zero.
+    with SessionLocal.begin() as db:
+        movement = db.get(MaterialTransfer, document["items"][0]["id"])
+        movement.updated_at = datetime(2030, 4, 2, 12)
+    assert summary()[0]["last_activity_at"] == "2030-04-02T12:00:00+00:00"
+
+
+def test_activity_filter_uses_factory_day_of_dispatch_or_receipt(client, warehouse):
+    s = warehouse
+    first = intake(client, s, quantity=5, weight=1, idempotency_key="first").json()
+    second = intake(client, s, quantity=5, weight=1, idempotency_key="second").json()
+    sent = dispatch(client, s, [{"source_transfer_id": first["id"], "quantity": 5, "weight": 1}])
+    assert sent.status_code == 201, sent.text
+    with SessionLocal() as db:
+        for lot, received in (
+            (first, datetime(2026, 8, 31, 12)),
+            (second, datetime(2026, 9, 1, 16)),
+        ):
+            source = db.get(MaterialTransfer, lot["id"])
+            source.created_at = source.received_at = source.updated_at = received
+        outbound = db.get(MaterialTransfer, sent.json()["items"][0]["id"])
+        outbound.created_at = outbound.updated_at = datetime(2026, 9, 1, 15, 59)
+        db.commit()
+
+    for day, lot, expected in (
+        ("2026-09-01", first, "2026-09-01T15:59:00+00:00"),
+        ("2026-09-02", second, "2026-09-01T16:00:00+00:00"),
+    ):
+        condition = {"field": "last_activity_at", "kind": "date", "value": day, "end": day}
+        result = inventory(
+            client,
+            s,
+            availability="current_or_transit",
+            table_query=json.dumps({"filters": [condition]}),
+        )
+        assert result["total"] == 1
+        row = result["items"][0]
+        assert (row["group_id"], row["last_activity_at"]) == (lot["id"], expected)
 
 
 def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, warehouse):

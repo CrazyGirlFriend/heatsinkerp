@@ -67,6 +67,7 @@ export interface TeamMaterialOverview {
   legacy_received_count: number
 }
 export interface StockBatch extends MaterialBalance {
+  has_next_processing_task?: boolean
   transfer: MaterialTransfer
   delivery_schedule?: import('./productionSchedule').InventoryScheduleSummary
   inspection_hold_id?: number | null
@@ -228,6 +229,7 @@ export type MaterialPageParams = import('./recordFilters').RecordFilterParams & 
   page_size?: number
 }
 export interface StockParams extends MaterialPageParams {
+  exact_serial?: boolean
   material_type?: MaterialType
   availability?: 'available' | 'all' | 'dispatchable'
   location_status?: 'unassigned'

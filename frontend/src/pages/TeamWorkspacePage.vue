@@ -159,6 +159,9 @@ const isWarehouse = computed(
     team.value?.code === 'FACTORY-WAREHOUSE' &&
     team.value?.kind === 'warehouse',
 )
+const serialInventoryPilot = computed(() =>
+  ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(team.value?.code || ''),
+)
 const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
 const overview = ref<TeamMaterialOverview | null>(null)
 const qualityCount = ref(0)
@@ -471,7 +474,7 @@ const processingOpen = ref(false),
   processingSourceId = ref<number | null>(null)
 function chooseProcessingBatch() {
   if (!canWrite.value || !hasProcessing.value) return
-  void router.push({ path: route.path, query: { tab: 'stock' } })
+  void showBatchPicker()
   showToast('在库存列表勾选一个批次后，点「加工登记」', 'info')
 }
 async function openProcessing(groupId: number) {
@@ -897,9 +900,15 @@ async function savedReallocation(item: MaterialTransfer) {
   if (tab.value === 'reallocations') await loadView()
   else await openingStocked()
 }
+function showBatchPicker() {
+  return router.push({
+    path: route.path,
+    query: { tab: 'stock', ...(serialInventoryPilot.value ? { stock_pick: '1' } : {}) },
+  })
+}
 function openNewDispatch() {
   if (!canWrite.value || openingDispatch.value) return
-  void router.push({ path: route.path, query: { tab: 'stock' } })
+  void showBatchPicker()
   showToast('在库存明细勾选批次出库，或直接新建回收料出库单', 'info')
 }
 function canStartStockAction(mode: StockAction) {
@@ -1306,6 +1315,7 @@ onBeforeUnmount(() => {
             v-else-if="overview"
             :key="teamId"
             ref="inventoryPanel"
+            :serial-overview="serialInventoryPilot"
             :team-id="teamId"
             :team-code="team?.code"
             :warehouse="isWarehouse"
@@ -1731,7 +1741,7 @@ onBeforeUnmount(() => {
         :mode="actionMode"
         :sources="actionSources"
         :initial-schedule="initialSchedule"
-        @pick-stock="router.push({ path: route.path, query: { tab: 'stock' } })"
+        @pick-stock="showBatchPicker"
         @register="openProcessing"
         @saved="savedAction"
         @balances-changed="loadView"

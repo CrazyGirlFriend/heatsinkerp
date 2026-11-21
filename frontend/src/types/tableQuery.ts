@@ -1,4 +1,5 @@
 export interface TableQueryColumn {
+  editor?: 'input' | 'choices'
   field: string
   kind?: 'text' | 'number' | 'date' | 'select'
   options?: readonly { value: string; label: string }[]

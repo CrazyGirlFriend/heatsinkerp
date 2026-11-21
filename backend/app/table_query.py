@@ -182,10 +182,12 @@ def column_predicate(column, item):
     raise ValueError
 
 
-def table_predicates(columns, *, matches=None):
+def table_predicates(columns, *, matches=None, skip_fields=()):
     query = current_table_query.get()
     result = []
     for item in query.filters if query else []:
+        if item.field in skip_fields:
+            continue
         if item.field not in columns:
             raise HTTPException(422, f"不支持筛选字段：{item.field}")
         if query.options and item.field == query.options.field:

@@ -1777,6 +1777,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/team-materials/{team_id}/inventory-serials': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Inventory Serials Endpoint */
+    get: operations['inventory_serials_endpoint_api_team_materials__team_id__inventory_serials_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/team-materials/{team_id}/inventory/{group_id}/movements': {
     parameters: {
       query?: never
@@ -4059,6 +4076,54 @@ export interface components {
       groups: components['schemas']['InventoryGroupSchedulesResponse'][]
       /** Sources */
       sources: components['schemas']['InventorySourceSchedulesResponse'][]
+    }
+    /** InventorySerialPage */
+    InventorySerialPage: {
+      /** As Of */
+      as_of: string
+      /** Items */
+      items: components['schemas']['InventorySerialRow'][]
+      /** Page */
+      page: number
+      /** Page Size */
+      page_size: number
+      /** Total */
+      total: number
+    }
+    /** InventorySerialRow */
+    InventorySerialRow: {
+      /** In Transit Quantity */
+      in_transit_quantity: number | null
+      /** In Transit Weight */
+      in_transit_weight: number
+      /** Last Activity At */
+      last_activity_at: string
+      /** Material Name */
+      material_name: string
+      /** On Hand Quantity */
+      on_hand_quantity: number | null
+      /** On Hand Weight */
+      on_hand_weight: number
+      /** Processing State */
+      processing_state: string
+      /** Serial No */
+      serial_no: string
+      /** Shared Group Id */
+      shared_group_id: number | null
+      /** Shared Origin Batch No */
+      shared_origin_batch_no?: string | null
+      /** Shared Serials */
+      shared_serials?: components['schemas']['SharedSerialResponse'][] | null
+      /** Shared Unallocated */
+      shared_unallocated: boolean
+      /** Stock Status */
+      stock_status: string
+      /** Stock Total Quantity */
+      stock_total_quantity: number | null
+      /** Stock Total Weight */
+      stock_total_weight: number
+      /** Unnumbered Batch No */
+      unnumbered_batch_no: string | null
     }
     /** InventorySourceSchedulesResponse */
     InventorySourceSchedulesResponse: {
@@ -9108,6 +9173,11 @@ export interface components {
       external_pending_quantity: number
       /** External Pending Weight */
       external_pending_weight: number
+      /**
+       * Has Next Processing Task
+       * @default false
+       */
+      has_next_processing_task: boolean
       /** In Transit Quantity */
       in_transit_quantity: number
       /** In Transit Weight */
@@ -14759,6 +14829,126 @@ export interface operations {
       }
     }
   }
+  inventory_serials_endpoint_api_team_materials__team_id__inventory_serials_get: {
+    parameters: {
+      query?: {
+        activity_day?: string | null
+        activity_kind?: ('incoming' | 'outgoing' | 'loss') | null
+        availability?: 'current' | 'current_or_transit' | 'owned' | 'all' | 'available' | 'scrap'
+        date_from?: string | null
+        date_to?: string | null
+        days?: 7 | 30
+        flow_direction?: ('incoming' | 'outgoing') | null
+        has_loss?: boolean
+        location_status?: 'unassigned' | null
+        material_name?: string | null
+        material_type?: string | null
+        page?: number
+        page_size?: number
+        peer?: string | null
+        processing_role?: ('remaining' | 'produced' | 'scrap') | null
+        processing_state?:
+          | (
+              | 'unregistered'
+              | 'registered'
+              | 'partial'
+              | 'complete'
+              | 'rework'
+              | 'mixed'
+              | 'pending'
+              | 'cleared'
+              | 'not_applicable'
+              | 'not_required'
+            )
+          | null
+        /** @description 本班组业务编号；0 表示未指定业务 */
+        purpose_id?: number | null
+        query?: string | null
+        receipt_source?:
+          ('external' | 'return' | 'internal' | 'opening' | 'processing' | 'rework') | null
+        rework?: ('pending' | 'worked') | null
+        route_status?: ('linked' | 'unlinked') | null
+        search_field?:
+          | 'all'
+          | 'serial_no'
+          | 'material_name'
+          | 'product_code'
+          | 'customer_code'
+          | 'transfer_specification'
+          | 'finished_specification'
+          | 'available_quantity'
+          | 'available_weight'
+          | 'finished_quantity'
+          | 'pending_incoming_quantity'
+          | 'pending_incoming_weight'
+          | 'pending_outgoing_quantity'
+          | 'pending_outgoing_weight'
+          | 'lost_quantity'
+          | 'lost_weight'
+          | 'scrap_quantity'
+          | 'scrap_weight'
+          | 'last_activity_at'
+          | 'source'
+          | 'purpose_name'
+          | 'oldest_received_at'
+          | 'on_hand_quantity'
+          | 'on_hand_weight'
+          | 'stock_total_quantity'
+          | 'stock_total_weight'
+          | 'owned_quantity'
+          | 'owned_weight'
+          | 'in_transit_quantity'
+          | 'in_transit_weight'
+          | 'external_pending_quantity'
+          | 'external_pending_weight'
+          | 'source_batch_no'
+          | 'batch_no'
+          | 'previous_batch_no'
+          | 'task_batch_number'
+          | 'warehouse_location'
+          | 'shortage_weight'
+          | 'processing_registered_quantity'
+          | 'processing_registered_weight'
+          | 'processing_unregistered_quantity'
+          | 'processing_unregistered_weight'
+        search_operator?: 'eq' | 'gte' | 'lte'
+        serial_no?: string | null
+        source_team_id?: number | null
+        stock_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
+        stock_age_max?: number | null
+        stock_age_min?: number | null
+        usable_remainders_only?: boolean
+        waiting_age?: ('lt1' | '1_3' | '3_7' | 'ge7') | null
+        waiting_direction?: ('incoming' | 'outgoing') | null
+      }
+      header?: never
+      path: {
+        team_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InventorySerialPage']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   movements_endpoint_api_team_materials__team_id__inventory__group_id__movements_get: {
     parameters: {
       query?: {
@@ -15274,6 +15464,7 @@ export interface operations {
         purpose_id?: number | null
         query?: string | null
         report_template?: ('FACTORY-QC' | 'QC-SANDBLAST' | 'QC-DEBURR') | null
+        serial_no?: string | null
         work_date?: string | null
         work_kind?: ('initial' | 'rework') | null
       }
@@ -15876,6 +16067,7 @@ export interface operations {
         availability?: string
         date_from?: string | null
         date_to?: string | null
+        exact_serial?: boolean
         location_status?: string | null
         material_type?: string | null
         page?: number

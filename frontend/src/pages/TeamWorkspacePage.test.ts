@@ -11,6 +11,7 @@ import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import { appPinia } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
 import TeamInventory from '@/components/TeamInventory.vue'
+import SerialMaterialDrawer from '@/components/SerialMaterialDrawer.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
 import DeliverySchedules from '@/components/DeliverySchedules.vue'
 import type { ProductionSchedule } from '@/types/productionSchedule'
@@ -26,7 +27,7 @@ import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { ElPagination } from 'element-plus'
-import { warehouseFixture } from '@/testFixtures/teamInventory'
+import { warehouseFixture, serialInventoryFixture } from '@/testFixtures/teamInventory'
 import { showToast } from '@/stores/toast'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
@@ -145,6 +146,12 @@ beforeEach(() => {
   })
   state.directory = reactive({ ...state.directory, loaded: true, loading: false, error: '' })
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
+  vi.spyOn(teamMaterialApi, 'inventorySerials').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
   vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({
     items: [],
     total: 45,
@@ -545,7 +552,9 @@ describe('team workspace material ledger', () => {
           page_size: 10,
         })
         mockDispatchableRows(10)
-        const router = await render('/team-workspaces/914?tab=stock')
+        const router = await render(
+          '/team-workspaces/914?tab=stock' + (code === 'FACTORY-WIRE' ? '&stock_pick=1' : ''),
+        )
         expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(true)
         expect(wrapper.find('.inventory-process').exists()).toBe(false)
         if (canWrite) {
@@ -651,7 +660,9 @@ describe('team workspace material ledger', () => {
           state.directory.items = [
             { id: 914, code, name: '加工班组', kind: 'production', active: true },
           ]
-          await render('/team-workspaces/914?tab=stock')
+          await render(
+            '/team-workspaces/914?tab=stock' + (code === 'FACTORY-WIRE' ? '&stock_pick=1' : ''),
+          )
           await wrapper.get('.team-workspace__fullscreen').trigger('click')
           await registerCheckedBatch()
           await flushPromises()
@@ -1100,7 +1111,7 @@ describe('team workspace material ledger', () => {
     }
   })
   it.each(teamWorkspaceProfiles)(
-    'uses actual remaining stock and keeps pending outbound separate for $name',
+    'shows on-hand and in-transit amounts using the inventory layout for $name',
     async (profile) => {
       const previous = state.directory.items
       state.directory.items = [
@@ -1129,8 +1140,38 @@ describe('team workspace material ledger', () => {
         page: 1,
         page_size: 10,
       })
+      const serialView = ['FACTORY-WAREHOUSE', 'FACTORY-WIRE'].includes(profile.code)
+      if (serialView)
+        vi.mocked(teamMaterialApi.inventorySerials).mockResolvedValue({
+          items: [
+            serialInventoryFixture({
+              on_hand_quantity: 70,
+              on_hand_weight: 7,
+              in_transit_quantity: 30,
+              in_transit_weight: 3,
+              stock_total_quantity: 100,
+              stock_total_weight: 10,
+            }),
+          ],
+          total: 1,
+          page: 1,
+          page_size: 10,
+        })
       try {
         await render('/team-workspaces/914?tab=stock')
+        if (serialView) {
+          expect(teamMaterialApi.inventorySerials).toHaveBeenLastCalledWith(
+            914,
+            expect.objectContaining({ availability: 'current_or_transit' }),
+          )
+          const cells = wrapper
+            .getComponent(TeamInventory)
+            .get('tbody tr')
+            .findAll('td')
+            .map((cell) => cell.text())
+          expect(cells).toEqual(expect.arrayContaining(['70', '7', '部分在途']))
+          return
+        }
         expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
           914,
           expect.objectContaining({ availability: 'current_or_transit' }),
@@ -1140,7 +1181,7 @@ describe('team workspace material ledger', () => {
             .get('.warehouse-table')
             .findAll('.inventory-balance')
             .map((cell) => cell.text()),
-        ).toEqual(['70'])
+        ).toEqual(['100', '10'])
         expect(
           wrapper
             .get('.inventory-row-actions')
@@ -1478,7 +1519,9 @@ describe('team workspace material ledger', () => {
       ]
       mockDispatchableRows(10, 11)
       try {
-        const path = '/team-workspaces/914?tab=stock&query=AL&page=2'
+        const path =
+          '/team-workspaces/914?tab=stock&query=AL&page=2' +
+          (['FACTORY-WIRE', 'FACTORY-WAREHOUSE'].includes(profile.code) ? '&stock_pick=1' : '')
         const router = await render(path)
         const create = wrapper
           .getComponent(TeamInventory)
@@ -2002,6 +2045,35 @@ describe('team workspace material ledger', () => {
     expect(dialog.text()).toContain('接收班组与当前工作台不符')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
   })
+  it('opens a warehouse dispatch with only the selected physical lot and its refreshed balance', async () => {
+    state.auth.currentUser.team_id = 901
+    const lot = source(41)
+    const latest = { ...lot, available_quantity: 3 }
+    vi.mocked(teamMaterialApi.inventorySerials).mockResolvedValue({
+      items: [serialInventoryFixture({ serial_no: lot.transfer.serial_no })],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    vi.spyOn(teamMaterialApi, 'stock').mockImplementation(async (_teamId, params) => ({
+      items: [params?.source_ids ? latest : lot],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }))
+    await render('/team-workspaces/901?tab=stock')
+    await wrapper.getComponent(TeamInventory).get('tbody tr button').trigger('click')
+    await flushPromises()
+    const drawer = wrapper.getComponent(SerialMaterialDrawer)
+    drawer.vm.$emit('action', 'dispatch', [lot])
+    await flushPromises()
+    expect(teamMaterialApi.stock).toHaveBeenCalledWith(901, {
+      source_ids: '41',
+      availability: 'dispatchable',
+      page_size: 100,
+    })
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('sources')).toEqual([latest])
+  })
   it('accepts batch actions from serial detail and preserves the dialog on an unchanged focus refresh', async () => {
     await render(
       '/team-workspaces/914?tab=stock&query=AL&material_type=sludge&availability=all&page=2',
@@ -2094,7 +2166,15 @@ describe('team workspace material ledger', () => {
       const router = await render(String(path))
       await router.push(`/team-workspaces/${id}?tab=settings`)
       await flushPromises()
-      const inventoryCalls = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
+      const read =
+        Number(id) === 901 ? teamMaterialApi.inventorySerials : teamMaterialApi.teamInventory
+      const inventoryCalls = vi.mocked(read).mock.calls.length
+      vi.mocked(teamMaterialApi.inventorySerials).mockResolvedValue({
+        items: [serialInventoryFixture({ serial_no: 'OPENING-001' })],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
       vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
         items: [warehouseFixture({ serial_no: 'OPENING-001' })],
         total: 1,
@@ -2106,10 +2186,8 @@ describe('team workspace material ledger', () => {
       expect(router.currentRoute.value.fullPath).toBe(`/team-workspaces/${id}`)
       expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
       expect(wrapper.getComponent(MaterialBatchPrintDialog).props('modelValue')).toBe(false)
-      expect(vi.mocked(teamMaterialApi.teamInventory).mock.calls.length).toBeGreaterThan(
-        inventoryCalls,
-      )
-      expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(Number(id), {
+      expect(vi.mocked(read).mock.calls.length).toBeGreaterThan(inventoryCalls)
+      expect(read).toHaveBeenLastCalledWith(Number(id), {
         availability: 'current_or_transit',
         page: 1,
         page_size: 10,

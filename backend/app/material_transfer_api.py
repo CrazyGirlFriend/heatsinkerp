@@ -215,7 +215,18 @@ def list_material_transfers(
     if serial_no is not None:
         from .shared_material import serial_match
 
-        filters.append(serial_match(MaterialTransfer.serial_no, serial_no))
+        if direction == "outgoing":
+            filters.append(
+                search_predicate(
+                    serial_no,
+                    "serial_no",
+                    "exact",
+                    include_source_serial=True,
+                    include_source_batch=False,
+                )
+            )
+        else:
+            filters.append(serial_match(MaterialTransfer.serial_no, serial_no))
     if source_team_id is not None:
         filters.append(MaterialTransfer.source_team_id == source_team_id)
     if target_id is not None:

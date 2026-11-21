@@ -202,6 +202,8 @@ export default defineComponent({
                     ? h(TableColumnFilter, {
                         label: entry.label,
                         kind: field.kind || 'text',
+                        editor: field.editor,
+                        integer: !!field.editor && field.field.endsWith('quantity'),
                         options: field.options,
                         valueLabel: field.valueLabel,
                         condition: query.state.filters.find((item) => item.field === field.field),
@@ -214,7 +216,7 @@ export default defineComponent({
                           '',
                         end:
                           query.state.filters.find((item) => item.field === field.field)?.end || '',
-                        sortable: true,
+                        sortable: !field.editor,
                         sort:
                           query.state.sort?.field === field.field
                             ? query.state.sort.direction

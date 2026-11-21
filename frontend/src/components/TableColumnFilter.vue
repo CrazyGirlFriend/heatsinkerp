@@ -4,7 +4,12 @@ import ElInput from '@/components/AppInput.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Filter } from '@element-plus/icons-vue'
-import type { TableColumnCondition, TableFilterDetails, TableOptionPage } from '@/types/tableQuery'
+import type {
+  TableColumnCondition,
+  TableQueryColumn,
+  TableFilterDetails,
+  TableOptionPage,
+} from '@/types/tableQuery'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
 import { ElCheckbox, ElCheckboxGroup } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -12,6 +17,7 @@ import ElButton from '@/components/AppButton.vue'
 const props = withDefaults(
   defineProps<{
     label: string
+    editor?: TableQueryColumn['editor']
     kind?: 'text' | 'select' | 'number' | 'date'
     value?: string
     end?: string
@@ -34,6 +40,7 @@ const visible = ref(false),
   draft = ref(''),
   endDraft = ref(''),
   search = ref('')
+const form = ref<HTMLFormElement>()
 const trigger = ref<InstanceType<typeof ElButton>>()
 const input = ref<InstanceType<typeof ElInput>>()
 const choices = computed({
@@ -55,6 +62,18 @@ const allSelected = ref(true),
   loading = ref(false),
   optionError = ref(''),
   hasMore = ref(false)
+const initialChoices = ref<(string | null)[]>([])
+const pagedChoices = ref(false)
+const choiceSearchVisible = computed(() => pagedChoices.value || initialChoices.value.length > 8)
+const displayedValues = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  if (props.editor !== 'choices' || !term) return values.value
+  // Match formatted labels too, e.g. a null schedule batch displays as 未关联排期.
+  const labeled = initialChoices.value.filter((value) =>
+    optionLabel(value).toLowerCase().includes(term),
+  )
+  return pagedChoices.value ? [...new Set([...labeled, ...values.value])] : labeled
+})
 const nextOffset = ref(0),
   period = ref<'date' | 'month' | 'year'>('date')
 let request = 0,
@@ -125,6 +144,10 @@ async function loadMore(reset = false) {
     values.value = [...new Set([...values.value, ...result.values])]
     nextOffset.value = result.next_offset
     hasMore.value = result.has_more
+    if (props.editor === 'choices' && reset && !search.value.trim()) {
+      initialChoices.value = values.value
+      pagedChoices.value = result.has_more
+    }
   } catch (error) {
     if (current === request)
       optionError.value = error instanceof Error ? error.message : '选项加载失败'
@@ -133,9 +156,19 @@ async function loadMore(reset = false) {
   }
 }
 watch(search, () => {
-  if (!props.loadOptions || !visible.value) return
+  if (
+    !props.loadOptions ||
+    !visible.value ||
+    props.editor === 'input' ||
+    (props.editor === 'choices' && !pagedChoices.value)
+  )
+    return
   clearTimeout(timer)
   ++request
+  if (props.editor === 'choices') {
+    values.value = []
+    loading.value = true
+  }
   timer = setTimeout(() => void loadMore(true), 250)
 })
 onBeforeUnmount(() => {
@@ -149,32 +182,45 @@ const invalid = computed(() => {
   if (props.kind !== 'number') return false
   return invalidNumberRange(draft.value, isRange.value ? endDraft.value : '', props.integer)
 })
+// An older bookmark may contain an operator the compact editor cannot express.
+const legacyCondition = computed(() => {
+  const op = props.condition?.operator
+  if (!props.editor || !props.condition) return false
+  if (props.editor === 'choices')
+    return op !== 'in' && op !== 'not_in' && !(props.kind === 'select' && !op)
+  return !!op && op !== (props.kind === 'text' ? 'contains' : 'between')
+})
 async function open() {
   draft.value = props.condition?.value ?? props.value
   endDraft.value = props.condition?.end ?? props.end
   search.value = ''
   period.value = 'date'
-  operator.value = props.condition?.operator
-  mode.value =
-    props.loadOptions &&
-    (!operator.value || ['in', 'not_in'].includes(operator.value)) &&
-    !props.value &&
-    !props.end
-      ? 'values'
-      : 'condition'
-  if (props.condition?.operator === 'in' || props.condition?.operator === 'not_in') {
-    mode.value = 'values'
-    allSelected.value = props.condition.operator === 'not_in'
-    exceptions.value = [...(props.condition.values || [])]
-    operator.value = undefined
+  const op = props.condition?.operator
+  const valueList = op === 'in' || op === 'not_in'
+  operator.value = props.editor || valueList ? undefined : op
+  if (props.editor) {
+    mode.value = props.editor === 'choices' ? 'values' : 'condition'
+    if (legacyCondition.value) {
+      draft.value = ''
+      endDraft.value = ''
+    }
   } else {
-    allSelected.value = true
-    exceptions.value = []
+    mode.value =
+      valueList || (props.loadOptions && !op && !props.value && !props.end) ? 'values' : 'condition'
   }
+  allSelected.value = valueList ? op === 'not_in' : props.editor !== 'choices'
+  exceptions.value = valueList
+    ? [...(props.condition?.values || [])]
+    : props.editor === 'choices' && draft.value
+      ? draft.value.split(',')
+      : []
+  initialChoices.value = []
+  pagedChoices.value = false
   clearTimeout(timer)
-  if (props.loadOptions) void loadMore(true)
+  if (props.loadOptions && props.editor !== 'input') void loadMore(true)
   await nextTick()
-  input.value?.focus()
+  if (input.value) input.value.focus()
+  else if (props.editor) form.value?.focus({ preventScroll: true })
 }
 function close() {
   visible.value = false
@@ -188,10 +234,21 @@ function chooseSort(direction?: 'asc' | 'desc') {
 }
 function apply(clear = false) {
   if (!clear && invalid.value) return
+  if (
+    !clear &&
+    legacyCondition.value &&
+    !draft.value &&
+    !endDraft.value &&
+    (props.editor !== 'choices' || !exceptions.value.length)
+  ) {
+    close()
+    return
+  }
   if (clear) emit('apply', '', '')
   else if (props.loadOptions && mode.value === 'values') {
     if (optionError.value || loading.value) return
-    if (allSelected.value && !exceptions.value.length) emit('apply', '', '')
+    if ((allSelected.value || props.editor === 'choices') && !exceptions.value.length)
+      emit('apply', '', '')
     else
       emit('apply', '', '', {
         operator: allSelected.value ? 'not_in' : 'in',
@@ -228,7 +285,7 @@ watch(
     v-model:visible="visible"
     trigger="click"
     placement="bottom-start"
-    :width="300"
+    :width="editor === 'input' && kind === 'text' ? 252 : 300"
     popper-class="table-column-filter-popover"
     role="dialog"
     :aria-label="`${label}筛选`"
@@ -252,12 +309,15 @@ watch(
       </ElButton>
     </template>
     <form
+      ref="form"
+      :tabindex="editor ? -1 : undefined"
       class="table-column-filter-form"
-      :class="{ 'is-invalid': invalid }"
+      :class="{ 'is-invalid': invalid, 'column-filter-compact': !!editor }"
       @submit.prevent="apply()"
       @keydown.esc.stop.prevent="close"
     >
       <strong>{{ label }}</strong>
+      <span v-if="legacyCondition" class="column-filter-empty">已有筛选，可重新填写或清除本列</span>
       <div v-if="sortable" class="column-filter-sort" aria-label="排序方式">
         <ElButton :type="sort === 'asc' ? 'primary' : 'default'" @click="chooseSort('asc')"
           >升序 ↑</ElButton
@@ -267,7 +327,7 @@ watch(
         >
         <ElButton v-if="sort" @click="chooseSort()">默认</ElButton>
       </div>
-      <div v-if="loadOptions" class="column-filter-modes" aria-label="筛选方式">
+      <div v-if="loadOptions && !editor" class="column-filter-modes" aria-label="筛选方式">
         <ElButton :type="mode === 'values' ? 'primary' : 'default'" @click="mode = 'values'"
           >按值选择</ElButton
         >
@@ -277,26 +337,27 @@ watch(
       </div>
       <template v-if="loadOptions && mode === 'values'">
         <ElInput
+          v-if="!editor || choiceSearchVisible"
           ref="input"
           v-model="search"
           :aria-label="`查找${label}选项`"
           clearable
           placeholder="查找选项"
         />
-        <div class="column-filter-selection">
+        <div v-if="!editor" class="column-filter-selection">
           <ElButton text @click="selectAll(true)">全选</ElButton>
           <ElButton text @click="selectAll(false)">取消全选</ElButton>
         </div>
         <div class="table-column-filter-choices" :aria-label="`${label}选项`">
           <ElCheckbox
-            v-for="value in values"
+            v-for="value in displayedValues"
             :key="value === null ? 'blank' : `value:${value}`"
             :model-value="checked(value)"
             @change="toggle(value)"
             >{{ optionLabel(value) }}</ElCheckbox
           >
           <span v-if="loading" role="status">正在读取选项…</span>
-          <span v-else-if="!values.length && !optionError" class="column-filter-empty"
+          <span v-else-if="!displayedValues.length && !optionError" class="column-filter-empty"
             >没有匹配选项</span
           >
           <div v-if="optionError" role="alert">
@@ -306,7 +367,12 @@ watch(
         </div>
       </template>
       <template v-else>
-        <select v-model="operator" :aria-label="`${label}筛选条件`" class="column-filter-operator">
+        <select
+          v-if="!editor"
+          v-model="operator"
+          :aria-label="`${label}筛选条件`"
+          class="column-filter-operator"
+        >
           <option :value="undefined">
             {{
               kind === 'number' || kind === 'date' ? '介于' : kind === 'select' ? '选择值' : '包含'
@@ -339,6 +405,7 @@ watch(
           </template>
           <template v-else-if="kind === 'date'">
             <select
+              v-if="!editor"
               v-model="period"
               aria-label="日期选择方式"
               class="column-filter-operator"
@@ -373,13 +440,17 @@ watch(
               />
             </div>
           </template>
-          <div v-else-if="kind === 'number'" class="column-filter-range">
+          <div
+            v-else-if="kind === 'number'"
+            class="column-filter-range"
+            :class="{ 'column-filter-bounds': editor }"
+          >
             <ElInput
               ref="input"
               v-model="draft"
-              inputmode="decimal"
+              :inputmode="integer ? 'numeric' : 'decimal'"
               clearable
-              placeholder="最小值"
+              :placeholder="editor ? '最少' : '最小值'"
               :aria-label="`${label}最小值`"
               :aria-invalid="invalid"
             />
@@ -387,9 +458,9 @@ watch(
             <ElInput
               v-if="isRange"
               v-model="endDraft"
-              inputmode="decimal"
+              :inputmode="integer ? 'numeric' : 'decimal'"
               clearable
-              placeholder="最大值"
+              :placeholder="editor ? '最多' : '最大值'"
               :aria-label="`${label}最大值`"
               :aria-invalid="invalid"
             />
@@ -406,13 +477,15 @@ watch(
         </template>
       </template>
       <footer>
-        <ElButton @click="apply(true)">清除</ElButton>
-        <ElButton @click="close">取消</ElButton>
+        <ElButton v-if="!editor || active" :text="!!editor" @click="apply(true)">{{
+          editor ? '清除本列' : '清除'
+        }}</ElButton>
+        <ElButton v-if="!editor" @click="close">取消</ElButton>
         <ElButton
           type="primary"
           native-type="submit"
           :disabled="invalid || (loadOptions && mode === 'values' && (loading || !!optionError))"
-          >筛选</ElButton
+          >{{ editor ? '确定' : '筛选' }}</ElButton
         >
       </footer>
     </form>
@@ -493,6 +566,20 @@ watch(
   gap: 6px;
 }
 .column-filter-sort .el-button {
+  margin: 0;
+}
+.column-filter-bounds {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+.column-filter-compact:focus {
+  outline: none;
+}
+.column-filter-compact footer {
+  justify-content: flex-end;
+}
+.table-column-filter-form.column-filter-compact footer .el-button:only-child {
   margin: 0;
 }
 .column-filter-range > span {

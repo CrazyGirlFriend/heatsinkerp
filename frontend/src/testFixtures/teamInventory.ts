@@ -26,3 +26,25 @@ export function warehouseFixture(overrides: Partial<TeamInventoryRow> = {}): Tea
     ...overrides,
   }
 }
+
+export function serialInventoryFixture(
+  overrides: Partial<import('@/utils/inventorySerialSummary').InventorySerial> = {},
+) {
+  return {
+    serial_no: '000128',
+    shared_group_id: null,
+    shared_unallocated: false,
+    unnumbered_batch_no: null,
+    material_name: '铜钼',
+    on_hand_quantity: 10,
+    on_hand_weight: 2,
+    in_transit_quantity: 5,
+    in_transit_weight: 1,
+    stock_total_quantity: 15,
+    stock_total_weight: 3,
+    stock_status: '部分在途',
+    processing_state: 'mixed',
+    last_activity_at: '2026-11-21T08:00:00Z',
+    ...overrides,
+  }
+}

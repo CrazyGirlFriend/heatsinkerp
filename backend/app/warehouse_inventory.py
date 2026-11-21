@@ -6,7 +6,7 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import Field, model_validator
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.orm import aliased
 
 from .inventory_age import stock_age_table
@@ -21,8 +21,10 @@ from .material_analytics import (
 from .material_lineage import source_ids_for
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
+from .material_weight import WEIGHT_ONLY_TYPES
 from .models import (
     MaterialLoss,
+    MaterialQuantityAdjustment,
     MaterialTransfer,
     Team,
     WarehouseFeedingSource,
@@ -208,7 +210,7 @@ def withdrawn_from(sources):
     )
 
 
-def warehouse_groups(team_id, filters):
+def warehouse_groups(team_id, filters, *, by_serial=False):
     from .inspections import hold_column
 
     stock = stock_table(team_id)
@@ -241,23 +243,28 @@ def warehouse_groups(team_id, filters):
         .join(mt, mt.id == WarehouseFeedingSource.transfer_id)
         .where(movement_scope)
     )
-    movements = direct.union_all(portions).subquery()
+    losses = select(MaterialLoss.source_transfer_id, MaterialLoss.created_at).where(
+        MaterialLoss.team_id == team_id if team_id is not None else True
+    )
+    work = select(
+        MaterialQuantityAdjustment.source_transfer_id, MaterialQuantityAdjustment.created_at
+    ).where(MaterialQuantityAdjustment.team_id == team_id if team_id is not None else True)
+    movements = direct.union_all(portions, losses, work).subquery()
     moves = (
         select(movements.c.lot_id, func.max(movements.c.updated_at).label("at"))
         .group_by(movements.c.lot_id)
         .subquery()
     )
-    losses = (
-        select(
-            MaterialLoss.source_transfer_id.label("lot_id"),
-            func.max(MaterialLoss.created_at).label("at"),
+    recent = func.max(case((moves.c.at > mt.updated_at, moves.c.at), else_=mt.updated_at))
+    if by_serial:
+        # A depleted lot may carry the most recent action for a serial still in stock.
+        recent = func.max(recent).over(
+            partition_by=(
+                mt.serial_no,
+                case((mt.serial_no == "", mt.batch_no)),
+                case((mt.shared_unallocated.is_(True), mt.shared_group_id)),
+            )
         )
-        .where(MaterialLoss.team_id == team_id if team_id is not None else True)
-        .group_by(MaterialLoss.source_transfer_id)
-        .subquery()
-    )
-    recent = case((moves.c.at > mt.updated_at, moves.c.at), else_=mt.updated_at)
-    recent = case((losses.c.at > recent, losses.c.at), else_=recent)
     meta = []
     for name in META_FIELDS:
         if name == "transfer_specification":
@@ -325,7 +332,7 @@ def warehouse_groups(team_id, filters):
                     else_=origins["external_source"],
                 )
             ).label("source_name"),
-            func.max(recent).label("last_activity_at"),
+            recent.label("last_activity_at"),
             func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
             *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS),
             *summary_columns(stock, registered),
@@ -340,7 +347,6 @@ def warehouse_groups(team_id, filters):
         .outerjoin(parent, parent.id == mt.source_transfer_id)
         .outerjoin(placements, placements.c.transfer_id == mt.id)
         .outerjoin(moves, moves.c.lot_id == mt.id)
-        .outerjoin(losses, losses.c.lot_id == mt.id)
         .outerjoin(registered, registered.c.lot_id == mt.id)
         .outerjoin(age, age.c.transfer_id == mt.id)
         .group_by(*origins.values())
@@ -386,11 +392,22 @@ def processing_state_column(table, team_id):
     )
 
 
-def list_inventory(db, team_id, filters):
-    if team_id is not None:
-        require_team(db, team_id)
+def size_contains(column, term):
+    # User-entered dimensions and imported drawings use different separators.
+    replacements = ((" ", ""), ("　", ""), ("*", "×"), ("＊", "×"), ("x", "×"))
+    value = term.lower()
+    expression = func.lower(column)
+    for old, new in replacements:
+        value = value.replace(old, new)
+        expression = func.replace(expression, old, new)
+    return expression.contains(value, autoescape=True)
+
+
+def list_inventory(db, team_id, filters, *, by_serial=False):
+    team = require_team(db, team_id) if team_id is not None else None
     now = utcnow()
-    table = warehouse_groups(team_id, filters)
+    table = warehouse_groups(team_id, filters, by_serial=by_serial)
+    serial_search = None
     stock_totals = {
         f"stock_total_{unit}": table.c[f"on_hand_{unit}"] + table.c[f"in_transit_{unit}"]
         for unit in ("quantity", "weight")
@@ -447,10 +464,9 @@ def list_inventory(db, team_id, filters):
             else table.c.rework_count > 0
         )
     if filters.location_status:
-        from .team_constants import WAREHOUSE_TEAM_CODE
         from .warehouse_placements import unassigned_predicate
 
-        if team_id is not None and require_team(db, team_id).code != WAREHOUSE_TEAM_CODE:
+        if team and team.code != WAREHOUSE_TEAM_CODE:
             raise HTTPException(422, "仅库房可以按仓位筛选")
         if team_id is None:
             conditions.append(
@@ -643,7 +659,10 @@ def list_inventory(db, team_id, filters):
                     )
                     .exists(),
                 )
-            conditions.append(matches)
+            if by_serial and field == "all":
+                serial_search = matches
+            else:
+                conditions.append(matches)
         else:
             conditions.append(
                 select(mt.id)
@@ -711,17 +730,56 @@ def list_inventory(db, team_id, filters):
         columns["stock_age"] = (
             func.timestampdiff(literal_column("SECOND"), table.c.stock_age_started_at, now) / 86400
         )
-    conditions.extend(
-        table_predicates(
-            columns,
-            matches={
-                "batch_no": lambda item: batch_matches(None, condition=item),
-                "previous_batch_no": lambda item: batch_matches(
-                    None, previous=True, condition=item
-                ),
-            },
+    matches = {
+        "batch_no": lambda item: batch_matches(None, condition=item),
+        "previous_batch_no": lambda item: batch_matches(None, previous=True, condition=item),
+    }
+    if team and team.code in (WAREHOUSE_TEAM_CODE, "FACTORY-WIRE"):
+        from .shared_material import serial_match
+        from .table_query import column_predicate
+
+        def match_text(column, item, contains):
+            if item.operator in (None, "contains") and item.value:
+                return contains(column, item.value)
+            return column_predicate(column, item)
+
+        matches["serial_no"] = lambda item: match_text(
+            table.c.serial_no, item, lambda column, term: serial_match(column, term, "contains")
         )
-    )
+        matches["transfer_specification"] = lambda item: match_text(
+            table.c.transfer_specification, item, size_contains
+        )
+        source = func.nullif(table.c.source_name, "")
+        if team.code == WAREHOUSE_TEAM_CODE:
+            kind = case(
+                (table.c.receipt_source == "return", "外部退回"),
+                (table.c.receipt_source == "internal", "车间转入"),
+                else_="外部来料",
+            )
+            source = kind + literal(" · ") + func.coalesce(source, "未登记")
+        else:
+            source = func.coalesce(source, "上序未登记")
+        columns["inventory_source_label"] = case(
+            {"opening": "初始库存", "processing": "本班组加工", "rework": "返工料划分"},
+            value=table.c.receipt_source,
+            else_=source,
+        )
+        # Weight-only lots show a dash in quantity cells, including when the ledger stores zero.
+        for field in (
+            "stock_total_quantity",
+            "on_hand_quantity",
+            "dispatchable_quantity",
+            "in_transit_quantity",
+            "available_quantity",
+            "pending_outgoing_quantity",
+            "lost_quantity",
+        ):
+            columns[field] = case((table.c.material_type.not_in(WEIGHT_ONLY_TYPES), columns[field]))
+    if by_serial:
+        return inventory_serial_page(
+            db, table, conditions, columns, matches, filters, now, serial_search
+        )
+    conditions.extend(table_predicates(columns, matches=matches))
     query_state = current_table_query.get()
     option_statement = select(table).where(*conditions)
     option_columns = columns
@@ -880,6 +938,105 @@ def list_inventory(db, team_id, filters):
         items.append(item)
     from .shared_material import annotate_groups
 
+    annotate_groups(db, items)
+    return {
+        "items": items,
+        "total": total,
+        "page": filters.page,
+        "page_size": filters.page_size,
+        "as_of": now.replace(tzinfo=timezone.utc).isoformat(),
+    }
+
+
+def inventory_serial_page(db, lots, conditions, lot_columns, lot_matches, filters, now, search):
+    from .shared_material import annotate_groups, serial_match
+    from .table_query import column_predicate, table_options, table_order, table_predicates
+
+    c = lots.c
+    # Joint material has one physical balance while allocation is pending. Allocated
+    # outputs can be combined with other lots belonging to the same order.
+    joint = case((c.shared_unallocated.is_(True), c.shared_group_id))
+    unnumbered = case((and_(c.serial_no == "", joint.is_(None)), c.stock_batch_no))
+    quantities = {
+        key: func.sum(case((c.material_type.not_in(WEIGHT_ONLY_TYPES), c[key])))
+        for key in ("on_hand_quantity", "in_transit_quantity")
+    }
+    weights = {key: func.sum(c[key]) for key in ("on_hand_weight", "in_transit_weight")}
+    on_hand = or_(quantities["on_hand_quantity"] > 0, weights["on_hand_weight"] > 0)
+    transit = or_(quantities["in_transit_quantity"] > 0, weights["in_transit_weight"] > 0)
+    state = lot_columns["processing_state"]
+    fields = {
+        "material_name": case(
+            (func.count(func.distinct(c.material_name)) > 1, "多种材质"),
+            else_=func.min(c.material_name),
+        ),
+        **quantities,
+        **weights,
+        "stock_total_quantity": quantities["on_hand_quantity"] + quantities["in_transit_quantity"],
+        "stock_total_weight": weights["on_hand_weight"] + weights["in_transit_weight"],
+        "stock_status": case(
+            (func.sum(c.inspection_hold_count) > 0, "质量处理中"),
+            (func.sum(c.shortage_quantity + c.shortage_weight) > 0, "库存待核对"),
+            (and_(on_hand, transit), "部分在途"),
+            (transit, "转出待签收"),
+            (on_hand, "在库"),
+            else_="已结清",
+        ),
+        "processing_state": case(
+            (func.count(func.distinct(state)) > 1, "mixed"), else_=func.min(state)
+        ),
+        "last_activity_at": func.max(c.last_activity_at),
+    }
+    summary_keys = {*fields, "serial_no"}
+    conditions = [
+        *conditions,
+        *table_predicates(lot_columns, matches=lot_matches, skip_fields=summary_keys),
+    ]
+    groups = (
+        select(
+            c.serial_no,
+            joint.label("shared_group_id"),
+            func.max(case((joint.is_not(None), 1), else_=0)).label("shared_unallocated"),
+            unnumbered.label("unnumbered_batch_no"),
+            *(value.label(key) for key, value in fields.items()),
+        )
+        .where(*conditions)
+        .group_by(c.serial_no, joint, unnumbered)
+    )
+    if search is not None:
+        groups = groups.having(func.max(case((search, 1), else_=0)) == 1)
+    groups = groups.subquery()
+    columns = dict(groups.c.items())
+    serial = groups.c.serial_no
+    matches = {
+        "serial_no": lambda item: (
+            serial_match(serial, item.value, "contains")
+            if item.operator in (None, "contains") and item.value
+            else column_predicate(serial, item)
+        )
+    }
+    statement = select(groups).where(
+        *table_predicates(columns, matches=matches, skip_fields=lot_columns.keys() - summary_keys)
+    )
+    table_options(db, statement, columns)
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    rows = db.execute(
+        statement.order_by(
+            *table_order(
+                columns,
+                groups.c.last_activity_at.desc(),
+                serial,
+                groups.c.shared_group_id,
+                groups.c.unnumbered_batch_no,
+            )
+        )
+        .offset((filters.page - 1) * filters.page_size)
+        .limit(filters.page_size)
+    ).mappings()
+    items = [
+        dict(row, last_activity_at=row["last_activity_at"].replace(tzinfo=timezone.utc).isoformat())
+        for row in rows
+    ]
     annotate_groups(db, items)
     return {
         "items": items,

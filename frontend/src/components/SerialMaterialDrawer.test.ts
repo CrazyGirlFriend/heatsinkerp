@@ -6,6 +6,7 @@ import AppDialog from './AppDialog.vue'
 import MaterialAmount from './MaterialAmount.vue'
 import { ElPagination } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { serialInventoryFixture } from '@/testFixtures/teamInventory'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -220,6 +221,26 @@ it('supports source-batch dispatch and loss only for writable available inventor
     expect(wrapper.get('.serial-detail-footer').text()).toContain('清空勾选')
     await button('清空勾选').trigger('click')
     expect(button('批量出库').attributes('disabled')).toBeDefined()
+    await wrapper.setProps({
+      inventoryRow: serialInventoryFixture({
+        serial_no: 'SERIAL-DETAIL',
+        on_hand_quantity: 20,
+        in_transit_quantity: 10,
+        stock_total_quantity: 30,
+      }),
+    })
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: rows,
+      total: 3,
+      page: 1,
+      page_size: 10,
+    })
+    await live.refresh()
+    await flushPromises()
+    expect(wrapper.get('label[aria-label="选择 TL-3"] input').attributes('disabled')).toBeDefined()
+    await wrapper.get('label[aria-label="选择本页可用批次"] input').setValue(true)
+    await button('批量出库').trigger('click')
+    expect(wrapper.emitted('action')?.at(-1)).toEqual(['dispatch', rows.slice(0, 2)])
     await wrapper.setProps({ canWrite: false })
     expect(wrapper.find('.serial-detail-actions').exists()).toBe(false)
   } finally {
