@@ -16,6 +16,7 @@ from app.schemas import MaterialDocumentFields
 from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_warehouse_receipts import warehouse as warehouse
+from warehouse_test_locations import select_location
 
 pytestmark = pytest.mark.usefixtures("legacy_stock")
 
@@ -224,11 +225,12 @@ def receipt_payload(client):
 
 
 def test_intake_snapshots_full_master_and_retries_without_upstream(client, warehouse, upstream):
-    payload = receipt_payload(client)
+    payload = {**receipt_payload(client), **select_location(client, warehouse)}
     url = f"/api/main-system/warehouses/{warehouse['team']['id']}/receipts"
     first = client.post(url, headers=warehouse["headers"], json=payload)
     assert first.status_code == 201, first.text
     saved = first.json()
+    assert saved["warehouse_location"] == payload["warehouse_location"]
     for key, value in record()["document"].items():
         assert saved[key] == value
     assert saved["quantity"] == 100 and saved["weight"] == 10.125
@@ -248,6 +250,10 @@ def test_intake_snapshots_full_master_and_retries_without_upstream(client, wareh
         == 409
     )
     assert client.get(warehouse["url"]).json()["total"] == 1
+    inventory = client.get(warehouse["url"].replace("/receipts", "/inventory")).json()["items"]
+    assert [(lot["batch_no"], lot["warehouse_location"]) for lot in inventory] == [
+        (saved["batch_no"], payload["warehouse_location"])
+    ]
     # Existing dispatch workflow inherits all customer fields without another main-system request.
     dispatched = sender_post(
         client,
@@ -265,12 +271,15 @@ def test_intake_snapshots_full_master_and_retries_without_upstream(client, wareh
 
 
 @pytest.mark.parametrize(
-    "change", ["changed", "inactive", "tampered", "admin", "other-team", "timeout"]
+    "change",
+    ["changed", "inactive", "tampered", "admin", "wrong-reservation", "other-team", "timeout"],
 )
 def test_intake_rejects_changed_or_forged_material_without_stock(
     client, warehouse, upstream, change
 ):
     payload = receipt_payload(client)
+    if change != "admin":
+        payload.update(select_location(client, warehouse))
     url = f"/api/main-system/warehouses/{warehouse['team']['id']}/receipts"
     headers = warehouse["headers"]
     expected = 409
@@ -288,6 +297,8 @@ def test_intake_rejects_changed_or_forged_material_without_stock(
     if change == "admin":
         headers = {}
         expected = 422  # Warehouse location remains mandatory for administrators.
+    if change == "wrong-reservation":
+        payload["warehouse_location_reservation_key"] = "wrong-reservation-key"
     if change == "other-team":
         headers = warehouse["other_headers"]
         expected = 403
@@ -296,6 +307,8 @@ def test_intake_rejects_changed_or_forged_material_without_stock(
         expected = 504
     response = client.post(url, headers=headers, json=payload)
     assert response.status_code == expected, response.text
+    if change in ("admin", "wrong-reservation"):
+        assert "仓位" in response.json()["detail"]
     assert client.get(warehouse["url"]).json()["total"] == 0
 
 
@@ -352,7 +365,7 @@ def test_invalid_intake_never_calls_main_system(client, warehouse, upstream, cha
 
 @pytest.mark.parametrize("notes", [None, "", "   ", "  实物清点入库  "])
 def test_main_system_intake_notes_are_optional(client, warehouse, upstream, notes):
-    payload = receipt_payload(client)
+    payload = {**receipt_payload(client), **select_location(client, warehouse)}
     if notes is None:
         payload.pop("notes")
     else:

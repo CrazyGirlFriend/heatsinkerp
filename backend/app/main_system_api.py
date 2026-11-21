@@ -20,13 +20,14 @@ from .schemas import (
     DIRECT_MATERIAL_TYPE_PATTERN,
     MaterialTransferResponse,
     SludgeMeasurement,
+    WarehouseLocationChoice,
     WarehouseReceiptCreate,
 )
 
 router = APIRouter(prefix="/api/main-system", tags=["main system serial materials"])
 
 
-class MainSystemReceiptCreate(SludgeMeasurement):
+class MainSystemReceiptCreate(WarehouseLocationChoice, SludgeMeasurement):
     model_config = ConfigDict(extra="forbid")
     serial_no: str = Field(min_length=1, max_length=80)
     expected_snapshot_hash: str = Field(pattern="^[a-f0-9]{64}$")
@@ -87,11 +88,8 @@ async def receive_from_main_system(
     values = {
         "operation": "main-system-receipt-v1",
         "team_id": team_id,
-        **payload.model_dump(mode="json", exclude={"idempotency_key"}),
+        **payload.model_dump(mode="json", exclude={"idempotency_key"}, exclude_none=True),
     }
-    for field in ("sludge_gross_weight", "sludge_content_percent"):
-        if values[field] is None:
-            values.pop(field)
     request_hash = hashlib.sha256(
         json.dumps(values, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()

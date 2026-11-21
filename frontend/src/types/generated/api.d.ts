@@ -4202,6 +4202,10 @@ export interface components {
       sludge_content_percent?: number | string | null
       /** Sludge Gross Weight */
       sludge_gross_weight?: number | string | null
+      /** Warehouse Location */
+      warehouse_location?: string | null
+      /** Warehouse Location Reservation Key */
+      warehouse_location_reservation_key?: string | null
       /** Weight */
       weight: number | string
     }

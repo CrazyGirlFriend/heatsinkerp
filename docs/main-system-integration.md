@@ -109,6 +109,8 @@ X-Request-ID: <本系统生成的 UUID>
 {
   "serial_no": "001-A/中文",
   "expected_snapshot_hash": "<查询接口返回的64位校验值>",
+  "warehouse_location": "原料区-A01",
+  "warehouse_location_reservation_key": "<选择仓位时使用的预订键>",
   "material_type": "semi_finished",
   "quantity": 100,
   "weight": "10.125",
@@ -117,7 +119,7 @@ X-Request-ID: <本系统生成的 UUID>
 }
 ```
 
-- 请求只允许上述字段；不能提交或覆盖材质、客户代码等主系统资料。
+- 新建入库时，先用当前账号调用 `POST /api/warehouse-locations/{id}/reservation` 预订仓位。入库请求填写该仓位的名称，`warehouse_location_reservation_key` 使用预订时提交的 `key`。材质、客户代码等资料由主系统提供。
 - 件数为非负整数；重量单位固定 kg、最多三位小数、最多 11 位整数，推荐用十进制字符串传输。件数和重量不能同时为 0；零件数的按重量物料可正常入库。物料类型必填；入库说明 `notes` 选填，可省略或填写空字符串，最多 2000 个字符。
 - 后端重新查询主系统，核对流水号、启用状态和完整资料校验值。资料变化返回 409，前端展示新资料并要求重新确认，不能静默带入新版。
 - 网络读取完成后才进入库存事务，不在持有数据库锁时等待主系统。
